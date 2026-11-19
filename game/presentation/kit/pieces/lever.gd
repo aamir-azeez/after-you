@@ -4,7 +4,7 @@ extends "res://presentation/kit/pieces/piece.gd"
 ##
 ##   "plain": a grey stone housing and a cream handle whose knob is the owner's
 ##       colour; the handle tilts over when pulled.
-##   "brass": the plain lever in a warm brass housing on a timber foot band.
+##   "brass": the plain lever in a warm brass housing under a timber collar.
 ##   "winch": a hand winch. A crank on a timber frame turns an iron drum; the
 ##       chain runs off the drum down through a hawse ring in the sill. Pulled,
 ##       the crank turns over, the drum fills with chain and the chain comes up
@@ -158,7 +158,7 @@ func _make(lever_style: String, at: Vector3, parent: Node3D, knob: Color) -> voi
 
 func _make_handle(knob: Color) -> void:
 	var brass := style == "brass"
-	Models.still(MODEL, "lever_base", {"housing": Parts.BRASS if brass else HOUSING, "band": Parts.TIMBER if brass else HOUSING.darkened(0.2), "slit": (Parts.BRASS if brass else HOUSING).darkened(0.45)}, root)
+	Models.still(MODEL, "lever_base", {"housing": Parts.BRASS if brass else HOUSING, "band": Parts.TIMBER if brass else HOUSING, "slit": (Parts.TIMBER if brass else HOUSING).darkened(0.45)}, root)
 	Models.moving(MODEL, "lever_handle", {"handle": Parts.CREAM, "knob": knob}, anchor, false)
 
 ## One chain link (a flattened ring), cached by the kit like every shape.
