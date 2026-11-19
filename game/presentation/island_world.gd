@@ -1442,8 +1442,9 @@ static func kept_crossings(checkpoint: Dictionary) -> Array:
 
 ## A scrolling world's camera follows the live spirit (or the memory it waits
 ## for, _camera_slot) at SCROLL_SIZE, and eases out to SCROLL_DONE_SIZE over a
-## finished stage. Every scrolling world looks from ViewFit.CAMERA_FROM, so
-## the stick maps alike in all of them.
+## finished stage. Every scrolling world looks from camera_from(): the same
+## yaw everywhere (a level's follow data may only lower the pitch), so the
+## stick maps alike in all of them.
 const SCROLL_SIZE := 9.2
 const SCROLL_DONE_SIZE := 10.6
 ## How fast the camera closes on the spirit: 1 - e^(-rate t) of the way.
@@ -1470,6 +1471,11 @@ var _completion_view := false
 func _follow_data() -> Dictionary:
 	var data: Variant = dressing.get("camera", {})
 	return data.get("follow", {}) if data is Dictionary else {}
+
+## Where this world's camera stands from the point it looks at
+## (ViewFit.camera_from): what endings, pair tags and label bubbles face.
+func camera_from() -> Vector3:
+	return ViewFit.camera_from(dressing)
 
 func _scroll_size() -> float:
 	return float(_follow_data().get("size", SCROLL_SIZE))
@@ -1589,10 +1595,7 @@ func _frame_camera() -> void:
 ## The camera over the follow point, at the follow size.
 func _frame_follow() -> void:
 	if not is_instance_valid(camera): return
-	var from := ViewFit.CAMERA_FROM
-	var data := _follow_data()
-	if data.has("from"): from = Vector3(float(data.from[0]), float(data.from[1]), float(data.from[2]))
-	camera.position = _follow_center + from
+	camera.position = _follow_center + camera_from()
 	camera.look_at(to_global(_follow_center))
 	camera.keep_aspect = Camera3D.KEEP_HEIGHT
 	camera.size = ViewFit.viewport(_follow_size, self)

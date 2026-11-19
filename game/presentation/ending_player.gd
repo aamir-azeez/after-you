@@ -91,7 +91,9 @@ func start(world: Node3D, data: Dictionary, snapshot: Dictionary, overlay: Contr
 	if origin != "pips" and world.has_method("ending_anchor"):
 		var anchor: Variant = world.call("ending_anchor", origin)
 		if anchor is Vector3: at.origin = anchor
-	at.camera = camera.position - ViewFit.CAMERA_FROM if is_instance_valid(camera) else at.origin
+	# The world's own view (a level's lower follow angle), so the film starts and
+	# hands back on the frame the player had.
+	at.camera = camera.position - _from() if is_instance_valid(camera) else at.origin
 	at.camera_size = camera.size if is_instance_valid(camera) else 10.0
 	compiled = EndingScene.compile(data, at)
 	_build_props(data.get("props", {}))
@@ -141,6 +143,10 @@ func _exit_tree() -> void:
 func _local(node: Node3D) -> Vector3:
 	return _world.to_local(node.global_position)
 
+## Where the world's camera stands from what it looks at (ViewFit.camera_from).
+func _from() -> Vector3:
+	return _world.camera_from() if _world.has_method("camera_from") else ViewFit.CAMERA_FROM
+
 func _fire(from: float, to: float) -> void:
 	for event: Dictionary in EndingScene.events_between(compiled, from, to):
 		if event.kind == "sound":
@@ -174,7 +180,7 @@ func _apply(now: Dictionary, delta: float, immediate: bool) -> void:
 	if is_instance_valid(camera):
 		var center: Vector3 = now.camera.center
 		camera.projection = Camera3D.PROJECTION_ORTHOGONAL
-		camera.position = center + Basis(Vector3.UP, deg_to_rad(float(now.camera.get("orbit", 0.0)))) * ViewFit.CAMERA_FROM
+		camera.position = center + Basis(Vector3.UP, deg_to_rad(float(now.camera.get("orbit", 0.0)))) * _from()
 		camera.look_at(_world.to_global(center))
 		camera.keep_aspect = Camera3D.KEEP_HEIGHT
 		camera.size = ViewFit.viewport(float(now.camera.size), _world)

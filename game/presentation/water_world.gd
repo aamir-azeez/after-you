@@ -19,6 +19,7 @@ extends "res://presentation/journey_world.gd"
 
 const WaterBodies = preload("res://presentation/kit/water_bodies.gd")
 const WaterLocks = preload("res://presentation/kit/water_locks.gd")
+const Gorge = preload("res://presentation/kit/gorge.gd")
 
 ## The water kit for the shown stage.
 var waters := WaterBodies.new(self)
@@ -48,6 +49,8 @@ func show_stage(stage: Dictionary) -> void:
 	await _build_water_walls()
 	await waters.build_locks(WaterLocks.bake_path(_chapter_key(), displayed_stage_id))
 	await _build_water_scenery()
+	# The dressing's gorge: rock behind the floors and rainbows in the spray.
+	Gorge.build(self, dressing.get("gorge", {}))
 
 func _forget_stage() -> void:
 	pass
@@ -117,7 +120,9 @@ func _piers(_island: Dictionary, _raised: Node3D) -> void:
 func _deck_walls(island: Dictionary, raised: Node3D) -> void:
 	var r: Array = island.rect_cm
 	var height := raised.position.y
-	var bottom := waters.seabed() - height
+	# Down to the bed of the pool it stands in (WaterBodies.bed_at).
+	var bed := waters.bed_at(Vector2(float(r[0] + r[2]), float(r[1] + r[3])) * 0.5)
+	var bottom := bed - height
 	var color: Color = _wall_color(int(island.get("height_cm", 0)))
 	var size := Vector3(float(r[2] - r[0]) / 100.0 - 0.02, -0.20 - bottom, float(r[3] - r[1]) / 100.0 - 0.02)
 	var wall := box(size, color, Vector3(float(r[0] + r[2]) / 200.0, (bottom - 0.20) * 0.5, float(r[1] + r[3]) / 200.0), raised)
@@ -131,7 +136,7 @@ func _deck_walls(island: Dictionary, raised: Node3D) -> void:
 		for level: float in waters.mark_levels().values(): clear = clear and absf(height + y - level) > 0.06
 		if clear: box(Vector3(size.x + 0.016, 0.012, size.z + 0.016), color.darkened(0.10), Vector3(wall.position.x, y, wall.position.z), raised).name = "WallCourse"
 		y -= 0.28
-	waters.mark_bands(Vector3(wall.position.x, 0, wall.position.z) + Vector3(0, height, 0), Vector2(size.x, size.z), waters.seabed(), height - 0.20, raised, height)
+	waters.mark_bands(Vector3(wall.position.x, 0, wall.position.z) + Vector3(0, height, 0), Vector2(size.x, size.z), bed, height - 0.20, raised, height)
 
 func _surface_height(id: String) -> float:
 	# Markers on a raised crossing (the waiting steps, posts and catwalks) stand

@@ -263,8 +263,10 @@ func _uses_scrolling_camera() -> bool:
 	return true
 
 ## The physical chapters scroll their camera's centre between x -3.2 and 12,
-## on the z axis.
+## on the z axis; a level whose follow data follows across and in depth
+## ("axes": "xz") keeps inside its own floors.
 func _follow_limits() -> Array[Vector2]:
+	if str(_follow_data().get("axes", "x")) == "xz": return _floors_follow_limits()
 	return [Vector2(-3.2, 0.0), Vector2(12.0, 0.0)]
 
 func _shore(island: Dictionary, color: Color) -> void:

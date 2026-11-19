@@ -69,7 +69,12 @@ static func stage_ids(key: String, level: Dictionary = {}) -> Array:
 
 ## One stage's plan: floors (islands), crossings, stairs and every spot.
 static func stage_view(key: String, stage_id: String, level: Dictionary = {}) -> Dictionary:
-	return LevelLayout.plan(LevelLayout.family_of(layout_key(key)), level if not level.is_empty() else definition(key), stage_id)
+	var view: Dictionary = LevelLayout.plan(LevelLayout.family_of(layout_key(key)), level if not level.is_empty() else definition(key), stage_id)
+	# A level that stands its camera elsewhere (its follow data's "from") is
+	# judged from there (PropRules.sweep).
+	var from: Vector3 = load("res://presentation/kit/view_fit.gd").camera_from(load("res://content/dressing/catalog.gd").raw(key))
+	if from != load("res://presentation/kit/view_fit.gd").CAMERA_FROM: view["camera_from"] = from
+	return view
 
 # --- Placing --------------------------------------------------------------------
 

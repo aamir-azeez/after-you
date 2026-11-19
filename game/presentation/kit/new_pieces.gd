@@ -28,7 +28,7 @@ const RopeLadder = preload("res://presentation/kit/pieces/rope_ladder.gd")
 const Fog = preload("res://presentation/kit/fog.gd")
 const FogCover = preload("res://presentation/kit/fog_cover.gd")
 const Parts = preload("res://presentation/kit/pieces/parts.gd")
-const SoftMist = preload("res://presentation/kit/soft_mist.gd")
+const FallsCurtain = preload("res://presentation/kit/pieces/falls_curtain.gd")
 ## The water in a filled pan.
 const PAN_WATER := Color("7fa7b0")
 ## A lift's ride, metres a second.
@@ -74,47 +74,9 @@ func lay_deck(definition: Dictionary, deck: Node3D, width: float, depth: float, 
 	var style := deck_style(str(definition.id))
 	if not style.is_empty(): Deck.lay(style, deck, width, depth, across_x, low, high)
 	if style == "falls_path":
-		# The falls' water over the path, shown while the path is shut.
-		var rect := _rect(definition.rect_cm)
-		var height := float(definition.get("height_cm", 0)) / 100.0
-		# PROTOTYPE: a real curtain of falling water, not a pale box. It pours
-		# off a rock lip high over the path's back edge, arcs out over the
-		# path and crashes into foam on it and in the pool in front, in the
-		# falls' own running-water look, so a shut path reads as "behind the
-		# falls". A wide path along x pours toward +z; one along z toward +x.
-		var curtain := Node3D.new()
-		curtain.name = "FallsCurtain"
-		var long := rect.size.x >= rect.size.y
-		var span := rect.size.x if long else rect.size.y
-		var deep := rect.size.y if long else rect.size.x
-		curtain.position = Vector3(rect.get_center().x, height, rect.get_center().y)
-		if not long: curtain.rotation.y = PI * 0.5
-		_world.terrain.add_child(curtain)
-		var Props: Script = load("res://presentation/kit/props.gd")
-		var tool := SurfaceTool.new()
-		tool.begin(Mesh.PRIMITIVE_TRIANGLES)
-		var lip := 1.3
-		var back := -deep * 0.5 - 0.35
-		var points := [Vector3(0, lip, back - 0.8), Vector3(0, lip, back), Vector3(0, lip - 0.25, back + 0.22)]
-		var falling := [0.0, 0.0, 0.6]
-		for step in range(1, 8):
-			var t := float(step) / 7.0
-			points.append(Vector3(0, lip - (lip + 0.35) * t, back + 0.22 + (deep + 0.9) * sqrt(t)))
-			falling.append(1.0)
-		Props._falls_strip(tool, span + 0.2, points, falling)
-		Props._falls_foam(tool, Vector3(0, 0.04, 0.0), Vector2(span * 0.5 + 0.1, deep * 0.5 + 0.15))
-		Props._falls_foam(tool, Vector3(0, -0.3, deep * 0.5 + 0.9), Vector2(span * 0.5 + 0.3, 0.7))
-		var flow := MeshInstance3D.new()
-		flow.name = "Flow"
-		flow.mesh = tool.commit()
-		flow.material_override = Props._falls_material()
-		flow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		curtain.add_child(flow)
-		# The rock lip the water pours off, overhanging the path's back edge.
-		var rock := Parts.box(Vector3(span + 0.4, 0.28, 0.5), Color("6f7466"), Vector3(0, lip - 0.1, back - 0.2), curtain)
-		rock.name = "CurtainLip"
-		SoftMist.build([[Vector3(-span * 0.25, 0.6, deep * 0.5 + 0.6), Vector2(span * 0.5, 1.0), "front"], [Vector3(span * 0.25, 0.7, deep * 0.5 + 0.6), Vector2(span * 0.5, 1.1), "front"]], Color(0.97, 0.99, 0.99, 0.5), curtain)
-		_curtains[str(definition.id)] = curtain
+		# The rock lip over the path and the falls' water pouring off it, shown
+		# while the path is shut (kit/pieces/falls_curtain.gd).
+		_curtains[str(definition.id)] = FallsCurtain.build(_rect(definition.rect_cm), float(definition.get("height_cm", 0)) / 100.0, _world.terrain)
 
 ## A one way stair's ladder, in place of the world's treads.
 func build_ladder(stair: Dictionary) -> void:

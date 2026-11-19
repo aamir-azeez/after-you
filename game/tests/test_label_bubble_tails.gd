@@ -42,7 +42,8 @@ const NEAR_TIP := 0.4
 ## A spirit this close behind a tail's card (or in front of it) hides the
 ## tail where they meet: its head and torso are far deeper than this.
 const HIDES := 0.12
-## The journey view (presentation/kit/label_bubble.gd VIEW).
+## The journey view (presentation/kit/label_bubble.gd VIEW); a bubble in a
+## level with its own camera angle lays out on that (bubble.view).
 const VIEW := Vector3(3, 13, 10)
 var checks := 0
 var failures := 0
@@ -260,7 +261,7 @@ func _knob(lever: Node3D) -> MeshInstance3D:
 ## Each bubble's drawn tip against its anchor, both on the view plane.
 func _tips(bubbles: Array, label: String) -> void:
 	for bubble: LabelBubble in bubbles:
-		var target := LabelBubble.plane_point((bubble.get_parent() as Node3D).to_global(bubble.anchor))
+		var target := LabelBubble.plane_point((bubble.get_parent() as Node3D).to_global(bubble.anchor), bubble.view)
 		var drawn := _drawn_tip(bubble)
 		var length := _tail_length(bubble)
 		_longest = maxf(_longest, length)
@@ -281,13 +282,13 @@ func _faces(world: Node3D, bubbles: Array, label: String) -> void:
 			var actor: Node3D = world.actors[slot]
 			if not actor.is_visible_in_tree(): continue
 			var feet := actor.global_position
-			var head := LabelBubble.plane_point(feet + Vector3(0, HEAD_AT, 0))
-			var torso := LabelBubble.plane_point(feet + Vector3(0, TORSO_AT, 0))
+			var head := LabelBubble.plane_point(feet + Vector3(0, HEAD_AT, 0), bubble.view)
+			var torso := LabelBubble.plane_point(feet + Vector3(0, TORSO_AT, 0), bubble.view)
 			var across_head := _meets_circle(tail, head, HEAD_RADIUS)
 			var across_torso := _meets_circle(tail, torso, TORSO_RADIUS)
 			if not across_head and not across_torso: continue
 			_met += 1
-			var behind := _behind_card(feet, anchor)
+			var behind := _behind_card(feet, anchor, bubble.view)
 			if behind <= HIDES and card:
 				_hidden += 1
 				continue
@@ -306,15 +307,15 @@ func _on_card(bubble: LabelBubble, anchor: Vector3) -> bool:
 	if material == null or not names.has("SINK") or "depth_test_disabled" in material.shader.code or not "tail_sink" in material.shader.code: return false
 	var sink: Variant = bubble.body.get_instance_shader_parameter(names.SINK)
 	var slope: Variant = material.get_shader_parameter("card_slope")
-	var forward := -VIEW.normalized()
+	var forward := -bubble.view.normalized()
 	var up := forward.cross(Vector3.UP).normalized().cross(forward).normalized()
 	var mesh := bubble.body.mesh as QuadMesh
 	return sink != null and slope != null and mesh != null and mesh.subdivide_depth == 2 and absf(float(sink) - (anchor - bubble.body.global_position).dot(forward)) < 0.002 and absf(float(slope) + forward.y / up.y) < 0.0001
 
 ## How far a point stands behind the upright card through anchor (world up and
 ## screen right), along the view, where both meet on screen.
-static func _behind_card(point: Vector3, anchor: Vector3) -> float:
-	var forward := -VIEW.normalized()
+static func _behind_card(point: Vector3, anchor: Vector3, view: Vector3 = VIEW) -> float:
+	var forward := -view.normalized()
 	var across := Vector3(forward.x, 0, forward.z).normalized()
 	var right := forward.cross(Vector3.UP).normalized()
 	var normal := across - right * across.dot(right)
@@ -332,7 +333,7 @@ func _drawn_triangle(bubble: LabelBubble) -> Array[Vector2]:
 	var half := Vector2(basis.x.length(), basis.y.length() - tail) * 0.5
 	var reach := maxf(half.x - minf(radius, half.y) - tail * 0.62, 0.0)
 	var offset := basis.z.length() - float(material.get_shader_parameter("tail_code"))
-	var root := LabelBubble.plane_point(body.global_position) + Vector2(clampf(offset, -reach, reach), half.y - 0.04)
+	var root := LabelBubble.plane_point(body.global_position, bubble.view) + Vector2(clampf(offset, -reach, reach), half.y - 0.04)
 	return [root - Vector2(tail * 0.62, 0), root + Vector2(tail * 0.62, 0), _drawn_tip(bubble)]
 
 ## How far from the tip the tail runs over the spirit's head or torso (the
@@ -374,7 +375,7 @@ func _drawn_tip(bubble: LabelBubble) -> Vector2:
 	var code := float(material.get_shader_parameter("tail_code"))
 	var basis := body.global_transform.basis
 	var down := (basis.y.length() - tail) * 0.5 + tail + _stretch(bubble)
-	return LabelBubble.plane_point(body.global_position) + Vector2(basis.z.length() - code, down)
+	return LabelBubble.plane_point(body.global_position, bubble.view) + Vector2(basis.z.length() - code, down)
 
 func _tail_length(bubble: LabelBubble) -> float:
 	var material := bubble.body.material_override as ShaderMaterial

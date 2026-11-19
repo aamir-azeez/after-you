@@ -105,6 +105,7 @@ fog_marsh 2
 fog_marsh_world 2
 fold_present 2
 fold_untouched 1
+follow_camera 1
 frame_policy 1
 friend_nicknames 3
 friend_play_icon 3

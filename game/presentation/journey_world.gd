@@ -47,6 +47,9 @@ const LIFT_COST := 2.0
 const LEAN_STEPS: Array[float] = [0.0,0.3,0.6]
 var _journey_switches: Dictionary = {}
 var _bubbles: Array = []
+## The view bubbles are laid out on: the world's camera_from() (kit/view_fit.gd).
+var _view_from: Vector3:
+	get: return camera_from()
 ## Screen boxes of bubbles already placed this frame: the first _placed_count
 ## entries. The array only grows, so a frame allocates nothing.
 var _placed: Array[Rect2] = []
@@ -127,7 +130,7 @@ func show_stage(stage: Dictionary) -> void:
 
 ## Lowest on screen first: see _lift_bubbles.
 func _sort_bubbles() -> void:
-	var up := LabelBubble.screen_up()
+	var up := LabelBubble.screen_up(_view_from)
 	_bubbles.sort_custom(func(a: LabelBubble, b: LabelBubble) -> bool: return a.anchor.dot(up) < b.anchor.dot(up))
 
 func _configure_shared_view(view: Dictionary) -> void:
@@ -285,7 +288,7 @@ func _place_bubbles() -> void:
 func _lift_bubbles() -> void:
 	if _bubbles.is_empty(): return
 	_follow_knobs()
-	var rise := LabelBubble.screen_up().y
+	var rise := LabelBubble.screen_up(_view_from).y
 	if _placed.size() < _bubbles.size(): _placed.resize(_bubbles.size())
 	_placed_count = 0
 	_find_spirits()
@@ -293,7 +296,7 @@ func _lift_bubbles() -> void:
 		if not is_instance_valid(bubble) or not bubble.visible or bubble.labels[0].no_depth_test: continue
 		var rect := bubble.plane_rect(true)
 		var anchor := (bubble.get_parent() as Node3D).to_global(bubble.anchor)
-		var tip := LabelBubble.plane_point(anchor)
+		var tip := LabelBubble.plane_point(anchor, _view_from)
 		var best_lean := 0.0
 		var best_need := _need(rect,rise,bubble)
 		if _tail_meets_spirit(Rect2(rect.position-Vector2(0,best_need*rise),rect.size),tip,anchor,false):
@@ -380,8 +383,8 @@ func _behind_scenery(bubble: LabelBubble, lean: float, need: float) -> bool:
 	if _sceneries.is_empty(): _gather_scenery()
 	var boxes: Array = _sceneries.get(bubble,_sceneries[&"none"])
 	if boxes.is_empty(): return false
-	var up := LabelBubble.screen_up()
-	var toward := LabelBubble.VIEW.normalized()
+	var up := LabelBubble.screen_up(_view_from)
+	var toward := _view_from.normalized()
 	var right := up.cross(toward)
 	var center: Vector3 = bubble.body.global_position-bubble.position+right*lean+Vector3(0,need,0)
 	var half := Vector2(bubble.body.scale.x*0.5,(bubble.body.scale.y-LabelBubble.TAIL)*0.5)
@@ -410,7 +413,7 @@ func _gather_scenery() -> void:
 			var low := Vector2.INF
 			var high := -Vector2.INF
 			for corner in range(8):
-				var point := LabelBubble.plane_point(box.get_endpoint(corner))
+				var point := LabelBubble.plane_point(box.get_endpoint(corner), _view_from)
 				low = low.min(point)
 				high = high.max(point)
 			boxes.append(box)
@@ -440,10 +443,10 @@ func _find_spirits() -> void:
 		var actor: Node3D = actors[slot]
 		if not actor.visible or not actor_targets.has(slot) or not actor.get_parent() is Node3D: continue
 		var at: Vector3 = (actor.get_parent() as Node3D).global_transform*(actor_targets[slot] as Vector3)
-		var feet := LabelBubble.plane_point(at)
-		var top := LabelBubble.plane_point(at+Vector3(0,SPIRIT_TOP,0))
-		var head := LabelBubble.plane_point(at+Vector3(0,SPIRIT_HEAD.x,0))
-		var torso := LabelBubble.plane_point(at+Vector3(0,SPIRIT_TORSO.x,0))
+		var feet := LabelBubble.plane_point(at, _view_from)
+		var top := LabelBubble.plane_point(at+Vector3(0,SPIRIT_TOP,0), _view_from)
+		var head := LabelBubble.plane_point(at+Vector3(0,SPIRIT_HEAD.x,0), _view_from)
+		var torso := LabelBubble.plane_point(at+Vector3(0,SPIRIT_TORSO.x,0), _view_from)
 		if _spirit_boxes.size() <= _spirit_count:
 			_spirit_boxes.resize(_spirit_count+2)
 			_spirit_heads.resize(_spirit_count+2)
