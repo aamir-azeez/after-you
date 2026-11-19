@@ -7,8 +7,10 @@ extends SceneTree
 ## - how deep it reads follows the shown level, and the foam's edge map
 ##   follows it: the stepping stones stand in the water at low and are under
 ##   it at high, and open water reads open;
-## - rings spread from the moored boats and from a pip at the water, at most
-##   GraphicsPolicy.water_rings() spots, written only when they change;
+## - rings spread from the moored boats and from a pip on a stepping stone at
+##   half (or wading on one at high), never from a pip on a quay, a terrace
+##   or a jetty at any level, at
+##   most GraphicsPolicy.water_rings() spots, written only when they change;
 ## - the clock moves only in advance() and holds under Reduce motion;
 ## - with the block's add-ons off, or no floor, rings or lamps, nothing is
 ##   built for them and nothing fails;
@@ -116,15 +118,35 @@ func _tide(level: Dictionary) -> void:
 	var written: Variant = _param(waters, harbour, &"rings")
 	look.present()
 	_check(is_same(_param(waters, harbour, &"rings"), written), "Spots that did not change are not written again")
-	# A pip on the stepping stones at half (the board's frame) spreads rings;
-	# far above the water, none.
-	var half := float(waters.levels_of(harbour).half)
-	waters.set_level(harbour, half, true)
+	# A pip spreads rings only in or on the water: on a stepping stone at half
+	# (the board's frame), whose top stands as far above the water as the
+	# terrace floor beside it, or wading on one under the water at high. Never
+	# on a quay or a terrace beside the water or on a jetty over it, at any
+	# level; far above the water, none.
 	var pip: Node3D = world.actors.values()[0]
 	var kept := pip.global_position
-	pip.global_position = world.terrain.to_global(Vector3(stones.x, half + 0.24, stones.y)) if stones.is_finite() else kept
-	look.present()
-	_check(look.ring_spots().size() == spots.size() + 1, "A pip at the water spreads rings too: %s" % [look.ring_spots()])
+	var top := _stone_top(world)
+	# Spots (cm) just inside each floor's edge, open harbour within reach.
+	var dry := {"on the west quay beside the water": [-132, -254, _height(level, "w-quay")],
+		"on the west terrace beside the water": [-132, 100, _height(level, "w-terrace")],
+		"on the first jetty over the water": [-64, -352, _height(level, "jetty-1")]}
+	for value: String in ["low", "half", "high"]:
+		waters.set_level(harbour, float(waters.levels_of(harbour)[value]), true)
+		pip.global_position = kept + Vector3(0, 5.0, 0)
+		look.present()
+		var none := look.ring_spots().size()
+		for where: String in dry:
+			var at: Array = dry[where]
+			pip.global_position = world.terrain.to_global(Vector3(at[0] / 100.0, at[2], at[1] / 100.0))
+			look.present()
+			_check(look.ring_spots().size() == none, "A pip %s at %s spreads no rings: %s" % [where, value, look.ring_spots()])
+		pip.global_position = world.terrain.to_global(Vector3(stones.x, top, stones.y)) if stones.is_finite() else kept
+		look.present()
+		var on_stone := false
+		for spot: Vector4 in look.ring_spots(): on_stone = on_stone or Vector2(spot.x, spot.y).distance_to(stones) < 0.06
+		# At high the stones lie under the water, so a pip on one wades.
+		if value == "low": _check(not on_stone, "A pip on a stepping stone at low, far above the water, spreads none")
+		else: _check(look.ring_spots().size() == none + 1 and on_stone, "A pip on a stepping stone at %s spreads rings: %s" % [value, look.ring_spots()])
 	pip.global_position = kept + Vector3(0, 5.0, 0)
 	look.present()
 	_check(look.ring_spots().size() == spots.size(), "A pip far above the water spreads none")
@@ -160,6 +182,21 @@ func _stone(world: Node3D) -> Vector3:
 		if world.waters.body_of([int(at.x * 100.0) - 1, int(at.z * 100.0) - 1, int(at.x * 100.0) + 1, int(at.z * 100.0) + 1]) != "harbour": continue
 		return Vector3(at.x, at.z, (stone.mesh as CylinderMesh).bottom_radius)
 	return Vector3(NAN, NAN, NAN)
+
+## The top (terrain metres) of the stepping stone _stone() finds, or NaN.
+func _stone_top(world: Node3D) -> float:
+	var found := _stone(world)
+	for node: Node in world.terrain.find_children("SteppingStone*", "MeshInstance3D", true, false):
+		var stone := node as MeshInstance3D
+		var at: Vector3 = world.terrain.to_local(stone.global_position)
+		if Vector2(at.x, at.z).distance_to(Vector2(found.x, found.y)) < 0.01: return at.y + (stone.mesh as CylinderMesh).height * 0.5
+	return NAN
+
+## A floor or crossing's walking height (metres) in the definition.
+func _height(level: Dictionary, id: String) -> float:
+	for item: Dictionary in level.islands + level.bridges:
+		if item.id == id: return float(item.get("height_cm", 0)) / 100.0
+	return NAN
 
 ## The most solid share round a stone's rim in a map.
 func _rim(map: Dictionary, stone: Vector3) -> float:

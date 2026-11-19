@@ -444,7 +444,7 @@
 						"OmniLight3D": 1,
 						"WorldEnvironment": 1
 					},
-					"hash": "05ee41336ab3b987a38f97abec0c320776ce7e046d512f0221865f08324480cb",
+					"hash": "d16852336b4aef094ffea39f9b67805371f7ebfef4e3d9425169b60b5b30c97c",
 					"nodes": 1477,
 					"story_camera": {
 						"_follow_center": [
@@ -498,7 +498,7 @@
 						"@MeshInstance3D#9": "4981097d90f6b46f",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "fe5b364537ed6d3d",
-						"TurnOfTheTide": "3e3b8403eeb7db41"
+						"TurnOfTheTide": "7f9ae05d859abd46"
 					}
 				},
 				"s1.b.mid": {
@@ -1088,7 +1088,7 @@
 						"OmniLight3D": 1,
 						"WorldEnvironment": 1
 					},
-					"hash": "f994a4d45e7f150e3db6b95c1fbcd1458e65d9469ff700b9b318452d79e79518",
+					"hash": "39960a530f856309ccf1a1480ab8500e7b3f2eb2aa9820c0ab697e33ff63676c",
 					"nodes": 1477,
 					"story_camera": {
 						"_follow_center": [
@@ -1142,7 +1142,7 @@
 						"@MeshInstance3D#9": "2c0b075f66ede276",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "fe5b364537ed6d3d",
-						"TurnOfTheTide": "e9e45d88e2813ee3"
+						"TurnOfTheTide": "0d23e31afd8de7ec"
 					}
 				},
 				"s1.b.mid": {
@@ -1300,7 +1300,7 @@
 				"s0.b.mid": "8ddf2f5c73ef7c9585e6d16aa70144d78d6ac8716c39e1ee0ebdcd73ede9b0f7",
 				"s0.start": "c0f7b3d97b67572d6a6265dabf71663f2e6d575c7d5225b44b570b913dbab8c3",
 				"s1.a.end": "516784708e3320780d997c25964644b13fd22947e4c08bef1a37c18d896c50bd",
-				"s1.b.end": "445377bc70627be0a557df0386f122bf594e67063627ae0f6425a1c458512af9",
+				"s1.b.end": "8e22bd95a6f18e031f846479e0e89ec95d3bfa913ce13e0cdde8485197aae605",
 				"s1.b.mid": "dfe2b31cd7773d1093647f64086b48d3569047b04ce36eb3c1e7375371ac4d82",
 				"s1.start": "e3222e1525e2160b50609d32f9fe97e272dd5d62f98b217619d92243bace3868"
 			},
@@ -1311,7 +1311,7 @@
 				"s0.b.mid": "ad51f554a242246711c5c6f4191b69a2cbcba4be123b9f86f25a9b4bd582507c",
 				"s0.start": "1904781f2e8e627bc10a377c0a3333507d02c8703a3a6cbe63f970651bccb0d1",
 				"s1.a.end": "9ec498e60acf1af9cdede347ae13ec3bc6e7c2ca11b1ca2a9be5a8e2011876b5",
-				"s1.b.end": "4ba4db952bbd46b3827c109dd1beba87f2523aaa33d52fb6ef56acb1cddeda76",
+				"s1.b.end": "f45898392362f7002626374133e5b3098cd303baeb3a9199b7cc9180ea82cd9d",
 				"s1.b.mid": "292006ec1fea8c2b289f6cc6a8622e903e48ade7391a300aca9000db199c0a04",
 				"s1.start": "e7549a7f13f923b1e1b55cc7b6aca25e9fc6aad57a4fe8d339c91da9455aacb9"
 			}
