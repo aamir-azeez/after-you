@@ -165,4 +165,31 @@ const ProtoSpread = preload("res://core/journey/proto_spread.gd")
 const PROTO_TIERS := [[900, 200], [2100, 450], [3600, 700]]
 
 static func _proto(plain: Dictionary) -> Dictionary:
-	return ProtoSpread.apply(plain, Vector2(2.6, 1.5), Vector2(1.2, 1.15), 2.5, PROTO_TIERS)
+	var spread := ProtoSpread.apply(plain, 5.0, 1.5, 1.4, 2.5, PROTO_TIERS)
+	_stone_row(spread)
+	return spread
+
+## PROTOTYPE: the last puzzle's sinking stones become one even row of four
+## across the lip between the lookout and the rock, where the slip happens
+## (the stream wheel's LOW still shows them, and they still sink otherwise).
+static func _stone_row(map: Dictionary) -> void:
+	var rects := {}
+	for island: Dictionary in map.islands: rects[island.id] = island.rect_cm
+	var start := int(rects.look[2])
+	var end := int(rects.rock[0])
+	var first: Dictionary = {}
+	var kept: Array = []
+	for bridge: Dictionary in map.bridges:
+		if bridge.id == "s1": first = bridge
+		if bridge.id not in ["s1", "s2"]: kept.append(bridge)
+	var z0 := int(first.rect_cm[1])
+	var z1 := int(first.rect_cm[3])
+	for index in range(4):
+		var stone: Dictionary = first.duplicate(true)
+		stone.id = "s%d" % (index + 1)
+		stone.rect_cm = [start + (end - start) * index / 4, z0, start + (end - start) * (index + 1) / 4, z1]
+		kept.append(stone)
+	map.bridges = kept
+	for stage: Dictionary in map.stages:
+		for block: Dictionary in stage.get("blocks", []):
+			if block.get("block", "") == "sinking_stones": block.stones = ["s1", "s2", "s3", "s4"]

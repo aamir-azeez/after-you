@@ -11,8 +11,8 @@ const DATA := {
 	"seabed": "pebbles",
 	# PROTOTYPE: the close follow camera (island_world._follow_data): a view
 	# 5.4 m tall that follows the pip across and up the tiers, pinching out
-	# to at most today's view (6.2 x 1.5 = 9.3 m).
-	"camera": {"follow": {"size": 6.2, "axes": "xz", "lift": 1.0, "inset": [5.0, 1.6], "zoom": [0.75, 1.5], "pan": [1.0, 0.7]}},
+	# to at most today's view (5.8 x 1.6 = 9.3 m).
+	"camera": {"follow": {"size": 5.8, "axes": "xz", "lift": 1.0, "inset": [5.0, 1.6], "zoom": [0.75, 1.6], "pan": [1.0, 0.7]}},
 	"fireflies": 0,
 	"ground": {"*": "mossy_flags",
 		"beach": "river_stone", "isle": "river_stone", "bank": "river_stone", "rock": "river_stone", "big": "river_stone",
@@ -31,17 +31,17 @@ const DATA := {
 		# past the far bank where the ending's pool is. Each stands with its
 		# foot (its lowest lip) in its reach of the stream and grows back and
 		# up in tiers behind the floors, clear of the camera's view of them.
-		{"slot": "landmark", "style": "waterfall", "at": [-780, -500], "width": 300, "height": 900, "tiers": 3, "cheek": 0.85, "y": -36, "foot": 30},
+		{"slot": "landmark", "style": "waterfall", "at": [-600, -470], "width": 300, "height": 900, "tiers": 3, "cheek": 0.85, "y": -36, "foot": 30},
 		# PROTOTYPE: the gorge itself, towering behind every tier: the great
 		# falls pouring from far above the lip, in five steps, its foot in the
 		# gorge pool behind the path behind the falls.
-		{"slot": "landmark", "style": "waterfall", "at": [7300, -1700], "width": 1100, "height": 3000, "tiers": 5, "cheek": 1.6, "y": 505},
-		{"slot": "landmark", "style": "waterfall", "at": [2900, -1450], "width": 420, "height": 1500, "tiers": 4, "cheek": 1.3, "y": 185},
-		{"slot": "landmark", "style": "waterfall", "at": [11500, -1600], "width": 520, "height": 1900, "tiers": 4, "cheek": 1.3, "y": 880},
-		{"slot": "landmark", "style": "waterfall", "at": [7840, -690], "width": 260, "height": 760, "tiers": 3, "cheek": 0.55, "y": 505},
-		{"slot": "landmark", "style": "waterfall", "at": [13990, -540], "width": 340, "height": 1100, "tiers": 3, "cheek": 0.75, "y": 900, "anchor": "falls_pool"},
+		{"slot": "landmark", "style": "waterfall", "at": [6200, -1800], "width": 1100, "height": 3000, "tiers": 5, "cheek": 1.6, "y": 505},
+		{"slot": "landmark", "style": "waterfall", "at": [2600, -1500], "width": 420, "height": 1500, "tiers": 4, "cheek": 1.3, "y": 185},
+		{"slot": "landmark", "style": "waterfall", "at": [10500, -1650], "width": 520, "height": 1900, "tiers": 4, "cheek": 1.3, "y": 880},
+		{"slot": "landmark", "style": "waterfall", "at": [7025, -650], "width": 260, "height": 760, "tiers": 3, "cheek": 0.55, "y": 505},
+		{"slot": "landmark", "style": "waterfall", "at": [13020, -500], "width": 340, "height": 1100, "tiers": 3, "cheek": 0.75, "y": 900, "anchor": "falls_pool"},
 		# The mill's big wheel turning behind the mill, in the pool it sets.
-		{"slot": "landmark", "style": "mill", "at": [470, -570], "y": -36, "size": 1.35},
+		{"slot": "landmark", "style": "mill", "at": [322, -605], "y": -36, "size": 1.35},
 		# The red post box the pipsport starts in, on the little island's west
 		# side, where it hides only water.
 		{"kind": "post_box", "floor": "isle", "edge": "left", "along": 0.12, "size": 1.3},

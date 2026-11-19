@@ -24,7 +24,7 @@ static func marsh(root: Node3D) -> void:
 	holder.name = "ProtoLandmarks"
 	root.add_child(holder)
 	_sunken_boat(holder, Vector3(19.0, -0.25, 8.6), 0.35)
-	_sunken_boat(holder, Vector3(66.0, -0.25, -9.4), -2.6)
+	_sunken_boat(holder, Vector3(62.0, -0.25, -9.0), -2.6)
 	_windmill(holder, Vector3(30.0, 0.0, -11.5))
 	_stilt_hut(holder, Vector3(57.0, 0.0, -10.5))
 	_stilt_hut(holder, Vector3(104.0, 0.0, 9.5))
@@ -38,9 +38,9 @@ static func falls(root: Node3D) -> void:
 	holder.name = "ProtoRainbows"
 	root.add_child(holder)
 	# Rainbows hang in the spray in front of the great falls and the mill falls.
-	_rainbow(holder, Vector3(73.0, 5.6, -13.2), 6.5)
-	_rainbow(holder, Vector3(29.0, 2.2, -11.6), 3.2)
-	_rainbow(holder, Vector3(-7.8, -0.2, -3.6), 2.4)
+	_rainbow(holder, Vector3(62.0, 5.6, -14.0), 6.5)
+	_rainbow(holder, Vector3(26.0, 2.2, -11.8), 3.2)
+	_rainbow(holder, Vector3(-6.0, -0.2, -3.4), 2.4)
 
 ## A colour paled toward the fog by how high it stands (m).
 static func _faded(color: Color, y: float) -> Color:

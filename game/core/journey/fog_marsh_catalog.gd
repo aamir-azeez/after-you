@@ -156,4 +156,4 @@ static func _stair(id: String, rect: Array, axis: String, from: String, to: Stri
 const ProtoSpread = preload("res://core/journey/proto_spread.gd")
 
 static func _proto(plain: Dictionary) -> Dictionary:
-	return ProtoSpread.apply(plain, Vector2(2.6, 1.5), Vector2(1.2, 1.15), 2.0)
+	return ProtoSpread.apply(plain, 5.0, 1.5, 1.4, 2.0)
