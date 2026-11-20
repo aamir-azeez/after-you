@@ -1,0 +1,24 @@
+{
+	"catch_assistance": true,
+	"checkpoint_hash": "9ec14a50b2dec581ee5af38df570de80e8801240cefe95944d1ee3b202f93f68",
+	"completed": false,
+	"definition_hash": "0cdfc1875835b016d69e446e9818f89a2bc6ab18664ad1acf6d9546e8994a5cd",
+	"duration_ticks": 1246,
+	"final_state_hash": "2d46f4b642cdef74a65ba1d5d75d0d573b6f792d84b337e2396b793876214dac",
+	"level_id": "fog-marsh",
+	"level_version": 1,
+	"outcome": {
+		"objective_complete": false,
+		"source_ready": true
+	},
+	"packed": "ARUCANrIAQAAxANkAAIZAFQAZAIAJqwCAAAKAJwCAOeoAmQAAksASgCcpgNkAAIZAAwAnAIAtYgEAABKnAACzgAeAGQCAEu30s+DTvjhFbIcbdTgZDQfOBY/KQXJz8bDs2oz+cs2jqKFyacIwvXMk3XYINKvG5VTnbhjXPH7hUzJKTopvSHpD5fCzXuKQxQe/7zOj4/UJoMbElKrZF+C/MChU3YUDf87s2POHlO3PjNQAzCtAeYCNfZ6sgF5n79TYndDIIHWnzEAmWahBAMuYRVBV2TiFHGOhikNCckENj/1e1lvzwGvK+3CWRjV+FbSL7lNfcjpwPvIcGmfVGyjCUS6nPRm4cdRUvMp4MPFJl5r/72B+xLRgkI4rm30K7PVPp1RRyBe6vsugfo4dgPWMhf10g+6+5t0ECbraatv2ZoqElqEMMcB0Am4MFuBt7d1Q4VEwpoFBlgqeLjcX/eL88vuinjW+CudJwFGzh2GBHc0Q4cTea5rQ0mpK78EZiEJpqGJv0yiSmcHF8Kl37xmQuuPy8t1IaEBpHe4JPPktoJEWBnx6Qtj+2UJVzIomdCkzAW/Qda/EdREv/C+mMGaapoiUuHZFdpsicljsSdvepDLxlSDO5Ty6HZRKer8BUcaPaQOindzuSLE6JTDcnWISp7wPVYvR+cDsZmwmwSvZQpnBe7ENqQ/Z1jdvUMtJmX49mBKWRi1JmfsiQRg6sIRo4fvrraWcKVxz/uCs9FuD7uGqedixKU6pzL/44t72n5F1Cjk82zZ+4iSkMGWduxd",
+	"player_slot": "p0",
+	"recording_hash": "9675feb43a28e1099b9aab502ea42c3dfe5aaddf15dce73ea29665fcbf4ab10e",
+	"role": "b",
+	"schema_version": 7,
+	"simulation_version": 16,
+	"source_recording_hash": "ca90ba6518ec3b70c02e7e49754cecb96efb662c37c7bb334e31cfebbf34dff6",
+	"stage_id": "carry-it-home",
+	"stage_version": 1,
+	"tick_rate": 30
+}

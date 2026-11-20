@@ -67,6 +67,8 @@ func _descriptor_places_listed_once() -> bool:
 	for id: Variant in ids:
 		if ids.count(id) != 1: return false
 	for key: String in Registry.keys():
+		# An unreleased chapter is not on Home yet (home_keepsake_catalog.gd).
+		if not Index.data(key).released: continue
 		for place: Dictionary in Index.data(key).keepsakes:
 			if key.get_slice("@", 0) + "/" + str(place.stage_id) not in ids: return false
 	return true

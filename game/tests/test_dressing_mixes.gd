@@ -20,7 +20,7 @@ const Samples = preload("res://tests/dressing_mix_samples.gd")
 ## Kit kinds swept for z-fighting at these sizes and turns (degrees) on a bank.
 ## Shells are left out: a scatter of 2 cm pieces whose layout follows where it
 ## lies, so the lint judges each cluster where a level lays it.
-const SWEPT_KINDS := ["tree", "pine", "bush", "flowers", "rock", "lantern", "lamp_post", "bench", "pot", "fern", "crate", "cottage", "tower", "basket", "boat", "bollard", "barrel", "lobster_pot", "shelf", "frame", "tuft", "signpost"]
+const SWEPT_KINDS := ["tree", "pine", "bush", "flowers", "rock", "lantern", "lamp_post", "bench", "pot", "fern", "crate", "cottage", "tower", "basket", "boat", "bollard", "barrel", "lobster_pot", "shelf", "frame", "tuft", "signpost", "waterfall", "mill_wheel", "post_box", "reeds", "stamp_desk", "washing_line", "fishing_rod", "rope_coil", "light_pool", "windmill", "stilt_hut", "sunken_boat", "dead_tree", "reed_bed"]
 const SWEPT_SIZES := [0.5, 0.6, 0.8, 1.0, 1.2, 2.0]
 const SWEPT_TURNS := [0, 45, 90, 180]
 

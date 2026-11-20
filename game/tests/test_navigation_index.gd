@@ -2,8 +2,8 @@ extends SceneTree
 ## core/cooperative/navigation.gd answers every support query the same with
 ## its per-definition index as by testing every surface. For every registered
 ## chapter on the physical runtime: every point of a grid over its surfaces
-## (and just past their edges, where a point lies on a rect's border), at each
-## surface's height and between, for both spirits, with every route closed,
+## (and just past their edges, where a point lies on a rect's border), at the
+## ground and the heights of the surfaces round it and just over each, for both spirits, with every route closed,
 ## every route open, and alternate routes open. Also: one index per digest,
 ## shared (only for a level with enough surfaces to gain from it), and the
 ## engines' cached digest equals a fresh one.
@@ -37,39 +37,46 @@ func _run() -> void:
 		_check(shared.is_empty() == (surfaces.size() < Navigation.INDEX_FROM_SURFACES), key + ": indexed only from %d surfaces (%d)" % [Navigation.INDEX_FROM_SURFACES, surfaces.size()])
 		# Every chapter's index answers alike, whether or not its engines use it.
 		var cells := Navigation._build_index(level)
-		var heights: Dictionary = {0: true}
 		var low := Vector2i(1 << 30, 1 << 30)
-		var high := -low
 		for surface: Dictionary in surfaces:
-			for field: String in ["height_cm", "from_height_cm", "to_height_cm"]:
-				if surface.has(field):
-					heights[int(surface[field])] = true
-					heights[int(surface[field]) + 3] = true
 			var r: Array = surface.rect_cm
 			low = Vector2i(mini(low.x, int(r[0])), mini(low.y, int(r[1])))
-			high = Vector2i(maxi(high.x, int(r[2])), maxi(high.y, int(r[3])))
 		var route_sets: Array = [{}, {}, {}]
 		var index := 0
 		for surface: Dictionary in level.get("bridges", []) + level.get("stairs", []):
 			route_sets[1][surface.id] = true
 			if index % 2 == 0: route_sets[2][surface.id] = true
 			index += 1
-		var points: Array = []
-		for x in range(low.x - 30, high.x + 31, STEP_CM):
-			for z in range(low.y - 30, high.y + 31, STEP_CM): points.append(Vector2i(x, z))
-		# Every rect's corners and edges exactly, where inside() counts the border.
+		# The grid over each surface and 30 cm round it (a spread level's open
+		# water between its floors holds nothing to ask about), each point asked
+		# at ground level and at every height of the surfaces round it (and
+		# just over each), plus every rect's corners and edges exactly, where
+		# inside() counts the border.
+		var asked: Dictionary = {}
 		for surface: Dictionary in surfaces:
 			var r: Array = surface.rect_cm
+			var near: Array = [0, 3]
+			for field: String in ["height_cm", "from_height_cm", "to_height_cm"]:
+				if surface.has(field): near.append_array([int(surface[field]), int(surface[field]) + 3])
+			var x0 := low.x - 30 + ceili(float(int(r[0]) - 30 - (low.x - 30)) / STEP_CM) * STEP_CM
+			var z0 := low.y - 30 + ceili(float(int(r[1]) - 30 - (low.y - 30)) / STEP_CM) * STEP_CM
+			var spots: Array = []
+			for x in range(x0, int(r[2]) + 31, STEP_CM):
+				for z in range(z0, int(r[3]) + 31, STEP_CM): spots.append(Vector2i(x, z))
 			for x: int in [int(r[0]), int(r[2]), int(r[0]) - 1, int(r[2]) + 1]:
-				for z: int in [int(r[1]), int(r[3]), int(r[1]) - 1, int(r[3]) + 1]: points.append(Vector2i(x, z))
+				for z: int in [int(r[1]), int(r[3]), int(r[1]) - 1, int(r[3]) + 1]: spots.append(Vector2i(x, z))
+			for spot: Vector2i in spots:
+				if not asked.has(spot): asked[spot] = {}
+				for height: int in near: asked[spot][height] = true
+		var points: Array = asked.keys()
 		var same := true
 		var where := ""
 		var tested := 0
 		for routes: Dictionary in route_sets:
 			for slot: String in ["p0", "p1"]:
-				for height: int in heights:
-					var previous := {"height": height}
-					for point: Vector2i in points:
+				for point: Vector2i in points:
+					for height: int in asked[point]:
+						var previous := {"height": height}
 						var plain := Navigation._support(level, routes, point, slot, previous)
 						var indexed := Navigation._support(level, routes, point, slot, previous, 2, cells)
 						tested += 1
