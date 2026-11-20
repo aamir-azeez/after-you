@@ -116,9 +116,10 @@ func show_stage(stage: Dictionary) -> void:
 	# Before the build awaits: a present meanwhile reads this stage's crossings.
 	_wait_hints.setup(stage, _descriptor(), PlayerCopy.WAIT_HINT_CROSSING)
 	await super.show_stage(stage)
-	_stage_built = true
 	_build_seats(stage)
-	_build_items(stage)
+	await _build_step()
+	await _build_items(stage)
+	_stage_built = true
 	_build_wait_marks()
 	_sort_bubbles()
 	_placement_due = true
@@ -366,7 +367,7 @@ func _tail_meets_spirit(placed: Rect2, tip: Vector2, anchor: Vector3, visible_on
 		var torso := _spirit_torsos[index]
 		var trim := 0.0
 		if visible_only:
-			if LabelBubble.behind_card(_spirit_feet[index],anchor) <= SPIRIT_HIDES: continue
+			if LabelBubble.behind_card(_spirit_feet[index],anchor,_view_from) <= SPIRIT_HIDES: continue
 			if head.has_point(tip) or torso.has_point(tip): trim = TIP_OVER_SPIRIT
 		if LabelBubble.tail_crosses(placed,tip,head,trim) or LabelBubble.tail_crosses(placed,tip,torso,trim): return true
 	return false
@@ -746,16 +747,20 @@ func _build_items(stage: Dictionary) -> void:
 		# On a world with the water kit, rings spread from it while it floats.
 		var water: Variant = get("waters")
 		if water != null: water.ripple_from(_item_pieces[id].root)
+		await _build_step()
 	var legs: Array = []
 	for leg: Dictionary in view.get("current_legs", []):
 		legs.append({"from": _item_point(CarriedItems.at_spot(CarriedItems.spot(view, str(leg.from)))), "to": _item_point(CarriedItems.at_spot(CarriedItems.spot(view, str(leg.to)))), "control_id": str(leg.get("control_id", "")), "value": str(leg.get("value", ""))})
 	if not legs.is_empty(): _current_piece = CurrentKit.build(_piece_style("current", str(view.current_legs[0].get("control_id", ""))), legs, terrain)
+	await _build_step()
 	var hands := CarriedItems.hands_routes(view)
 	for route: Dictionary in view.get("bridges", []) + view.get("stairs", []):
 		# A rope bridge's slats and hand ropes are its own cause; rungs that
 		# stay would draw over its gap while it is shut.
 		var rope: bool = new_pieces != null and view.get("bridges", []).has(route) and new_pieces.deck_style(str(route.id)) == "rope"
-		if hands.has(str(route.id)) and not rope: _ladder_rungs(route)
+		if hands.has(str(route.id)) and not rope:
+			_ladder_rungs(route)
+			await _build_step()
 	# A throw's mark is a cream ring where the thrower stands; its landing the
 	# seed landing's ring of ticks (kit/pieces/socket.gd).
 	for thrown: Dictionary in view.get("throws", []):

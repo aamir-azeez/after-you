@@ -30,14 +30,17 @@ var _water_spirits := PackedVector2Array()
 ## meta "spin" is radians a second, as a mill wheel's): held here, so the
 ## static fold batches each under itself and it still turns.
 var _spinning: Array[Node3D] = []
-## A waterfall's water (kit/props.gd "Flow", meta "flow"): its look's clock is
-## the world's, so it runs with the world and holds still with Reduce motion.
-var _flowing: Array[MeshInstance3D] = []
+## Running water in the falls' look (kit/props.gd _falls_material: a falls,
+## a pour, a curtain): this world's own copy of the look, gathered once a
+## stage, whose clock is the world's, so it runs with the world, holds still
+## with Reduce motion and never moves another world's water.
+var _flow_look: ShaderMaterial
+var _flows_gathered := false
 
 func show_stage(stage: Dictionary) -> void:
 	if str(stage.get("id", "")) == displayed_stage_id: return
 	_spinning.clear()
-	_flowing.clear()
+	_flows_gathered = false
 	_forget_stage()
 	waters.start(stage, _water_block(), _standing_routes(stage))
 	await super.show_stage(stage)
@@ -196,15 +199,22 @@ func _advance_water(delta: float) -> void:
 		# From the world's clock, so a frame shows the same turn however it is reached.
 		for part: Node3D in _spinning:
 			if is_instance_valid(part): part.rotation.z = time * float(part.get_meta("spin"))
-		for water: MeshInstance3D in _flowing:
-			if is_instance_valid(water): (water.material_override as ShaderMaterial).set_shader_parameter(&"clock", time)
+		if not _flows_gathered: _gather_flows()
+		if _flow_look != null: _flow_look.set_shader_parameter(&"clock", time)
+
+## Moves this stage's running water onto the world's own copy of the falls' look.
+func _gather_flows() -> void:
+	_flows_gathered = true
+	var shared: ShaderMaterial = Props._falls_material()
+	for node: Node in terrain.find_children("*", "MeshInstance3D", true, false):
+		if (node as MeshInstance3D).material_override != shared: continue
+		if _flow_look == null: _flow_look = shared.duplicate()
+		(node as MeshInstance3D).material_override = _flow_look
 
 func _dressed_prop(prop: Node3D) -> void:
 	super._dressed_prop(prop)
 	var part := prop.get_node_or_null("Spin") as Node3D
 	if part != null and part.has_meta("spin"): _spinning.append(part)
-	var water := prop.get_node_or_null("Flow") as MeshInstance3D
-	if water != null and water.has_meta("flow"): _flowing.append(water)
 
 ## The water and the floods move with the snapshot, so they stay whole.
 func _static_keep() -> Array:

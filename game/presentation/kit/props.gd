@@ -727,7 +727,6 @@ static func _waterfall(root: Node3D, s: float, spec: Dictionary) -> void:
 	flow.mesh = water.commit()
 	flow.material_override = _falls_material()
 	flow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	flow.set_meta("flow", true)
 	root.add_child(flow)
 	# Spray billowing up off the foot all along it, out over the cheeks too,
 	# a few higher clouds over the middle, and mist lying out on the pool.

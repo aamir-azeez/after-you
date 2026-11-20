@@ -158,7 +158,7 @@ func show_stage(stage: Dictionary) -> void:
 		# Dashes inside the open shaft make its landing legible from above.
 		for index in range(3): sphere(0.035, CREAM, center + Vector3(0, height * float(index + 1) / 4.0, 0), terrain)
 	_build_gate_links(view)
-	_hang_pulleys(view)
+	await _hang_pulleys(view)
 	_build_goal_beacon(view)
 	# Gates, chains, zone edges and locks, before the marks, which keep clear
 	# of them (_pair_keep_clear). A chapter whose world draws every closed
@@ -405,6 +405,7 @@ func _hang_pulleys(view: Dictionary) -> void:
 		_pulleys[id] = piece
 		_weights[id] = piece.weight
 		piece.weight.set_meta("rest_y", piece.weight.position.y)
+		await _build_step()
 
 ## Whether a crossing gets a pulley post: only where nothing else shows why
 ## it comes and goes. One rule for every world; a world that shows it some

@@ -76,9 +76,9 @@ func _run() -> void:
 			world.show_stage(stage)
 			tagged += _stage(world, key, Layout.for_key(key, str(stage.id), level))
 			stages += 1
-		# The frame follows the level's tag style: the harbour's plaque on the tide.
+		# The frame follows the level's tag style (the harbour's and the marsh's plaque).
 		var style := str(world.dressing.get("tag", PairTags.DEFAULT_FRAME))
-		_check(world.pair_tags._frame == StringName(style) and (style == "wooden_plaque") == key.begins_with("turn-of-the-tide"), "%s: tags wear its %s frame (%s)" % [key, style, world.pair_tags._frame])
+		_check(PairTags.FRAMES.has(StringName(style)) and world.pair_tags._frame == StringName(style), "%s: tags wear its %s frame (%s)" % [key, style, world.pair_tags._frame])
 		_check(Canonical.digest(level) == digest, "%s: tags never change the definition" % key)
 		world.free()
 	_hud()
