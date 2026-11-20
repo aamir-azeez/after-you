@@ -14,7 +14,20 @@ extends SceneTree
 ##    own drawing of it (a folding stair, water: the world's skip(), with why),
 ##    or a stretch of an owned zone's edge with no rope
 ##    (presentation/kit/route_barriers.gd). A gap, a folded piece and water
-##    are the world's own; everything else is a barrier.
+##    are the world's own; everything else is a barrier;
+##  - a pip inside a wall: every spot a pip can stand (the engine's own
+##    Navigation.at, its walk radius, every crossing open), near each floor's
+##    edge, keeps its walk circle out of every wall that stands up beside it
+##    (the water kit's walls, each floor's walls down to the water);
+##  - a wall that holds nothing: a wall standing up over a floor's edge faces
+##    water that can rise over that floor (else it is a fender);
+##  - a boat that leaks: every boat on a water world floats by the float rule
+##    (kit/floats.gd), its keel in the water and its inside floor over it at
+##    every level its water stands at and all through its bob, and no boat
+##    prop stands over water unfloated;
+##  - a stone that vanishes: a stepping stone that is down (shut, or pushed
+##    under by a drowning) stays in view just under its water, and a drowning
+##    on it shows the shared drown (kit/drowning.gd).
 ## KNOWN lists what fails on purpose, by the start of its message, with why;
 ## an entry that stops failing fails the suite. The definitions-only half is
 ## tests/test_level_checker.gd.
@@ -24,6 +37,26 @@ const Shots = preload("res://tests/level_tools/stage_shots.gd")
 const LabelBubble = preload("res://presentation/kit/label_bubble.gd")
 const RouteBarriers = preload("res://presentation/kit/route_barriers.gd")
 const LevelGraph = preload("res://tests/level_graph.gd")
+const Navigation = preload("res://core/cooperative/navigation.gd")
+const WaterBodies = preload("res://presentation/kit/water_bodies.gd")
+## The engine's walk radius (cm, core/physical/runtime.gd PLAYER_RADIUS).
+const WALK_RADIUS := 12
+## A wall may touch a walk circle by this much (cm: a coping's 2.5 cm lip
+## over the edge), and counts only while it stands this far (m) over the
+## pip's floor and starts under its head.
+const WALL_TOUCH := 3.0
+const WALL_OVER := 0.06
+const PIP_TALL := 0.85
+## A wall standing this far (m) over a floor beside it is a wall, not a fender.
+const WALL_UP := 0.30
+## How far in from a floor's edge (cm) spots are tried, and how far apart.
+const EDGE_BAND := 24
+const EDGE_STEP := 4
+const Floats = preload("res://presentation/kit/floats.gd")
+const Props = preload("res://presentation/kit/props.gd")
+const Models = preload("res://presentation/kit/models.gd")
+## Bob phases tried round a boat's full heave.
+const BOB_STEPS := 16
 const VIEW := Vector2i(800, 360)
 ## A spot this close to the view's edge (px) counts as outside it.
 const EDGE_PX := 16.0
@@ -46,6 +79,15 @@ var _cut_from_start := 0
 ## barrier check can fail at all.
 var _unshown := 0
 var _refusals_seen := 0
+## Wall checks made (walk spots against walls) and walls beside floors seen:
+## proof the wall checks ran on the water worlds.
+var _wall_spots := 0
+var _walls_by_floors := 0
+## Boats and stepping stones checked on the water worlds.
+var _boats_seen := 0
+var _stones_seen := 0
+## The rowboat model's floorboards (its "inside" slot), read once.
+var _rowboat_floor := NAN
 
 func _initialize() -> void: _run.call_deferred()
 
@@ -62,6 +104,8 @@ func _run() -> void:
 	_check(_off_view > 0, "From the starts, some spots lie off the view, so the framing check can fail (%d)" % _off_view)
 	_check(_cut_from_start > 0, "From the starts, some selector bubbles are cut by the view's edge, so the bubble check can fail (%d)" % _cut_from_start)
 	_check(_meets(Rect2(0, 0, 60, 30), Rect2(50, 10, 60, 30)) and not _meets(Rect2(0, 0, 60, 30), Rect2(61, 0, 60, 30)), "Bubbles that share a corner overlap; bubbles side by side do not")
+	_check(_boats_seen >= 5 and _stones_seen >= 1, "Every water world's boats float by the float rule (%d boats on stages) and its stepping stones go under, never away (%d)" % [_boats_seen, _stones_seen])
+	_check(_wall_spots > 1000 and _walls_by_floors > 20, "The wall checks stand pips by the water worlds' walls (%d spots) and read the walls beside floors (%d)" % [_wall_spots, _walls_by_floors])
 	_check(_refusals_seen > 50 and _unshown > 50, "Every refusal is checked for a shown cause (%d), and a world with no barriers leaves many unexplained, so the check can fail (%d)" % [_refusals_seen, _unshown])
 	for prefix: String in KNOWN:
 		_check(_found.has(prefix), "Known failure still fails, or comes off the list: %s (%s)" % [prefix, KNOWN[prefix]])
@@ -106,12 +150,16 @@ func _chapter(viewport: SubViewport, key: String) -> void:
 		var ends := _route_ends(view)
 		await world.show_stage(item.stage)
 		world.present_history(item.opening)
+		_walls(world, where, view)
 		_barriers(world, where, view, item.checkpoint, ends)
 		var shots := Shots.new(key, level, str(view.stage_id), item.opening)
 		var base := shots.snapshot()
 		_check(not base.is_empty(), "%s: the engine opens the stage" % where)
 		if base.is_empty(): continue
 		_present(world, base)
+		_floats(world, where)
+		_current_marks(world, where, view)
+		_stones(world, where, base)
 		for spot: Dictionary in shots.spots():
 			if not _inside(world, spot.entity): _off_view += 1
 			if spot.kind == "selector" and "_journey_switches" in world and world._journey_switches.has(spot.id):
@@ -210,6 +258,151 @@ func _unexplained(where: String, view: Dictionary, placed: Dictionary, skips: Di
 		if built < wanted: count += wanted - built
 		if report: _expect(built >= wanted, "%s zone %s rope" % [where, zone.get("id", "")], "%s: the zone %s refuses %s along %d stretches of its edge and only %d show a rope" % [where, zone.get("id", ""), other, wanted, built])
 	return seen if report else count
+
+## No pip stands inside a wall, and no wall stands over a floor's edge with
+## nothing to hold: the water kit's walls (parapets, sea walls, crossing and
+## lock walls) and each floor's walls down to the water, against every spot the
+## engine lets a pip stand near a floor's edge.
+func _walls(world: Node3D, where: String, view: Dictionary) -> void:
+	var kit: Variant = world.get("waters")
+	if kit == null or kit.water.is_empty(): return
+	var walls: Array = []
+	var to_terrain: Transform3D = world.terrain.global_transform.affine_inverse()
+	for box: AABB in kit.walls: walls.append([box, "water wall", ""])
+	# The locks' capped walls and spillway stones.
+	for stones: Node in world.terrain.find_children("WaterLockStone", "", true, false):
+		for piece: Node in stones.find_children("*", "MeshInstance3D", true, false):
+			walls.append([to_terrain * (piece as MeshInstance3D).global_transform * (piece as MeshInstance3D).get_aabb(), "a lock wall", ""])
+	for island: Dictionary in view.get("islands", []):
+		var wall := world.terrain.find_child(str(island.id) + "Wall", true, false) as MeshInstance3D
+		if wall != null: walls.append([to_terrain * wall.global_transform * wall.get_aabb(), "the wall of " + str(island.id), str(island.id)])
+	var cells := Navigation.index_for(view, "level-view " + where)
+	var routes: Dictionary = {}
+	for route: Dictionary in view.get("bridges", []) + view.get("stairs", []): routes[str(route.id)] = true
+	var worst: Dictionary = {}
+	for surface: Dictionary in view.get("islands", []) + view.get("bridges", []) + view.get("stairs", []):
+		var r: Array = surface.rect_cm
+		var reach := Rect2(float(r[0]), float(r[1]), float(r[2] - r[0]), float(r[3] - r[1])).grow(float(WALK_RADIUS) + 1.0)
+		var beside: Array = walls.filter(func(entry: Array) -> bool: return entry[2] != str(surface.id) and reach.intersects(Rect2((entry[0] as AABB).position.x * 100.0, (entry[0] as AABB).position.z * 100.0, (entry[0] as AABB).size.x * 100.0, (entry[0] as AABB).size.z * 100.0)))
+		if beside.is_empty(): continue
+		for x in range(int(r[0]), int(r[2]) + 1, EDGE_STEP):
+			for z in range(int(r[1]), int(r[3]) + 1, EDGE_STEP):
+				if mini(mini(x - int(r[0]), int(r[2]) - x), mini(z - int(r[1]), int(r[3]) - z)) > EDGE_BAND: continue
+				var start := Navigation.stair_height(surface, Vector2i(x, z)) if surface.has("axis") else int(surface.get("height_cm", 0))
+				var at := Navigation.at(view, routes, {}, {"height": start}, x, z, "p0", WALK_RADIUS, false, cells)
+				if at.is_empty() or str(at.surface_id) != str(surface.id): continue
+				_wall_spots += 1
+				var feet := float(at.height) / 100.0
+				for entry: Array in beside:
+					var box: AABB = entry[0]
+					if box.end.y <= feet + WALL_OVER or box.position.y >= feet + PIP_TALL: continue
+					var near := Vector2(clampf(x, box.position.x * 100.0, box.end.x * 100.0), clampf(z, box.position.z * 100.0, box.end.z * 100.0))
+					var into := float(WALK_RADIUS) - Vector2(x, z).distance_to(near)
+					var id := "%s %s in %s" % [where, surface.id, entry[1]]
+					if into > WALL_TOUCH and into > float(worst.get(id, [0.0])[0]): worst[id] = [into, x, z, box]
+	for id: String in worst:
+		_expect(false, id, "%s: a pip standing at (%d, %d) runs %.0f cm into a wall at %s (%s)" % [id.get_slice(" ", 0) + " " + id.get_slice(" ", 1), worst[id][1], worst[id][2], worst[id][0], worst[id][3], id])
+	# Each parapet that stands up over a floor's edge holds water that can rise over that floor.
+	for parapet: Node in world.terrain.find_children("Parapet*", "MeshInstance3D", true, false):
+		var box: AABB = to_terrain * (parapet as MeshInstance3D).global_transform * (parapet as MeshInstance3D).get_aabb()
+		var centre := [box.get_center().x * 100.0, box.get_center().z * 100.0]
+		var top := -INF
+		for body: Dictionary in kit.open_bodies():
+			if WaterBodies.covered(centre[0], centre[1], body.rects):
+				for level: float in body.levels.values(): top = maxf(top, level)
+		for island: Dictionary in view.get("islands", []):
+			var r: Array = island.rect_cm
+			var floor_top := float(island.get("height_cm", 0)) / 100.0
+			if box.end.y < floor_top + WALL_UP: continue
+			var flat := Rect2(box.position.x * 100.0, box.position.z * 100.0, box.size.x * 100.0, box.size.z * 100.0)
+			if not flat.grow(3.0).intersects(Rect2(float(r[0]), float(r[1]), float(r[2] - r[0]), float(r[3] - r[1]))): continue
+			_walls_by_floors += 1
+			_expect(top > floor_top, "%s wall by %s" % [where, island.id], "%s: a wall stands %.2f m up beside %s, over water that never rises over that floor (its highest %.2f m): a fender, not a wall" % [where, box.end.y - floor_top, island.id, top])
+
+## Every boat rides its water by the float rule at every level its water
+## stands at and all through its bob: its keel in the water, its floorboards
+## over it. No still boat prop stands over water.
+func _floats(world: Node3D, where: String) -> void:
+	var kit: Variant = world.get("waters")
+	if kit == null or kit.water.is_empty(): return
+	if is_nan(_rowboat_floor):
+		var probe := Node3D.new()
+		var model := Models.still(Props.ROWBOAT, "rowboat", Props.rowboat_colors(), probe, false)
+		_rowboat_floor = (model.find_child("inside", false, false) as MeshInstance3D).get_aabb().end.y
+		probe.free()
+	for prop: Node in world.terrain.find_children("Prop_boat", "", true, false):
+		var at: Vector3 = world.terrain.to_local((prop as Node3D).global_position) * 100.0
+		var over: String = kit.body_of([at.x, at.z, at.x, at.z])
+		var dry: bool = world.current_level.get("islands", []).any(func(island: Dictionary) -> bool: return WaterBodies._inside([at.x, at.z], island.rect_cm))
+		_check(dry or over.is_empty(), "%s: a boat prop stands over the %s water at (%d, %d) without floating: the water world floats every boat" % [where, over, at.x, at.z])
+	var spec: Dictionary = Floats.kind("rowboat")
+	var reduced: bool = world.reduced_motion
+	world.reduced_motion = false
+	for boat: Node3D in world._boats:
+		_boats_seen += 1
+		var water := ""
+		for rider: Array in kit._riders:
+			if (rider[1] as Callable).get_bound_arguments().has(boat): water = str(rider[0])
+		_check(not water.is_empty(), "%s: a boat at %s rides no water" % [where, boat.position])
+		var hull := boat.find_child("rowboat", true, false) as Node3D
+		var floor_at: float = (hull.transform * AABB(Vector3(0, _rowboat_floor, 0), Vector3.ZERO)).position.y if hull != null else 0.0
+		var low := INF
+		var high := -INF
+		for level: float in kit.levels_of(water).values():
+			for step in range(BOB_STEPS):
+				world._clock = float(step) / float(BOB_STEPS) * TAU / float(spec.rate)
+				world._float_boat(level, boat)
+				low = minf(low, boat.position.y + floor_at - level)
+				high = maxf(high, boat.position.y - level)
+		_check(low >= Floats.MARGIN - 0.0001 and high < 0.0, "%s: a boat on the %s water keeps its floorboards %.3f m over the water and its keel %.3f m under it at every level and bob (floor at least %.2f over, keel under)" % [where, water, low, -high, Floats.MARGIN])
+	world.reduced_motion = reduced
+
+## A current's marks lie on the water, never on a floor or a crossing: no
+## mark's corner stands more than a mark's half length inside one.
+func _current_marks(world: Node3D, where: String, view: Dictionary) -> void:
+	var piece: Variant = world.get("_current_piece")
+	if piece == null: return
+	for marks: Node in (piece.root as Node3D).find_children("Marks", "MeshInstance3D", true, false):
+		var mesh := marks as MeshInstance3D
+		var to_terrain: Transform3D = world.terrain.global_transform.affine_inverse() * mesh.global_transform
+		var points: PackedVector3Array = mesh.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+		var inside := ""
+		for vertex: Vector3 in points:
+			var at := to_terrain * vertex * 100.0
+			for surface: Dictionary in view.get("islands", []) + view.get("bridges", []) + view.get("stairs", []):
+				var r: Array = surface.rect_cm
+				if at.x > float(r[0]) + 9.0 and at.x < float(r[2]) - 9.0 and at.z > float(r[1]) + 9.0 and at.z < float(r[3]) - 9.0: inside = str(surface.id)
+		_check(inside.is_empty(), "%s: a current's mark lies on %s, not on the water" % [where, inside])
+
+## A stepping stone that is down stays in view just under its water, at once
+## for a snap and by sinking otherwise; a drowning on it shows the shared drown.
+func _stones(world: Node3D, where: String, base: Dictionary) -> void:
+	var stones: Variant = world.get("_stones")
+	if stones == null: return
+	for id: String in stones:
+		_stones_seen += 1
+		var stone: Dictionary = stones[id]
+		var deck: Node3D = stone.deck
+		var down := base.duplicate(true)
+		down.bridges[id] = false
+		world.present(down, true)
+		var body: Node3D = world.waters.bodies.get(str(stone.water))
+		var level: float = float(body.get_meta("shown")) if body != null else float(stone.rest)
+		_check(deck.is_visible_in_tree() and deck.position.y <= minf(float(stone.rest), level - world.STONE_UNDER) + 0.001 and deck.position.y > level - 0.3, "%s: the stone %s, down, stays in view just under its water (top %.2f, water %.2f)" % [where, id, deck.position.y, level])
+		var up := base.duplicate(true)
+		up.bridges[id] = true
+		world.present(up, true)
+		var rest_y := deck.position.y
+		var sunk := up.duplicate(true)
+		sunk["drowned"] = {"slot": "p0", "route": id, "tick": 1}
+		world.present(sunk, false)
+		var start_y := deck.position.y
+		world._advance_water(0.1)
+		_check(deck.is_visible_in_tree() and deck.position.y < start_y and deck.position.y > float(stone.y) - 0.001 and is_equal_approx(start_y, rest_y), "%s: the stone %s sinks under a pip pushing it under, in view" % [where, id])
+		_check(world.drowning.slot == "p0" and world.drowning.ring.visible and world.actor_targets.p0.y < level, "%s: a drowning on the stone %s shows the shared drown: the pip under the water, a ring spreading" % [where, id])
+		world.present(up, true)
+		_check(world.drowning.slot.is_empty() and is_equal_approx(deck.position.y, rest_y), "%s: without the drowning the stone %s stands again" % [where, id])
+		world.present(base, true)
 
 ## Crossing ends found so far, by the stage floors they were read from.
 var _ends_by_floors: Dictionary = {}

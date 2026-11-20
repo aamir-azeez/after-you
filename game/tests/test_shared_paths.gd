@@ -89,6 +89,11 @@ extends SceneTree
 ##     builds presentation/kit/goal_beacon.gd, the late guide every open turns chapter
 ##     gets with no code of its own. test_open_hints.gd, which must stay in CI, checks
 ##     them on every open turns chapter.
+## (y) water worlds: presentation/water_world.gd alone shows a drowning (it holds
+##     presentation/kit/drowning.gd, the one drown), floats boats by the float rule
+##     (kit/floats.gd keel, the dressing's "moored_boats" and every "boat" prop over
+##     water) and sinks stepping stones under the water; no other world reads the
+##     snapshot's "drowned", builds a drowning, floats a boat or reads "moored_boats".
 ##
 ## Every allow-list entry says why. An entry that no longer matches anything
 ## fails, so the lists shrink as code moves. KNOWN_FAILURES holds the checks
@@ -466,6 +471,7 @@ func _initialize() -> void:
 	_ui_icons()
 	_turn_guides()
 	_space_backdrop()
+	_water_worlds()
 	_suites()
 	for id: String in KNOWN_FAILURES:
 		_check(_known_seen.has(id), "KNOWN_FAILURES names '%s', which no check reached: delete it" % id)
@@ -1083,6 +1089,25 @@ func _space_backdrop() -> void:
 		if path != SPACE_BACKDROP and _found("\\bEnvironment\\.new\\(", _sources[path]) > 0: builders.append(path)
 	_check(builders == OWN_ENVIRONMENTS.keys(), "Worlds and the warm-up take their Environment from %s (SpaceBackdrop.environment); others build their own: %s" % [SPACE_BACKDROP, builders])
 	_check(_found("\\bSpaceBackdrop\\.environment\\(", str(_sources.get("res://presentation/island_world.gd", ""))) > 0 and _found("\\bSpaceBackdrop\\.environment\\(", str(_sources.get("res://services/gl_warmup.gd", ""))) > 0, "island_world and the GL warm-up build the same Environment (SpaceBackdrop.environment)")
+
+# (y) Water worlds -------------------------------------------------------------
+
+const WATER_WORLD := "res://presentation/water_world.gd"
+const DROWNING := "res://presentation/kit/drowning.gd"
+
+## (y) One drowning, one float rule and one way stones go under, in the water world.
+func _water_worlds() -> void:
+	var worlds := 0
+	for path: String in _sources:
+		var source: String = _sources[path]
+		if path != WATER_WORLD and path != DROWNING:
+			var alias := _alias(source, DROWNING)
+			_check(_found("\\b(?:Drowning" + ("|" + alias if not alias.is_empty() else "") + ")\\.new\\(", source) == 0, "%s builds a drowning of its own: the water world holds the one (presentation/kit/drowning.gd)" % path)
+		if not path.begins_with("res://presentation/") or not path.ends_with("_world.gd") or path == WATER_WORLD: continue
+		worlds += 1
+		_check(_found("\"drowned\"|DrownRing|DROWN_", source) == 0, "%s shows a drowning of its own: presentation/water_world.gd shows every one through kit/drowning.gd" % path)
+		_check(_found("\\bFloats\\.keel\\(|\"moored_boats\"", source) == 0, "%s floats boats of its own: presentation/water_world.gd floats every boat by the float rule" % path)
+	_check(worlds > 10 and _found("Drowning\\.new\\(", _sources.get(WATER_WORLD, "")) == 1 and _found("\"drowned\"", _sources.get(WATER_WORLD, "")) > 0, "The water world holds the one drowning and every chapter world is scanned (%d)" % worlds)
 
 func _suites() -> void:
 	var shards := {}

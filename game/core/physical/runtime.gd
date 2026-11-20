@@ -149,8 +149,7 @@ func _reset_trusted(definition: Dictionary, stage_id: String, checkpoint: Dictio
 	turn_number = 1 if role == "a" else chain.size() + 2
 	active_slot = OpenTurns.slot(first_player_slot, turn_number)
 	memory_slot = _other(active_slot)
-	# The cap's turn must finish the stage, in Solo as in a room (which may also end it sooner).
-	pass_allowed = not OpenTurns.must_finish(stage, turn_number)
+	pass_allowed = true
 	passed = false
 	_checkpoint = checkpoint.duplicate(true)
 	_prior = prior_a.duplicate(true)

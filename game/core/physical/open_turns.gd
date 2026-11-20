@@ -49,12 +49,6 @@ static func cap(stage: Dictionary) -> int:
 	var declared: Variant = stage.get("turn_cap", DEFAULT_CAP)
 	return int(declared) if declared is int or declared is float else DEFAULT_CAP
 
-## Whether turn `turn` of `stage` must finish it: its cap's turn offers no
-## pass. A room may also end a stage early when its bytes run out (the
-## server's must_finish).
-static func must_finish(stage: Dictionary, turn: int) -> bool:
-	return turn >= cap(stage)
-
 ## Whether `stage`'s cap is one a level may set: a whole number of turns
 ## from MIN_CAP to MAX_CAP. Either pip's turn may finish, so any count will do.
 static func cap_valid(stage: Dictionary) -> bool:

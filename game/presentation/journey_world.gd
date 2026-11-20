@@ -751,7 +751,9 @@ func _build_items(stage: Dictionary) -> void:
 	var legs: Array = []
 	for leg: Dictionary in view.get("current_legs", []):
 		legs.append({"from": _item_point(CarriedItems.at_spot(CarriedItems.spot(view, str(leg.from)))), "to": _item_point(CarriedItems.at_spot(CarriedItems.spot(view, str(leg.to)))), "control_id": str(leg.get("control_id", "")), "value": str(leg.get("value", ""))})
-	if not legs.is_empty(): _current_piece = CurrentKit.build(_piece_style("current", str(view.current_legs[0].get("control_id", ""))), legs, terrain)
+	if not legs.is_empty():
+		_current_piece = CurrentKit.build(_piece_style("current", str(view.current_legs[0].get("control_id", ""))), legs, terrain, _current_water.bind(view))
+		_ride_current(legs)
 	await _build_step()
 	var hands := CarriedItems.hands_routes(view)
 	for route: Dictionary in view.get("bridges", []) + view.get("stairs", []):
@@ -779,6 +781,20 @@ func item_node(id: String) -> Node3D:
 
 ## Where an item state rests in the terrain's space (on the water when its
 ## floor is none).
+## Whether a current's mark may lie at `at` (terrain m): off every floor and
+## crossing of the stage, so no mark ever draws on dry ground; a water world
+## also wants water there.
+func _current_water(at: Vector3, view: Dictionary) -> bool:
+	var point := Vector2(at.x, at.z) * 100.0
+	for surface: Dictionary in view.get("islands", []) + view.get("bridges", []) + view.get("stairs", []):
+		var r: Array = surface.rect_cm
+		if point.x >= float(r[0]) and point.x <= float(r[2]) and point.y >= float(r[1]) and point.y <= float(r[3]): return false
+	return true
+
+## A world with water rides each leg's marks on its body (water_world).
+func _ride_current(_legs: Array) -> void:
+	pass
+
 func _item_point(state: Dictionary) -> Vector3:
 	if state.is_empty(): return Vector3.ZERO
 	# Thrown: where its arc has it.

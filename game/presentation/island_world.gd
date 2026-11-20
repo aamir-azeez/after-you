@@ -1886,6 +1886,7 @@ func _build_dressing() -> void:
 			spec = spec.duplicate()
 			spec["glow_order"] = glow_order
 		if not GraphicsPolicy.detail_dressing(_motion_quality) and bool(spec.get("detail", false)): continue
+		if _takes_prop(spec): continue
 		var surface := str(spec.get("surface", ""))
 		var parent: Node3D = _surface_nodes.get(surface, terrain)
 		var base := 0.0 if _surface_nodes.has(surface) else _surface_base(surface)
@@ -1956,3 +1957,8 @@ func ending_anchor(anchor_name: String) -> Variant:
 ## A built dressing prop, for a world that wakes a part of it later.
 func _dressed_prop(_prop: Node3D) -> void:
 	pass
+
+## Whether this world builds dressing prop `spec` its own way instead (a water
+## world floats a boat that stands over water); false builds it as a prop.
+func _takes_prop(_spec: Dictionary) -> bool:
+	return false
