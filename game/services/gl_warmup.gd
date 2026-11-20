@@ -78,6 +78,8 @@ const MATERIALS: Array[Dictionary] = [
 	{"transparency": BaseMaterial3D.TRANSPARENCY_ALPHA, "vertex_color_is_srgb": true, "vertex_color_use_as_albedo": true},
 	# The seabed under the water (presentation/kit/water_look.gd bed_material).
 	{"albedo_texture": true},
+	# A shut crossing's faint outline in Turn of the Tide (tide_world.gd _ghost), writing depth so stepping stones above the water stay in view.
+	{"depth_draw_mode": BaseMaterial3D.DEPTH_DRAW_ALWAYS, "shading_mode": BaseMaterial3D.SHADING_MODE_UNSHADED, "transparency": BaseMaterial3D.TRANSPARENCY_ALPHA},
 ]
 ## Which listed keys each chapter draws: "m" indices into MATERIALS, "s" into
 ## shaders(), "l" into LABELS. Kept by tests/test_gl_warmup_coverage.gd.
@@ -89,8 +91,8 @@ const CHAPTERS := {
 	"high-and-low@2": {"m": [0, 1, 2, 6, 8, 12, 13], "s": [0, 7, 16], "l": [2]},
 	"rolling-home@1": {"m": [0, 1, 2, 6, 8, 12], "s": [0, 12, 16], "l": [2]},
 	"a-house-for-two@1": {"m": [0, 1, 2, 3, 6, 12, 13], "s": [0, 12, 16], "l": [2]},
-	"rolling-home@2": {"m": [0, 1, 2, 6, 8, 12], "s": [0, 12, 16], "l": [2]},
-	"a-house-for-two@2": {"m": [0, 1, 2, 3, 6, 12, 13], "s": [0, 12, 16], "l": [2]},
+	"rolling-home@2": {"m": [0, 1, 2, 6, 8, 12], "s": [0, 7], "l": [2]},
+	"a-house-for-two@2": {"m": [0, 1, 2, 3, 6, 12, 13], "s": [0, 7, 16], "l": [2]},
 	"conservatory@1": {"m": [0, 1, 2, 3, 6, 8, 9, 12], "s": [0, 12, 16], "l": [2]},
 	"conservatory@2": {"m": [0, 1, 2, 6, 8, 9, 12, 13], "s": [0, 7, 16], "l": [2]},
 	"the-wishing-well@1": {"m": [0, 1, 2, 6, 8, 12, 13], "s": [0, 12, 16], "l": [2]},
@@ -98,9 +100,9 @@ const CHAPTERS := {
 	"long-way-home@1": {"m": [0, 1, 2, 5, 6, 8, 12, 13], "s": [0, 1, 12, 16], "l": [0, 2]},
 	"long-way-home@2": {"m": [0, 1, 2, 5, 6, 8, 12, 13], "s": [0, 1, 12, 16], "l": [0, 2]},
 	"long-way-home@3": {"m": [0, 1, 2, 5, 6, 8, 12, 13], "s": [0, 1, 7, 16], "l": [0, 2]},
-	"turn-of-the-tide@1": {"m": [0, 1, 2, 3, 4, 5, 6, 7, 12, 13, 14], "s": [0, 1, 7, 12, 16, 17], "l": [0, 1, 2]},
-	"turn-of-the-tide@2": {"m": [0, 1, 2, 3, 4, 5, 6, 7, 12, 13, 14], "s": [0, 1, 7, 12, 16, 17], "l": [0, 1, 2]},
-	"turn-of-the-tide@3": {"m": [0, 1, 2, 3, 4, 5, 6, 7, 12, 13, 14], "s": [0, 1, 7, 16, 17], "l": [0, 1, 2]},
+	"turn-of-the-tide@1": {"m": [0, 1, 2, 3, 4, 5, 6, 7, 12, 13, 14, 15], "s": [0, 1, 7, 12, 16, 17], "l": [0, 1, 2]},
+	"turn-of-the-tide@2": {"m": [0, 1, 2, 3, 4, 5, 6, 7, 12, 13, 14, 15], "s": [0, 1, 7, 12, 16, 17], "l": [0, 1, 2]},
+	"turn-of-the-tide@3": {"m": [0, 1, 2, 3, 4, 5, 6, 7, 12, 13, 14, 15], "s": [0, 1, 7, 16, 17], "l": [0, 1, 2]},
 	"sleeping-lighthouse@1": {"m": [0, 1, 2, 3, 6, 8, 12], "s": [0], "l": [2]},
 	"sleeping-lighthouse@2": {"m": [0, 1, 2, 3, 6, 8, 12], "s": [0, 16], "l": [2]},
 }
