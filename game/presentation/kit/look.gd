@@ -36,9 +36,11 @@ const PRESETS := {
 	"spray": {"sky": Color("1f3a33"), "ambient": Color("d4e3d4"), "ambient_energy": 0.36, "sun": Color("fff3d6"), "sun_energy": 0.70, "bounce": Color("9fc2b8"), "bounce_energy": 0.26, "mote": Color("e8f2ee")},
 	# Fog Marsh: soft and pale under the fog, a low sun and a high ambient.
 	# Its "cover" is the thick fog over the whole stage (kit/fog_cover.gd):
-	# the fog's colour, how thick it lies and how much it thickens at the edges.
-	# Its sky is the fog's own pale grey, so no dark shows past the marsh.
-	"fog": {"cover": {"color": Color("d3dad4"), "density": 0.74, "edge": 0.6}, "sky": Color("cbd1ca"), "ambient": Color("e2e6dc"), "ambient_energy": 0.46, "sun": Color("f2eedc"), "sun_energy": 0.54, "bounce": Color("b7c4bc"), "bounce_energy": 0.30, "mote": Color("f2f0e2")},
+	# the colour of its lit tops and of its deeper body (a soft blue-green),
+	# how thick it lies and how much it thickens at the edges. Its sky is the
+	# fog's own pale blue-grey, so no dark shows past the marsh. Lamp light on
+	# the ground draws under the cover ("glow_order", kit/soft_mist.gd).
+	"fog": {"cover": {"color": Color("d4e4e0"), "deep": Color("86aaa8"), "density": 0.8, "edge": 0.6}, "glow_order": -2, "sky": Color("c3d4d2"), "ambient": Color("dfe7e3"), "ambient_energy": 0.46, "sun": Color("f2eedc"), "sun_energy": 0.54, "bounce": Color("b0c6c2"), "bounce_energy": 0.30, "mote": Color("eef4ec")},
 }
 
 static func preset(name: String) -> Dictionary:

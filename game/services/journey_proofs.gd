@@ -29,6 +29,7 @@ const Typed = preload("res://services/typed_values.gd")
 const CheckpointPairs = preload("res://services/checkpoint_pairs.gd")
 const OpenTurns = preload("res://core/physical/open_turns.gd")
 const TraceStore = preload("res://services/memory_trace_store.gd")
+const PathsStore = preload("res://services/turn_paths_store.gd")
 ## Open turns' checked turns and memory traces (core/physical/memory_trace.gd), beside the proofs.
 const TRACES := "open-turn-traces"
 
@@ -324,6 +325,8 @@ static func prepare_traces() -> void:
 	var folder := directory.path_join(TRACES)
 	_mutex.unlock()
 	TraceStore.attach(folder)
+	# Where each checked turn's pip walked, for a fog cover's history, beside them.
+	PathsStore.attach(folder)
 
 ## Writes the memo when it holds checkpoints the file does not; small (128 KiB at most).
 static func save_memo(chapter: String) -> void:

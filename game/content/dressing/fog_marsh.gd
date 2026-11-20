@@ -1,22 +1,23 @@
 extends RefCounted
-## Fog Marsh: boardwalks over a still, reedy marsh under a soft fog that the
-## lanterns clear (kit/fog.gd keeps every gate, gap, stair, water and control
-## clear of it). Reeds stand in the water, the post office keeps its stamp
-## desk by the door.
+## Fog Marsh: boardwalks over a still, reedy marsh under thick blue-green fog
+## (the look's cover, kit/fog_cover.gd) that opens for good wherever the pips
+## have walked and round every lantern lit. Old landmarks stand half seen out
+## of it: a leaning windmill, huts on stilts, sunken boats, dead trees and reed
+## beds, with the pipsport bobbing among reeds. Mud on the bed, fireflies in
+## the air, and the post office keeps its stamp desk by the door.
 
 const DATA := {
 	"theme": "harbour",
 	"look": "fog",
 	"seabed": "mud",
-	# PROTOTYPE: the close follow camera (island_world._follow_data).
+	# The close follow camera (island_world._follow_data).
 	"camera": {"follow": {"size": 5.8, "axes": "xz", "lift": 1.0, "inset": [5.0, 1.6], "zoom": [0.75, 1.6], "pan": [1.0, 0.7], "from": [6.0, 12.0, 20.0]}},
 	"fireflies": 30,
 	"ground": {"*": "boardwalk", "path": "reed_bank", "reeds": "reed_bank", "bank": "reed_bank", "office": "timber"},
 	"picks": {"lamp": "lantern", "shrub": "green", "bank": "moss", "fence": "picket", "trim": "flowers", "clutter": "barrel"},
 	"tag": "wooden_plaque",
 	"pad": "stand_spot",
-	# PROTOTYPE: the cover (kit/fog_cover.gd) is the whole fog now; the old low
-	# banks drew over it as white patches.
+	# The cover is the whole fog; no low banks (kit/fog.gd) over it.
 	"fog": "none",
 	"carried_item": "pipsport",
 	"current": "chevrons",
@@ -83,5 +84,31 @@ const DATA := {
 		{"kind": "fishing_rod", "floor": "jetty", "edge": "left", "along": 0.95, "out": 62, "rot": 90},
 		{"kind": "rope_coil", "floor": "jetty", "edge": "left", "along": 0.8, "out": 40},
 		{"kind": "rope_coil", "floor": "office", "edge": "left", "along": 0.55, "out": 40},
-	]},
-}
+		# Landmarks out in the open water, behind and before the boardwalks, tall
+		# enough to stand up out of the fog: the leaning windmill, two huts on
+		# stilts, two sunken boats, dead trees and reed beds; two beds round the
+		# channel where the pipsport bobs at the start of Catch the Pipsport.
+		{"kind": "windmill", "at": [3000, -1150], "y": -10, "rot": 18, "size": 2.0},
+		{"kind": "stilt_hut", "at": [5700, -1050], "y": -10, "rot": -12, "size": 1.5},
+		{"kind": "stilt_hut", "at": [10400, 950], "y": -10, "rot": 160, "size": 1.5},
+		{"kind": "sunken_boat", "at": [1900, 860], "y": -10, "rot": 20, "size": 1.4},
+		{"kind": "sunken_boat", "at": [6200, -900], "y": -10, "rot": -150, "size": 1.4},
+		{"kind": "dead_tree", "at": [600, -950], "y": -10, "variant": 0, "rot": 30, "size": 1.8},
+		{"kind": "dead_tree", "at": [1200, 920], "y": -10, "variant": 1, "rot": 200, "size": 1.8},
+		{"kind": "dead_tree", "at": [4100, -980], "y": -10, "variant": 1, "rot": 75, "size": 1.8},
+		{"kind": "dead_tree", "at": [4700, 940], "y": -10, "variant": 0, "rot": 140, "size": 1.8},
+		{"kind": "dead_tree", "at": [7300, -950], "y": -10, "variant": 1, "rot": 10, "size": 1.8},
+		{"kind": "dead_tree", "at": [8300, -1020], "y": -10, "variant": 0, "rot": 250, "size": 1.8},
+		{"kind": "dead_tree", "at": [9500, -960], "y": -10, "variant": 1, "rot": 300, "size": 1.8},
+		{"kind": "dead_tree", "at": [11300, -900], "y": -10, "variant": 0, "rot": 95, "size": 1.8},
+		{"kind": "reed_bed", "at": [400, 740], "y": -10, "rot": 0},
+		{"kind": "reed_bed", "at": [2300, -820], "y": -10, "rot": 70},
+		{"kind": "reed_bed", "at": [3500, 800], "y": -10, "rot": 140},
+		{"kind": "reed_bed", "at": [5200, -800], "y": -10, "rot": 210},
+		{"kind": "reed_bed", "at": [6230, -110], "y": -10, "rot": 30},
+		{"kind": "reed_bed", "at": [6150, 30], "y": -10, "rot": 260},
+		{"kind": "reed_bed", "at": [8000, 1000], "y": -10, "rot": 100},
+		{"kind": "reed_bed", "at": [8700, 1000], "y": -10, "rot": 320},
+		{"kind": "reed_bed", "at": [9100, 1060], "y": -10, "rot": 180},
+		{"kind": "reed_bed", "at": [9900, -800], "y": -10, "rot": 45},
+	]},}
