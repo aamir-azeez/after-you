@@ -23,6 +23,10 @@ const Styles = preload("res://content/dressing/prop_styles.gd")
 const Models = preload("res://presentation/kit/models.gd")
 ## The weights, modelled in Blender (tools/blender/models/pulley_weights.py).
 const WEIGHTS := "res://assets/models/pulley_weights.glb"
+## The posts, modelled in Blender (tools/blender/models/pulley_posts.py).
+const POSTS := "res://assets/models/pulley_posts.glb"
+## The wheel the rope runs over.
+const WHEEL := Color("c09750")
 const STYLES := ["lantern_hook", "theme_hanger", "little_roof"]
 ## The weight's centre: out from the post and over its foot (m).
 const ROPE_X := 0.14
@@ -131,82 +135,26 @@ func _make(pulley_style: String, at: Vector3, parent: Node3D, ground: Array[Rect
 
 # --- Posts (post space: its foot's centre at the origin) ---
 
-## A timber crook on a stone foot, leaves climbing it, a wheel under its hook.
+## A timber crook on a stone foot, a vine climbing it, a wheel under its hook.
 func _make_hook() -> void:
-	var top := 1.12
-	Parts.box(Vector3(0.176, 0.08, 0.176), STONE, Vector3(0, 0.035, 0), root)
-	Parts.box(Vector3(0.094, top, 0.094), TIMBER, Vector3(0, top * 0.5 + 0.04, 0), root)
-	Parts.box(Vector3(0.254, 0.06, 0.06), TIMBER, Vector3(0.083, top + 0.05, 0), root)
-	_arc(Vector2(0.20, top + 0.11), 0.06, -PI * 0.5, PI * 0.9, 0.05, 0.055, TIMBER, 5)
-	var heights := [0.25, 0.45, 0.65, 0.85]
-	for k in range(heights.size()):
-		Parts.ball(0.045, LEAF if k % 2 else LEAF_DARK, Vector3(0.05 * (-1.0 if k % 2 else 1.0), heights[k], 0.05), root)
-	Parts.ball(0.03, PINK, Vector3(0.06, 0.55, 0.07), root)
-	_wheel(Vector3(ROPE_X, top - 0.02, 0), 0.045)
-	_rope_top = top - 0.02
+	Models.still(POSTS, "pulley_hook", {"stone": STONE, "timber": TIMBER, "leaf": LEAF, "leaf_dark": LEAF_DARK, "blossom": PINK, "wheel": WHEEL, "hub": IRON}, root)
+	_rope_top = 1.10
 
 ## A white post with red bands, a curled arm and a rope coil beside its foot.
 func _make_hanger(ground: Array[Rect2]) -> void:
-	var top := 1.10
 	var coil := coil_spot(ground)
 	if coil.is_finite():
 		for k in range(COIL_RINGS.size()):
 			var ring := Parts.torus(COIL_RINGS[k], COIL_ROPE, ROPE.darkened(0.1 - 0.05 * k), Vector3(coil.x, 0.03 + 0.02 * k, coil.y), root, 20 - 4 * k, 6)
 			ring.name = "Coil"
-	Parts.box(Vector3(0.096, top, 0.096), PLASTER, Vector3(0, top * 0.5 - 0.005, 0), root)
-	for y: float in [0.25, 0.75]: Parts.box(Vector3(0.122, 0.07, 0.122), RED, Vector3(0, y, 0), root)
-	_arc(Vector2(0.07, top - 0.02), 0.08, 0.0, PI, 0.05, 0.05, PLASTER, 5)
-	var cap := Parts.ball(0.06, NAVY, Vector3(0, top + 0.02, 0), root)
-	cap.scale.y = 0.8
-	_wheel(Vector3(ROPE_X, top, 0), 0.045)
-	_rope_top = top
+	Models.still(POSTS, "pulley_hanger", {"plaster": PLASTER, "band": RED, "knob": NAVY, "wheel": WHEEL, "hub": IRON}, root)
+	_rope_top = 1.10
 
 ## A timber post on a stone foot under a little pitched roof with a plaster
 ## gable, its wheel under the eaves.
 func _make_roof() -> void:
-	var top := 1.10
-	var shade := TIMBER_LIGHT.darkened(0.1)
-	Parts.box(Vector3(0.216, 0.08, 0.216), STONE, Vector3(0, 0.035, 0), root)
-	Parts.box(Vector3(0.104, top, 0.104), TIMBER_LIGHT, Vector3(0, top * 0.5 + 0.04, 0), root)
-	Parts.box(Vector3(0.294, 0.06, 0.08), shade, Vector3(0.091, top + 0.06, 0), root)
-	Parts.box(Vector3(0.06, 0.08, 0.06), shade, Vector3(0, top + 0.10, 0), root)
-	# The gable: a plaster prism inside two roof boards meeting at a ridge.
-	var eave := top + 0.10
-	var rise := 0.22
-	var half := 0.20
-	var centre := 0.07
-	Primitives.mesh_node(Primitives.shared_mesh("prism", half * 2.0 - 0.05, rise - 0.03, 0.28), Primitives.shared_material(PLASTER), Vector3(centre, eave + (rise - 0.03) * 0.5, 0), root)
-	var slope := atan2(rise, half)
-	var length := Vector2(half, rise).length() + 0.03
-	for side: float in [-1.0, 1.0]:
-		var normal := Vector2(side * rise, half).normalized()
-		var middle := Vector2(centre + side * half * 0.5, eave + rise * 0.5) + normal * 0.015
-		var board := Parts.box(Vector3(length, 0.03, 0.30), ROOF, Vector3(middle.x, middle.y, 0), root)
-		board.rotation.z = -side * slope
-	Parts.box(Vector3(0.035, 0.035, 0.32), ROOF.darkened(0.3), Vector3(centre, eave + rise + 0.02, 0), root)
-	_wheel(Vector3(ROPE_X - 0.06, top - 0.02, 0), 0.06)
-	_rope_top = top - 0.02
-
-## A wheel turning on z, its iron hub through it.
-func _wheel(at: Vector3, radius: float) -> void:
-	var rim := Parts.disc(radius, 0.04, BRASS.darkened(0.15), at, root, -1.0, 16)
-	rim.rotation.x = PI * 0.5
-	var hub := Parts.disc(radius * 0.3, 0.06, IRON, at, root, -1.0, 8)
-	hub.rotation.x = PI * 0.5
-
-## A bent bar in the xy plane round `centre` (x, y) from angle `from` to `to`
-## (radians, counter-clockwise from +x): `count` straight pieces `thick`
-## across and `deep` along z, each a little long so the joints close.
-func _arc(centre: Vector2, radius: float, from: float, to: float, thick: float, deep: float, color: Color, count: int, parent: Node3D = null) -> void:
-	var holder := parent if parent != null else root
-	var step := (to - from) / float(count)
-	for index in range(count):
-		var a := from + step * float(index)
-		var b := a + step
-		var p := centre + Vector2(cos(a), sin(a)) * radius
-		var q := centre + Vector2(cos(b), sin(b)) * radius
-		var piece := Parts.box(Vector3(p.distance_to(q) + thick * 0.5, thick, deep), color, Vector3((p.x + q.x) * 0.5, (p.y + q.y) * 0.5, 0), holder)
-		piece.rotation.z = (q - p).angle()
+	Models.still(POSTS, "pulley_roof", {"stone": STONE, "timber": TIMBER_LIGHT, "gable": PLASTER, "roof": ROOF, "ridge": ROOF.darkened(0.3), "wheel": WHEEL, "hub": IRON}, root)
+	_rope_top = 1.08
 
 # --- Weights (weight space: its centre at the origin) ---
 

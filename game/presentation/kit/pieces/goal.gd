@@ -23,6 +23,9 @@ extends "res://presentation/kit/pieces/piece.gd"
 const WindowVisual = preload("res://presentation/house_window.gd")
 const Look = preload("res://presentation/kit/look.gd")
 const Bell = preload("res://presentation/kit/pieces/bell.gd")
+const Models = preload("res://presentation/kit/models.gd")
+## The bell style's frame, modelled in Blender (tools/blender/models/bell_frame.py).
+const FRAME := "res://assets/models/bell_frame.glb"
 ## A lit goal's light, before the look's lamp scale (kit/look.gd lamp_energy).
 const LIGHT_ENERGY := 1.2
 const STYLES := ["bell", "harbour_lantern", "crest", "window", "walled_window"]
@@ -94,10 +97,13 @@ func _light(color: Color, reach: float, offset: Vector3) -> void:
 	light.position = root.position + offset
 
 func _make_bell(radius_m: float) -> void:
-	Parts.cylinder(0.34, 0.065, Color("697b8e"), Vector3(0, 0.033, 0), root)
+	# The step, beam and posts (assets/models/bell_frame.glb), the right post the
+	# left one turned round; the ring stays a kit ring, lit with the goal.
+	Models.still(FRAME, "bell_frame", {"step": Color("697b8e"), "beam": Color("b4a381"), "trim": Color("9e9180")}, root)
+	var post_colors := {"stone": Parts.STONE, "post": Color("9e9180"), "beam": Color("b4a381")}
+	var left := Models.still(FRAME, "bell_post", post_colors, root)
+	Models.still(FRAME, "bell_post", post_colors, root).transform = Transform3D(Basis(Vector3.UP, PI), Vector3(-left.position.x, 0, left.position.z))
 	ring = Parts.ring(radius_m, Color("a2b3c0"), Vector3(0, 0.07, 0), root)
-	for side: int in [-1, 1]: Parts.box(Vector3(0.10, 1.52, 0.13), Color("9e9180"), Vector3(float(side) * 0.43, 0.76, -0.12), root)
-	Parts.box(Vector3(0.98, 0.12, 0.18), Color("b4a381"), Vector3(0, 1.52, -0.12), root)
 	# Between the posts, under the beam, clear of a pip standing on the ring.
 	chime = Bell.build(root, Vector3(0, 1.46, -0.12), Vector2(0.76, 0.52))
 	bell = chime.body

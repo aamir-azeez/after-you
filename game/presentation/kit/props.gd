@@ -279,19 +279,24 @@ static func _fern(root: Node3D, s: float) -> void:
 		var frond := _ball(0.16 * s, LEAF_DARK if j % 2 == 0 else LEAF, Vector3(sin(a) * 0.12 * s, 0.27 * s, cos(a) * 0.12 * s), root, Vector3(0.45, 0.22, 1.0))
 		frond.rotation = Vector3(-0.5, a, 0)
 
+## The crate and its stacked twin (assets/models/harbour_bits.glb).
 static func _crate(root: Node3D, s: float, stack: bool) -> void:
-	_box(Vector3(0.32, 0.3, 0.32) * s, TIMBER_LIGHT, Vector3(0, 0.15 * s, 0), root)
-	_box(Vector3(0.34, 0.04, 0.34) * s, TIMBER, Vector3(0, 0.29 * s, 0), root)
+	_model(root, "harbour_bits", "crate", {"board": TIMBER_LIGHT, "frame": TIMBER}, Vector3.ONE * s)
 	if stack:
-		var top := _box(Vector3(0.24, 0.22, 0.24) * s, TIMBER_LIGHT.lightened(0.08), Vector3(0.02 * s, 0.42 * s, 0.01 * s), root)
+		var top := _model(root, "harbour_bits", "crate", {"board": TIMBER_LIGHT.lightened(0.08), "frame": TIMBER.lightened(0.08)}, Vector3.ONE * 0.75 * s)
+		top.position = Vector3(0.02, 0.335, 0.01) * s
 		top.rotation.y = 0.3
 
+## A post with two arms (assets/models/signpost.glb, shared with the Crossroads
+## keepsake): one on the front pointing right, one on the back pointing left.
 static func _signpost(root: Node3D, s: float) -> void:
-	_box(Vector3(0.07, 1.0, 0.07) * Vector3(s, s, s), TIMBER, Vector3(0, 0.5 * s, 0), root)
-	var one := _box(Vector3(0.46, 0.12, 0.035) * s, TIMBER_LIGHT, Vector3(0.14 * s, 0.86 * s, 0.03 * s), root)
+	_model(root, "signpost", "signpost_post", {"post": TIMBER, "cap": TIMBER_DARK}, Vector3.ONE * s)
+	var one := _model(root, "signpost", "signpost_arm", {"board": TIMBER_LIGHT, "nail": TIMBER_DARK}, Vector3(0.46, 0.12 / 0.22, 0.7) * s)
+	one.position = Vector3(-0.05, 0.86, 0.035) * s
 	one.rotation.y = 0.15
-	var two := _box(Vector3(0.4, 0.11, 0.035) * s, TIMBER_LIGHT.lightened(0.06), Vector3(-0.12 * s, 0.66 * s, 0.03 * s), root)
-	two.rotation.y = -0.2
+	var two := _model(root, "signpost", "signpost_arm", {"board": TIMBER_LIGHT.lightened(0.06), "nail": TIMBER_DARK}, Vector3(0.4, 0.11 / 0.22, 0.7) * s)
+	two.position = Vector3(0.05, 0.66, -0.035) * s
+	two.rotation.y = PI - 0.2
 
 static func _cottage(root: Node3D, s: float, width: float, depth: float, lit: bool) -> void:
 	var scale := Vector3(width / 1.6, 1.0, depth / 1.1) * s
@@ -362,25 +367,18 @@ static func rowboat_colors() -> Dictionary:
 static func _boat(root: Node3D, s: float) -> void:
 	Models.still(ROWBOAT, "rowboat", rowboat_colors(), root).scale = Vector3.ONE * s
 
-## A squat harbour bollard with a coil of rope at its foot.
+## A squat harbour bollard with a coil of rope at its foot (assets/models/harbour_bits.glb).
 static func _bollard(root: Node3D, s: float) -> void:
-	_rod(0.055 * s, 0.12 * s, Color("3f4448"), Vector3(0, 0.06 * s, 0), root)
-	_rod(0.075 * s, 0.03 * s, Color("3f4448"), Vector3(0, 0.135 * s, 0), root)
-	var coil := MeshInstance3D.new()
-	coil.mesh = Primitives.ring_mesh(0.065 * s)
-	coil.material_override = _m(ROPE)
-	coil.position = Vector3(0, 0.02, 0)
-	root.add_child(coil)
+	_model(root, "harbour_bits", "bollard", {"iron": Color("3f4448"), "rope": ROPE}, Vector3.ONE * s)
 
 ## Built-in standoff (metres) between parts of one prop that would otherwise
 ## share a face: never scaled with the prop, so no size or turn brings two
 ## faces within the lint's z-fight gap (test_dressing_lint COPLANAR).
 const STANDOFF := 0.006
 
-## The hoops stand STANDOFF proud of the staves at every size.
+## Bulging staves, a sunk lid and two hoops (assets/models/harbour_bits.glb).
 static func _barrel(root: Node3D, s: float) -> void:
-	_rod(0.13 * s, 0.30 * s, TIMBER_LIGHT, Vector3(0, 0.15 * s, 0), root)
-	for y: float in [0.06, 0.24]: _rod(0.13 * s + STANDOFF, 0.025 * s, TIMBER_DARK, Vector3(0, y * s, 0), root)
+	_model(root, "harbour_bits", "barrel", {"stave": TIMBER_LIGHT, "hoop": TIMBER_DARK, "lid": TIMBER}, Vector3.ONE * s)
 
 ## A slatted timber lobster pot with a rope loop. The slats stop STANDOFF
 ## short of the base's and lid's sides, so the pot turned any way never
