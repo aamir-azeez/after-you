@@ -227,7 +227,8 @@ func _make_lantern(knob: Color) -> void:
 	Parts.box(Vector3(0.20, 0.025, 0.025), Parts.IRON, Vector3(-0.10, 0, 0), _pump)
 	Parts.ball(0.03, knob, Vector3(-0.20, 0, 0), _pump)
 	# The post and its arm, the lantern hanging east of the post.
-	Parts.box(Vector3(0.05, 0.86, 0.05), Parts.TIMBER_DARK, Vector3(-0.09, 0.47, -0.06), root)
+	# The post stops inside the arm, so their tops never share a face.
+	Parts.box(Vector3(0.05, 0.84, 0.05), Parts.TIMBER_DARK, Vector3(-0.09, 0.46, -0.06), root)
 	Parts.box(Vector3(0.24, 0.04, 0.04), Parts.TIMBER, Vector3(0.01, 0.88, -0.06), root)
 	Parts.box(Vector3(0.012, 0.08, 0.012), Parts.IRON, Vector3(0.09, 0.82, -0.06), root)
 	Parts.disc(0.06, 0.03, Parts.BRASS, Vector3(0.09, 0.765, -0.06), root, 0.035)

@@ -103,8 +103,12 @@ first_steps_ui 1
 first_steps_v2 2
 first_steps_v2_world 2
 first_steps_world 2
+fog_marsh 2
+fog_marsh_world 2
+fog_reveal 2
 fold_present 2
 fold_untouched 1
+follow_camera 1
 frame_policy 1
 friend_nicknames 3
 friend_play_icon 3
@@ -410,6 +414,8 @@ tap_reliability 1
 tester_access 2
 tester_access_integration 1
 tester_switches 2
+the_falls 2
+the_falls_world 2
 the_wishing_well_v2 3
 the_wishing_well_v2_world 3
 tide_world 3

@@ -1,0 +1,24 @@
+{
+	"catch_assistance": true,
+	"checkpoint_hash": "2a26845d634218e9724f2c5b914581629e406d241f52aec475d09a9ed99d4197",
+	"completed": false,
+	"definition_hash": "0cdfc1875835b016d69e446e9818f89a2bc6ab18664ad1acf6d9546e8994a5cd",
+	"duration_ticks": 420,
+	"final_state_hash": "ed549636b99cd39dcf9c7b60fd63a03929ea51fb44752aae7a5d04fdb95af791",
+	"level_id": "fog-marsh",
+	"level_version": 1,
+	"outcome": {
+		"objective_complete": false,
+		"source_ready": true
+	},
+	"packed": "AQsonAACwQAQAGQCAAADAAAoZAACGQCgAQCc6ANkAFYAnAIAzoqwsmNguPzpdyF3zHMRz53dNG2CDI4w2WxwQfzdPxrzeLXRVMWRbOE/LCOoAXxT4uSmbXnqeqMPve1sWy80VtHsC+dohJOm/8VfSRu2HI09bnRoPed+pO9aQCw5okk/qbAkMTowUyVE3tOyUstZ6scc5e/h5ykkmZsFaCN35wN36121xN7g5P3owNpxLYSj+AZth8xHmELp",
+	"player_slot": "p1",
+	"recording_hash": "b982f174d246c3fde187310237d77c867d8e54c0e02e1ba39cd8eff2318af80b",
+	"role": "b",
+	"schema_version": 7,
+	"simulation_version": 16,
+	"source_recording_hash": "fc3b55a2d2b7177795bc35078fabe358ef2f223a63d70d68af3942bd7d8f1e12",
+	"stage_id": "where-the-stream-went",
+	"stage_version": 1,
+	"tick_rate": 30
+}

@@ -20,9 +20,16 @@ const SPIRIT := 1.0
 const MARGIN := 0.12
 ## How far a prop keeps clear of a control's, start's or drop's circle.
 const CLEAR := 0.1
-## The ground the camera looks across per metre of height: every chapter
-## camera sits at offset (3, 13, 10).
+## The ground the camera looks across per metre of height: a chapter camera
+## sits at offset (3, 13, 10) unless its level stands it elsewhere (a stage
+## view's "camera_from", content/dressing/placement.gd stage_view; sweep()).
 const VIEW := Vector2(-3.0, -10.0) / 13.0
+
+## The ground `view`'s camera looks across per metre of height.
+static func sweep(view: Dictionary) -> Vector2:
+	var from: Variant = view.get("camera_from")
+	if not from is Vector3 or (from as Vector3).y <= 0.0: return VIEW
+	return Vector2(-(from as Vector3).x, -(from as Vector3).z) / (from as Vector3).y
 ## The largest size a trim row is laid at, on a bank's front lip this high
 ## (metres): every trim style stays under Props.LOW there.
 const TRIM_SIZE := 0.6
@@ -45,7 +52,7 @@ const SMALL_STAND := 0.18
 ## The view lists whose spots a pip stands inside.
 const STAND_IN := ["sockets", "props", "plates", "plate", "pressure_pads", "ball_pads", "hold_pads", "goals", "goal", "landing"]
 ## Kinds whose footprint is a rectangle; every other kind is judged as a circle.
-const SQUARE_KINDS := ["bench", "cottage", "rug", "path", "planter", "boat", "lobster_pot", "shelf", "frame", "fence", "hedge", "wall"]
+const SQUARE_KINDS := ["bench", "cottage", "rug", "path", "planter", "boat", "lobster_pot", "shelf", "frame", "fence", "hedge", "wall", "washing_line", "fishing_rod"]
 
 static func rect(r: Array) -> Rect2:
 	return Rect2(Vector2(float(r[0]), float(r[1])) / 100.0, Vector2(float(r[2] - r[0]), float(r[3] - r[1])) / 100.0)
@@ -60,20 +67,22 @@ static func heights(view: Dictionary) -> Dictionary:
 ## Stairs span their whole rise.
 static func walkable(view: Dictionary) -> Array:
 	var names := {"island": "island", "bridge": "route", "stair": "stair"}
+	var along := sweep(view)
 	return LevelLayout.walking_areas(view).map(func(area: Dictionary) -> Dictionary:
-		return {"rect": rect(area.rect_cm), "y": float(area.height_cm) / 100.0, "rise": float(area.rise_cm) / 100.0, "name": "%s %s" % [names[area.kind], area.id], "id": str(area.id)})
+		return {"rect": rect(area.rect_cm), "y": float(area.height_cm) / 100.0, "rise": float(area.rise_cm) / 100.0, "name": "%s %s" % [names[area.kind], area.id], "id": str(area.id), "sweep": along})
 
 ## Interactive places (LevelLayout.spots: pads, levers, switches, goals,
 ## optics, starts) and drops, each as {rect, y, name}.
 static func places(view: Dictionary, floor_heights: Dictionary) -> Array:
 	var found: Array = []
 	var starts: Array = []
+	var along := sweep(view)
 	for spot: Dictionary in LevelLayout.spots(view):
 		var radius := float(spot.radius_cm) / 100.0
 		var at := Vector2(float(spot.position_cm[0]), float(spot.position_cm[1])) / 100.0
-		(starts if spot.kind == "start" else found).append({"rect": Rect2(at - Vector2.ONE * radius, Vector2.ONE * radius * 2.0), "y": float(spot.height_cm) / 100.0, "name": "%s %s" % [spot.kind, spot.id]})
+		(starts if spot.kind == "start" else found).append({"rect": Rect2(at - Vector2.ONE * radius, Vector2.ONE * radius * 2.0), "y": float(spot.height_cm) / 100.0, "name": "%s %s" % [spot.kind, spot.id], "sweep": along})
 	for drop: Dictionary in view.get("drops", []):
-		found.append({"rect": rect(drop.rect_cm), "y": float(floor_heights.get(str(drop.get("surface_id", "")), 0.0)), "name": "drop " + str(drop.get("id", ""))})
+		found.append({"rect": rect(drop.rect_cm), "y": float(floor_heights.get(str(drop.get("surface_id", "")), 0.0)), "name": "drop " + str(drop.get("id", "")), "sweep": along})
 	return found + starts
 
 ## Everything a stage's props are judged against, worked out once per stage.
@@ -117,17 +126,19 @@ static func on_back_wall(footprint: Rect2, base: float, target: Dictionary) -> b
 	return base >= float(target.y) + 1.1 and footprint.position.x >= area.position.x - 0.05 and footprint.end.x <= area.end.x + 0.05 and footprint.position.y <= area.position.y + 0.25
 
 ## The prop's view shadow at the target's height overlaps the target: a prop
-## of height h at base b hides ground at y0 behind it, swept along VIEW per
-## metre of height between b - y0 - spirit and b + h - y0.
+## of height h at base b hides ground at y0 behind it, swept along the
+## target's "sweep" (else VIEW) per metre of height between b - y0 - spirit
+## and b + h - y0.
 static func hides(footprint: Rect2, base: float, top: float, target: Dictionary) -> bool:
 	var y0 := float(target.y)
 	var near := maxf(0.0, base - y0 - SPIRIT - float(target.get("rise", 0.0)))
 	var far := top - y0
 	if far <= 0.0: return false
 	var goal: Rect2 = (target.rect as Rect2).grow(MARGIN)
+	var along: Vector2 = target.get("sweep", VIEW)
 	var step := near
 	while step <= far + 0.001:
-		if Rect2(footprint.position + VIEW * step, footprint.size).grow(-0.01).intersects(goal): return true
+		if Rect2(footprint.position + along * step, footprint.size).grow(-0.01).intersects(goal): return true
 		step += 0.05
 	return false
 
@@ -203,21 +214,23 @@ const FLAT_CONTROLS := ["pressure_pads", "ball_pads", "hold_pads", "plates", "pl
 ## world script's control_extras (an invalid Callable adds none).
 static func control_bodies(view: Dictionary, extras: Callable = Callable()) -> Array:
 	var found: Array = []
+	var along := sweep(view)
 	for spot: Dictionary in LevelLayout.spots(view):
 		var kind := str(spot.kind)
 		if kind not in TALL_CONTROLS and kind not in FLAT_CONTROLS: continue
 		var at := Vector2(float(spot.position_cm[0]), float(spot.position_cm[1])) / 100.0
 		var y := float(spot.height_cm) / 100.0
-		found.append({"id": str(spot.id), "at": at, "radius": float(spot.radius_cm) / 100.0, "top": CONTROL_TOP if kind in TALL_CONTROLS else 0.0, "y": y})
+		found.append({"id": str(spot.id), "at": at, "radius": float(spot.radius_cm) / 100.0, "top": CONTROL_TOP if kind in TALL_CONTROLS else 0.0, "y": y, "sweep": along})
 		if not extras.is_valid(): continue
 		for extra: Dictionary in extras.call(spot):
-			found.append({"id": str(spot.id), "at": at + (extra.offset as Vector2), "radius": float(extra.radius), "top": float(extra.top), "y": y})
+			found.append({"id": str(spot.id), "at": at + (extra.offset as Vector2), "radius": float(extra.radius), "top": float(extra.top), "y": y, "sweep": along})
 	return found
 
 ## Whether two control bodies (control_bodies) draw into each other.
 static func bodies_touch(one: Dictionary, two: Dictionary) -> bool:
 	if absf(float(one.y) - float(two.y)) > 0.01: return false
-	var gap := _segments_apart(one.at, one.at + VIEW * float(one.top), two.at, two.at + VIEW * float(two.top))
+	var along: Vector2 = one.get("sweep", VIEW)
+	var gap := _segments_apart(one.at, one.at + along * float(one.top), two.at, two.at + along * float(two.top))
 	return gap < float(one.radius) + float(two.radius)
 
 ## The shortest distance between segments a0-a1 and b0-b1.
