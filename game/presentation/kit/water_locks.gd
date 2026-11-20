@@ -56,11 +56,7 @@ const CREAM := Color("f3e6c8")
 const STONE := Color("b8a283")
 const COPING := Color("dccaa4")
 const SHEET := Color("cfe7ea")
-## A waterfall's sheet thickness (m), its foam and mist, and how far out from
-## the spillway's face they lie over the pool (m).
-const FALLS_SHEET := 0.06
-const FOAM := Color("f4f8f6")
-const MIST := Color(0.94, 0.97, 0.97, 0.35)
+## How far out from the spillway's face a waterfall's mist lies over the pool (m).
 const FALLS_OUT := 0.22
 ## Door thickness and post width across the run (m).
 const THICKNESS := 0.08
@@ -588,31 +584,6 @@ static func _pour_mesh(length: float, fall: float) -> ArrayMesh:
 	if _pours.is_empty(): SessionRelease.on_exit(Callable(load(SCRIPT_PATH), "release_cached"))
 	_pours[key] = tool.commit()
 	return _pours[key]
-
-## A waterfall's foam and mist (spill_style "falls"), a row along the run's
-## length centred on its own origin, placed at the pool below each present.
-func _falls_spray(length: float, along_x: bool) -> Node3D:
-	var spray := Node3D.new()
-	spray.name = "FallsSpray"
-	spray.visible = false
-	add_child(spray)
-	var foam := StandardMaterial3D.new()
-	foam.albedo_color = FOAM
-	foam.roughness = 0.9
-	var mist := StandardMaterial3D.new()
-	mist.albedo_color = MIST
-	mist.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mist.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	var count := maxi(2, ceili(length / 0.3))
-	for index in range(count):
-		var along := (float(index) + 0.5) / float(count) * length - length * 0.5
-		var at := Vector3(along, 0.02, 0) if along_x else Vector3(0, 0.02, along)
-		var puff := Primitives.mesh_node(Primitives.sphere_mesh(0.16), foam, at, spray)
-		puff.scale = Vector3(1.3, 0.35, 1.0)
-		var cloud := Primitives.mesh_node(Primitives.sphere_mesh(0.32), mist, at + Vector3(0, 0.28 + 0.08 * float(index % 2), 0), spray)
-		cloud.scale = Vector3(1.4, 0.8, 1.4)
-		cloud.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	return spray
 
 ## The opening's doors: short timber doors side by side (none wider than
 ## DOOR_WIDTH), each with a small cream knob on its top rail, a capped stone
