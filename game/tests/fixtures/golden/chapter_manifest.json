@@ -22,6 +22,27 @@
 			],
 			"unlock_fruits": 0
 		},
+		"a-house-for-two@2": {
+			"definition_fixture": "cooperative/a-house-for-two-v2-definition.json",
+			"definition_hash": "9018b7e3323cc1f66fc7d4f292b419e7834d31bb5811b20672ddbc79ac79df38",
+			"family": "cooperative",
+			"flag": "A_HOUSE_FOR_TWO_V2_CHAPTER_ENABLED",
+			"hard": false,
+			"initial_checkpoint_hash": "735ff21f54921b093a5cad7ebaa8932e25afe8e9ee397c0a4fa64cac314f2979",
+			"initial_fixture": "cooperative/a-house-for-two-v2-initial-checkpoint.json",
+			"key": "a-house-for-two@2",
+			"level_id": "a-house-for-two",
+			"level_version": 2,
+			"max_branches": 7,
+			"premium": true,
+			"recording_version": 6,
+			"simulation_version": 17,
+			"stage_count": 2,
+			"supported_simulation_versions": [
+				17
+			],
+			"unlock_fruits": 0
+		},
 		"conservatory@1": {
 			"definition_fixture": "journey/conservatory-definition.json",
 			"definition_hash": "fd9fce12c4facd5fd659eedd5a510ea6b0ad796925458ccb73b4b37a893530d5",
@@ -108,6 +129,27 @@
 				16
 			],
 			"unlock_fruits": 0
+		},
+		"fog-marsh@1": {
+			"definition_fixture": "journey/fog-marsh-definition.json",
+			"definition_hash": "0cdfc1875835b016d69e446e9818f89a2bc6ab18664ad1acf6d9546e8994a5cd",
+			"family": "journey",
+			"flag": "FOG_MARSH_CHAPTER_ENABLED",
+			"hard": false,
+			"initial_checkpoint_hash": "2a26845d634218e9724f2c5b914581629e406d241f52aec475d09a9ed99d4197",
+			"initial_fixture": "journey/fog-marsh-initial-checkpoint.json",
+			"key": "fog-marsh@1",
+			"level_id": "fog-marsh",
+			"level_version": 1,
+			"max_branches": 7,
+			"premium": false,
+			"recording_version": 7,
+			"simulation_version": 16,
+			"stage_count": 3,
+			"supported_simulation_versions": [
+				16
+			],
+			"unlock_fruits": 3
 		},
 		"high-and-low@1": {
 			"definition_fixture": "cooperative/high-and-low-definition.json",
@@ -260,6 +302,27 @@
 			],
 			"unlock_fruits": 0
 		},
+		"rolling-home@2": {
+			"definition_fixture": "cooperative/rolling-home-v2-definition.json",
+			"definition_hash": "f5852fc8095aded1df95e7aef067a2e095891f5ecd72a4d197a7e48ecd16abca",
+			"family": "cooperative",
+			"flag": "ROLLING_HOME_V2_CHAPTER_ENABLED",
+			"hard": false,
+			"initial_checkpoint_hash": "9138dff3f0adb6cdba9f9b3a66efd5479b066edce10da1ce873a929f57d1ea42",
+			"initial_fixture": "cooperative/rolling-home-v2-initial-checkpoint.json",
+			"key": "rolling-home@2",
+			"level_id": "rolling-home",
+			"level_version": 2,
+			"max_branches": 7,
+			"premium": true,
+			"recording_version": 6,
+			"simulation_version": 17,
+			"stage_count": 2,
+			"supported_simulation_versions": [
+				17
+			],
+			"unlock_fruits": 0
+		},
 		"sleeping-lighthouse@2": {
 			"definition_fixture": "lighthouse/sleeping-lighthouse-v2-definition.json",
 			"definition_hash": "0f5a41aa23b53d9f97d47851740a1bdd484371bc128f8b319bed9f509a9e8149",
@@ -278,6 +341,27 @@
 			"stage_count": 6,
 			"supported_simulation_versions": [
 				11
+			],
+			"unlock_fruits": 0
+		},
+		"the-falls@1": {
+			"definition_fixture": "journey/the-falls-definition.json",
+			"definition_hash": "31c50a815a1a8c70a62c67234854ed36cbeb4044c871da0ca5bac49058cf7f8b",
+			"family": "journey",
+			"flag": "THE_FALLS_CHAPTER_ENABLED",
+			"hard": false,
+			"initial_checkpoint_hash": "e5f89e2c658358cac15e89f4a19278c05ada9b294ce18cd22ff980263a7777ad",
+			"initial_fixture": "journey/the-falls-initial-checkpoint.json",
+			"key": "the-falls@1",
+			"level_id": "the-falls",
+			"level_version": 1,
+			"max_branches": 7,
+			"premium": false,
+			"recording_version": 7,
+			"simulation_version": 16,
+			"stage_count": 4,
+			"supported_simulation_versions": [
+				16
 			],
 			"unlock_fruits": 0
 		},
@@ -405,6 +489,10 @@
 		"conservatory@2",
 		"high-and-low@2",
 		"the-wishing-well@2",
-		"first-steps@2"
+		"first-steps@2",
+		"rolling-home@2",
+		"a-house-for-two@2",
+		"the-falls@1",
+		"fog-marsh@1"
 	]
 }

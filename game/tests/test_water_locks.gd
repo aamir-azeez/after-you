@@ -19,6 +19,7 @@ const WaterData = preload("res://content/water/turn_of_the_tide.gd")
 var HARBOUR_LEVELS: Dictionary = WaterData.DATA.bodies.filter(func(body: Dictionary) -> bool: return body.id == "harbour")[0].levels
 var SEA_LEVELS: Dictionary = WaterData.DATA.bodies.filter(func(body: Dictionary) -> bool: return body.id == "sea")[0].levels
 const Registry = preload("res://services/chapter_registry.gd")
+const ChapterIndex = preload("res://content/chapters/index.gd")
 const JourneyCatalog = preload("res://core/journey/stage_catalog.gd")
 const Simulation = preload("res://core/journey/simulation.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
@@ -113,8 +114,9 @@ func _small_plans() -> void:
 	spill.present({"west": 0.3, "east": 0.3}, true)
 	_check(sheet != null and not sheet.visible, "No water falls while both sides stand under the lip")
 	holder.free()
-	# The same spillway in the "falls" look (rules 16's waterfall): a thicker
-	# sheet, and foam and mist on the pool below, only while water falls.
+	# The same spillway in the "falls" look (rules 16's waterfall): water
+	# pouring over the lip and landing in foam, and mist on the pool below,
+	# only while water falls.
 	var falls: WaterLocks = WaterLocks.new()
 	falls.spill_style = "falls"
 	var pool := Node3D.new()
@@ -123,8 +125,8 @@ func _small_plans() -> void:
 	var spray := falls.find_child("FallsSpray", true, false) as Node3D
 	var thick := falls.find_child("SpillSheet", true, false) as MeshInstance3D
 	falls.present(apart, true)
-	_check(spray != null and spray.visible and spray.get_child_count() >= 4 and (thick.mesh as BoxMesh).size.z + (thick.mesh as BoxMesh).size.x > 0.06, "A waterfall foams and mists over the pool while water falls")
-	_check(spray != null and is_equal_approx(spray.position.y, 0.2), "Its foam lies on the lower water")
+	_check(spray != null and spray.visible and spray.get_child_count() >= 1 and thick.visible and thick.mesh is ArrayMesh, "A waterfall pours over its lip and mists over the pool while water falls")
+	_check(absf(thick.position.y + thick.get_aabb().position.y - 0.2) < 0.05, "Its pour lands in foam on the lower water")
 	falls.present({"west": 0.3, "east": 0.3}, true)
 	_check(spray != null and not spray.visible, "No foam or mist while no water falls")
 	pool.free()
@@ -633,7 +635,9 @@ func _unwalkable_mouth() -> void:
 
 func _other_chapters() -> void:
 	for key: String in Registry.keys():
-		if key.begins_with("turn-of-the-tide"): continue
+		# A chapter on the water (its descriptor names a water file) hosts the
+		# kit and its locks, as Tide does.
+		if key.begins_with("turn-of-the-tide") or (key != LIGHTHOUSE and not str(ChapterIndex.data(key).get("water", "")).is_empty()): continue
 		var world: Node3D = LighthouseWorld.new() if key == LIGHTHOUSE else Registry.world_script(key).new()
 		root.add_child(world)
 		world.process_mode = Node.PROCESS_MODE_DISABLED

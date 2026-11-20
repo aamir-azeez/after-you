@@ -33,7 +33,7 @@ func _run() -> void:
 	_check(CarriedItemKit.build("teapot", Vector3.ZERO, holder).style == "parcel", "An unknown item style builds the parcel")
 	for style: String in Styles.SLOTS.current:
 		var piece: RefCounted = CurrentKit.build(style, [{"from": Vector3.ZERO, "to": Vector3(2, 0, 0), "control_id": "c", "value": "v"}], holder)
-		_check(piece.style == style and piece.moving_parts().size() == 2 and _meshes(piece.root) >= 6, "Current %s lays its marks in a bright row and a faint one" % style)
+		_check(piece.style == style and piece.moving_parts().size() == 2 and _meshes(piece.root) == 2 and (piece.moving_parts()[0].get_child(0) as MeshInstance3D).mesh.get_faces().size() >= 6 * 36, "Current %s lays its marks in a bright row and a faint one, one mesh a row" % style)
 	holder.free()
 	await _world()
 	print("CARRIED ITEMS WORLD: %d checks, %d failures" % [checks, failures])

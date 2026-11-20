@@ -275,6 +275,8 @@ func _observe(state: Dictionary, sounds: Dictionary) -> PackedInt32Array:
 	if state.is_empty(): return hold
 	_tick = int(state.get("tick", _tick))
 	_last_state = state
+	# Every tick, shown or stepped silently, for a world that keeps where the pips walked.
+	if is_instance_valid(world) and world.has_method("note_tick"): world.note_tick(state)
 	var seed: Variant = state.get("seed")
 	if seed is Dictionary and str(seed.get("status", "")) == "held" and str(seed.get("owner", "")) == str(state.get("active_slot", "")):
 		_carried_seed = seed

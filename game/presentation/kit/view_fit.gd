@@ -12,6 +12,18 @@ const BASE := Vector2(1280, 720)
 ## this angle, so a part built to face the camera faces along it.
 const CAMERA_FROM := Vector3(3, 13, 10)
 
+## Where a level's camera stands from the point it looks at: its dressing's
+## "camera": {"follow": {"from": [x, y, z]}} (the same yaw, a lower pitch,
+## island_world._follow_data), else CAMERA_FROM. Everything that faces or
+## sweeps along the view (the follow camera, endings, pair tags, label
+## bubbles, the prop rules) reads it from here.
+static func camera_from(dressing: Dictionary) -> Vector3:
+	var camera: Variant = dressing.get("camera", {})
+	var follow: Variant = camera.get("follow", {}) if camera is Dictionary else {}
+	var from: Variant = follow.get("from", []) if follow is Dictionary else []
+	if not from is Array or (from as Array).size() != 3: return CAMERA_FROM
+	return Vector3(float(from[0]), float(from[1]), float(from[2]))
+
 ## `authored` (a KEEP_HEIGHT camera size) for a view `shown` wide per unit of
 ## height, grown when that is narrower than `reference`. Unchanged otherwise.
 static func fit(authored: float, shown: float, reference: float = BASE.x / BASE.y) -> float:

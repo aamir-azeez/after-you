@@ -38,7 +38,9 @@ func _run() -> void:
 				world.camera_exploration._process(1.0/rate)
 				largest_deviation = maxf(largest_deviation,absf(world.camera.size-resting_size))
 			_check(largest_deviation < 0.0001 and world.camera.transform.is_equal_approx(resting_frame),"Standing still stays steady at %d Hz: %s"%[rate,key])
-		world.camera_exploration.zoom(0.65)
+		# A pinch inside the level's own limits (its follow data's "zoom").
+		var pinch: float = maxf(0.65, world.camera_exploration.minimum_zoom)
+		world.camera_exploration.zoom(pinch)
 		world.camera_exploration.pan_pixels(Vector2(80,40))
 		world._process(0.0)
 		world.camera_exploration._process(0.0)
@@ -47,7 +49,7 @@ func _run() -> void:
 			world.present(state)
 			world._process(1.0/60)
 			world.camera_exploration._process(1.0/60)
-		_check(is_equal_approx(world.camera.size,resting_size*0.65) and world.camera.transform.is_equal_approx(explored_frame),"Snapshots cannot amplify or undo exploration: "+key)
+		_check(is_equal_approx(world.camera.size,resting_size*pinch) and world.camera.transform.is_equal_approx(explored_frame),"Snapshots cannot amplify or undo exploration: "+key)
 		for frame in range(180):
 			world._process(1.0/60)
 			world.camera_exploration._process(1.0/60)
@@ -67,14 +69,16 @@ func _run() -> void:
 		completed.complete = true
 		world.present(completed)
 		var previous: float = world.camera.size
+		# Over a finished stage: the level's follow data's "done" size, else SCROLL_DONE_SIZE.
+		var done: float = world._scroll_done_size()
 		var monotonic := true
 		for frame in range(180):
 			if frame % 2 == 0: world.present(completed)
 			world._process(1.0/60)
 			world.camera_exploration._process(1.0/60)
-			monotonic = monotonic and world.camera.size >= previous-0.0001 and world.camera.size <= 10.6001
+			monotonic = monotonic and world.camera.size >= previous-0.0001 and world.camera.size <= done+0.0001
 			previous = world.camera.size
-		_check(monotonic and is_equal_approx(world.camera.size,10.6),"Completion zoom settles without pulsing: "+key)
+		_check(monotonic and is_equal_approx(world.camera.size,done),"Completion zoom settles without pulsing: "+key)
 		world.reduced_motion = true
 		world.present(state,true)
 		world._process(1.0/60)

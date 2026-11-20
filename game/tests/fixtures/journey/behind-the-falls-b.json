@@ -1,0 +1,24 @@
+{
+	"catch_assistance": true,
+	"checkpoint_hash": "18cc2e8d9cfe0d4936c6a795d860c824b58705bb52b546a2815ee901d2cb0fb5",
+	"completed": false,
+	"definition_hash": "31c50a815a1a8c70a62c67234854ed36cbeb4044c871da0ca5bac49058cf7f8b",
+	"duration_ticks": 504,
+	"final_state_hash": "68326bfc41e246de39d307603ae3956521931f0249c8f3976eba8b8d985f5979",
+	"level_id": "the-falls",
+	"level_version": 1,
+	"outcome": {
+		"objective_complete": false,
+		"source_ready": true
+	},
+	"packed": "AQ0MAJwCAOe4AmQAAhkAEABkAgBLsAFkAAJLABacAALnACIAZAIAWKgDAAAcFhuYQOXStJ7dVO8dLKcJyQoZYWu0VkIJq5CJBWIkEozxycj5SXOHXIQP937KhFRME2JXk2nmrlPqW7Qn5jD/G8CakV1N2vxHZMhvW+L2AXupPJjbZj3rIs1iW27n2dpWIOzqFs0Y+1Vy3BKRC8pAIPZckHXlVVNKcTPpnAqVpFZkHgViGqZ3o2Tt4Klp9CbpmETVlgh83ZMubuqVrLg1O85GJK+IdALUxPp4S5bglmPmV2aVQwfCSrtJxeYBFe4N9ZfboN6SYg==",
+	"player_slot": "p0",
+	"recording_hash": "8523e67116a4fde0770400059f81cba1e4a9b7d005c20a35c13c8d45e68e36ed",
+	"role": "b",
+	"schema_version": 7,
+	"simulation_version": 16,
+	"source_recording_hash": "01e68c7687176d1796d35514cfca4ae1580eabb68e7607fd54ae365a4d3911c6",
+	"stage_id": "behind-the-falls",
+	"stage_version": 1,
+	"tick_rate": 30
+}

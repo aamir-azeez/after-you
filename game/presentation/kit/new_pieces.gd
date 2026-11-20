@@ -16,7 +16,10 @@ extends RefCounted
 ##     its head otherwise, or as a wheel ride ("wheel"), turning while open;
 ##   - water in a weight lift's pan while a lantern its lift reads burns (the
 ##     lantern pump fills the pan);
-##   - the fog round lantern levers (kit/fog.gd, the dressing's "fog" pick).
+##   - the fog round lantern levers (kit/fog.gd, the dressing's "fog" pick),
+##     and the thick fog over the whole stage when the dressing's look has a
+##     cover (kit/fog_cover.gd), thinned round every control and opened for
+##     good where the stage's pips have walked (kit/turn_paths.gd).
 ## The lantern lever, the weight pans, the boards and the rope wheel are ordinary lever, pad
 ## and selector styles the world builds itself.
 ## Presentation only: nothing here feeds the simulation.
@@ -25,8 +28,10 @@ const Raft = preload("res://presentation/kit/pieces/raft.gd")
 const Lift = preload("res://presentation/kit/pieces/lift.gd")
 const RopeLadder = preload("res://presentation/kit/pieces/rope_ladder.gd")
 const Fog = preload("res://presentation/kit/fog.gd")
-## The water over a shut path behind the falls, and in a filled pan.
-const FALLS_WATER := Color(0.80, 0.90, 0.93, 0.55)
+const FogCover = preload("res://presentation/kit/fog_cover.gd")
+const Parts = preload("res://presentation/kit/pieces/parts.gd")
+const FallsCurtain = preload("res://presentation/kit/pieces/falls_curtain.gd")
+## The water in a filled pan.
 const PAN_WATER := Color("7fa7b0")
 ## A lift's ride, metres a second.
 const LIFT_RATE := 0.8
@@ -49,9 +54,12 @@ var _platforms: Array = []
 var _ladders: Dictionary = {}
 ## Path id -> the falls' water hung over it while shut.
 var _curtains: Dictionary = {}
+## Rope bridge id -> its slats wound in, shown while shut.
+var _wound: Dictionary = {}
 ## [{"node", "lever"}]: water in a pan while its lantern burns.
 var _fills: Array = []
 var fog: RefCounted
+var cover: RefCounted
 
 func _init(world: Node3D, view: Dictionary) -> void:
 	_world = world
@@ -75,23 +83,13 @@ func lay_deck(definition: Dictionary, deck: Node3D, width: float, depth: float, 
 	var style := deck_style(str(definition.id))
 	if not style.is_empty(): Deck.lay(style, deck, width, depth, across_x, low, high)
 	if style == "falls_path":
-		# The falls' water over the path, shown while the path is shut.
-		var rect := _rect(definition.rect_cm)
-		var height := float(definition.get("height_cm", 0)) / 100.0
-		var curtain := MeshInstance3D.new()
-		curtain.name = "FallsCurtain"
-		var sheet := BoxMesh.new()
-		sheet.size = Vector3(rect.size.x, 1.6, rect.size.y)
-		var water := StandardMaterial3D.new()
-		water.albedo_color = FALLS_WATER
-		water.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		water.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		sheet.material = water
-		curtain.mesh = sheet
-		curtain.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		curtain.position = Vector3(rect.get_center().x, height + 0.8, rect.get_center().y)
-		_world.terrain.add_child(curtain)
-		_curtains[str(definition.id)] = curtain
+		# The rock lip over the path and the falls' water pouring off it, shown
+		# while the path is shut (kit/pieces/falls_curtain.gd).
+		# Beside the deck at the deck's own height, so whatever lifts the deck lifts it.
+		_curtains[str(definition.id)] = FallsCurtain.build(_rect(definition.rect_cm), deck.position.y, deck.get_parent() as Node3D)
+	elif style == "rope":
+		# The posts stand for good; shut, the slats lie wound in at the gap's end.
+		_wound[str(definition.id)] = Deck.rope_ends(deck.get_parent() as Node3D, deck.position, width, depth, across_x, low, high)
 
 ## A one way stair's ladder, in place of the world's treads.
 func build_ladder(stair: Dictionary) -> void:
@@ -128,6 +126,14 @@ func build(lantern_spots: Dictionary) -> void:
 			entry.piece = Raft.build(_world._piece_style("raft", str(platform.id)), centres, rect.size, _world.terrain)
 		_platforms.append(entry)
 	fog = Fog.build(str(_world.dressing.get("fog", "mist")) if not _world.dressing.is_empty() else "mist", _view, lantern_spots, _world.terrain)
+	var spots: Array = []
+	for field: String in ["levers", "controls", "pressure_pads", "ball_pads"]:
+		for spot: Dictionary in _view.get(field, []):
+			if not lantern_spots.has(str(spot.get("id", ""))): spots.append([_world.terrain.to_global(_world._at(spot)), float(spot.get("radius_cm", 28)) / 100.0])
+	if _view.has("goal") and _view.goal.has("position_cm"): spots.append([_world.terrain.to_global(_world._at(_view.goal)), float(_view.goal.get("radius_cm", 40)) / 100.0])
+	var lanterns: Dictionary = {}
+	for id: String in lantern_spots: lanterns[id] = _world.terrain.to_global(lantern_spots[id])
+	cover = FogCover.build(str(_world.dressing.get("look", "")), _view.get("islands", []), spots, lanterns, _world.terrain)
 
 ## Each snapshot: platforms toward their open stop, ladders hung or rolled,
 ## the fog cleared round lit lanterns.
@@ -146,6 +152,7 @@ func present(state: Dictionary, immediate: bool) -> void:
 				entry.piece.arrive(0.0)
 		else: entry.piece.set_value(index, immediate)
 	for id: String in _curtains: _curtains[id].visible = not bool(routes.get(id, false))
+	for id: String in _wound: _wound[id].visible = not bool(routes.get(id, false))
 	for fill: Dictionary in _fills: fill.node.visible = bool(state.get("levers", {}).get(fill.lever, false))
 	for id: String in _ladders:
 		var ladder: Dictionary = _ladders[id]
@@ -212,13 +219,39 @@ func advance(delta: float) -> void:
 				entry.piece.arrive(float(entry.target) - was)
 		elif entry.piece.moving(): entry.piece.advance(delta)
 
+## The fog's slow drift at `seconds` on the world's clock (each frame unless
+## motion is reduced).
+func drift(seconds: float) -> void:
+	if fog != null: fog.drift(seconds)
+	if cover != null: cover.drift(seconds)
+
+## The cover's clear pocket round the played pip's spirit (global m), each frame.
+func follow(at: Vector3) -> void:
+	if cover != null: cover.follow(at)
+
+## The cover opened for good where the stage's pips have been (kit/turn_paths.gd):
+## all of it (a new turn, a rebuilt cover), or what the turn just added.
+func show_paths(paths: RefCounted) -> void:
+	if cover != null: cover.show_paths(paths)
+
+func paths_changed(change: Dictionary) -> void:
+	if cover != null: cover.paths_changed(change)
+
+## Each frame (world clock `seconds`): the cover's mask in bounded steps.
+func advance_cover(delta: float, seconds: float) -> void:
+	if cover != null: cover.advance(delta, seconds)
+
+func set_quality(quality: String) -> void:
+	if cover != null: cover.set_quality(quality)
 ## Every node that moves or changes after the build, kept whole by the static fold.
 func moving_nodes() -> Array:
 	var nodes: Array = []
 	for entry: Dictionary in _platforms: nodes.append_array(entry.piece.moving_parts())
 	for ladder: Dictionary in _ladders.values(): nodes.append_array(ladder.piece.moving_parts())
 	if fog != null: nodes.append(fog.node)
+	if cover != null: nodes.append(cover.node)
 	nodes.append_array(_curtains.values())
+	nodes.append_array(_wound.values())
 	for fill: Dictionary in _fills: nodes.append(fill.node)
 	return nodes
 

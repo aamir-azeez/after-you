@@ -1,0 +1,1040 @@
+{
+	"bridges": [
+		{
+			"from_surface": "path",
+			"height_cm": 0,
+			"id": "west-boards",
+			"rect_cm": [
+				450,
+				-205,
+				1950,
+				-109
+			],
+			"to_surface": "middle"
+		},
+		{
+			"from_surface": "path",
+			"height_cm": 0,
+			"id": "reed-stones",
+			"rect_cm": [
+				450,
+				-9,
+				1950,
+				87
+			],
+			"to_surface": "middle"
+		},
+		{
+			"from_surface": "path",
+			"height_cm": 0,
+			"id": "high-boards",
+			"rect_cm": [
+				450,
+				-569,
+				3900,
+				-473
+			],
+			"to_surface": "jetty"
+		},
+		{
+			"from_surface": "middle",
+			"height_cm": 0,
+			"id": "low-boards",
+			"rect_cm": [
+				2124,
+				140,
+				2220,
+				350
+			],
+			"to_surface": "boat-steps"
+		},
+		{
+			"from_surface": "middle",
+			"height_cm": 0,
+			"id": "middle-jetty",
+			"rect_cm": [
+				2400,
+				-121,
+				3900,
+				-25
+			],
+			"to_surface": "jetty"
+		},
+		{
+			"from_surface": "boat-steps",
+			"height_cm": 0,
+			"id": "raft-boat",
+			"rect_cm": [
+				2400,
+				420,
+				2520,
+				532
+			],
+			"to_surface": "jetty"
+		},
+		{
+			"from_surface": "boat-steps",
+			"height_cm": 0,
+			"id": "raft-jetty",
+			"rect_cm": [
+				4050,
+				210,
+				4170,
+				322
+			],
+			"to_surface": "jetty"
+		},
+		{
+			"from_surface": "jetty",
+			"height_cm": 0,
+			"id": "over-to-dock",
+			"rect_cm": [
+				4350,
+				-51,
+				5350,
+				45
+			],
+			"to_surface": "dock"
+		},
+		{
+			"from_surface": "dock",
+			"height_cm": 0,
+			"id": "plank",
+			"rect_cm": [
+				5950,
+				439,
+				7550,
+				535
+			],
+			"to_surface": "bank"
+		},
+		{
+			"from_surface": "dock",
+			"height_cm": 0,
+			"id": "north-boards",
+			"rect_cm": [
+				5950,
+				-560,
+				6450,
+				-426
+			],
+			"to_surface": "north"
+		},
+		{
+			"from_surface": "north",
+			"height_cm": 0,
+			"id": "stair",
+			"rect_cm": [
+				7050,
+				-560,
+				7550,
+				-426
+			],
+			"to_surface": "landing"
+		},
+		{
+			"from_surface": "landing",
+			"height_cm": 0,
+			"id": "bank-landing",
+			"rect_cm": [
+				7724,
+				-210,
+				7820,
+				210
+			],
+			"to_surface": "bank"
+		},
+		{
+			"from_surface": "bank",
+			"height_cm": 0,
+			"id": "swirl-stones",
+			"rect_cm": [
+				8000,
+				369,
+				8650,
+				465
+			],
+			"to_surface": "reeds"
+		},
+		{
+			"from_surface": "north",
+			"height_cm": 0,
+			"id": "bend-boards",
+			"rect_cm": [
+				6699,
+				-280,
+				6795,
+				-70
+			],
+			"to_surface": "bend"
+		},
+		{
+			"from_surface": "landing",
+			"height_cm": 0,
+			"id": "over-to-landing",
+			"rect_cm": [
+				8000,
+				-560,
+				8500,
+				-426
+			],
+			"to_surface": "landing-3"
+		},
+		{
+			"from_surface": "landing-3",
+			"height_cm": 0,
+			"id": "lift-low",
+			"rect_cm": [
+				8950,
+				-540,
+				9600,
+				-440
+			],
+			"to_surface": "stilts"
+		},
+		{
+			"from_surface": "landing-3",
+			"height_cm": 192,
+			"id": "lift-high",
+			"rect_cm": [
+				8950,
+				-540,
+				9600,
+				-440
+			],
+			"to_surface": "stilts"
+		},
+		{
+			"from_surface": "stilts",
+			"height_cm": 192,
+			"id": "stilts-jetty",
+			"rect_cm": [
+				10050,
+				-541,
+				11050,
+				-445
+			],
+			"to_surface": "jetty-3"
+		},
+		{
+			"from_surface": "jetty-3",
+			"height_cm": 192,
+			"id": "door",
+			"rect_cm": [
+				11224,
+				-70,
+				11320,
+				210
+			],
+			"to_surface": "office"
+		}
+	],
+	"closing_ticks": 30,
+	"drops": [],
+	"id": "fog-marsh",
+	"islands": [
+		{
+			"height_cm": 0,
+			"id": "path",
+			"rect_cm": [
+				0,
+				-630,
+				450,
+				210
+			]
+		},
+		{
+			"height_cm": 0,
+			"id": "middle",
+			"rect_cm": [
+				1950,
+				-280,
+				2400,
+				140
+			]
+		},
+		{
+			"height_cm": 0,
+			"id": "boat-steps",
+			"rect_cm": [
+				1950,
+				350,
+				2400,
+				630
+			]
+		},
+		{
+			"height_cm": 0,
+			"id": "jetty",
+			"rect_cm": [
+				3900,
+				-630,
+				4350,
+				210
+			]
+		},
+		{
+			"height_cm": 0,
+			"id": "dock",
+			"rect_cm": [
+				5350,
+				-630,
+				5950,
+				630
+			]
+		},
+		{
+			"height_cm": 0,
+			"id": "north",
+			"rect_cm": [
+				6450,
+				-630,
+				7050,
+				-280
+			]
+		},
+		{
+			"height_cm": 0,
+			"id": "bend",
+			"rect_cm": [
+				6525,
+				-70,
+				6975,
+				140
+			]
+		},
+		{
+			"height_cm": 0,
+			"id": "landing",
+			"rect_cm": [
+				7550,
+				-630,
+				8000,
+				-210
+			]
+		},
+		{
+			"height_cm": 0,
+			"id": "bank",
+			"rect_cm": [
+				7550,
+				210,
+				8000,
+				630
+			]
+		},
+		{
+			"height_cm": 0,
+			"id": "reeds",
+			"rect_cm": [
+				8650,
+				210,
+				9100,
+				630
+			]
+		},
+		{
+			"height_cm": 0,
+			"id": "landing-3",
+			"rect_cm": [
+				8500,
+				-630,
+				8950,
+				-70
+			]
+		},
+		{
+			"height_cm": 192,
+			"id": "stilts",
+			"rect_cm": [
+				9600,
+				-630,
+				10050,
+				-70
+			]
+		},
+		{
+			"height_cm": 192,
+			"id": "jetty-3",
+			"rect_cm": [
+				11050,
+				-630,
+				11500,
+				-70
+			]
+		},
+		{
+			"height_cm": 192,
+			"id": "office",
+			"rect_cm": [
+				11050,
+				210,
+				11500,
+				630
+			]
+		}
+	],
+	"item_spots": [
+		{
+			"height_cm": 0,
+			"id": "channel",
+			"position_cm": [
+				6300,
+				56
+			],
+			"surface_id": ""
+		},
+		{
+			"height_cm": 0,
+			"id": "bend",
+			"position_cm": [
+				6750,
+				70
+			],
+			"surface_id": "bend"
+		},
+		{
+			"height_cm": 0,
+			"id": "landing",
+			"position_cm": [
+				7910,
+				-574
+			],
+			"surface_id": "landing"
+		},
+		{
+			"height_cm": 0,
+			"id": "reeds",
+			"position_cm": [
+				8740,
+				266
+			],
+			"surface_id": "reeds"
+		},
+		{
+			"height_cm": 0,
+			"id": "pan",
+			"position_cm": [
+				8560,
+				-126
+			],
+			"surface_id": "landing-3"
+		},
+		{
+			"height_cm": 192,
+			"id": "top-pan",
+			"position_cm": [
+				9990,
+				-126
+			],
+			"surface_id": "stilts"
+		},
+		{
+			"height_cm": 192,
+			"id": "desk",
+			"position_cm": [
+				11110,
+				574
+			],
+			"surface_id": "office"
+		}
+	],
+	"items": [
+		{
+			"at": "channel",
+			"id": "pipsport"
+		}
+	],
+	"premium": false,
+	"props": [],
+	"schema_version": 7,
+	"simulation_version": 16,
+	"stages": [
+		{
+			"ball_pads": [],
+			"controls": [
+				{
+					"height_cm": 0,
+					"id": "rope",
+					"initial": "BOAT",
+					"kind": "selector",
+					"position_cm": [
+						4260,
+						126
+					],
+					"radius_cm": 28,
+					"surface_id": "jetty",
+					"values": [
+						"BOAT",
+						"JETTY"
+					]
+				}
+			],
+			"entry_latch_routes": [],
+			"first_player_slot": "p0",
+			"gates": [
+				{
+					"route_id": "middle-jetty"
+				},
+				{
+					"route_id": "west-boards",
+					"when": {
+						"lever_id": "west"
+					}
+				},
+				{
+					"route_id": "high-boards",
+					"when": {
+						"lever_id": "high"
+					}
+				},
+				{
+					"route_id": "low-boards",
+					"when": {
+						"all": [
+							{
+								"lever_id": "east"
+							},
+							{
+								"not": {
+									"lever_id": "lantern"
+								}
+							}
+						]
+					}
+				},
+				{
+					"route_id": "reed-stones",
+					"when": {
+						"lever_id": "lantern"
+					}
+				},
+				{
+					"route_id": "raft-boat",
+					"when": {
+						"control_id": "rope",
+						"value": "BOAT"
+					}
+				},
+				{
+					"route_id": "raft-jetty",
+					"when": {
+						"control_id": "rope",
+						"value": "JETTY"
+					}
+				}
+			],
+			"goal": {
+				"height_cm": 0,
+				"id": "stream-goal",
+				"owner_slot": "p1",
+				"position_cm": [
+					4125,
+					-420
+				],
+				"radius_cm": 48,
+				"surface_id": "jetty"
+			},
+			"goal_policy": {
+				"kind": "ring",
+				"when": {
+					"lever_id": "lantern"
+				}
+			},
+			"id": "where-the-stream-went",
+			"kind": "route_endpoint",
+			"levers": [
+				{
+					"height_cm": 0,
+					"id": "east",
+					"position_cm": [
+						90,
+						126
+					],
+					"radius_cm": 28,
+					"surface_id": "path"
+				},
+				{
+					"height_cm": 0,
+					"id": "west",
+					"position_cm": [
+						2010,
+						588
+					],
+					"radius_cm": 28,
+					"surface_id": "boat-steps"
+				},
+				{
+					"height_cm": 0,
+					"id": "high",
+					"position_cm": [
+						2040,
+						-224
+					],
+					"radius_cm": 28,
+					"surface_id": "middle"
+				},
+				{
+					"height_cm": 0,
+					"id": "lantern",
+					"position_cm": [
+						2310,
+						-224
+					],
+					"radius_cm": 28,
+					"surface_id": "middle"
+				}
+			],
+			"platforms": [
+				{
+					"id": "raft",
+					"stops": [
+						"raft-boat",
+						"raft-jetty"
+					]
+				}
+			],
+			"pressure_pads": [],
+			"receiver_action_ticks": 2,
+			"receiver_route_cm": [
+				[
+					4125,
+					-420
+				]
+			],
+			"source_policy": {
+				"kind": "route_endpoint",
+				"when": {}
+			},
+			"turn_cap": 10,
+			"version": 1
+		},
+		{
+			"ball_pads": [],
+			"controls": [
+				{
+					"height_cm": 0,
+					"id": "current",
+					"initial": "SOUTH",
+					"kind": "selector",
+					"position_cm": [
+						5440,
+						560
+					],
+					"radius_cm": 28,
+					"surface_id": "dock",
+					"values": [
+						"SOUTH",
+						"NORTH"
+					]
+				}
+			],
+			"current_legs": [
+				{
+					"control_id": "current",
+					"from": "channel",
+					"to": "bend",
+					"value": "NORTH"
+				},
+				{
+					"control_id": "current",
+					"from": "bend",
+					"to": "landing",
+					"value": "SOUTH",
+					"when": {
+						"pad_id": "water-gate"
+					}
+				},
+				{
+					"control_id": "current",
+					"from": "bend",
+					"stop": {
+						"pad_id": "water-gate"
+					},
+					"to": "reeds",
+					"value": "SOUTH"
+				}
+			],
+			"entry_latch_routes": [],
+			"first_player_slot": "p1",
+			"gates": [
+				{
+					"route_id": "over-to-dock"
+				},
+				{
+					"route_id": "bank-landing"
+				},
+				{
+					"route_id": "plank",
+					"when": {
+						"pad_id": "plank-board"
+					}
+				},
+				{
+					"route_id": "stair",
+					"when": {
+						"lever_id": "stair-lever"
+					}
+				},
+				{
+					"route_id": "north-boards",
+					"when": {
+						"lever_id": "boards-lever"
+					}
+				},
+				{
+					"route_id": "swirl-stones",
+					"when": {
+						"not": {
+							"lever_id": "north-lantern"
+						}
+					}
+				},
+				{
+					"route_id": "bend-boards",
+					"when": {
+						"lever_id": "north-lantern"
+					}
+				}
+			],
+			"goal": {
+				"height_cm": 0,
+				"id": "catch-goal",
+				"owner_slot": "p1",
+				"position_cm": [
+					6750,
+					-490
+				],
+				"radius_cm": 48,
+				"surface_id": "north"
+			},
+			"goal_policy": {
+				"kind": "ring",
+				"when": {
+					"all": [
+						{
+							"lever_id": "north-lantern"
+						},
+						{
+							"carried": true,
+							"item_id": "pipsport"
+						}
+					]
+				}
+			},
+			"id": "catch-the-pipsport",
+			"item_starts": {
+				"pipsport": "channel"
+			},
+			"kind": "route_endpoint",
+			"levers": [
+				{
+					"height_cm": 0,
+					"id": "stair-lever",
+					"position_cm": [
+						5440,
+						-560
+					],
+					"radius_cm": 28,
+					"surface_id": "dock"
+				},
+				{
+					"height_cm": 0,
+					"id": "boards-lever",
+					"position_cm": [
+						7910,
+						-280
+					],
+					"radius_cm": 28,
+					"surface_id": "landing"
+				},
+				{
+					"height_cm": 0,
+					"id": "north-lantern",
+					"position_cm": [
+						6990,
+						-336
+					],
+					"radius_cm": 28,
+					"surface_id": "north"
+				}
+			],
+			"pressure_pads": [
+				{
+					"height_cm": 0,
+					"id": "plank-board",
+					"position_cm": [
+						5725,
+						-210
+					],
+					"radius_cm": 32,
+					"surface_id": "dock"
+				},
+				{
+					"height_cm": 0,
+					"id": "water-gate",
+					"position_cm": [
+						9010,
+						560
+					],
+					"radius_cm": 32,
+					"surface_id": "reeds"
+				}
+			],
+			"receiver_action_ticks": 2,
+			"receiver_route_cm": [
+				[
+					6750,
+					-490
+				]
+			],
+			"source_policy": {
+				"kind": "route_endpoint",
+				"when": {}
+			},
+			"turn_cap": 10,
+			"version": 1
+		},
+		{
+			"ball_pads": [],
+			"controls": [],
+			"entry_latch_routes": [],
+			"first_player_slot": "p1",
+			"gates": [
+				{
+					"route_id": "stair"
+				},
+				{
+					"route_id": "over-to-landing"
+				},
+				{
+					"route_id": "stilts-jetty"
+				},
+				{
+					"route_id": "lift-low",
+					"when": {
+						"not": {
+							"all": [
+								{
+									"any": [
+										{
+											"any": [
+												{
+													"pad_id": "pan"
+												},
+												{
+													"item_id": "pipsport",
+													"spot_id": "pan"
+												}
+											]
+										},
+										{
+											"lever_id": "home-lantern"
+										}
+									]
+								},
+								{
+									"not": {
+										"any": [
+											{
+												"pad_id": "top-pan"
+											},
+											{
+												"item_id": "pipsport",
+												"spot_id": "top-pan"
+											}
+										]
+									}
+								}
+							]
+						}
+					}
+				},
+				{
+					"route_id": "lift-high",
+					"when": {
+						"all": [
+							{
+								"any": [
+									{
+										"any": [
+											{
+												"pad_id": "pan"
+											},
+											{
+												"item_id": "pipsport",
+												"spot_id": "pan"
+											}
+										]
+									},
+									{
+										"lever_id": "home-lantern"
+									}
+								]
+							},
+							{
+								"not": {
+									"any": [
+										{
+											"pad_id": "top-pan"
+										},
+										{
+											"item_id": "pipsport",
+											"spot_id": "top-pan"
+										}
+									]
+								}
+							}
+						]
+					}
+				},
+				{
+					"route_id": "rope-ladder"
+				},
+				{
+					"route_id": "door",
+					"when": {
+						"pad_id": "step"
+					}
+				}
+			],
+			"goal": {
+				"height_cm": 192,
+				"id": "home-goal",
+				"owner_slot": "p1",
+				"position_cm": [
+					11140,
+					-420
+				],
+				"radius_cm": 48,
+				"surface_id": "jetty-3"
+			},
+			"goal_policy": {
+				"kind": "ring",
+				"when": {
+					"all": [
+						{
+							"item_id": "pipsport",
+							"spot_id": "desk"
+						},
+						{
+							"lever_id": "home-lantern"
+						}
+					]
+				}
+			},
+			"id": "carry-it-home",
+			"item_starts": {
+				"pipsport": "p1"
+			},
+			"kind": "route_endpoint",
+			"levers": [
+				{
+					"height_cm": 192,
+					"id": "home-lantern",
+					"position_cm": [
+						11440,
+						574
+					],
+					"radius_cm": 28,
+					"surface_id": "office"
+				}
+			],
+			"platforms": [
+				{
+					"id": "lift",
+					"stops": [
+						"lift-low",
+						"lift-high"
+					]
+				}
+			],
+			"pressure_pads": [
+				{
+					"height_cm": 0,
+					"id": "pan",
+					"position_cm": [
+						8560,
+						-126
+					],
+					"radius_cm": 32,
+					"surface_id": "landing-3"
+				},
+				{
+					"height_cm": 192,
+					"id": "top-pan",
+					"position_cm": [
+						9990,
+						-126
+					],
+					"radius_cm": 32,
+					"surface_id": "stilts"
+				},
+				{
+					"height_cm": 192,
+					"id": "step",
+					"position_cm": [
+						11440,
+						-574
+					],
+					"radius_cm": 32,
+					"surface_id": "jetty-3"
+				}
+			],
+			"receiver_action_ticks": 2,
+			"receiver_route_cm": [
+				[
+					11140,
+					-420
+				]
+			],
+			"source_policy": {
+				"kind": "route_endpoint",
+				"when": {}
+			},
+			"turn_cap": 10,
+			"version": 1
+		}
+	],
+	"stairs": [
+		{
+			"axis": "x",
+			"from_height_cm": 0,
+			"from_surface": "landing-3",
+			"hands": true,
+			"id": "rope-ladder",
+			"one_way": "up",
+			"rect_cm": [
+				8950,
+				-236,
+				9600,
+				-156
+			],
+			"to_height_cm": 192,
+			"to_surface": "stilts"
+		}
+	],
+	"starts": {
+		"p0": {
+			"height_cm": 0,
+			"position_cm": [
+				225,
+				-70
+			],
+			"surface_id": "path"
+		},
+		"p1": {
+			"height_cm": 0,
+			"position_cm": [
+				2175,
+				504
+			],
+			"surface_id": "boat-steps"
+		}
+	},
+	"turn_limits": {
+		"a_ticks": 3150,
+		"b_ticks": 3150
+	},
+	"version": 1
+}

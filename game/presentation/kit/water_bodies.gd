@@ -31,6 +31,9 @@ extends RefCounted
 ##   occupy(spirits, routes)    each snapshot: walls fade, doors dip
 ##   advance(delta)             each frame: water, then doors, then fading walls
 ## A staged build gives the frame back through the world's _build_step.
+## The world presentation/water_world.gd makes these calls; a world on the
+## water extends it. A body whose "selector" is "" is still water: it rests at
+## its one level whatever the controls show.
 const Primitives = preload("res://presentation/kit/primitives.gd")
 const DefinitionGeometry = preload("res://presentation/kit/definition_geometry.gd")
 const WaterLocks = preload("res://presentation/kit/water_locks.gd")
@@ -111,6 +114,24 @@ func start(stage: Dictionary, block: Dictionary, standing: Array = []) -> void:
 
 func seabed() -> float:
 	return float(water.get("seabed", 0.0))
+
+## Body `id`'s own floor (m): its "bed", else the block's seabed. A climb of
+## pools (The Falls) gives each pool its own, so a high pool is not water
+## all the way down to the lowest pool's floor: its pebbles, the walls of the
+## floors standing in it and the water's depth all stop there.
+func bed(id: String) -> float:
+	for body: Dictionary in water.get("bodies", []):
+		if str(body.id) == id: return float(body.get("bed", seabed()))
+	return seabed()
+
+## The floor under plan point `at` (cm): the bed of the first body whose
+## rects hold it, else the seabed.
+func bed_at(at: Vector2) -> float:
+	for body: Dictionary in water.get("bodies", []):
+		if not body.has("bed"): continue
+		for r: Array in body.get("rects", []):
+			if at.x >= float(r[0]) and at.x <= float(r[2]) and at.y >= float(r[1]) and at.y <= float(r[3]): return float(body.bed)
+	return seabed()
 
 func wall_top() -> float:
 	return float(water.get("wall_top", 0.0))
@@ -453,22 +474,22 @@ func set_level(id: String, level: float, immediate: bool) -> void:
 	if immediate or host.reduced_motion: _show(root, level)
 
 func _show(root: Node3D, level: float) -> void:
-	root.set_meta("shown", level)
-	root.position.y = level
-	root.scale.y = maxf(level - seabed(), 0.02)
 	var id := ""
 	for key: String in bodies:
 		if bodies[key] == root: id = key
+	root.set_meta("shown", level)
+	root.position.y = level
+	root.scale.y = maxf(level - bed(id), 0.02)
 	for rider: Array in _riders:
 		if rider[0] == id: (rider[1] as Callable).call(level)
 	for flood: String in floods:
 		if floods[flood].body == root: _fill(floods[flood], level)
 	look.show_level(id, level)
 
-## Stretches a flood from the seabed to its water's `level`, as _show does a body.
+## Stretches a flood from its water's bed to its `level`, as _show does a body.
 func _fill(flood: Dictionary, level: float) -> void:
 	(flood.node as Node3D).position.y = level
-	(flood.node as Node3D).scale.y = maxf(level - seabed(), 0.02)
+	(flood.node as Node3D).scale.y = maxf(level - bed(str(flood.water)), 0.02)
 
 ## While a crossing closes under the journey's closing rules (route id ->
 ## ticks left before it shuts, from the snapshot), the water still moving slows to reach its new level as
@@ -528,6 +549,13 @@ func build_walls() -> void:
 func holds_water(wall: MeshInstance3D) -> void:
 	walls.append(wall.transform * wall.get_aabb())
 
+## Every wall built so far and the locks' stones (terrain space): what can
+## hide what stands behind it from the camera.
+func standing_walls() -> Array[AABB]:
+	var found: Array[AABB] = walls.duplicate()
+	if locks != null: found.append_array(locks.stones)
+	return found
+
 func _box(size: Vector3, color: Color, at: Vector3, parent: Node3D) -> MeshInstance3D:
 	return Primitives.mesh_node(Primitives.cached_box(size), Primitives.shared_material(color), at, parent)
 
@@ -583,7 +611,9 @@ func _build_parapets() -> void:
 		var outward: float = wall[2]
 		var along_x: bool = wall[3]
 		var height: float = wall[4]
-		if height >= highest(): _edge_box(run, edge, outward, along_x, 0.10, height - 0.16, height - 0.03, water.fender, root, 0.6).name = "QuayFender"
+		# A floor over the highest water, or standing above the walls' top (a
+		# tier of a climb of pools), is a quay: a fender, no parapet.
+		if height >= highest() or height - 0.20 >= wall_top(): _edge_box(run, edge, outward, along_x, 0.10, height - 0.16, height - 0.03, water.fender, root, 0.6).name = "QuayFender"
 		else:
 			var pieces := _capped_wall(run, edge, outward, along_x, 0.09, height - 0.20, root, 0.6, "Parapet", "ParapetCoping")
 			var size := (pieces[0].mesh as BoxMesh).size
@@ -670,7 +700,7 @@ func _island_parapet_runs(island: Dictionary, holes: Array, routes: Array) -> Ar
 			else: runs[-1][1] = t + 2.0
 			t += 4.0
 		for run: Array in runs:
-			if run[2] == "wall": found.append([run, edge, outward, along_x, height])
+			if run[2] == "wall": found.append([_clear_of_mouths(run, mouths), edge, outward, along_x, height])
 		await host._build_step()
 	return found
 
@@ -725,6 +755,17 @@ static func _spans_on_line(rects: Array, along_x: bool, line: float) -> Array:
 		if along_x and line > float(rect[1]) and line < float(rect[3]): spans.append([float(rect[0]), float(rect[2])])
 		elif not along_x and line > float(rect[0]) and line < float(rect[2]): spans.append([float(rect[1]), float(rect[3])])
 	return spans
+
+## A wall run cut back to the edge of any crossing mouth it reaches into. The
+## samples are 4 cm apart, so a mouth whose edge falls on a sample would leave
+## the run up to 2 cm inside the mouth, its end face on the crossing's own.
+static func _clear_of_mouths(run: Array, mouths: Array) -> Array:
+	var cut := run.duplicate()
+	for span: Array in mouths:
+		if cut[0] >= span[1] or cut[1] <= span[0]: continue
+		if cut[0] < span[0]: cut[1] = minf(cut[1], span[0])
+		else: cut[0] = maxf(cut[0], span[1])
+	return cut
 
 static func _in_spans(t: float, spans: Array) -> bool:
 	for span: Array in spans:
@@ -861,7 +902,13 @@ func plan() -> Dictionary:
 		mouths.append({"id": str(route.id), "rect": route.rect_cm})
 	var states: Array = []
 	_states(water_levels(), all, 0, {}, states)
-	return {"areas": areas, "bounds": water.bounds, "mouths": mouths, "walls": walls.duplicate(), "states": states, "seabed": seabed(), "wall_top": wall_top()}
+	var found := {"areas": areas, "bounds": water.bounds, "mouths": mouths, "walls": walls.duplicate(), "states": states, "seabed": seabed(), "wall_top": wall_top()}
+	# Each pool's own floor, for a block that gives any (bed()).
+	var beds := {}
+	for body: Dictionary in water.get("bodies", []):
+		if body.has("bed"): beds[str(body.id)] = float(body.bed)
+	if not beds.is_empty(): found["beds"] = beds
+	return found
 
 ## Every combination of the bodies' levels, the first body outermost; after
 ## each, the same levels with every walled stub shut and flooded.

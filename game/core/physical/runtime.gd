@@ -34,6 +34,19 @@ const MAX_OPEN_TURN_TICKS := 18000
 ## memory's lands first and the live pip's press then turns it from there.
 ## The numbers live in open_controls.gd; this one both facades share.
 const OPEN_RULES_VERSION := OpenControls.OPEN_RULES_VERSION
+## The shared ball (open_controls.gd SHARED_BALL_RULES, 17: open turns with a
+## ball). Every turn has one ball, in the live world, and both pips push it:
+## the live pip as it walks, and the memory as its recorded pip moves (the
+## memory's own pushes, read from its pip's step each tick, never its
+## memory's). A memory is a recording, so a ball it cannot move does not stop
+## it; a ball the live pip cannot move stops the live pip. On a tick where both
+## push, the memory's push lands first and the live pip pushes from there, as
+## with the open controls' toggles. A memory pushes only on a tick it walks
+## level (no drop or stair step). There is no offer or claim: a ball is free
+## until it reaches its stage's cradle (a ball home goal), in any turn, where
+## it snaps in and stays. A ball home stage ends when a turn ends with the ball
+## in its cradle and both pips on the cradle's floor (_at_goal).
+const SHARED_BALL_RULES := OpenControls.SHARED_BALL_RULES
 const RECORD_KEYS := Controls.RECORD_KEYS
 const OUTCOME_KEYS := ["source_ready", "objective_complete"]
 const CHECKPOINT_KEYS := ["schema_version", "level_id", "level_version", "definition_hash", "stage_index", "completed_stage_id", "next_stage_id", "players", "mechanisms", "previous_checkpoint_hash", "a_recording_hash", "b_recording_hash", "checkpoint_hash", "proof"]
@@ -203,9 +216,9 @@ func _tick(input: Dictionary = {}) -> void:
 		if _routes[route_id] and not bool(previous_routes.get(route_id, false)): _events.append("bridge_opened:" + route_id)
 	_check_hazards()
 	if role == "a": _update_source_readiness()
-	if role == "b" and stage.goal_policy.kind == "ball_home": _check_ball_home()
-	# Open turns: the goal holds while both pips stand at it (open_turns.gd).
-	if role == "b" and _open_turns(): _objective = _at_goal(active_slot) and _at_goal(memory_slot)
+	if (role == "b" or _shared_ball()) and stage.goal_policy.kind == "ball_home": _check_ball_home()
+	# Open turns: the goal holds while both pips stand at it (open_turns.gd), a ball home goal with its ball in.
+	if role == "b" and _open_turns(): _objective = _at_goal(active_slot) and _at_goal(memory_slot) and _goal_filled()
 	tick += 1
 	# Only a hazard (_check_hazards) can have ended the turn before this point.
 	if role == "b" and _objective and tick >= int(_prior.duration_ticks) and not finished and _may_complete():
@@ -213,7 +226,7 @@ func _tick(input: Dictionary = {}) -> void:
 		finished = true
 		if _keeps_routes_at_completion():
 			for route_id: String in _routes:
-				if _routes[route_id] and route_id not in _mechanisms.latched_bridges and _kept_open(route_id): _mechanisms.latched_bridges.append(route_id)
+				if (_routes[route_id] or _holds_ball(route_id)) and route_id not in _mechanisms.latched_bridges and _kept_open(route_id): _mechanisms.latched_bridges.append(route_id)
 		_mechanisms.latched_bridges.sort()
 		_events.append("stage_complete")
 	if tick >= duration_limit():
@@ -228,14 +241,16 @@ func _advance_source() -> void:
 	var before: Dictionary = _source_values() if open and not nested else {}
 	var stepped := tick < _prior_frames.size()
 	if stepped: _source._tick(_prior_frames[tick])
+	var walked: Dictionary = _players[memory_slot]
 	_players[memory_slot] = _source._players[memory_slot].duplicate(true)
+	if _shared_ball(): _memory_pushes(walked, _players[memory_slot])
 	if open: _source_toggles = (_source._own_toggles.duplicate(true) if stepped else {"levers": {}, "controls": {}}) if nested else _changed_since(before)
 	for lever: Dictionary in stage.get("levers", []):
 		if open:
 			if _source_toggles.levers.has(lever.id): _mechanisms.levers[lever.id] = _source._mechanisms.levers[lever.id]
 		elif lever.owner_slot == first_player_slot and _source._mechanisms.levers.has(lever.id):
 			_mechanisms.levers[lever.id] = _source._mechanisms.levers[lever.id]
-	if not _claimed:
+	if not _claimed and not _shared_ball():
 		_mechanisms.props = _source._mechanisms.props.duplicate(true)
 	_offer_tick = _source._offer_tick
 	_hold_ticks = _source._hold_ticks
@@ -275,7 +290,7 @@ func _move(frame: Dictionary, slot: String = "") -> void:
 
 ## cells: this definition's floor index (_navigation_cells()), fetched once per move.
 ## routes: the crossings the walker may step on (_walk_routes()), likewise.
-## Only the live pip pushes a prop; a memory walked here stops at one.
+## Only the live pip pushes a prop here; a memory walked here stops at one.
 func _try_move(delta: Vector2i, cells: Dictionary, routes: Dictionary, slot: String = "") -> bool:
 	if slot.is_empty(): slot = active_slot
 	var previous: Dictionary = _players[slot]
@@ -283,27 +298,69 @@ func _try_move(delta: Vector2i, cells: Dictionary, routes: Dictionary, slot: Str
 	var z := int(previous.z) + delta.y
 	var position := Navigation.at(level, routes, _mechanisms.levers, previous, x, z, slot, PLAYER_RADIUS, true, cells)
 	if position.is_empty() or _in_solid(position): return false
+	var pushed: Variant = _pushes(previous, x, z, int(position.height), delta, slot, slot == active_slot, cells)
+	if pushed == null: return false
+	for id: String in pushed: _mechanisms.props[id] = pushed[id]
+	_players[slot] = position
+	if slot == active_slot and int(previous.height) > int(position.height) + 2: _events.append("drop")
+	return true
+
+## The props a pip of `slot` pushes stepping by `delta` from `previous` to
+## (x, z) at `height`: {prop id: its state after the push}, or null when one
+## it meets will not move. `pusher`: whether this pip may push at all (the
+## live pip, or under the shared ball its memory too). The live pip's step
+## and the memory's pushes (_memory_pushes) both come here.
+func _pushes(previous: Dictionary, x: int, z: int, height: int, delta: Vector2i, slot: String, pusher: bool, cells: Dictionary) -> Variant:
 	var pushed: Dictionary = {}
 	for prop: Dictionary in level.get("props", []):
 		var ball: Dictionary = _mechanisms.props[prop.id]
 		var separation := PLAYER_RADIUS + int(prop.radius_cm)
-		if int(position.height) != int(ball.height) or Vector2i(x,z).distance_squared_to(Vector2i(ball.x,ball.z)) >= separation * separation: continue
+		if height != int(ball.height) or Vector2i(x,z).distance_squared_to(Vector2i(ball.x,ball.z)) >= separation * separation: continue
 		# A recorded prop may arrive inside B. Escape moves only the live player,
 		# outward through legal floor; it never rewrites A or pushes through a wall.
 		if _comfort_rules():
 			var old_distance := Vector2i(previous.x,previous.z).distance_squared_to(Vector2i(ball.x,ball.z))
 			var new_distance := Vector2i(x,z).distance_squared_to(Vector2i(ball.x,ball.z))
 			if old_distance < separation * separation and new_distance > old_distance: continue
-		if slot != active_slot or not _can_push(ball): return false
-		var moved := Navigation.at(level, _routes, _mechanisms.levers, ball, int(ball.x) + delta.x, int(ball.z) + delta.y, active_slot, int(prop.radius_cm), false, cells)
-		if moved.is_empty(): return false
+		if not pusher or not _can_push(ball): return null
+		var moved := Navigation.at(level, _routes, _mechanisms.levers, ball, int(ball.x) + delta.x, int(ball.z) + delta.y, slot, int(prop.radius_cm), false, cells)
+		if moved.is_empty(): return null
 		var replacement := ball.duplicate(true)
 		replacement.merge(moved, true)
 		pushed[prop.id] = replacement
-	for id: String in pushed: _mechanisms.props[id] = pushed[id]
-	_players[slot] = position
-	if slot == active_slot and int(previous.height) > int(position.height) + 2: _events.append("drop")
-	return true
+	return pushed
+
+## The shared ball: the memory's pip stepped from `from` to `to` this tick, so
+## it pushes what it meets as the live pip would, one cm at a time along the
+## same steps as _move. A ball that will not move stays, and the memory walks
+## on where it walked.
+func _memory_pushes(from: Dictionary, to: Dictionary) -> void:
+	if level.get("props", []).is_empty() or int(from.height) != int(to.height): return
+	var delta := Vector2i(int(to.x) - int(from.x), int(to.z) - int(from.z))
+	if delta == Vector2i.ZERO: return
+	var steps := maxi(absi(delta.x), absi(delta.y))
+	var walked := Vector2i.ZERO
+	var cells := _navigation_cells()
+	for index in range(1, steps + 1):
+		var next := Vector2i(roundi(float(delta.x * index) / steps), roundi(float(delta.y * index) / steps))
+		var previous := {"x": int(from.x) + walked.x, "z": int(from.z) + walked.y}
+		var pushed: Variant = _pushes(previous, int(from.x) + next.x, int(from.z) + next.y, int(to.height), next - walked, memory_slot, true, cells)
+		walked = next
+		if pushed == null: continue
+		for id: String in pushed: _mechanisms.props[id] = pushed[id]
+
+## The shared ball: whether a ball rests on crossing `route_id`. A stage's end
+## keeps that crossing, shut or not, so the next stage never starts with its
+## ball on a crossing that is down.
+func _holds_ball(route_id: String) -> bool:
+	if not _shared_ball(): return false
+	for id: String in _mechanisms.props:
+		if str(_mechanisms.props[id].surface_id) == route_id: return true
+	return false
+
+## Whether rules `simulation_version` play the shared ball (SHARED_BALL_RULES).
+func _shared_ball() -> bool:
+	return simulation_version in SHARED_BALL_RULES
 
 ## Whether `position` stands in a solid spot on its own floor.
 func _in_solid(position: Dictionary) -> bool:
@@ -313,6 +370,7 @@ func _in_solid(position: Dictionary) -> bool:
 
 func _can_push(ball: Dictionary) -> bool:
 	if ball.status == "fitted" or ball.status == "offered": return false
+	if _shared_ball(): return true
 	if role == "a": return ball.status == "free"
 	return _claimed and ball.status == "claimed" and ball.holder_slot == active_slot
 
@@ -393,7 +451,7 @@ func context_action() -> Dictionary:
 	# Open turns: no bell; both pips standing at the goal finish the stage.
 	if role == "b" and stage.goal_policy.kind == "ring" and not _open_turns() and _near_entity(player, stage.goal):
 		return _action("ring", "Ring bell", true, stage.goal.id)
-	if stage.source_policy.kind == "offer_ball":
+	if stage.source_policy.kind == "offer_ball" and not _shared_ball():
 		var ball: Dictionary = _mechanisms.props[stage.source_policy.prop_id]
 		if int(player.height) == int(ball.height) and Vector2i(player.x,player.z).distance_squared_to(Vector2i(ball.x,ball.z)) <= 64 * 64:
 			if role == "a" and ball.status == "free" and _ball_at(stage.handoff, stage.source_policy.prop_id):
@@ -401,14 +459,17 @@ func context_action() -> Dictionary:
 			if role == "b" and ball.status == "offered": return _action("claim", "Take over", true, stage.source_policy.prop_id)
 	return _action("", "", false, "")
 
+## Under the shared ball it fits whoever rolled it in, in any turn, and the
+## stage's end is the open turns check in _tick (_at_goal, _goal_filled).
 func _check_ball_home() -> void:
-	if not _claimed or not _ball_at(stage.goal, stage.goal_policy.prop_id): return
-	if _comfort_rules() and not _snap_ball(stage.goal, stage.goal_policy.prop_id): return
+	if not (_claimed or _shared_ball()) or not _ball_at(stage.goal, stage.goal_policy.prop_id): return
 	var ball: Dictionary = _mechanisms.props[stage.goal_policy.prop_id]
+	if _shared_ball() and ball.status == "fitted": return
+	if _comfort_rules() and not _snap_ball(stage.goal, stage.goal_policy.prop_id): return
 	ball.status = "fitted"
 	ball.holder_slot = ""
 	ball.socket_id = stage.goal_policy.socket_id
-	_objective = true
+	if not _shared_ball(): _objective = true
 
 func source_budget_ticks() -> int:
 	if level.is_empty(): return MAX_TICKS
@@ -474,9 +535,17 @@ func pass_turn() -> Dictionary:
 	_events = ["turn_passed"]
 	return snapshot()
 
-## Open turns: whether `slot`'s pip stands at the goal now, where it holds.
+## Open turns: whether `slot`'s pip stands at the goal now, where it holds:
+## by the bell, or under the shared ball on a ball home cradle's floor.
 func _at_goal(slot: String) -> bool:
+	if stage.goal_policy.kind == "ball_home" and _shared_ball(): return str(_players[slot].surface_id) == str(stage.goal.surface_id)
 	return stage.goal_policy.kind == "ring" and _near_entity(_players[slot], stage.goal)
+
+## Open turns: whether the goal's own part holds: a ball home goal's ball in
+## its cradle. A bell has none.
+func _goal_filled() -> bool:
+	if stage.goal_policy.kind != "ball_home": return true
+	return str(_mechanisms.props.get(str(stage.goal_policy.prop_id), {}).get("status", "")) == "fitted"
 
 ## The longest turn `turn_role` may record under `version` in `definition`.
 ## Published: 900 ticks, and 1,200 for a comfort receiver. A definition that
@@ -555,6 +624,15 @@ func snapshot() -> Dictionary:
 	for id: String in displayed_props:
 		var ball: Dictionary = displayed_props[id]
 		var controller := first_player_slot if ball.status == "free" else str(ball.holder_slot) if ball.status == "claimed" else ""
+		# The shared ball shows the colour of a pip touching it, the live one first.
+		if _shared_ball() and ball.status == "free":
+			controller = ""
+			for slot: String in ([active_slot, memory_slot] if role == "b" else [active_slot]):
+				var touching: Dictionary = _players[slot]
+				var reach := PLAYER_RADIUS + int(_entity(level.props,id).radius_cm) + 2
+				if int(touching.height) == int(ball.height) and Vector2i(touching.x,touching.z).distance_squared_to(Vector2i(ball.x,ball.z)) <= reach * reach:
+					controller = slot
+					break
 		if not controller.is_empty():
 			var actor: Dictionary = _players[controller]
 			var radius := PLAYER_RADIUS + int(_entity(level.props,id).radius_cm) + 2

@@ -6,7 +6,7 @@ import { canonicalJson, digest } from "../src/protocol";
 import { chapter, checkpointV2, initialCheckpoint, recordingV2, acceptedRecording } from "../src/v2/protocol";
 import { conservatoryV2, longWayHomeV3, turnOfTheTideV3, CONSERVATORY_V2_HASH, LONG_WAY_HOME_V3_HASH, TURN_OF_THE_TIDE_V3_HASH } from "../src/v2/protocol-journey";
 import { advertisedChapters, chapterFlag, creatable } from "../src/v2/chapters";
-import { COMFORT_RULES, comfortRules, openControls, tideRules, type ChapterAdapter, type ChapterCheckpoint, type ChapterRecording } from "../src/v2/chapter-types";
+import { COMFORT_RULES, comfortRules, openControls, openTurns, sharedBall, tideRules, type ChapterAdapter, type ChapterCheckpoint, type ChapterRecording } from "../src/v2/chapter-types";
 import type { MutationV2, RoomSnapshotV2 } from "../src/v2/room";
 import homeDefinition from "../../game/tests/fixtures/journey/long-way-home-v3-definition.json";
 import homeInitial from "../../game/tests/fixtures/journey/long-way-home-v3-initial-checkpoint.json";
@@ -45,7 +45,7 @@ import bundledTide from "../src/v2/turn-of-the-tide-v3.json";
 import bundledTideInitial from "../src/v2/turn-of-the-tide-v3-initial.json";
 import bundledRooms from "../src/v2/conservatory-v2.json";
 import bundledRoomsInitial from "../src/v2/conservatory-v2-initial.json";
-import { highAndLowV2, HIGH_AND_LOW_V2_HASH } from "../src/v2/protocol-cooperative";
+import { highAndLowV2, houseForTwoV2, rollingHomeV2, HIGH_AND_LOW_V2_HASH, HOUSE_V2_HASH, ROLLING_HOME_V2_HASH } from "../src/v2/protocol-cooperative";
 import highDefinition from "../../game/tests/fixtures/cooperative/high-and-low-v2-definition.json";
 import highInitial from "../../game/tests/fixtures/cooperative/high-and-low-v2-initial-checkpoint.json";
 import highUpperA from "../../game/tests/fixtures/cooperative/high-and-low-v2-upper-path-a.json";
@@ -58,6 +58,30 @@ import highDownC from "../../game/tests/fixtures/cooperative/high-and-low-v2-dow
 import highDownEnd from "../../game/tests/fixtures/cooperative/high-and-low-v2-down-and-around-checkpoint.json";
 import bundledHigh from "../src/v2/high-and-low-v2.json";
 import bundledHighInitial from "../src/v2/high-and-low-v2-initial.json";
+import rollingDefinition from "../../game/tests/fixtures/cooperative/rolling-home-v2-definition.json";
+import rollingInitial from "../../game/tests/fixtures/cooperative/rolling-home-v2-initial-checkpoint.json";
+import rollingFriendA from "../../game/tests/fixtures/cooperative/rolling-home-v2-weight-of-a-friend-a.json";
+import rollingFriendB from "../../game/tests/fixtures/cooperative/rolling-home-v2-weight-of-a-friend-b.json";
+import rollingFriendC from "../../game/tests/fixtures/cooperative/rolling-home-v2-weight-of-a-friend-c.json";
+import rollingFriendEnd from "../../game/tests/fixtures/cooperative/rolling-home-v2-weight-of-a-friend-checkpoint.json";
+import rollingHomeA from "../../game/tests/fixtures/cooperative/rolling-home-v2-bring-it-home-a.json";
+import rollingHomeB from "../../game/tests/fixtures/cooperative/rolling-home-v2-bring-it-home-b.json";
+import rollingHomeC from "../../game/tests/fixtures/cooperative/rolling-home-v2-bring-it-home-c.json";
+import rollingHomeEnd from "../../game/tests/fixtures/cooperative/rolling-home-v2-bring-it-home-checkpoint.json";
+import bundledRolling from "../src/v2/rolling-home-v2.json";
+import bundledRollingInitial from "../src/v2/rolling-home-v2-initial.json";
+import houseDefinition from "../../game/tests/fixtures/cooperative/a-house-for-two-v2-definition.json";
+import houseInitial from "../../game/tests/fixtures/cooperative/a-house-for-two-v2-initial-checkpoint.json";
+import houseOpenA from "../../game/tests/fixtures/cooperative/a-house-for-two-v2-open-the-house-a.json";
+import houseOpenB from "../../game/tests/fixtures/cooperative/a-house-for-two-v2-open-the-house-b.json";
+import houseOpenC from "../../game/tests/fixtures/cooperative/a-house-for-two-v2-open-the-house-c.json";
+import houseOpenEnd from "../../game/tests/fixtures/cooperative/a-house-for-two-v2-open-the-house-checkpoint.json";
+import houseBelowA from "../../game/tests/fixtures/cooperative/a-house-for-two-v2-the-room-below-a.json";
+import houseBelowB from "../../game/tests/fixtures/cooperative/a-house-for-two-v2-the-room-below-b.json";
+import houseBelowC from "../../game/tests/fixtures/cooperative/a-house-for-two-v2-the-room-below-c.json";
+import houseBelowEnd from "../../game/tests/fixtures/cooperative/a-house-for-two-v2-the-room-below-checkpoint.json";
+import bundledHouse from "../src/v2/a-house-for-two-v2.json";
+import bundledHouseInitial from "../src/v2/a-house-for-two-v2-initial.json";
 import { withConfig } from "./config";
 
 /** A fixture checkpoint as an open turns room takes it: no proof nests in it (v2/open-turns.ts fingerprints), and its hash never covered one. */
@@ -76,6 +100,11 @@ const CHAINS: Chain[] = [
   // The cooperative family on the same open turns (protocol-cooperative.ts): both players end at each bell.
   { name: "high-and-low@2", adapter: highAndLowV2, hash: HIGH_AND_LOW_V2_HASH, rules: 14, flag: "HIGH_AND_LOW_V2_CHAPTER_ENABLED", definition: highDefinition, initial: highInitial,
     bundled: bundledHigh, bundledInitial: bundledHighInitial, stages: [[highUpperA, highUpperB, highUpperC, flat(highUpperEnd)], [highDownA, highDownB, highDownC, flat(highDownEnd)]] },
+  // The shared ball (17): both players push one ball; Rolling Home's last stage ends with it in its cradle and both players home.
+  { name: "rolling-home@2", adapter: rollingHomeV2, hash: ROLLING_HOME_V2_HASH, rules: 17, flag: "ROLLING_HOME_V2_CHAPTER_ENABLED", definition: rollingDefinition, initial: rollingInitial,
+    bundled: bundledRolling, bundledInitial: bundledRollingInitial, stages: [[rollingFriendA, rollingFriendB, rollingFriendC, flat(rollingFriendEnd)], [rollingHomeA, rollingHomeB, rollingHomeC, flat(rollingHomeEnd)]] },
+  { name: "a-house-for-two@2", adapter: houseForTwoV2, hash: HOUSE_V2_HASH, rules: 17, flag: "A_HOUSE_FOR_TWO_V2_CHAPTER_ENABLED", definition: houseDefinition, initial: houseInitial,
+    bundled: bundledHouse, bundledInitial: bundledHouseInitial, stages: [[houseOpenA, houseOpenB, houseOpenC, flat(houseOpenEnd)], [houseBelowA, houseBelowB, houseBelowC, flat(houseBelowEnd)]] },
 ];
 // 0.8.1 and older: none of them offers 12 or 13 (11 is the Lighthouse room's).
 const OLD_CLIENTS = [[2, 4, 5, 6, 7, 8, 9, 10], [2, 4, 5, 6, 7, 8, 9, 10, 11], [2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]], NEW_CLIENT = [2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
@@ -107,9 +136,11 @@ afterEach(async () => { await reset(); });
 
 describe("open controls (rules 12 and 13)", () => {
   it("numbers the open rules apart from every published one", () => {
-    expect(COMFORT_RULES).toEqual([8, 9, 10, 12, 13, 14, 15, 16]);
-    expect([9, 10, 11, 12, 13, 14, 15, 16].map(openControls)).toEqual([false, false, false, true, true, true, true, true]);
-    expect([9, 10, 11, 12, 13, 14, 15, 16].map(tideRules)).toEqual([false, true, false, false, true, false, true, true]);
+    expect(COMFORT_RULES).toEqual([8, 9, 10, 12, 13, 14, 15, 16, 17]);
+    expect([9, 10, 11, 12, 13, 14, 15, 16, 17].map(openControls)).toEqual([false, false, false, true, true, true, true, true, true]);
+    expect([9, 10, 11, 12, 13, 14, 15, 16, 17].map(tideRules)).toEqual([false, true, false, false, true, false, true, true, false]);
+    // 17 is 14 with the shared ball: open turns, no tide.
+    expect([14, 15, 16, 17].map(sharedBall)).toEqual([false, false, false, true]); expect(openTurns(17)).toBe(true);
     expect(comfortRules(11)).toBe(false);
   });
   for (const chain of CHAINS) {
@@ -160,6 +191,35 @@ describe("open controls (rules 12 and 13)", () => {
     expect(end.players.p0).toMatchObject({ surface_id: "loft" }); expect(end.players.p1).toMatchObject({ surface_id: "loft" });
     const away = structuredClone(end); away.players.p0 = { ...away.players.p0, x: 0, z: 0 };
     await expect(checkpointV2(await rehash(away), initialCheckpoint(chain.adapter.key) as ChapterCheckpoint, a, c, [b])).rejects.toMatchObject({ code: "checkpoint_goal_mismatch" });
+  });
+  it("ends a ball home stage only with the ball in its cradle and both players on its floor", async () => {
+    // Rolling Home@2's Bring It Home: the ball fitted at the cradle's centre, both players home.
+    const chain = CHAINS.find(row => row.name === "rolling-home@2")!, [firstA, firstB, firstC] = await records(chain, 0);
+    const first = await checkpointV2(chain.stages[0][3], initialCheckpoint(chain.adapter.key) as ChapterCheckpoint, firstA, firstC, [firstB]);
+    const [a, b, c] = await records(chain, 1);
+    const end = structuredClone(flat(rollingHomeEnd)) as Record<string, any>, ball = end.mechanisms.props["round-ball"];
+    expect(ball).toMatchObject({ status: "fitted", socket_id: "home-cradle", holder_slot: "", x: 1376, z: 0, surface_id: "home" });
+    expect(end.players.p0).toMatchObject({ surface_id: "home" }); expect(end.players.p1).toMatchObject({ surface_id: "home" });
+    const away = structuredClone(end); away.players.p0 = { x: 900, z: 160, height: 0, surface_id: "far-bank" };
+    await expect(checkpointV2(await rehash(away), first, a, c, [b])).rejects.toMatchObject({ code: "checkpoint_goal_mismatch" });
+    const out = structuredClone(end); out.mechanisms.props["round-ball"] = { ...ball, status: "free", socket_id: "", x: 1300 };
+    await expect(checkpointV2(await rehash(out), first, a, c, [b])).rejects.toMatchObject({ code: "checkpoint_prop_mismatch" });
+    const off = structuredClone(end); off.mechanisms.props["round-ball"] = { ...ball, x: 1370 };
+    await expect(checkpointV2(await rehash(off), first, a, c, [b])).rejects.toMatchObject({ code: "checkpoint_prop_mismatch" });
+    const held = structuredClone(end); held.mechanisms.props["round-ball"] = { ...ball, holder_slot: "p0" };
+    await expect(checkpointV2(await rehash(held), first, a, c, [b])).rejects.toMatchObject({ code: "checkpoint_prop_mismatch" });
+  });
+  it("keeps a shared ball free and on a floor it may rest on until its cradle", async () => {
+    // Weight of a Friend ends with the ball free on the middle island's pad; fitted there, or left on a crossing that is not kept, is refused.
+    const chain = CHAINS.find(row => row.name === "rolling-home@2")!, [a, b, c] = await records(chain, 0), opening = initialCheckpoint(chain.adapter.key) as ChapterCheckpoint;
+    const end = structuredClone(flat(rollingFriendEnd)) as Record<string, any>, ball = end.mechanisms.props["round-ball"];
+    expect(ball).toMatchObject({ status: "free", socket_id: "", holder_slot: "", surface_id: "middle" });
+    const fitted = structuredClone(end); fitted.mechanisms.props["round-ball"] = { ...ball, status: "fitted", socket_id: "home-cradle" };
+    await expect(checkpointV2(await rehash(fitted), opening, a, c, [b])).rejects.toMatchObject({ code: "checkpoint_prop_mismatch" });
+    const stranded = structuredClone(end); stranded.mechanisms.props["round-ball"] = { ...ball, x: 1040, z: 0, surface_id: "far-home" };
+    await expect(checkpointV2(await rehash(stranded), opening, a, c, [b])).rejects.toMatchObject({ code: "checkpoint_surface_mismatch" });
+    const extra = structuredClone(end); extra.mechanisms.props["round-ball"] = { ...ball, owner: "p0" };
+    await expect(checkpointV2(await rehash(extra), opening, a, c, [b])).rejects.toMatchObject({ code: "unexpected_fields" });
   });
   it("keeps the tide rules on 15: no route latches", async () => {
     const chain = CHAINS[1], [a, b, c] = await records(chain, 0);

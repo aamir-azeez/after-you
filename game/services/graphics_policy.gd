@@ -24,8 +24,10 @@ static func antialiasing(quality: Variant) -> Viewport.MSAA:
 
 ## What Low leaves out. Every cut is presentation only, and the worlds ask here
 ## instead of naming a quality themselves.
-static func mote_count(authored_count: int, quality: Variant) -> int:
-	return ceili(authored_count * 0.25) if normalize(quality) == "low" else authored_count
+## The space backdrop's far islands, edge lights and half its faint stars
+## (presentation/kit/space_backdrop.gd).
+static func backdrop_detail(quality: Variant) -> bool:
+	return normalize(quality) != "low"
 
 ## Motion blur behind a rolling ball or a thrown seed.
 static func motion_trails(quality: Variant) -> bool:

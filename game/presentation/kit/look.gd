@@ -1,13 +1,16 @@
 extends RefCounted
 ## World kit: the one place a chapter world's lighting is set. Presets give the
-## sky, ambient light, sun, bounce light and mote tint; apply() writes them to
-## the nodes island_world creates in _ready. They never add or remove motes, so
-## graphics quality keeps counting the motes each lineage authored.
+## sky, ambient light, sun, bounce light and the space backdrop's star tint and
+## edge accent (kit/space_backdrop.gd: "petals", "fireflies", "dust" or none,
+## in "accent_color"); apply() writes them to the nodes island_world creates in
+## _ready.
 
 ## The sun draws no shadow pass at any quality. In gl_compatibility that pass
 ## added the sun's light on top of the base pass, which lit scenes brighter
 ## than one pass does; these gains keep the old brightness. Presets keep their
 ## original values.
+const SpaceBackdrop = preload("res://presentation/kit/space_backdrop.gd")
+
 const SUN_GAIN := 2.2
 const AMBIENT_GAIN := 2.0
 ## Lamps (OmniLight3D) now add to that brighter base, so their pools need more
@@ -22,16 +25,26 @@ const FILL_TO_AMBIENT := 0.25
 ## (presentation/kit/water_look.gd); 0 when it names none.
 const PRESETS := {
 	# The meadow day of Home, First Steps and the Relay Isles.
-	"day": {"sky": Color("123a3d"), "ambient": Color("c4e0d1"), "ambient_energy": 0.26, "sun": Color("fff0cb"), "sun_energy": 0.65, "bounce": Color("8ebbb2"), "bounce_energy": 0.24, "mote": Color("c1ddbd")},
+	"day": {"sky": Color("123a3d"), "ambient": Color("c4e0d1"), "ambient_energy": 0.26, "sun": Color("fff0cb"), "sun_energy": 0.65, "bounce": Color("8ebbb2"), "bounce_energy": 0.24, "stars": Color("c1ddbd"), "accent": "petals", "accent_color": Color("f3c6cf")},
 	# The Sleeping Lighthouse night, which every physical chapter inherited.
-	"night": {"sky": Color("111e32"), "ambient": Color("b0c9df"), "ambient_energy": 0.42, "sun": Color("c4d9ef"), "sun_energy": 0.72, "bounce": Color("859cba"), "bounce_energy": 0.28, "mote": Color("8aabc0"), "glints": 1.0},
+	"night": {"sky": Color("111e32"), "ambient": Color("b0c9df"), "ambient_energy": 0.42, "sun": Color("c4d9ef"), "sun_energy": 0.72, "bounce": Color("859cba"), "bounce_energy": 0.28, "stars": Color("8aabc0"), "accent": "fireflies", "accent_color": Color("ffe9a8"), "glints": 1.0},
 	# The Wishing Well dusk.
-	"dusk": {"sky": Color("2b2945"), "ambient": Color("aeb3cf"), "ambient_energy": 0.42, "sun": Color("f4d9bf"), "sun_energy": 0.72, "bounce": Color("8e95c6"), "bounce_energy": 0.3, "mote": Color("e7c48e"), "glints": 1.0},
+	"dusk": {"sky": Color("2b2945"), "ambient": Color("aeb3cf"), "ambient_energy": 0.42, "sun": Color("f4d9bf"), "sun_energy": 0.72, "bounce": Color("8e95c6"), "bounce_energy": 0.3, "stars": Color("e7c48e"), "accent": "fireflies", "accent_color": Color("ffe9a8"), "glints": 1.0},
 	# A sunny meadow for the physical chapters: the day family, a touch warmer
 	# and brighter so grass, timber and tile read warm rather than grey.
-	"meadow": {"sky": Color("1c4744"), "ambient": Color("e3e2c8"), "ambient_energy": 0.34, "sun": Color("fff0cb"), "sun_energy": 0.72, "bounce": Color("a6c4b0"), "bounce_energy": 0.24, "mote": Color("efe2b0")},
+	"meadow": {"sky": Color("1c4744"), "ambient": Color("e3e2c8"), "ambient_energy": 0.34, "sun": Color("fff0cb"), "sun_energy": 0.72, "bounce": Color("a6c4b0"), "bounce_energy": 0.24, "stars": Color("efe2b0"), "accent": "petals", "accent_color": Color("f6cdd3")},
 	# Golden hour: lamps and windows glow, the sky is a warm plum dusk.
-	"golden": {"sky": Color("2f2a40"), "ambient": Color("d8ccc0"), "ambient_energy": 0.40, "sun": Color("f7ddc2"), "sun_energy": 0.68, "bounce": Color("9b97c6"), "bounce_energy": 0.28, "mote": Color("f2c98e"), "glints": 1.0},
+	"golden": {"sky": Color("2f2a40"), "ambient": Color("d8ccc0"), "ambient_energy": 0.40, "sun": Color("f7ddc2"), "sun_energy": 0.68, "bounce": Color("9b97c6"), "bounce_energy": 0.28, "stars": Color("f2c98e"), "accent": "dust", "accent_color": Color("f4dcae"), "glints": 1.0},
+	# The Falls: a cool green day in the spray, deep green behind the cliffs.
+	# Its accent is pale spray drifting up past the edges.
+	"spray": {"sky": Color("1f3a33"), "ambient": Color("d4e3d4"), "ambient_energy": 0.36, "sun": Color("fff3d6"), "sun_energy": 0.70, "bounce": Color("9fc2b8"), "bounce_energy": 0.26, "stars": Color("e8f2ee"), "accent": "dust", "accent_color": Color("e8f2ee")},
+	# Fog Marsh: soft and pale under the fog, a low sun and a high ambient.
+	# Its "cover" is the thick fog over the whole stage (kit/fog_cover.gd):
+	# the colour of its lit tops and of its deeper body (a soft blue-green),
+	# how thick it lies and how much it thickens at the edges. Its sky is the
+	# fog's own pale blue-grey, so no dark shows past the marsh. Lamp light on
+	# the ground draws under the cover ("glow_order", kit/soft_mist.gd).
+	"fog": {"cover": {"color": Color("d4e4e0"), "deep": Color("86aaa8"), "density": 0.8, "edge": 0.6}, "glow_order": -2, "sky": Color("c3d4d2"), "ambient": Color("dfe7e3"), "ambient_energy": 0.46, "sun": Color("f2eedc"), "sun_energy": 0.54, "bounce": Color("b0c6c2"), "bounce_energy": 0.30, "stars": Color("eef4ec"), "accent": "dust", "accent_color": Color("eef4ec")},
 }
 
 static func preset(name: String) -> Dictionary:
@@ -41,14 +54,15 @@ static func preset(name: String) -> Dictionary:
 static func lamp_energy(energy: float) -> float:
 	return energy * LAMP_GAIN
 
-## Lights the world's environment, sun and bounce light and tints its motes.
+## Lights the world's environment, sun and bounce light and colours its space
+## backdrop.
 ## fill false hides the bounce light and lets the ambient light carry its fill.
 static func apply(world: Node3D, name: String, fill: bool = true) -> void:
 	var look := preset(name)
 	var sun: DirectionalLight3D = world.get("sun")
 	for child: Node in world.get_children():
 		if child is WorldEnvironment:
-			child.environment.background_color = look.sky
+			SpaceBackdrop.apply_look(child.environment, look)
 			child.environment.ambient_light_color = look.ambient
 			child.environment.ambient_light_energy = look.ambient_energy * AMBIENT_GAIN + (0.0 if fill else look.bounce_energy * FILL_TO_AMBIENT)
 		elif child == sun:
@@ -59,5 +73,3 @@ static func apply(world: Node3D, name: String, fill: bool = true) -> void:
 			child.light_color = look.bounce
 			child.light_energy = look.bounce_energy
 			child.visible = fill
-	for mote: MeshInstance3D in world.get("motes"):
-		(mote.material_override as StandardMaterial3D).albedo_color = look.mote
