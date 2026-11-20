@@ -126,6 +126,9 @@ var _moving := false
 var _levels_seen := 0
 ## The spillways' look ("trickle" or "falls"), set before build().
 var spill_style := "trickle"
+## Every wall and spillway stone built (the parent's space), for what they
+## hide from the camera (water_bodies.gd standing_walls()).
+var stones: Array[AABB] = []
 
 ## Builds the pieces for `plan` under `parent`: this node and its
 ## "WaterLockStone" sibling. Call once per stage, after find_runs(plan) if the
@@ -492,6 +495,7 @@ func _stone_box(run: Dictionary, bottom: float, top: float, thickness: float, co
 	var size := Vector3(length, top - bottom, thickness) if run.along_x else Vector3(thickness, top - bottom, length)
 	var node := Primitives.mesh_node(Primitives.box_mesh(size), Primitives.shared_material(color), _on_run(run, _length(run) * 50.0, (top + bottom) * 0.5), stone)
 	node.name = piece
+	stones.append(node.transform * node.get_aabb())
 	return node
 
 ## A plain wall with a coping stone, to the height the world's walls reach.

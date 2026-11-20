@@ -51,6 +51,8 @@ func show_stage(stage: Dictionary) -> void:
 	await _build_step()
 	await _build_water_walls()
 	await waters.build_locks(WaterLocks.bake_path(_chapter_key(), displayed_stage_id))
+	# Every wall now stands: a coil behind one goes.
+	drop_unseen_coils(waters.standing_walls())
 	await _build_water_scenery()
 	# The dressing's gorge: rock behind the floors and rainbows in the spray.
 	Gorge.build(self, dressing.get("gorge", {}))
