@@ -24,6 +24,7 @@ const Simulation = preload("res://core/journey/simulation.gd")
 const Catalog = preload("res://core/journey/stage_catalog.gd")
 const ViewFit = preload("res://presentation/kit/view_fit.gd")
 const BigChange = preload("res://presentation/kit/big_change.gd")
+const Backdrop = preload("res://presentation/kit/space_backdrop.gd")
 const KEY := "turn-of-the-tide@3"
 const SCENES := ["the_falls", "fog_marsh"]
 ## Frame patterns a scene is played with: 30 and 60 a second, and uneven ones.
@@ -360,6 +361,14 @@ func _camera(setup: Dictionary) -> void:
 	_check(EndingScene.state(shook, 0.3).camera.shake.is_equal_approx(BigChange.offset(0.3, 0.6) * 2.0), "a shake is the big change's, times its amount")
 	shaking.steps.append({"do": "wait", "time": 1.0})
 	var camera: Camera3D = setup.world.camera
+	# The world's frame is paused, yet the space behind it follows the scene's camera.
+	var sky: ShaderMaterial = setup.world.environment.sky.sky_material
+	var follow := _player(setup, tracking, true)
+	var opening: Vector2 = sky.get_shader_parameter(Backdrop.PARALLAX)
+	follow.advance(1.2)
+	var followed: Vector2 = sky.get_shader_parameter(Backdrop.PARALLAX)
+	_check(followed.is_equal_approx(Backdrop.pan_shift(camera)) and not followed.is_equal_approx(opening), "the space backdrop moves with an ending's camera")
+	_done(setup, follow)
 	var places: Array = []
 	for setting: Array in [[false, true, [0.3]], [false, true, [0.1, 0.1, 0.1]], [true, true, [0.3]], [false, false, [0.3]], [false, true, [0.3, 0.4]]]:
 		setup.world.big_change_shake = setting[1]

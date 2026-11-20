@@ -125,6 +125,13 @@ func _check_every_style(holder: Node3D) -> void:
 	var narrow: Array[Rect2] = [Rect2(-2.0, -2.0, 1.95, 2.1)]
 	var coils := func(ground: Array[Rect2]) -> Array: return Pulley.build("theme_hanger", AT, holder, ground).root.find_children("Coil*", "", false, false)
 	_check(coils.call(roomy).size() == Pulley.COIL_RINGS.size() and coils.call(narrow).is_empty() and coils.call([] as Array[Rect2]).is_empty(), "A hanger lays its rope coil only where a floor at its foot holds it clear of the edges")
+	# A wall built later in front of the coil (toward the camera) takes it away; one behind it does not.
+	var kept := func(wall: AABB) -> int:
+		var post: RefCounted = Pulley.build("theme_hanger", AT, holder, roomy)
+		post.drop_unseen([wall] as Array[AABB])
+		return post.root.find_children("Coil*", "", false, false).size()
+	var spot := AT + Vector3(Pulley.COIL_AT.x, 0, Pulley.COIL_AT.y)
+	_check(kept.call(AABB(spot + Vector3(-1.0, 0, 0.25), Vector3(2.0, 0.6, 0.1))) == 0 and kept.call(AABB(spot + Vector3(-1.0, 0, -0.45), Vector3(2.0, 0.6, 0.1))) == Pulley.COIL_RINGS.size(), "A wall in front hides a hanger's coil and leaves it out; a wall behind keeps it")
 
 ## A handle snaps; a machine stands inside its lever's reach, its anchor puts
 ## a bubble's tail on its top, and a pull eases over PULL_SECONDS to the pose

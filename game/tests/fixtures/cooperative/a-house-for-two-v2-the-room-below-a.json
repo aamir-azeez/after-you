@@ -1,0 +1,24 @@
+{
+	"catch_assistance": true,
+	"checkpoint_hash": "6294c0524513466a77f68cd3059757ba361c8ee9094e6afd68c0769428f9ee1c",
+	"completed": false,
+	"definition_hash": "9018b7e3323cc1f66fc7d4f292b419e7834d31bb5811b20672ddbc79ac79df38",
+	"duration_ticks": 545,
+	"final_state_hash": "5ea4e6ba986b005d22380bc4ec4e164d96776bde37a25c1b64f3d037cb117e7b",
+	"level_id": "a-house-for-two",
+	"level_version": 2,
+	"outcome": {
+		"objective_complete": false,
+		"source_ready": true
+	},
+	"packed": "AQsEnAAsAGQCADICAAADAAAQnAAKAGQCADIkZABIAJyEBwAAiBHN9J1RoOD4Zy2+wettHewljKsXgqsF+qpHDFGb9wHIKSa533WgRVKmlG/30ildlkTpjpbz2YtFlT7kIiDUutyCOwdgPg93w3B9S9+zWO6BJ8QsgOed/N+5148sU8iIZPogiRxPbjqQWo2e7zrFEA0h3mByBQRlHQRHsAOu12q1JsEW5ikFI9bq3yd+UNtNsR1uWnRuq620LwIA3VCLsXVTpPNZpcdK4eRU3AIoWqBAmcsIdehoFya+K/E1bIMRtqQK5Rwikx9mtMSW9ZDQXumArtXurgZO",
+	"player_slot": "p1",
+	"recording_hash": "edee24d3944081749af768db6c5785782fd6caf37492b9d5b814750ae7eec2a9",
+	"role": "a",
+	"schema_version": 6,
+	"simulation_version": 17,
+	"source_recording_hash": "",
+	"stage_id": "the-room-below",
+	"stage_version": 1,
+	"tick_rate": 30
+}
