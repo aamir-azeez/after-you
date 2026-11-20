@@ -18,8 +18,8 @@ extends SceneTree
 ##   between stops, never at the stop the simulation already moved it to: a
 ##   memory or the live pip riding the lift up and down or the raft over the
 ##   water, a carried item on a memory's back, an item put down on the lift;
-##   a memory that walks off the lift before its deck is up rides on with the
-##   deck, which hurries there, and never hops.
+##   a memory that walks off the lift before its deck is up waits on the deck,
+##   which hurries there, and never hops.
 const Simulation = preload("res://core/journey/simulation.gd")
 const Catalog = preload("res://core/journey/stage_catalog.gd")
 const Witness = preload("res://tests/pieces_witness.gd")
@@ -32,9 +32,10 @@ const ItemWitness = preload("res://tests/item_ride_witness.gd")
 const FRAME := 1.0 / 60.0
 ## How far (m) a drawn rider may sit from where its deck has it.
 const ON_DECK := 0.002
-## The most a riding pip may move in one frame (m): a hurried raft's pace
-## (kit/new_pieces.gd HURRY), well under any hop to the far stop.
-const STEP := 0.12
+## The most a riding pip may move in one frame (m): up or down on a lift, a
+## hurried lift's pace; on a raft, a hurried raft's (kit/new_pieces.gd HURRY).
+## A hop to the far stop moves far more.
+const STEP := {true: 0.06, false: 0.12}
 var checks := 0
 var failures := 0
 var level: Dictionary
@@ -173,8 +174,8 @@ func _riders() -> void:
 	_check(str(aboard._players.p1.surface_id) == "lift-high", "The memory's weight took the live pip up: %s" % [aboard._players.p1])
 	_riding(ride, "The live pip riding the lift is drawn on its deck the same way", true)
 	# Off before the deck is up: the memory walks east onto the stilts a moment
-	# after the lift starts up (as the simulation lets it), so it rides on with
-	# the deck, which hurries to the top.
+	# after the lift starts up (as the simulation lets it), so it waits on the
+	# deck, which hurries to the top.
 	var leaves := _sim("marsh", start)
 	_walk(leaves, [350, 200])
 	_walk(leaves, [450, 200])
@@ -189,7 +190,7 @@ func _riders() -> void:
 	_walk(sends, [100, 100], world, ride)
 	_idle(sends, 80, world, ride)
 	_check(str(sends._players.p0.surface_id) == "stilts", "The memory walked off the lift onto the stilts: %s" % [sends._players.p0])
-	_riding(ride, "A memory stepping off before the lift is up rides on with it and never hops", true)
+	_riding(ride, "A memory stepping off before the lift is up waits on it and never hops", true)
 	# The raft: the memory waits on it, the live pip's pull carries it over the water.
 	var shore := {"p0": {"x": 200, "z": 300, "surface_id": "landing", "height": 0}, "p1": {"x": 300, "z": 860, "surface_id": "isle", "height": 0}}
 	var waits := _sim("marsh", shore)
@@ -269,7 +270,7 @@ func _measure(ride: Dictionary) -> void:
 	var entry: Dictionary = world.new_pieces._platforms[int(ride.index)]
 	if not str(ride.slot).is_empty():
 		var now: Vector3 = world.actors[ride.slot].position
-		if ride.has("last"): ride.step = maxf(float(ride.step), now.distance_to(ride.last))
+		if ride.has("last"): ride.step = maxf(float(ride.step), absf(now.y - ride.last.y) if entry.lift else now.distance_to(ride.last))
 		ride["last"] = now
 	var item: String = ride.item
 	var state: Dictionary = sim._players[ride.slot] if item.is_empty() else sim._mechanisms.items[item]
@@ -278,10 +279,12 @@ func _measure(ride: Dictionary) -> void:
 	var surface := str(state.get("surface_id", ""))
 	var stop: int = entry.stops.find(surface)
 	if stop < 0:
-		# Stepped off while the deck is on its way: drawn at the deck's height.
+		# Stepped off while the deck is on its way: drawn waiting on the deck.
 		var root: Node3D = entry.piece.root
 		if item.is_empty() and entry.lift and ride.has("aboard") and _count_frame(ride, entry, root, Vector3.ZERO):
-			var gap := absf(world.actors[ride.slot].position.y - root.position.y)
+			# On the deck's height, and still over the deck (never in the floor's edge).
+			var at: Vector3 = world.actors[ride.slot].position
+			var gap := maxf(absf(at.y - root.position.y), maxf(absf(at.x - root.position.x), absf(at.z - root.position.z)) - 0.5)
 			if gap > ride.worst:
 				ride.worst = gap
 				ride.where = "tick %d: stepped off, drawn %.3f m from the deck" % [sim.tick, gap]
@@ -326,7 +329,7 @@ static func _count_frame(ride: Dictionary, entry: Dictionary, deck: Node3D, anch
 ## A finished ride: its deck was on its way for some frames, and every frame
 ## drew what it watched on the deck.
 func _riding(ride: Dictionary, label: String, lift: bool) -> void:
-	_check(int(ride.between) >= (20 if lift else 10) and float(ride.worst) <= ON_DECK and float(ride.step) <= STEP, "%s (%d frames on its way, worst %.3f m, biggest step %.3f m; %s)" % [label, ride.between, ride.worst, ride.step, ride.where])
+	_check(int(ride.between) >= (20 if lift else 10) and float(ride.worst) <= ON_DECK and float(ride.step) <= float(STEP[lift]), "%s (%d frames on its way, worst %.3f m, biggest step %.3f m; %s)" % [label, ride.between, ride.worst, ride.step, ride.where])
 
 ## Walks the live pip to `to`, x first then z; with a world, each tick drawn.
 func _walk(sim: Simulation, to: Array, world: Node3D = null, rides: Variant = []) -> void:

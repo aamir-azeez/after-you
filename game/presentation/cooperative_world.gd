@@ -51,6 +51,8 @@ var new_pieces: RefCounted
 ## it, where that deck stood] as of the last frame it rode (kit/new_pieces.gd ride).
 var _floors: Dictionary = {}
 var _rode: Dictionary = {}
+## How far inside a deck's edge (m) a pip that stepped off it waits (_carry).
+const DECK_EDGE := 0.2
 
 func load_level(definition: Dictionary) -> void:
 	chapter_definition = definition.duplicate(true)
@@ -661,21 +663,30 @@ func _advance_carriers(delta: float) -> void:
 ## The one rider rule (kit/new_pieces.gd ride): a spirit on a platform's stop,
 ## the live pip or a memory, goes along with its deck's movement since the last
 ## frame and is drawn as far from its snapshot place as the deck stands from
-## that stop; one that stepped off before its deck got there rides on with it
-## (ride_off).
+## that stop; one that stepped off before its deck got there waits on it until
+## it is (ride_off).
 func _carry(role: String, actor: Node3D) -> Vector3:
 	var deck: Array = new_pieces.ride(str(_floors.get(role, ""))) if new_pieces != null else []
 	var was: Array = _rode.get(role, [])
 	var riding := not was.is_empty() and is_instance_valid(was[0])
-	# Stepped off a deck still on its way: it rides on until the deck is there.
-	if deck.is_empty() and riding: deck = new_pieces.ride_off(was[0])
+	# Stepped off a deck still on its way: it waits on the deck until the deck
+	# is there, then walks on to catch up (never through the floor's edge).
+	var off := deck.is_empty() and riding
+	if off: deck = new_pieces.ride_off(was[0])
 	if deck.is_empty():
 		_rode.erase(role)
 		return Vector3.ZERO
 	var root: Node3D = deck[0]
 	if riding and was[0] == root: actor.position += root.position - (was[1] as Vector3)
 	_rode[role] = [root, root.position]
-	return deck[1]
+	if not off: return deck[1]
+	# Off: its walk goes on only as far as the deck's edge (DECK_EDGE in), at
+	# the deck's height, until the deck is there.
+	var target: Vector3 = (actor_targets[role] as Vector3) + (deck[1] as Vector3)
+	var room: Vector2 = ((deck[2] as Vector2) - Vector2.ONE * DECK_EDGE).max(Vector2.ZERO)
+	target.x = clampf(target.x, root.position.x - room.x, root.position.x + room.x)
+	target.z = clampf(target.z, root.position.z - room.y, root.position.z + room.y)
+	return target - (actor_targets[role] as Vector3)
 
 func _advance_camera(delta: float) -> void:
 	for id: String in _lever_pieces:

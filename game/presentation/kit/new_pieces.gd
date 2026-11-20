@@ -42,7 +42,7 @@ var _view: Dictionary
 var _stops: Dictionary = {}
 var _stones: Dictionary = {}
 ## [{"piece", "stops": [ids], "heights": [m], "anchors": [the piece's root
-## at each stop], "lift": bool, "shown": m, "target": m, "at": the stop it
+## at each stop], "half": the deck's half size (m), "lift": bool, "shown": m, "target": m, "at": the stop it
 ## goes to, "hurry": bool (ride_off)}]
 var _platforms: Array = []
 ## Stair id -> {"piece", "rect" (m), "foot" (m)}.
@@ -117,7 +117,7 @@ func build(lantern_spots: Dictionary) -> void:
 		var lift: bool = stops.all(func(stop: Dictionary) -> bool: return stop.rect_cm == stops[0].rect_cm)
 		var anchors: Array = []
 		for index in range(stops.size()): anchors.append(Vector3(_rect(stops[index].rect_cm).get_center().x, heights[index], _rect(stops[index].rect_cm).get_center().y))
-		var entry := {"stops": Array(platform.stops).map(func(id: Variant) -> String: return str(id)), "heights": heights, "anchors": anchors, "lift": lift, "shown": heights[0], "target": heights[0], "at": 0, "hurry": false}
+		var entry := {"stops": Array(platform.stops).map(func(id: Variant) -> String: return str(id)), "heights": heights, "anchors": anchors, "half": rect.size / 2.0, "lift": lift, "shown": heights[0], "target": heights[0], "at": 0, "hurry": false}
 		if lift:
 			entry.piece = Lift.build(_world._piece_style("lift", str(platform.id)), rect, heights.min(), heights.max(), _world.terrain, _drive(platform))
 			entry.piece.set_height(heights[0])
@@ -180,10 +180,11 @@ func ride(surface: String) -> Array:
 	return []
 
 ## A pip that stepped off the deck `root` (ride's) onto a floor while that deck
-## is still on its way, as the simulation lets it: it keeps riding until the
-## deck reaches the stop it goes to, and the deck hurries there (HURRY), so
-## the pip never hops the rest of the way. [root, how far the root stands from
-## that stop], or [] once the deck is there.
+## is still on its way, as the simulation lets it: it waits on the deck until
+## the deck reaches the stop it goes to, and the deck hurries there (HURRY), so
+## the pip never hops the rest of the way nor walks through the floor's edge.
+## [root, how far the root stands from that stop, the deck's half size (m)],
+## or [] once the deck is there.
 func ride_off(root: Node3D) -> Array:
 	for entry: Dictionary in _platforms:
 		if entry.piece.root != root: continue
@@ -191,7 +192,7 @@ func ride_off(root: Node3D) -> Array:
 		var away: bool = float(entry.shown) != float(entry.target) if entry.lift else not root.position.is_equal_approx(anchor)
 		if not away: return []
 		entry.hurry = true
-		return [root, root.position - anchor]
+		return [root, root.position - anchor, entry.half]
 	return []
 
 func advance(delta: float) -> void:
