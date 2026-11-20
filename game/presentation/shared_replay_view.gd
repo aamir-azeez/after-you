@@ -23,6 +23,7 @@ const LoadingBar = preload("res://presentation/replay_loading_bar.gd")
 const Reaper = preload("res://services/worker_reaper.gd")
 const Badges = preload("res://presentation/kit/badges.gd")
 const MemoryWait = preload("res://presentation/memory_wait.gd")
+const TurnPaths = preload("res://presentation/kit/turn_paths.gd")
 const Typed = preload("res://services/typed_values.gd")
 const OpenTurns = preload("res://core/physical/open_turns.gd")
 const COMPLETION_DURATION := 3.0
@@ -304,6 +305,7 @@ func _start_part() -> void:
 	if not Registry.reset_simulation(sim, entry.room.chapter_key, definition, str(watched.stage_id), Registry.previous_checkpoint(entry.room.chapter_key, pair.checkpoint), memory, "b", watched, turns.slice(0, _turn_index - 1)):
 		_show_error(sim.error); return
 	world.show_stage(definition.stages[int(pair.stage_index)])
+	if world.has_method("wants_turn_paths") and world.wants_turn_paths(): world.present_turn_paths(TurnPaths.of(sim, memory, turns.slice(0, _turn_index - 1)))
 	_frames = engine.expand_recording_inputs(watched)
 	# The same identities as the original turn, so its sounds match.
 	soundscape.begin_turn(str(entry.room.chapter_key), str(watched.stage_id))

@@ -4,15 +4,9 @@ extends "res://presentation/water_world.gd"
 ## content/dressing/fog_marsh.gd). Everything here is presentation; movement and gates
 ## come from the snapshot.
 
-## Fog Marsh is a long strip along x (its floors stay within z +-4.5 m), longer
+## Fog Marsh is a long strip along x (about 115 m, its floors within z +-6.3 m), longer
 ## than the journey family's fixed camera band, so the camera scrolls over all
 ## of its floors.
 func _follow_limits() -> Array[Vector2]:
 	return _floors_follow_limits()
 
-## PROTOTYPE (train/falls-rethink-proto): the landmarks looming in the fog.
-const ProtoLandmarks = preload("res://presentation/kit/proto_landmarks.gd")
-
-func _build_water_scenery() -> void:
-	super._build_water_scenery()
-	ProtoLandmarks.marsh(terrain)

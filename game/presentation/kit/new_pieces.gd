@@ -17,7 +17,8 @@ extends RefCounted
 ##     lantern pump fills the pan);
 ##   - the fog round lantern levers (kit/fog.gd, the dressing's "fog" pick),
 ##     and the thick fog over the whole stage when the dressing's look has a
-##     cover (kit/fog_cover.gd), thinned round every control.
+##     cover (kit/fog_cover.gd), thinned round every control and opened for
+##     good where the stage's pips have walked (kit/turn_paths.gd).
 ## The lantern lever, the weight pans, the boards and the rope wheel are ordinary lever, pad
 ## and selector styles the world builds itself.
 ## Presentation only: nothing here feeds the simulation.
@@ -149,7 +150,6 @@ func present(state: Dictionary, immediate: bool) -> void:
 			if str(player.get("surface_id", "")) == id or (at.distance_to(ladder.foot) < FOOT_REACH and height < float(ladder.low) + 0.2): hung = true
 		ladder.piece.set_pulled(not hung, immediate)
 	if fog != null: fog.present(state.get("levers", {}))
-	if cover != null: cover.present(state.get("levers", {}))
 
 func moving() -> bool:
 	if _ladders.values().any(func(ladder: Dictionary) -> bool: return ladder.piece.moving()): return true
@@ -175,10 +175,20 @@ func drift(seconds: float) -> void:
 func follow(at: Vector3) -> void:
 	if cover != null: cover.follow(at)
 
-## PROTOTYPE: the cover opened for good round every drawn spirit (global m).
-func reveal(spirits: Array, clock: float) -> void:
-	if cover != null: cover.reveal(spirits, clock)
+## The cover opened for good where the stage's pips have been (kit/turn_paths.gd):
+## all of it (a new turn, a rebuilt cover), or what the turn just added.
+func show_paths(paths: RefCounted) -> void:
+	if cover != null: cover.show_paths(paths)
 
+func paths_changed(change: Dictionary) -> void:
+	if cover != null: cover.paths_changed(change)
+
+## Each frame (world clock `seconds`): the cover's mask in bounded steps.
+func advance_cover(delta: float, seconds: float) -> void:
+	if cover != null: cover.advance(delta, seconds)
+
+func set_quality(quality: String) -> void:
+	if cover != null: cover.set_quality(quality)
 ## Every node that moves or changes after the build, kept whole by the static fold.
 func moving_nodes() -> Array:
 	var nodes: Array = []
