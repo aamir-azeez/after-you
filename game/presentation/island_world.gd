@@ -186,20 +186,11 @@ func _ready() -> void:
 	camera_exploration.camera = camera
 	camera_exploration.reduced_motion = func() -> bool: return reduced_motion
 	add_child(camera_exploration)
-<<<<<<< HEAD
-	# The motes share one material of the world's own: the look tints them all
-	# at once (kit/look.gd).
-	var mote_material := material(Color.WHITE)
-	for i in range(32):
-		var node := Primitives.mesh_node(_sphere_mesh(0.018 + (i % 3) * 0.008), mote_material, Vector3(sin(i*2.17)*11, -2+cos(i*1.23)*3,cos(i*0.91)*9), self)
-		motes.append(node)
+	SpaceBackdrop.apply_quality(environment, _motion_quality)
 	# Soft contact shadows under everything marked in this world, one draw call.
 	contact_shadows = ContactShadows.new()
 	contact_shadows.set_quality(_motion_quality)
 	add_child(contact_shadows)
-=======
-	SpaceBackdrop.apply_quality(environment, _motion_quality)
->>>>>>> origin/main
 	relight("day")
 	get_tree().process_frame.connect(_on_tree_frame)
 
