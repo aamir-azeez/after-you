@@ -389,12 +389,13 @@ static func _ivy(root: Node3D, length: float) -> void:
 	for index in range(int(length / 0.18)):
 		_ball(0.07, LEAF if index % 2 == 0 else LEAF_LIGHT, Vector3(0.05 * (1 if index % 2 == 0 else -1), -0.1 - float(index) * 0.18, 0.012), root, Vector3(1.2, 0.8, 0.35))
 
+## The rowboat (assets/models/rowboat.glb), in today's timber tones.
+const ROWBOAT := "res://assets/models/rowboat.glb"
+static func rowboat_colors() -> Dictionary:
+	return {"hull": TIMBER, "strake": TIMBER.lightened(0.08), "inside": TIMBER_DARK, "rim": TIMBER_LIGHT, "seat": TIMBER_LIGHT, "oar": ROPE.lightened(0.1)}
+
 static func _boat(root: Node3D, s: float) -> void:
-	_box(Vector3(1.1, 0.22, 0.44) * s, TIMBER, Vector3(0, 0.11 * s, 0), root)
-	# The deck stands STANDOFF proud of the hull's rim at any size: equal
-	# tops z-fight and flicker as the camera moves.
-	_box(Vector3(1.0, 0.04, 0.36) * s, TIMBER_LIGHT, Vector3(0, 0.2 * s + STANDOFF, 0), root)
-	_box(Vector3(0.06, 0.05, 0.4) * s, TIMBER_DARK, Vector3(0.15 * s, 0.24 * s, 0), root)
+	Models.still(ROWBOAT, "rowboat", rowboat_colors(), root).scale = Vector3.ONE * s
 
 ## A squat harbour bollard with a coil of rope at its foot.
 static func _bollard(root: Node3D, s: float) -> void:
