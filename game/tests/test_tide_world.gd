@@ -162,6 +162,9 @@ func _first_stage(level: Dictionary) -> void:
 	world.present(sim.snapshot(), true)
 	_check(world._ghosts.has("sand-1") and world._ghosts["sand-1"].visible and not world._decks["sand-1"].visible, "At half water the shut sand bar shows as an outline")
 	_check(world._ghosts.has("stones-1") and not world._ghosts["stones-1"].visible and world._decks["stones-1"].visible, "At half water the open stones show their deck, not the outline")
+	var faint := (world._ghosts["sand-1"].find_children("*", "MeshInstance3D", true, false)[0] as MeshInstance3D).material_override as BaseMaterial3D
+	var sheet := world.waters.look.bodies.harbour.materials[0] as Material
+	_check(faint.depth_draw_mode == BaseMaterial3D.DEPTH_DRAW_ALWAYS and faint.render_priority < sheet.render_priority, "An outline draws before the water and writes depth, so the water covers only what of it sits under the surface")
 	_check(world._decks["stones-1"].find_children("SteppingStone*", "", true, false).size() >= 3 and world._decks["sand-1"].find_children("*", "MeshInstance3D", true, false).size() > 4, "Stones are built as stepping stones and the sand bar as a rippled hump")
 	var bubble: LabelBubble = world._journey_switches["tide"].bubble
 	var chips: Array = bubble.labels
