@@ -524,7 +524,7 @@ func _build_spill(run: Dictionary, stone: Node3D) -> void:
 	_sheets.append({"run": run, "sheet": sheet, "spray": spray, "low": INF, "falling": false})
 
 ## Below this drop (m) a spillway is a short run of rapids, not a pour.
-const RAPIDS_BELOW := 0.35
+const RAPIDS_BELOW := 0.25
 ## The rock a pool's lip stands on: the gorge rock's step (kit/gorge.gd's
 ## model), 2 m wide and 1 m tall as modelled, tiled along the run.
 const STEP_MODEL := "res://assets/models/gorge_rock.glb"
