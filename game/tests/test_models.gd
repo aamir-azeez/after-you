@@ -13,7 +13,8 @@ extends SceneTree
 ## - The model is read once until release_cached(), then again the same.
 ## - Every model in assets/models (and the sample) imports with Godot's name
 ##   hints, LODs, shadow meshes, tangents, light baking and animation off
-##   (IMPORT), and every part paints only named slots.
+##   (IMPORT), every part paints only named slots, and the file holds one
+##   scene of nothing but its parts.
 const Models = preload("res://presentation/kit/models.gd")
 const StaticBatch = preload("res://presentation/kit/static_batch.gd")
 const Primitives = preload("res://presentation/kit/primitives.gd")
@@ -135,6 +136,23 @@ func _every_model() -> void:
 			var path := dir.path_join(file)
 			var settings := FileAccess.get_file_as_string(path + ".import")
 			for line: String in IMPORT: _check(line in settings, "%s imports with %s" % [file, line])
-			for part: String in Models.parts(path):
+			var parts := Models.parts(path)
+			for part: String in parts:
 				for slot: String in Models.slots(path, part): _check(slot != "" and slot.to_snake_case() == slot, "%s %s paints a named slot: %s" % [file, part, slot])
+			# Godot imports only the file's first scene, so the file itself is read:
+			# one scene whose every node is a part (no stray Blender cube in another).
+			var gltf := _gltf_json(path)
+			var nodes: Array[String] = []
+			for node: Dictionary in gltf.get("nodes", []): nodes.append(str(node.get("name", "")))
+			nodes.sort()
+			var scenes: Array = gltf.get("scenes", [])
+			_check(scenes.size() == 1, "%s holds one scene: %s" % [file, scenes.map(func(scene: Dictionary) -> String: return str(scene.get("name", "")))])
+			_check(nodes == parts and (gltf.get("meshes", []) as Array).size() == parts.size(), "%s holds only its parts: %s" % [file, nodes])
 	_check(found >= 1, "the model folders hold the sample at least")
+
+## A GLB's JSON chunk: its length at byte 12, the JSON from byte 20.
+func _gltf_json(path: String) -> Dictionary:
+	var bytes := FileAccess.get_file_as_bytes(path)
+	if bytes.size() < 20: return {}
+	var parsed: Variant = JSON.parse_string(bytes.slice(20, 20 + bytes.decode_u32(12)).get_string_from_utf8())
+	return parsed if parsed is Dictionary else {}
