@@ -123,8 +123,8 @@ func _caps(first_steps: bool) -> Dictionary:
 		var value := Registry.descriptor(key)
 		chapters.append({"level_id":value.level_id,"level_version":value.level_version,"definition_hash":value.definition_hash,
 			"premium":value.premium,"recording_version":value.recording_version,"simulation_version":value.simulation_version})
-	return {"api_version":2,"recording_version":2,"simulation_version":2,"mutations_enabled":true,
-		"validation":"structural_client_replay_required","chapters":chapters}
+	return Fakes.room_level_caps({"api_version":2,"recording_version":2,"simulation_version":2,"mutations_enabled":true,
+		"validation":"structural_client_replay_required","chapters":chapters})
 
 ## A signed-in Main fed by the synthetic service, as the hub sees it.
 func _hub_app(tag: String, viewport: SubViewport) -> Node:

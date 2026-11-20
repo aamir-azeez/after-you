@@ -214,19 +214,21 @@ static func outline_mesh(builder: RefCounted, key: String) -> ArrayMesh:
 	var indices := PackedInt32Array()
 	for found: Node in model.find_children("*", "MeshInstance3D", true, false):
 		var part := found as MeshInstance3D
-		var shape := part.mesh as PrimitiveMesh
+		# Kit primitives and model parts (kit/models.gd) alike, every surface.
+		var shape := part.mesh
 		if shape == null: continue
 		var relative := part.transform
 		var parent := part.get_parent()
 		while parent != model:
 			relative = (parent as Node3D).transform * relative
 			parent = parent.get_parent()
-		var arrays := shape.get_mesh_arrays()
-		var start := vertices.size()
-		for vertex: Vector3 in arrays[Mesh.ARRAY_VERTEX]: vertices.append(relative * vertex)
-		var order: PackedInt32Array = arrays[Mesh.ARRAY_INDEX] if arrays[Mesh.ARRAY_INDEX] != null else PackedInt32Array()
-		if order.is_empty(): order = PackedInt32Array(range((arrays[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()))
-		for index: int in order: indices.append(start + index)
+		for surface in range(shape.get_surface_count()):
+			var arrays := shape.surface_get_arrays(surface)
+			var start := vertices.size()
+			for vertex: Vector3 in arrays[Mesh.ARRAY_VERTEX]: vertices.append(relative * vertex)
+			var order: PackedInt32Array = arrays[Mesh.ARRAY_INDEX] if arrays[Mesh.ARRAY_INDEX] != null else PackedInt32Array()
+			if order.is_empty(): order = PackedInt32Array(range((arrays[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()))
+			for index: int in order: indices.append(start + index)
 	model.free()
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)

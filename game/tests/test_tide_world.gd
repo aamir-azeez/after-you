@@ -77,7 +77,8 @@ func _first_stage(level: Dictionary) -> void:
 		_check(absf(world._physical_pads[pad.id].global_position.y - 0.96 - StandSpot.RIM_LIFT) < 0.01, "A waiting-step pad sits on its raised step: " + str(pad.id))
 	for problem: String in SpotChecks.shapes(world, level.stages[0]) + SpotChecks.beacon_rings(world, level.stages[0]): _check(false, problem)
 	_check(SpotChecks.held(world, level.stages[0], state).is_empty(), "No step's spot shows held while nobody stands on it")
-	_check(world._weights.keys() == ["lock-west", "lock-east"] and absf(world._weights["lock-west"].get_meta("rest_y") - 0.93) < 0.01, "Only the lock gates keep a pulley, lifted to the terrace")
+	# The gauges explain every tide crossing and the sea gate wears its owner's gates: only the locks hang a pulley post, on the terrace.
+	_check(world._weights.keys() == ["lock-west", "lock-east"] and absf(world._pulleys["lock-west"].root.position.y + float(world._weights["lock-west"].get_meta("rest_y")) - 0.93) < 0.01 and world._pulleys["lock-west"].style == "theme_hanger", "Only the lock gates keep a pulley, the harbour's anchor, lifted to the terrace")
 	for route: Dictionary in level.bridges:
 		if route.to_surface != route.id: continue
 		var frame: Node3D = world.terrain.find_child("StubFrame_" + str(route.id), false, false)

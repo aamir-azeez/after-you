@@ -45,6 +45,19 @@ import bundledTide from "../src/v2/turn-of-the-tide-v3.json";
 import bundledTideInitial from "../src/v2/turn-of-the-tide-v3-initial.json";
 import bundledRooms from "../src/v2/conservatory-v2.json";
 import bundledRoomsInitial from "../src/v2/conservatory-v2-initial.json";
+import { highAndLowV2, HIGH_AND_LOW_V2_HASH } from "../src/v2/protocol-cooperative";
+import highDefinition from "../../game/tests/fixtures/cooperative/high-and-low-v2-definition.json";
+import highInitial from "../../game/tests/fixtures/cooperative/high-and-low-v2-initial-checkpoint.json";
+import highUpperA from "../../game/tests/fixtures/cooperative/high-and-low-v2-upper-path-a.json";
+import highUpperB from "../../game/tests/fixtures/cooperative/high-and-low-v2-upper-path-b.json";
+import highUpperC from "../../game/tests/fixtures/cooperative/high-and-low-v2-upper-path-c.json";
+import highUpperEnd from "../../game/tests/fixtures/cooperative/high-and-low-v2-upper-path-checkpoint.json";
+import highDownA from "../../game/tests/fixtures/cooperative/high-and-low-v2-down-and-around-a.json";
+import highDownB from "../../game/tests/fixtures/cooperative/high-and-low-v2-down-and-around-b.json";
+import highDownC from "../../game/tests/fixtures/cooperative/high-and-low-v2-down-and-around-c.json";
+import highDownEnd from "../../game/tests/fixtures/cooperative/high-and-low-v2-down-and-around-checkpoint.json";
+import bundledHigh from "../src/v2/high-and-low-v2.json";
+import bundledHighInitial from "../src/v2/high-and-low-v2-initial.json";
 import { withConfig } from "./config";
 
 /** A fixture checkpoint as an open turns room takes it: no proof nests in it (v2/open-turns.ts fingerprints), and its hash never covered one. */
@@ -60,6 +73,9 @@ const CHAINS: Chain[] = [
     bundled: bundledTide, bundledInitial: bundledTideInitial, stages: [[tideSetA, tideSetB, tideSetC, flat(tideSetEnd)], [tideSlackA, tideSlackB, tideSlackC, flat(tideSlackEnd)]] },
   { name: "conservatory@2", adapter: conservatoryV2, hash: CONSERVATORY_V2_HASH, rules: 14, flag: "CONSERVATORY_V2_CHAPTER_ENABLED", definition: roomsDefinition, initial: roomsInitial,
     bundled: bundledRooms, bundledInitial: bundledRoomsInitial, stages: [[roomsAboveA, roomsAboveB, roomsAboveC, flat(roomsAboveEnd)], [roomsReturnA, roomsReturnB, roomsReturnC, flat(roomsReturnEnd)]] },
+  // The cooperative family on the same open turns (protocol-cooperative.ts): both players end at each bell.
+  { name: "high-and-low@2", adapter: highAndLowV2, hash: HIGH_AND_LOW_V2_HASH, rules: 14, flag: "HIGH_AND_LOW_V2_CHAPTER_ENABLED", definition: highDefinition, initial: highInitial,
+    bundled: bundledHigh, bundledInitial: bundledHighInitial, stages: [[highUpperA, highUpperB, highUpperC, flat(highUpperEnd)], [highDownA, highDownB, highDownC, flat(highDownEnd)]] },
 ];
 // 0.8.1 and older: none of them offers 12 or 13 (11 is the Lighthouse room's).
 const OLD_CLIENTS = [[2, 4, 5, 6, 7, 8, 9, 10], [2, 4, 5, 6, 7, 8, 9, 10, 11], [2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]], NEW_CLIENT = [2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
@@ -136,6 +152,14 @@ describe("open controls (rules 12 and 13)", () => {
     expect(end.players.p1).toMatchObject({ x: 1408, z: 72, surface_id: "home-room" });
     const away = structuredClone(end); away.players.p1 = { ...away.players.p1, x: 1200, z: 32 };
     await expect(checkpointV2(await rehash(away), first, a, c, [b])).rejects.toMatchObject({ code: "checkpoint_goal_mismatch" });
+  });
+  it("ends a cooperative open turns stage only with both players at its bell", async () => {
+    // High and Low@2's upper path ends with both players at the loft bell; one of them left on the loft away from it is refused.
+    const chain = CHAINS.find(row => row.name === "high-and-low@2")!, [a, b, c] = await records(chain, 0);
+    const end = structuredClone(flat(highUpperEnd)) as Record<string, any>;
+    expect(end.players.p0).toMatchObject({ surface_id: "loft" }); expect(end.players.p1).toMatchObject({ surface_id: "loft" });
+    const away = structuredClone(end); away.players.p0 = { ...away.players.p0, x: 0, z: 0 };
+    await expect(checkpointV2(await rehash(away), initialCheckpoint(chain.adapter.key) as ChapterCheckpoint, a, c, [b])).rejects.toMatchObject({ code: "checkpoint_goal_mismatch" });
   });
   it("keeps the tide rules on 15: no route latches", async () => {
     const chain = CHAINS[1], [a, b, c] = await records(chain, 0);

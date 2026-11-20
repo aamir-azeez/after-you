@@ -71,7 +71,7 @@ class Rules:
                 raise ToolError(f"{recording.as_posix()} changed how it bounds longer turns ({expected}); update scripts/chapter_tools/turn_limits.py")
         self.published_b = 1200
         self.recording_bytes = 65_536
-        # Open turns: open-turns.ts openTurnLimits and openBodyLimits, with protocol-journey.ts OPEN_TURNS_BRANCHES.
+        # Open turns: open-turns.ts openTurnLimits, openBodyLimits and OPEN_TURNS_BRANCHES.
         open_turns = v2 / "open-turns.ts"
         self.open_envelope_bytes = _constant(open_turns, r"^const ENVELOPE_BYTES = ([\d_]+);$", "ENVELOPE_BYTES")
         self.open_checkpoint_bytes = _constant(open_turns, r"^const CHECKPOINT_BYTES = ([\d_]+);$", "CHECKPOINT_BYTES")
@@ -81,7 +81,7 @@ class Rules:
             raise ToolError(f"{(v2 / 'row-bound.ts').as_posix()} no longer declares MAX_ROOM_TURNS and MAX_ROOM_PAIRS; update scripts/chapter_tools/turn_limits.py")
         self.room_turns, self.room_pairs = (int(group) for group in found.groups())
         self.archive_bytes = _constant(v2 / "row-bound.ts", r"^export const MAX_REPLAY_ARCHIVE_BYTES = ([\d_ *]+);$", "MAX_REPLAY_ARCHIVE_BYTES")
-        self.open_branches = _constant(v2 / "protocol-journey.ts", r"^const OPEN_TURNS_BRANCHES = (\d+);$", "OPEN_TURNS_BRANCHES")
+        self.open_branches = _constant(open_turns, r"^export const OPEN_TURNS_BRANCHES = (\d+);$", "OPEN_TURNS_BRANCHES")
         # Open turns are always packed: open-turns.ts packedRecordingBytes, with recording-codec.ts's checks.
         self.packed_header_bytes = _constant(open_turns, r"^const PACKED_HEADER_BYTES = ([\d_]+);$", "PACKED_HEADER_BYTES")
         codec = v2 / "recording-codec.ts"
@@ -89,9 +89,9 @@ class Rules:
         if not found:
             raise ToolError(f"{codec.as_posix()} no longer declares its check spacing; update scripts/chapter_tools/turn_limits.py")
         self.check_every, self.full_check_every, self.short_hash_bytes, self.full_hash_bytes = (int(group) for group in found.groups())
-        journey = (v2 / "protocol-journey.ts").read_text(encoding="utf-8")
-        if "openTurnLimits(definition.stages, packedRecordingBytes(turns?.b_ticks ?? 1200), maxBranches!)" not in journey:
-            raise ToolError(f"{(v2 / 'protocol-journey.ts').as_posix()} changed how it sizes open turns; update scripts/chapter_tools/turn_limits.py")
+        # Every family's open turns adapter sizes them in protocol-physical-recording.ts openPhysicalRecording.
+        if "openTurnLimits(definition.stages, packedRecordingBytes(turns?.b_ticks ?? 1200), maxBranches)" not in recording.read_text(encoding="utf-8"):
+            raise ToolError(f"{recording.as_posix()} changed how it sizes open turns; update scripts/chapter_tools/turn_limits.py")
         source = open_turns.read_text(encoding="utf-8")
         # The formula mirrored by open_fits(); any change to it must change this file too.
         for expected in ("if (recordingBytes + ENVELOPE_BYTES > MAX_ROW_BYTES || recordingBytes + CHECKPOINT_BYTES + ENVELOPE_BYTES > MAX_WORKER_BODY_BYTES) throw",

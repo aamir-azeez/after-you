@@ -24,6 +24,10 @@ func _run() -> void:
 		world.load_level(Registry.definition(key))
 		world.show_stage(Registry.definition(key).stages[0])
 		if Index.data(key).family in SEEDED_FAMILIES: _check_seeded(world, key)
+		elif "seed" in Index.data(key).piece_styles.values():
+			# A carried item in the "seed" style (kit/pieces/carried_item.gd) is the shared seed too.
+			var seeds := _seeds(world)
+			_check(not seeds.is_empty() and seeds.all(func(found: Node) -> bool: return SeedVisual.leaves(found).size() == SeedVisual.LEAF_COUNT), "A carried seed comes from the shared builder, leaves and all: " + key)
 		else: _check(world.seed == null and _seeds(world).is_empty(), "A seedless chapter draws no seed: " + key)
 		world.free()
 	var island := IslandWorld.new()

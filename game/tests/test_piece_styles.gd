@@ -15,6 +15,7 @@ const Selector = preload("res://presentation/kit/pieces/selector.gd")
 const Pad = preload("res://presentation/kit/pieces/pad.gd")
 const Goal = preload("res://presentation/kit/pieces/goal.gd")
 const Lift = preload("res://presentation/kit/pieces/lift.gd")
+const Pulley = preload("res://presentation/kit/pieces/pulley.gd")
 const BridgeKit = preload("res://presentation/kit/pieces/bridge.gd")
 const Raft = preload("res://presentation/kit/pieces/raft.gd")
 const Motion = preload("res://presentation/kit/motion.gd")
@@ -108,6 +109,22 @@ func _check_every_style(holder: Node3D) -> void:
 		_check(is_equal_approx(piece.root.position.y, 0.8), "Lift %s's deck stands at the shown height" % style)
 	_check(Lift.build("teapot", Rect2(0, 0, 1, 1), 0.0, 1.0, holder).style == "plain", "An unknown lift style builds plain")
 	_check(Lever.build("teapot", AT, holder).style == "plain" and Selector.build("teapot", AT, holder).style == "plain" and Pad.build("teapot", AT, 0.3, holder).style == "plain" and Goal.build("teapot", AT, 0.3, holder).style == "bell", "An unknown style builds the default")
+	for style: String in Styles.SLOTS.pulley:
+		var post: RefCounted = Pulley.build(style, AT, holder)
+		_check(post.style == style and post.root.get_parent() == holder and post.root.position == AT and post.weight.get_parent() == post.root and is_equal_approx(post.weight.position.y, Pulley.REST_Y), "Pulley %s stands on its spot, its weight hung" % style)
+		var rope: MeshInstance3D = post.moving_parts()[0]
+		for laid: bool in [true, false]:
+			post.weight.position.y = Pulley.REST_Y - (0.7 if laid else 0.0)
+			post.set_laid(laid)
+			_check(is_equal_approx(rope.position.y - rope.scale.y * 0.5, post.weight.position.y + post._hang) and rope.position.y + rope.scale.y * 0.5 <= post.anchor_lift() + 0.001, "Pulley %s's rope runs from its wheel to its weight (laid %s)" % [style, laid])
+			var glass: MeshInstance3D = post._glass
+			if glass != null: _check((glass.material_override as StandardMaterial3D).emission_enabled == laid, "Pulley %s's lantern glows only while laid" % style)
+	_check(Pulley.build("teapot", AT, holder).style == Pulley.STYLES[0] and Pulley.build("lantern_hook", AT, holder)._glass != null and Pulley.build("little_roof", AT, holder)._glass == null, "An unknown pulley builds the first style; only the lantern has a glass")
+	# A hanger lays its coil only wholly on a floor by its foot: a roomy floor, then one whose edge runs too close.
+	var roomy: Array[Rect2] = [Rect2(-2.0, -2.0, 1.95, 2.5)]
+	var narrow: Array[Rect2] = [Rect2(-2.0, -2.0, 1.95, 2.1)]
+	var coils := func(ground: Array[Rect2]) -> Array: return Pulley.build("theme_hanger", AT, holder, ground).root.find_children("Coil*", "", false, false)
+	_check(coils.call(roomy).size() == Pulley.COIL_RINGS.size() and coils.call(narrow).is_empty() and coils.call([] as Array[Rect2]).is_empty(), "A hanger lays its rope coil only where a floor at its foot holds it clear of the edges")
 
 ## A handle snaps; a machine stands inside its lever's reach, its anchor puts
 ## a bubble's tail on its top, and a pull eases over PULL_SECONDS to the pose

@@ -15,15 +15,27 @@ const COMFORT_ALIAS_VERSION := 9
 ## pad held by either pip and every lever worked by either. Only a definition
 ## that pins 12 plays them. A stage then completes only with every one of its
 ## levers on, as the server's checkpoint asks of every cooperative stage.
+## Open turns (14) ask no such thing: both pips at the goal is the whole
+## finish (core/physical/open_turns.gd), on the server too.
 
 func _open_controls() -> bool:
 	return simulation_version in [OPEN_RULES_VERSION, OpenControls.OPEN_TURNS_RULES_VERSION]
 
 func _may_complete() -> bool:
-	if not _open_controls(): return true
+	if not _open_controls() or _open_turns(): return true
 	for lever: Dictionary in stage.get("levers", []):
 		if not bool(_mechanisms.levers.get(lever.id, false)): return false
 	return true
+
+## Open turns (14): a stage keeps open past its end only the crossings its
+## gates hold on the end state, not one the closing pip merely stood on (a
+## comfort entry): either pip may play the closing turn, so what it happened
+## to walk last must not open the next stage. Earlier rules keep them all.
+func _kept_open(route_id: String) -> bool:
+	if not _open_turns(): return true
+	for gate: Dictionary in stage.get("gates", []):
+		if str(gate.route_id) == route_id and _gate_open(gate): return true
+	return false
 
 func reset(definition: Dictionary, stage_id: String, checkpoint: Dictionary, prior_a: Dictionary = {}, current_role: String = "a", rules_version: int = 0, chain: Array = []) -> bool:
 	if rules_version == 0:

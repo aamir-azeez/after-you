@@ -48,10 +48,11 @@ const HANDOFF_RADIUS := 0.6
 ## Everything on a stage a small flat thing keeps clear of: its stage_things,
 ## each control's disc (a pad its own radius, a light receiver 0.3 m, any
 ## other control 0.2 m), the goal's disc, the handoff ring `handoff_reach`
-## past its radius and the world's own scenery (_pair_keep_clear). Each disc
-## names what it belongs to as "owner", so a marker of that thing may come
-## closer to it.
-static func scenery(view: Dictionary, world: Object, handoff_reach: float) -> Array:
+## past its radius, the world's own scenery (_pair_keep_clear) and, with
+## `covers`, the dressing's rugs and paths (floor_covers), which a gate's post
+## may stand on but a flat tile never lies on. Each disc names what it belongs
+## to as "owner", so a marker of that thing may come closer to it.
+static func scenery(view: Dictionary, world: Object, handoff_reach: float, covers: bool = true) -> Array:
 	var found := stage_things(view)
 	var pads: Array = view.get("pressure_pads", []) + view.get("ball_pads", [])
 	var receivers: Array = view.get("optics", {}).get("receivers", view.get("optical_field", {}).get("receivers", []))
@@ -75,6 +76,7 @@ static func scenery(view: Dictionary, world: Object, handoff_reach: float) -> Ar
 	var handoff: Variant = view.get("handoff")
 	if handoff is Dictionary and handoff.has("position_cm"): found.append({"centre": Vector2(float(handoff.position_cm[0]), float(handoff.position_cm[1])) / 100.0, "radius": HANDOFF_RADIUS + handoff_reach, "what": "the handoff", "owner": "handoff"})
 	found.append_array(world.call(&"_pair_keep_clear"))
+	if covers: found.append_array(world.call(&"floor_covers"))
 	return found
 
 ## The nearest clear spot `size` across (x and z) to the first of

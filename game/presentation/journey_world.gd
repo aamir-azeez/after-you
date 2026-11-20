@@ -14,10 +14,10 @@ const HINT_DASH := Color("f2d39b")
 ## A selector's bubble body stands as if its tail ended here, just over the
 ## lever's knob; the tail's tip itself lands on the knob's top (_knob_top).
 const LEVER_TOP := Vector3(0,0.80,0)
-## A lever's knob (cooperative_world._build_lever): its centre in the pivot's
-## space, and its radius.
-const KNOB := Vector3(0,0.40,0)
-const KNOB_RADIUS := 0.09
+## A lever's knob (kit/pieces/lever.gd): its centre in the pivot's space, and
+## its radius.
+const KNOB := Vector3(0,LeverPiece.KNOB_CENTRE,0)
+const KNOB_RADIUS := LeverPiece.KNOB_RADIUS
 ## A spirit's height on screen with its badge, and half its width, in metres.
 const SPIRIT_TOP := 1.75
 const SPIRIT_HALF_WIDTH := 0.42
@@ -487,6 +487,7 @@ func _build_gate_links(view: Dictionary) -> void:
 				if elbow.distance_to(end)<=0.01: elbow = stop
 				if start.distance_to(elbow)>0.01: _bar_between(start,elbow,0.016,color.darkened(0.25),terrain)
 				if elbow.distance_to(stop)>0.01: _bar_between(elbow,stop,0.016,color.darkened(0.25),terrain)
+				_cabled[str(route.id)] = true
 
 func _route_color(id: String) -> Color:
 	return GOLD if id in ["path-selector","high-light","crossing-light","near-window"] else TEAL
@@ -745,11 +746,23 @@ func _build_items(stage: Dictionary) -> void:
 	var hands := CarriedItems.hands_routes(view)
 	for route: Dictionary in view.get("bridges", []) + view.get("stairs", []):
 		if hands.has(str(route.id)): _ladder_rungs(route)
+	# A throw's mark is a cream ring where the thrower stands; its landing the
+	# seed landing's ring of ticks (kit/pieces/socket.gd).
+	for thrown: Dictionary in view.get("throws", []):
+		var mark := ring(float(thrown.mark.get("radius_cm", CarriedItems.SPOT_RADIUS_CM)) / 100.0, CREAM, _at(thrown.mark) + Vector3(0, 0.03, 0), terrain)
+		mark.name = "ThrowMark_" + str(thrown.id)
+		var landing := Node3D.new()
+		landing.name = "ThrowLanding_" + str(thrown.id)
+		landing.position = _at(CarriedItems.spot(view, str(thrown.to)))
+		terrain.add_child(landing)
+		SocketKit.landing(landing)
 
 ## Where an item state rests in the terrain's space (on the water when its
 ## floor is none).
 func _item_point(state: Dictionary) -> Vector3:
 	if state.is_empty(): return Vector3.ZERO
+	# Thrown: where its arc has it.
+	if CarriedItems.in_flight(state): return Vector3(float(state.x), float(state.height), float(state.z)) / 100.0
 	return _at({"position_cm": [int(state.x), int(state.z)], "surface_id": str(state.surface_id)})
 
 ## Rungs across a both-hands crossing every RUNG_CM along it, at its height
@@ -784,7 +797,10 @@ func _present_items(state: Dictionary) -> void:
 		var item_state: Dictionary = items.get(id, {})
 		if item_state.is_empty(): continue
 		var piece: RefCounted = _item_pieces[id]
+		# Away (carried_items.gd): not in the level, so nothing shows.
+		piece.root.visible = not CarriedItems.is_away(item_state)
+		if not piece.root.visible: continue
 		var holder := str(item_state.holder)
 		if not holder.is_empty() and actors.has(holder): piece.carry(actors[holder])
-		else: piece.rest(_item_point(item_state), terrain, str(item_state.surface_id).is_empty())
+		else: piece.rest(_item_point(item_state), terrain, str(item_state.surface_id).is_empty() and not CarriedItems.in_flight(item_state))
 	if _current_piece != null: _current_piece.set_controls(state.get("controls", {}))

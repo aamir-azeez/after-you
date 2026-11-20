@@ -293,6 +293,13 @@ func _next_stage(one: Dictionary) -> void:
 	kept.stages[1].erase("item_starts")
 	var carried := _sim(kept, "drift", checkpoint)
 	_check(carried.snapshot().players.p1.carrying == "pipsport" and carried._mechanisms.items.raft.spot == "mooring", "Otherwise the item rides into the next stage as the last one left it")
+	var gone := level.duplicate(true)
+	gone.stages[1].item_starts = {"pipsport": "away"}
+	var away := _sim(gone, "drift", checkpoint)
+	_check(CarriedItems.problems(gone).is_empty() and away._mechanisms.items.pipsport == CarriedItems.away() and away.snapshot().players.p1.carrying == "", "item_starts may put an item away: out of the level, held by no one")
+	var named := level.duplicate(true)
+	named.item_spots[0].id = "away"
+	_check(not CarriedItems.problems(named).is_empty(), "No item spot may be named away")
 
 func _current(one: Dictionary) -> void:
 	var checkpoint: Dictionary = one.checkpoint

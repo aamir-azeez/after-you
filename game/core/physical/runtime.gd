@@ -8,6 +8,7 @@ const OpenControls = preload("res://core/physical/open_controls.gd")
 const OpenTurns = preload("res://core/physical/open_turns.gd")
 const MemoryTrace = preload("res://core/physical/memory_trace.gd")
 const RecordingCodec = preload("res://core/v2/recording_codec.gd")
+const Solid = preload("res://core/solid_footprint.gd")
 const TICK_RATE := 30
 const MAX_TICKS := 900
 const MOVE_PER_TICK := 8
@@ -92,6 +93,9 @@ var _own_toggles: Dictionary = {"levers": {}, "controls": {}}
 ## hash, the recording and the navigation index read it instead of digesting
 ## the whole definition again. "" until first used.
 var _definition_hash := ""
+## The level's item spots that are solid (core/solid_footprint.gd), set at
+## reset: a pip walks round them. [] on every level without one.
+var _solids: Array = []
 
 ## `chain`: open turns only, the stage's turns before `prior_a` (the memory),
 ## oldest first; the memory replays over them as it was played.
@@ -124,6 +128,7 @@ func reset(definition: Dictionary, stage_id: String, checkpoint: Dictionary, pri
 func _reset_trusted(definition: Dictionary, stage_id: String, checkpoint: Dictionary, prior_a: Dictionary, current_role: String, chain: Array = []) -> void:
 	level = definition.duplicate(true)
 	_definition_hash = ""
+	_solids = Solid.solids(level.get("item_spots", []))
 	stage = stage_by_id(level, stage_id)
 	role = current_role
 	first_player_slot = stage.first_player_slot
@@ -208,7 +213,7 @@ func _tick(input: Dictionary = {}) -> void:
 		finished = true
 		if _keeps_routes_at_completion():
 			for route_id: String in _routes:
-				if _routes[route_id] and route_id not in _mechanisms.latched_bridges: _mechanisms.latched_bridges.append(route_id)
+				if _routes[route_id] and route_id not in _mechanisms.latched_bridges and _kept_open(route_id): _mechanisms.latched_bridges.append(route_id)
 		_mechanisms.latched_bridges.sort()
 		_events.append("stage_complete")
 	if tick >= duration_limit():
@@ -277,7 +282,7 @@ func _try_move(delta: Vector2i, cells: Dictionary, routes: Dictionary, slot: Str
 	var x := int(previous.x) + delta.x
 	var z := int(previous.z) + delta.y
 	var position := Navigation.at(level, routes, _mechanisms.levers, previous, x, z, slot, PLAYER_RADIUS, true, cells)
-	if position.is_empty(): return false
+	if position.is_empty() or _in_solid(position): return false
 	var pushed: Dictionary = {}
 	for prop: Dictionary in level.get("props", []):
 		var ball: Dictionary = _mechanisms.props[prop.id]
@@ -300,6 +305,12 @@ func _try_move(delta: Vector2i, cells: Dictionary, routes: Dictionary, slot: Str
 	if slot == active_slot and int(previous.height) > int(position.height) + 2: _events.append("drop")
 	return true
 
+## Whether `position` stands in a solid spot on its own floor.
+func _in_solid(position: Dictionary) -> bool:
+	if _solids.is_empty(): return false
+	var floor := str(position.surface_id)
+	return Solid.blocked(_solids.filter(func(spot: Dictionary) -> bool: return str(spot.get("surface_id", "")) == floor), Vector2i(int(position.x), int(position.z)), PLAYER_RADIUS)
+
 func _can_push(ball: Dictionary) -> bool:
 	if ball.status == "fitted" or ball.status == "offered": return false
 	if role == "a": return ball.status == "free"
@@ -309,12 +320,16 @@ func _refresh_routes() -> void:
 	for route: Dictionary in level.get("bridges", []) + level.get("stairs", []):
 		_routes[route.id] = route.id in _mechanisms.latched_bridges or bool(_comfort_entries.get(route.id, false))
 	for gate: Dictionary in stage.get("gates", []):
-		var enabled := true
-		for key: String in ["lever_id", "second_lever_id"]:
-			if not str(gate.get(key, "")).is_empty(): enabled = enabled and bool(_mechanisms.levers.get(gate[key], false))
-		if not str(gate.get("pad_id", "")).is_empty(): enabled = enabled and _pad_active(_entity(stage.pressure_pads, gate.pad_id))
-		if not str(gate.get("ball_pad_id", "")).is_empty(): enabled = enabled and _ball_at(_entity(stage.ball_pads, gate.ball_pad_id), str(stage.source_policy.get("prop_id", "")))
-		_routes[gate.route_id] = bool(_routes.get(gate.route_id, false)) or enabled
+		_routes[gate.route_id] = bool(_routes.get(gate.route_id, false)) or _gate_open(gate)
+
+## Whether `gate` holds now: each lever it names on, its pad held, its ball on its pad.
+func _gate_open(gate: Dictionary) -> bool:
+	var enabled := true
+	for key: String in ["lever_id", "second_lever_id"]:
+		if not str(gate.get(key, "")).is_empty(): enabled = enabled and bool(_mechanisms.levers.get(gate[key], false))
+	if not str(gate.get("pad_id", "")).is_empty(): enabled = enabled and _pad_active(_entity(stage.pressure_pads, gate.pad_id))
+	if not str(gate.get("ball_pad_id", "")).is_empty(): enabled = enabled and _ball_at(_entity(stage.ball_pads, gate.ball_pad_id), str(stage.source_policy.get("prop_id", "")))
+	return enabled
 
 func _pad_active(pad: Dictionary) -> bool:
 	if pad.is_empty(): return false
@@ -712,6 +727,11 @@ func _may_complete() -> bool:
 ## Whether a completed stage keeps every route open at its end for the stages
 ## after it (latched_bridges). Published rules do.
 func _keeps_routes_at_completion() -> bool:
+	return true
+
+## Whether a route open at a stage's end stays open after it, when the facade
+## keeps routes at all. Published rules keep every open one.
+func _kept_open(_route_id: String) -> bool:
 	return true
 
 func _after_move() -> void:

@@ -24,6 +24,8 @@ extends SceneTree
 const Registry = preload("res://services/chapter_registry.gd")
 const LabelBubble = preload("res://presentation/kit/label_bubble.gd")
 const JourneySimulation = preload("res://core/journey/simulation.gd")
+const Lever = preload("res://presentation/kit/pieces/lever.gd")
+const Models = preload("res://presentation/kit/models.gd")
 ## How far a drawn tip may sit from its anchor on the view plane (metres).
 const EPSILON := 0.003
 const DELTA := 1.0 / 60.0
@@ -220,7 +222,7 @@ func _foot(world: Node3D, bubble: LabelBubble) -> Vector3:
 	return bubble.anchor
 
 ## Every selector's tail lands on its own lever's knob, on its top, at every
-## value the lever tilts to: the knob found as the lever's sphere. A selector
+## value the lever tilts to: the knob found on the lever's handle model. A selector
 ## drawn as a look (a valve) has no knob; its tail lands on the look's top,
 ## the anchor's knob point, at every value.
 func _knobs(world: Node3D, state: Dictionary, bubbles: Array, label: String) -> void:
@@ -246,16 +248,20 @@ func _knobs(world: Node3D, state: Dictionary, bubbles: Array, label: String) -> 
 			else:
 				var knob := _knob(world._physical_levers[id])
 				if not _check(knob != null, "%s: the %s lever has a knob" % [label, id]): continue
-				top = world.terrain.to_local(knob.global_position) + Vector3(0, (knob.mesh as SphereMesh).radius * knob.global_basis.y.length(), 0)
+				# The knob is the handle model's "knob" slot: a ball on a short neck,
+				# as wide as it is round, its top the slot's top.
+				var ball: AABB = Models._part(Lever.MODEL, "lever_handle").slots.knob.get_aabb()
+				var radius := ball.size.x * 0.5
+				var centre := Vector3(ball.get_center().x, ball.end.y - radius, ball.get_center().z)
+				top = world.terrain.to_local(knob.global_transform * centre) + Vector3(0, radius * knob.global_basis.y.length(), 0)
 			_check(bubble.anchor.distance_to(top) < (0.005 if world._lever_pieces[id].style == "valve" else 0.001), "%s: the %s tail lands on the top of its lever's knob at %s (anchor %s, knob top %s)" % [label, id, value, bubble.anchor, top])
 			_tips(bubbles, "%s, %s at %s" % [label, id, value])
 	world.present(state, true)
 	_frames(world, 2)
 
+## The lever's handle (kit/pieces/lever.gd), which carries the knob.
 func _knob(lever: Node3D) -> MeshInstance3D:
-	for child: Node in lever.get_children():
-		if child is MeshInstance3D and (child as MeshInstance3D).mesh is SphereMesh: return child
-	return null
+	return lever.find_child("lever_handle", false, false) as MeshInstance3D
 
 ## Each bubble's drawn tip against its anchor, both on the view plane.
 func _tips(bubbles: Array, label: String) -> void:

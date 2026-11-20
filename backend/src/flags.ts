@@ -94,6 +94,12 @@ export const FLAG_VARS = Object.freeze({
   turnOfTheTideV3Chapter: "TURN_OF_THE_TIDE_V3_CHAPTER_ENABLED",
   /** Creating Conservatory@2 rooms (conservatory@2, open controls), read through the CHAPTERS table in v2/chapters.ts. Unreleased until the owner says. */
   conservatoryV2Chapter: "CONSERVATORY_V2_CHAPTER_ENABLED",
+  /** Creating High and Low@2 rooms (high-and-low@2, open turns), read through the CHAPTERS table in v2/chapters.ts. Unreleased until the owner says. */
+  highAndLowV2Chapter: "HIGH_AND_LOW_V2_CHAPTER_ENABLED",
+  /** Creating The Wishing Well@2 rooms (the-wishing-well@2, open turns), read through the CHAPTERS table in v2/chapters.ts. Unreleased until the owner says. */
+  theWishingWellV2Chapter: "THE_WISHING_WELL_V2_CHAPTER_ENABLED",
+  /** Creating First Steps@2 rooms (first-steps@2, open turns on the journey rules), read through the CHAPTERS table in v2/chapters.ts. Unreleased until the owner says. */
+  firstStepsV2Chapter: "FIRST_STEPS_V2_CHAPTER_ENABLED",
 } as const);
 
 /**

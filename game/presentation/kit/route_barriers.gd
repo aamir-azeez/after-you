@@ -411,7 +411,7 @@ static func refusal(view: Dictionary, routes: Dictionary, player: Dictionary, sl
 func build(view: Dictionary) -> void:
 	# The stage's own things a gate's posts may stand in, gathered before the
 	# layout so they hold none of the barriers themselves.
-	var scenery: Array = FloorSpots.stage_things(view) if _world == null else FloorSpots.scenery(view, _world, 0.0)
+	var scenery: Array = FloorSpots.stage_things(view) if _world == null else FloorSpots.scenery(view, _world, 0.0, false)
 	_layout = layout(view, _skips)
 	var slots := int(_layout.slots)
 	if slots > MAX_SLOTS: push_warning("RouteBarriers: %d slots on one stage; past %d they share the last" % [slots, MAX_SLOTS])
