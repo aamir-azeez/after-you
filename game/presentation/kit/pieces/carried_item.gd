@@ -55,8 +55,12 @@ func _make(item_style: String, at: Vector3, parent: Node3D, options: Dictionary)
 func carry(actor: Node3D) -> void:
 	_floating = false
 	if root.get_parent() != actor: root.reparent(actor, false)
-	root.position = BACK
-	root.rotation = Vector3(-PI / 2.0 if style == "pipsport" else 0.0, 0.0, 0.0)
+	var turn := Vector3(-PI / 2.0 if style == "pipsport" else 0.0, 0.0, 0.0)
+	# A pip sways it with its stride and its stop (spirit_visual.gd hang_on_back).
+	if actor.has_method("hang_on_back"): actor.hang_on_back(root, BACK, turn)
+	else:
+		root.position = BACK
+		root.rotation = turn
 
 ## Resting at `at` under `parent` (the terrain), bobbing when `floating`.
 func rest(at: Vector3, parent: Node3D, floating: bool) -> void:

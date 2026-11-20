@@ -1214,6 +1214,8 @@ func _process(delta: float) -> void:
 	_move_bridge(weight)
 	for piece: RefCounted in crossing_pieces.values():
 		if piece.moving(): piece.advance(delta)
+	for piece: RefCounted in pad_pieces.values():
+		if piece.moving(): piece.advance(delta)
 	if route_barriers.moving(): route_barriers.advance(delta)
 	_advance_garden_bloom(delta)
 	if not reduced_motion:
@@ -1765,6 +1767,7 @@ func _present_crossings(bridges: Dictionary, immediate: bool) -> void:
 	for id: String in crossing_pieces:
 		var open := bool(bridges.get(id, false))
 		if not immediate and open != crossing_pieces[id].is_open(): note_big_change("crossing", BigChange.SECONDS)
+		crossing_pieces[id].reduced_motion = reduced_motion
 		crossing_pieces[id].set_open(open, immediate)
 
 ## The seed an island family throws (seed_visual.gd, glowing warm; its flight

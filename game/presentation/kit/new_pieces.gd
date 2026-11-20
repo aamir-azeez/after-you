@@ -134,6 +134,7 @@ func present(state: Dictionary, immediate: bool) -> void:
 			if immediate:
 				entry.shown = entry.target
 				entry.piece.set_height(entry.shown)
+				entry.piece.arrive(0.0)
 		else: entry.piece.set_value(index, immediate)
 	for id: String in _curtains: _curtains[id].visible = not bool(routes.get(id, false))
 	for fill: Dictionary in _fills: fill.node.visible = bool(state.get("levers", {}).get(fill.lever, false))
@@ -153,7 +154,7 @@ func present(state: Dictionary, immediate: bool) -> void:
 
 func moving() -> bool:
 	if _ladders.values().any(func(ladder: Dictionary) -> bool: return ladder.piece.moving()): return true
-	return _platforms.any(func(entry: Dictionary) -> bool: return entry.piece.moving() if not entry.lift else not is_equal_approx(float(entry.shown), float(entry.target)))
+	return _platforms.any(func(entry: Dictionary) -> bool: return entry.piece.moving() or (entry.lift and float(entry.shown) != float(entry.target)))
 
 func advance(delta: float) -> void:
 	for ladder: Dictionary in _ladders.values():
@@ -161,9 +162,12 @@ func advance(delta: float) -> void:
 	for entry: Dictionary in _platforms:
 		if not entry.lift:
 			if entry.piece.moving(): entry.piece.advance(delta)
-		elif not is_equal_approx(float(entry.shown), float(entry.target)):
-			entry.shown = move_toward(float(entry.shown), float(entry.target), maxf(delta, 0.0) * LIFT_RATE)
+		elif float(entry.shown) != float(entry.target):
+			var was := float(entry.shown)
+			entry.shown = move_toward(was, float(entry.target), maxf(delta, 0.0) * LIFT_RATE)
 			entry.piece.set_height(entry.shown)
+			if float(entry.shown) == float(entry.target): entry.piece.arrive(float(entry.target) - was)
+		elif entry.piece.moving(): entry.piece.advance(delta)
 
 ## The fog's slow drift at `seconds` on the world's clock (each frame unless
 ## motion is reduced).
