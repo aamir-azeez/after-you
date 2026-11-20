@@ -76,9 +76,9 @@ func _run() -> void:
 			world.show_stage(stage)
 			tagged += _stage(world, key, Layout.for_key(key, str(stage.id), level))
 			stages += 1
-		# The frame follows the level's tag style: the harbour's plaque on the tide.
+		# The frame follows the level's tag style (the harbour's and the marsh's plaque).
 		var style := str(world.dressing.get("tag", PairTags.DEFAULT_FRAME))
-		_check(world.pair_tags._frame == StringName(style) and (style == "wooden_plaque") == key.begins_with("turn-of-the-tide"), "%s: tags wear its %s frame (%s)" % [key, style, world.pair_tags._frame])
+		_check(PairTags.FRAMES.has(StringName(style)) and world.pair_tags._frame == StringName(style), "%s: tags wear its %s frame (%s)" % [key, style, world.pair_tags._frame])
 		_check(Canonical.digest(level) == digest, "%s: tags never change the definition" % key)
 		world.free()
 	_hud()
@@ -337,7 +337,7 @@ func _stage(world: Node3D, key: String, view: Dictionary) -> int:
 		_check(basis.y.z > 0.9 and (-basis.z).y > 0.9, "%s: the sign's tile faces the camera with its letter upright" % where)
 	# Each receiver's letter on one plaque on its own post, facing the camera,
 	# its letter upright, lit for every gate the receiver works.
-	var facing := PairTags.ViewFit.CAMERA_FROM.normalized()
+	var facing: Vector3 = world.camera_from().normalized() if world.has_method("camera_from") else PairTags.ViewFit.CAMERA_FROM.normalized()
 	for pair: Dictionary in wired:
 		if pair.group != PairTags.PLAQUED: continue
 		var plaques: Array = world.terrain.find_children("PairTagPlaque_" + str(pair.control), "Node3D", false, false)

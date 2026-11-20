@@ -56,8 +56,11 @@ func _first_turn(key: String, open: bool) -> void:
 	screen.settings = {"sound": false, "haptics": false, "reduced_motion": false, "assistance": true}
 	root.add_child(screen)
 	screen.set_physics_process(false)
-	screen.set_process(false)
 	await process_frame
+	# A big world builds over frames behind its loading card, as the game runs
+	# it; the turn starts once the screen stands ready.
+	while screen._world_building or screen._journal_loader != null or screen.mode != "ready": await process_frame
+	screen.set_process(false)
 	screen.world.set_process(false)
 	screen._begin()
 	_check(screen.mode == "play" and screen.role == "a", "%s: the first turn plays" % key)

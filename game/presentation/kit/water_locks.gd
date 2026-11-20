@@ -45,6 +45,8 @@ extends Node3D
 ##   "seabed", "wall_top"          the water floor and the height walls reach
 const Primitives = preload("res://presentation/kit/primitives.gd")
 const SessionRelease = preload("res://presentation/kit/session_release.gd")
+const SoftMist = preload("res://presentation/kit/soft_mist.gd")
+const ViewFit = preload("res://presentation/kit/view_fit.gd")
 const SCRIPT_PATH := "res://presentation/kit/water_locks.gd"
 const DOOR := "door"
 const SPILL := "spill"
@@ -55,11 +57,7 @@ const CREAM := Color("f3e6c8")
 const STONE := Color("b8a283")
 const COPING := Color("dccaa4")
 const SHEET := Color("cfe7ea")
-## A waterfall's sheet thickness (m), its foam and mist, and how far out from
-## the spillway's face they lie over the pool (m).
-const FALLS_SHEET := 0.06
-const FOAM := Color("f4f8f6")
-const MIST := Color(0.94, 0.97, 0.97, 0.35)
+## How far out from the spillway's face a waterfall's mist lies over the pool (m).
 const FALLS_OUT := 0.22
 ## Door thickness and post width across the run (m).
 const THICKNESS := 0.08
@@ -98,6 +96,8 @@ static var _found: Dictionary = {}
 ## Opening meshes and the door look, kept for the session; they go before
 ## the renderer stops (release_cached), not when this script is freed.
 static var _opening_meshes: Dictionary = {}
+## Pour meshes by Vector3(width m, drop m, turn), (_pour_mesh).
+static var _pours: Dictionary = {}
 static var _door_material_cache: StandardMaterial3D
 
 ## The pieces, in build order: {"kind", "a", "b", "along_x", "line", "from",
@@ -114,6 +114,8 @@ var frames := 0
 var _kinds: Dictionary = {}
 var _heights: Dictionary = {}
 var _seabed := 0.0
+## Each water body's own floor (m), from the plan's "beds" (WaterBodies.bed).
+var _beds: Dictionary = {}
 ## Per opening: {"run", "door": its MeshInstance3D, "y": target top, "up":
 ## whether the levels want it up, "low": its sunk top, "dipped": whether a
 ## spirit stands in its mouth, "easing": whether it travels at DIP_TRAVEL}
@@ -134,6 +136,7 @@ var stones: Array[AABB] = []
 func build(plan: Dictionary, parent: Node3D) -> void:
 	name = "WaterLocks"
 	_seabed = float(plan.seabed)
+	_beds = plan.get("beds", {})
 	for area: Dictionary in plan.areas:
 		_kinds[str(area.id)] = str(area.kind)
 		_heights[str(area.id)] = float(area.get("height", 0.0))
@@ -501,9 +504,10 @@ func _build_wall(run: Dictionary, top: float, stone: Node3D) -> void:
 	_stone_box(run, top, top + 0.045, _width(WALL) + 0.05, COPING, "LockWallCoping", stone)
 
 ## A stone lip just under the higher water, and a thin sheet falling from it
-## to the lower side.
+## to the lower side. A "falls" spillway between two pools with their own beds
+## is a step of the gorge's rock instead (_build_step).
 func _build_spill(run: Dictionary, stone: Node3D) -> void:
-	_stone_box(run, float(run.base), float(run.lip), _width(SPILL), STONE, "Spillway", stone)
+	if spill_style != "falls" or not _build_step(run, stone): _stone_box(run, float(run.base), float(run.lip), _width(SPILL), STONE, "Spillway", stone)
 	var length := _length(run) - 0.04
 	var sheet := Primitives.mesh_node(Primitives.box_mesh(Vector3(length, 1.0, 0.012) if run.along_x else Vector3(0.012, 1.0, length)), Primitives.shared_material(SHEET, 0.3), Vector3.ZERO, self)
 	sheet.name = "SpillSheet"
@@ -511,35 +515,128 @@ func _build_spill(run: Dictionary, stone: Node3D) -> void:
 	sheet.visible = false
 	var spray: Node3D = null
 	if spill_style == "falls":
-		sheet.scale = Vector3(1, 1, 1)
-		sheet.mesh = Primitives.box_mesh(Vector3(length, 1.0, FALLS_SHEET) if run.along_x else Vector3(FALLS_SHEET, 1.0, length))
-		spray = _falls_spray(length, bool(run.along_x))
+		# A pour, not a pane. The sheet is rebuilt for each drop (_pour_mesh):
+		# water rolling over a rounded lip in tongues that curve out and turn
+		# toward the camera as they fall, landing in foam, or a short run of
+		# rapids where the drop is small. It shares the falls' running-water
+		# look (kit/props.gd).
+		sheet.material_override = load("res://presentation/kit/props.gd")._falls_material()
+		spray = Node3D.new()
+		spray.name = "FallsSpray"
+		spray.visible = false
+		add_child(spray)
 	_sheets.append({"run": run, "sheet": sheet, "spray": spray, "low": INF, "falling": false})
 
-## A waterfall's foam and mist (spill_style "falls"), a row along the run's
-## length centred on its own origin, placed at the pool below each present.
-func _falls_spray(length: float, along_x: bool) -> Node3D:
-	var spray := Node3D.new()
-	spray.name = "FallsSpray"
-	spray.visible = false
-	add_child(spray)
-	var foam := StandardMaterial3D.new()
-	foam.albedo_color = FOAM
-	foam.roughness = 0.9
-	var mist := StandardMaterial3D.new()
-	mist.albedo_color = MIST
-	mist.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mist.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	var count := maxi(2, ceili(length / 0.3))
+## Below this drop (m) a spillway is a short run of rapids, not a pour.
+const RAPIDS_BELOW := 0.25
+## The rock a pool's lip stands on: the gorge rock's step (kit/gorge.gd's
+## model), 2 m wide and 1 m tall as modelled, tiled along the run.
+const STEP_MODEL := "res://assets/models/gorge_rock.glb"
+const STEP_WIDE := 2.0
+
+## The rock face under a "falls" spillway between two pools on their own beds
+## (the water kit's "bed"): from the lower pool's bed up to the lip, facing the
+## lower pool, so the pour falls down rock and no water side shows under it.
+## False (nothing built) when the two pools share a bed.
+func _build_step(run: Dictionary, stone: Node3D) -> bool:
+	var a := float(_beds.get(str(run.a), _seabed))
+	var b := float(_beds.get(str(run.b), _seabed))
+	if is_equal_approx(a, b): return false
+	var Models: Script = load("res://presentation/kit/models.gd")
+	var Props: Script = load("res://presentation/kit/props.gd")
+	var foot := minf(a, b)
+	var toward_b := Vector3(0, 0, 1) if run.along_x else Vector3(1, 0, 0)
+	var lower_side := toward_b if b < a else -toward_b
+	var length := _length(run)
+	var count := maxi(1, roundi(length / (STEP_WIDE * 1.5)))
 	for index in range(count):
-		var along := (float(index) + 0.5) / float(count) * length - length * 0.5
-		var at := Vector3(along, 0.02, 0) if along_x else Vector3(0, 0.02, along)
-		var puff := Primitives.mesh_node(Primitives.sphere_mesh(0.16), foam, at, spray)
-		puff.scale = Vector3(1.3, 0.35, 1.0)
-		var cloud := Primitives.mesh_node(Primitives.sphere_mesh(0.32), mist, at + Vector3(0, 0.28 + 0.08 * float(index % 2), 0), spray)
-		cloud.scale = Vector3(1.4, 0.8, 1.4)
-		cloud.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	return spray
+		var rock: Node3D = Models.still(STEP_MODEL, "tier_step", Props.FALLS_COLORS, stone)
+		rock.name = "SpillStep"
+		rock.position = _on_run(run, (float(index) + 0.5) * length / float(count) * 100.0, float(run.lip)) + lower_side * (_width(SPILL) * 0.5)
+		# Scaled along the rock's own axes (Basis.scaled would stretch the world's
+		# x, which for a run along z is the rock's depth, and leave gaps between).
+		rock.basis = Basis.looking_at(-lower_side, Vector3.UP) * Basis.from_scale(Vector3(length / float(count) / STEP_WIDE * 1.04, maxf(float(run.lip) - foot, 0.1), 1.0))
+	return true
+
+## A pour breaks into tongues about this wide (m).
+const TONGUE := 1.2
+## Where a pour's face would turn away from the camera, its tongues turn this
+## far (radians) toward it as they fall.
+const POUR_TURN := 0.65
+
+## A pour `length` wide falling `fall` (m) from its lip at 0 toward +z, its
+## tongues turned `turn` radians toward +x (a negative turn toward -x) as they
+## fall, in the falls' running-water format (kit/props.gd _falls_strip and
+## _falls_foam). The landing's middle (m out from the lip) is pour_reach().
+static func _pour_mesh(length: float, fall: float, turn: float) -> ArrayMesh:
+	var key := Vector3(snappedf(length, 0.01), snappedf(fall, 0.01), snappedf(turn, 0.01))
+	if _pours.has(key): return _pours[key]
+	var Props: Script = load("res://presentation/kit/props.gd")
+	var tool := SurfaceTool.new()
+	tool.begin(Mesh.PRIMITIVE_TRIANGLES)
+	if fall < RAPIDS_BELOW:
+		# Rapids: the water speeds over a low step and runs on in a churn.
+		Props._falls_strip(tool, length, [Vector3(0, 0.02, -0.5), Vector3(0, 0.02, 0), Vector3(0, -fall * 0.55, 0.16), Vector3(0, -fall + 0.02, 0.42), Vector3(0, -fall + 0.02, 0.9)], [0.0, 0.35, 0.9, 0.75, 0.3])
+	else:
+		# A pour: flat to the lip and rolling over its round edge, then in
+		# tongues thrown out and curving down as they fall (a parabola: out as
+		# the root of the drop). Each tongue keeps its edge nearer the camera on
+		# its arc and swings the other edge out, so its face turns toward the
+		# camera even where the drop faces away; gaps open between the tongues
+		# as they turn, so the pour reads as water arcing off a lip, not a chute.
+		Props._falls_strip(tool, length, [Vector3(0, 0.03, -0.6), Vector3(0, 0.03, -0.04), Vector3(0, 0.0, 0.06)], [0.0, 0.0, 0.3])
+		var throw := _pour_throw(fall)
+		var count := maxi(2, roundi(length / TONGUE))
+		var wide := _tongue_wide(length)
+		var near := signf(turn)
+		for index in range(count):
+			var x := lerpf(-length * 0.5 + wide * 0.5, length * 0.5 - wide * 0.5, float(index) / float(count - 1))
+			var points: Array = [Vector3(x, 0.0, 0.06), Vector3(x, -0.07, 0.14)]
+			var across: Array = [Vector3.RIGHT, Vector3.RIGHT]
+			var falling: Array = [0.3, 0.6]
+			for step in range(1, 9):
+				var t := float(step) / 8.0
+				var twist := turn * minf(1.0, t * 2.5)
+				var side := Vector3(cos(twist), 0, -sin(twist))
+				var pivot := Vector3(x + near * wide * 0.5, -0.07 - (fall - 0.07) * t, 0.14 + throw * sqrt(t))
+				points.append(pivot - side * (near * wide * 0.5))
+				across.append(side)
+				falling.append(1.0)
+			# Each tongue hangs free of the rock: thicker water, its edges soft.
+			Props._falls_strip(tool, wide, points, falling, across, 0.5)
+	# The foam reaches out over where every tongue's edges land.
+	var foam_out := _foam_out(fall) + (0.0 if fall < RAPIDS_BELOW else _tongue_wide(length) * 0.5 * absf(sin(turn)))
+	Props._falls_foam(tool, Vector3(0, -fall + 0.03, pour_reach(length, fall, turn)), Vector2(length * 0.5 + 0.15, foam_out))
+	if _pours.is_empty(): SessionRelease.on_exit(Callable(load(SCRIPT_PATH), "release_cached"))
+	_pours[key] = tool.commit()
+	return _pours[key]
+
+## Which way a pour set in `basis` (falling toward its +z) turns its tongues:
+## none where its face already looks at the camera, else POUR_TURN toward the
+## camera's side. Every view keeps CAMERA_FROM's yaw (kit/view_fit.gd).
+static func _pour_turn(basis: Basis) -> float:
+	var camera := basis.inverse() * Vector3(ViewFit.CAMERA_FROM.x, 0.0, ViewFit.CAMERA_FROM.z).normalized()
+	if camera.z > 0.5: return 0.0
+	return POUR_TURN * signf(camera.x)
+
+## How far out a pour of `fall` m is thrown at its foot (m).
+static func _pour_throw(fall: float) -> float:
+	return 0.35 + 0.32 * sqrt(fall)
+
+## The middle of a pour's landing, m out from its lip (_pour_mesh): where its
+## foam lies and its spray rises.
+static func pour_reach(length: float, fall: float, turn: float) -> float:
+	if fall < RAPIDS_BELOW: return 0.9 + _foam_out(fall) * 0.5
+	return 0.14 + _pour_throw(fall) + _tongue_wide(length) * 0.5 * absf(sin(turn))
+
+## How far a pour's foam reaches out from its landing (m), before its tongues.
+static func _foam_out(fall: float) -> float:
+	return 0.3 + 0.25 * minf(fall, 2.0)
+
+## Each tongue's width (m) in a pour `length` wide, a little over its share so
+## neighbours meet at the lip.
+static func _tongue_wide(length: float) -> float:
+	return length / float(maxi(2, roundi(length / TONGUE))) * 1.04
 
 ## The opening's doors: short timber doors side by side (none wider than
 ## DOOR_WIDTH), each with a small cream knob on its top rail, a capped stone
@@ -580,10 +677,11 @@ static func _door_material() -> StandardMaterial3D:
 		SessionRelease.on_exit(Callable(load(SCRIPT_PATH), "release_cached"))
 	return _door_material_cache
 
-## Lets go of the kept opening meshes and door look (SessionRelease calls
+## Lets go of the kept opening meshes, pours and door look (SessionRelease calls
 ## this at shutdown).
 static func release_cached() -> void:
 	_opening_meshes.clear()
+	_pours.clear()
 	_door_material_cache = null
 
 ## One opening (top at y 0, hanging down `height`, centred on x 0 along x):
@@ -703,9 +801,29 @@ func present(levels: Dictionary, immediate: bool = false) -> void:
 		sheet.visible = falling and fall > LEVEL
 		var toward_b := Vector3(0, 0, 1) if run.along_x else Vector3(1, 0, 0)
 		var lower_side := toward_b if b < a else -toward_b
+		var spray: Node3D = spill.get("spray")
+		if spill_style == "falls":
+			# The pour from the lip's edge toward the lower water.
+			sheet.position = _on_run(run, _length(run) * 50.0, float(run.lip)) + lower_side * (_width(SPILL) * 0.5)
+			if not run.along_x: sheet.basis = Basis(Vector3.UP, PI * 0.5 if lower_side.x > 0.0 else -PI * 0.5)
+			else: sheet.basis = Basis() if lower_side.z > 0.0 else Basis(Vector3.UP, PI)
+			var turn := _pour_turn(sheet.basis)
+			sheet.mesh = _pour_mesh(_length(run) - 0.04, fall, turn)
+			if spray != null:
+				for child: Node in spray.get_children(): child.free()
+				spray.visible = sheet.visible and fall >= RAPIDS_BELOW
+				spray.transform = sheet.transform
+				var blots: Array = []
+				var length := _length(run)
+				var count := maxi(2, ceili(length / 1.2))
+				var landing := pour_reach(length - 0.04, fall, turn)
+				for index in range(count):
+					var x := ((float(index) + 0.5) / float(count) - 0.5) * length
+					blots.append([Vector3(x, -fall + 0.35 + 0.1 * float(index % 2), landing), Vector2(1.3, 0.9) * minf(1.0 + fall * 0.25, 1.8), "front"])
+				SoftMist.build(blots, Color(0.97, 0.99, 0.99, 0.55), spray)
+			continue
 		sheet.position = _on_run(run, _length(run) * 50.0, float(run.lip) - fall * 0.5) + lower_side * (_width(SPILL) * 0.5 + 0.01)
 		sheet.scale = Vector3(1, maxf(fall, 0.01), 1)
-		var spray: Node3D = spill.get("spray")
 		if spray != null:
 			spray.visible = sheet.visible
 			spray.position = _on_run(run, _length(run) * 50.0, low) + lower_side * (_width(SPILL) * 0.5 + FALLS_OUT)

@@ -1,0 +1,24 @@
+{
+	"catch_assistance": true,
+	"checkpoint_hash": "9ec14a50b2dec581ee5af38df570de80e8801240cefe95944d1ee3b202f93f68",
+	"completed": false,
+	"definition_hash": "0cdfc1875835b016d69e446e9818f89a2bc6ab18664ad1acf6d9546e8994a5cd",
+	"duration_ticks": 244,
+	"final_state_hash": "a66a6c5c36b5fbb4150c089299dd2c42ba65be225f071095c2c6a8c07bfe4d29",
+	"level_id": "fog-marsh",
+	"level_version": 1,
+	"outcome": {
+		"objective_complete": false,
+		"source_ready": true
+	},
+	"packed": "AQQKZAACJgDaA2QAAjIA/YC1si1nvAWySp3wvZ95MTxqRC3CuUWGJDsZ0ZcVRKVFIhXMAq3jYpDY4+s6Q+sJyLrwxcCL6GMBV8gE6dwIxA0E6AnBAz16l7657Ajx75Uc383MwhS/Gg==",
+	"player_slot": "p1",
+	"recording_hash": "ca90ba6518ec3b70c02e7e49754cecb96efb662c37c7bb334e31cfebbf34dff6",
+	"role": "a",
+	"schema_version": 7,
+	"simulation_version": 16,
+	"source_recording_hash": "",
+	"stage_id": "carry-it-home",
+	"stage_version": 1,
+	"tick_rate": 30
+}

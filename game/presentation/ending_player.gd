@@ -18,6 +18,7 @@ const Primitives = preload("res://presentation/kit/primitives.gd")
 const SpiritIdle = preload("res://presentation/spirit_idle.gd")
 const SpiritLook = preload("res://presentation/spirit_look.gd")
 const ControlTheme = preload("res://presentation/control_theme.gd")
+const CarriedItemKit = preload("res://presentation/kit/pieces/carried_item.gd")
 const Models = preload("res://presentation/kit/models.gd")
 const SafeArea = preload("res://presentation/safe_area.gd")
 
@@ -50,6 +51,10 @@ var _held: Dictionary = {}
 var _faces: Dictionary = {}
 ## The role badges ("You", "Waiting") hidden while the scene plays.
 var _badges: Array[Node3D] = []
+## The world's own carried item, hidden while the scene's stands in for it.
+var _hidden_items: Array[Node3D] = []
+## An item prop's meshes by prop id, faded through each mesh's transparency.
+var _item_meshes: Dictionary = {}
 
 ## Starts `data` in `world`, cast from `snapshot` (the final one shown), with
 ## its tap catcher and caption in `overlay` (a full-screen Control) when given.
@@ -73,6 +78,12 @@ func start(world: Node3D, data: Dictionary, snapshot: Dictionary, overlay: Contr
 			if badge.has_meta("replay_role_badge") and (badge as Node3D).visible:
 				(badge as Node3D).visible = false
 				_badges.append(badge)
+	var holds := str(data.get("cast", {}).get("holds", ""))
+	if not holds.is_empty() and world.has_method("item_node"):
+		var item: Variant = world.call("item_node", holds)
+		if item is Node3D and (item as Node3D).visible:
+			(item as Node3D).visible = false
+			_hidden_items.append(item)
 	if is_instance_valid(camera):
 		_held.camera = {"transform": camera.transform, "size": camera.size, "h_offset": camera.h_offset, "v_offset": camera.v_offset, "keep_aspect": camera.keep_aspect, "projection": camera.projection}
 	var at := {"carrier": _local(actors[slots.carrier]), "other": _local(actors[slots.other])}
@@ -81,7 +92,9 @@ func start(world: Node3D, data: Dictionary, snapshot: Dictionary, overlay: Contr
 	if origin != "pips" and world.has_method("ending_anchor"):
 		var anchor: Variant = world.call("ending_anchor", origin)
 		if anchor is Vector3: at.origin = anchor
-	at.camera = camera.position - ViewFit.CAMERA_FROM if is_instance_valid(camera) else at.origin
+	# The world's own view (a level's lower follow angle), so the film starts and
+	# hands back on the frame the player had.
+	at.camera = camera.position - _from() if is_instance_valid(camera) else at.origin
 	at.camera_size = camera.size if is_instance_valid(camera) else 10.0
 	var view := world.get_viewport().get_visible_rect().size
 	if view.y > 0.0: at.aspect = view.x / view.y
@@ -133,6 +146,10 @@ func _exit_tree() -> void:
 func _local(node: Node3D) -> Vector3:
 	return _world.to_local(node.global_position)
 
+## Where the world's camera stands from what it looks at (ViewFit.camera_from).
+func _from() -> Vector3:
+	return _world.camera_from() if _world.has_method("camera_from") else ViewFit.CAMERA_FROM
+
 func _fire(from: float, to: float) -> void:
 	for event: Dictionary in EndingScene.events_between(compiled, from, to):
 		if event.kind == "sound":
@@ -166,7 +183,7 @@ func _apply(now: Dictionary, delta: float, immediate: bool) -> void:
 	if is_instance_valid(camera):
 		var center: Vector3 = now.camera.center
 		camera.projection = Camera3D.PROJECTION_ORTHOGONAL
-		camera.position = center + Basis(Vector3.UP, deg_to_rad(float(now.camera.get("orbit", 0.0)))) * ViewFit.CAMERA_FROM
+		camera.position = center + Basis(Vector3.UP, deg_to_rad(float(now.camera.get("orbit", 0.0)))) * _from()
 		camera.look_at(_world.to_global(center))
 		camera.keep_aspect = Camera3D.KEEP_HEIGHT
 		camera.size = ViewFit.viewport(float(now.camera.size), _world)
@@ -185,6 +202,7 @@ func _apply(now: Dictionary, delta: float, immediate: bool) -> void:
 		node.position = prop.position
 		node.rotation.y = float(node.get_meta("yaw", 0.0)) + float(prop.spin)
 		if _materials.has(id): (_materials[id] as StandardMaterial3D).albedo_color.a = clampf(float(prop.alpha), 0.0, 1.0)
+		for mesh: GeometryInstance3D in _item_meshes.get(id, []): mesh.transparency = 1.0 - clampf(float(prop.alpha), 0.0, 1.0)
 	var screen: Dictionary = now.get("screen", {})
 	if is_instance_valid(_tint):
 		var wash: Color = screen.get("tint", Color.BLACK)
@@ -207,6 +225,9 @@ func _build_props(specs: Dictionary) -> void:
 	_world.add_child(_root)
 	for id: String in specs:
 		var spec: Dictionary = specs[id]
+		if str(spec.shape) == "item":
+			_build_item(id, spec)
+			continue
 		if str(spec.shape) == "model":
 			_props[id] = _model_prop(id, spec)
 			continue
@@ -232,6 +253,18 @@ func _build_props(specs: Dictionary) -> void:
 		node.rotation_degrees = Vector3(float(turn[0]), float(turn[1]), float(turn[2]))
 		node.set_meta("yaw", node.rotation.y)
 		_props[id] = node
+
+## The real carried item's look (kit/pieces/carried_item.gd) as prop `id`.
+func _build_item(id: String, spec: Dictionary) -> void:
+	var piece: RefCounted = CarriedItemKit.build(str(spec.style), Vector3.ZERO, _root, {"id": id})
+	var node: Node3D = piece.root
+	node.name = id
+	node.set_meta("ending_prop", id)
+	var turn: Array = spec.get("rot", [0, 0, 0])
+	node.rotation_degrees = Vector3(float(turn[0]), float(turn[1]), float(turn[2]))
+	node.set_meta("yaw", node.rotation.y)
+	_props[id] = node
+	if _fades(id, spec): _item_meshes[id] = node.find_children("*", "GeometryInstance3D", true, false)
 
 ## A model prop (EndingScene: shape "model"): the part as one painted mesh,
 ## its own see-through copy of the palette look when it fades.
@@ -326,6 +359,10 @@ func _end(watched: bool, tell: bool = true) -> void:
 	for badge: Node3D in _badges:
 		if is_instance_valid(badge): badge.visible = true
 	_badges.clear()
+	for item: Node3D in _hidden_items:
+		if is_instance_valid(item): item.visible = true
+	_hidden_items.clear()
+	_item_meshes.clear()
 	if is_instance_valid(_root): _root.queue_free()
 	if is_instance_valid(_layer): _layer.queue_free()
 	_props.clear()

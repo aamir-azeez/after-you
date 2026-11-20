@@ -1,0 +1,70 @@
+extends "res://presentation/keepsakes/keepsake_builder.gd"
+## Fog Marsh's keepsake on Home: a placeholder from scripts/new_chapter.py, a
+## stone with a ball that hops when the pip walks up to it (or a tap), with
+## the together piece beside it, a Hard plinth under it and the gold top above.
+## Replace the shapes with the chapter's own bigger working thing, its own way
+## to be set off (keepsake_builder.gd: trigger, stay, rides) and its own
+## ground before it is released.
+const P = preload("res://presentation/keepsakes/keepsake_parts.gd")
+## Where the together piece stands: on the grass to the keepsake's right.
+const BESIDE := Vector3(0.74, 0.0, 0.12)
+
+func build(root: Node3D, state: Dictionary) -> Dictionary:
+	var hard: bool = state.get("hard", false)
+	if hard: P.plinth(root, 0.9, 0.74)
+	var body := P.pivot(root, Vector3(0, P.PLINTH_TOP if hard else 0.0, 0), "Body")
+	P.cyl(body, 0.3, 0.2, P.STONE, Vector3(0, 0.1, 0), 0.32)
+	P.ring(body, 0.3, 0.04, P.CREAM, Vector3(0, 0.2, 0))
+	var ball := P.pivot(body, Vector3(0, 0.32, 0), "Ball")
+	P.sph(ball, 0.12, P.PEACH, Vector3.ZERO)
+	var parts := {"ball": ball}
+	if state.get("together", false):
+		P.cyl(root, 0.12, 0.06, P.STONE_LIGHT, BESIDE + Vector3(0, 0.03, 0))
+		var friend := P.pivot(root, BESIDE + Vector3(0, 0.15, 0), "FriendBall")
+		P.sph(friend, 0.09, P.MINT, Vector3.ZERO)
+		parts.friend = friend
+	if state.get("top", false):
+		var top := P.pivot(body, Vector3(0, 0.62, 0), "GoldTop")
+		P.gold_ball(top, Vector3.ZERO, 0.07)
+		P.node(top, P.torus(0.1, 0.025), P.gold(), Vector3.ZERO, Vector3(PI / 2, 0, 0))
+		parts.top = top
+	return parts
+
+func base_time() -> float:
+	return 1.2
+
+func play(beat: String, anim: RefCounted, parts: Dictionary, state: Dictionary) -> void:
+	var sounds: Dictionary = state.get("sounds", {})
+	var ball: Node3D = parts.ball
+	match beat:
+		"base":
+			anim.move(ball, "position:y", 0.62, 0.0, 0.5, Tween.TRANS_QUAD, Tween.EASE_OUT)
+			anim.move(ball, "position:y", 0.32, 0.6, 0.5, Tween.TRANS_BOUNCE, Tween.EASE_OUT)
+			anim.sound(str(sounds.get("base", "")), 0.0)
+		"together":
+			var friend: Node3D = parts.friend
+			anim.move(friend, "position:y", friend.position.y + 0.25, 0.0, 0.3)
+			anim.move(friend, "position:y", friend.position.y, 0.35, 0.3)
+			anim.sound(str(sounds.get("together", "")), 0.0)
+		"hard":
+			anim.move(ball, "position:y", 0.8, 0.0, 0.3)
+			anim.move(ball, "position:y", 0.32, 0.35, 0.3)
+			anim.sound(str(sounds.get("hard", "")), 0.0)
+		"top":
+			var top: Node3D = parts.top
+			anim.move(top, "rotation:y", TAU, 0.0, 0.6)
+			brighten(anim, top, 0.0)
+			anim.sound(str(sounds.get("top", "")), 0.0)
+
+## Walking up to the stone's front sets it off.
+func trigger() -> Dictionary:
+	return {"area": Rect2(-0.35, 0.42, 0.7, 0.4)}
+
+func solids(state: Dictionary) -> Array[Rect2]:
+	var half := 0.45 if state.get("hard", false) else 0.32
+	var result: Array[Rect2] = [Rect2(-half, -0.37 if state.get("hard", false) else -half, half * 2.0, 0.74 if state.get("hard", false) else half * 2.0)]
+	if state.get("together", false): result.append(Rect2(BESIDE.x - 0.12, BESIDE.z - 0.12, 0.24, 0.24))
+	return result
+
+func footprint() -> Rect2:
+	return Rect2(-0.45, -0.37, BESIDE.x + 0.57, 1.2)

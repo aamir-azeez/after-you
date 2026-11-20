@@ -105,9 +105,13 @@ first_steps_ui 1
 first_steps_v2 2
 first_steps_v2_world 2
 first_steps_world 2
+fog_marsh 2
+fog_marsh_world 2
+fog_reveal 2
 fold_present 2
 fold_present_tide 1
 fold_untouched 2
+follow_camera 1
 frame_policy 1
 friend_nicknames 3
 friend_play_icon 3
@@ -418,6 +422,8 @@ tap_reliability 1
 tester_access 2
 tester_access_integration 1
 tester_switches 2
+the_falls 2
+the_falls_world 2
 the_wishing_well_v2 3
 the_wishing_well_v2_world 3
 tide_world 3
@@ -457,7 +463,7 @@ two_promises 1
 unreadable_chapter_journal 2
 update_gate 2
 wait_framing 1
-wait_hints 2
+wait_hints 1
 wardrobe 3
 wardrobe_flow 1
 wardrobe_offline 1

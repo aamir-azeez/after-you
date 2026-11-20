@@ -20,9 +20,10 @@ const LightCatalog = preload("res://core/lighthouse/stage_catalog.gd")
 const LighthouseWorld = preload("res://presentation/lighthouse_world.gd")
 const FoldLook = preload("res://tests/fold_look.gd")
 const LIGHTHOUSE := "sleeping-lighthouse@1"
-## Tide's worlds take longest (about 15 s a version), so test_fold_present_tide.gd
-## runs them and this suite the rest, each well inside CI's time per suite.
-const TIDE_WORLD := "res://presentation/tide_world.gd"
+## Worlds on the water (Turn of the Tide, The Falls, Fog Marsh) take longest
+## (about 15 s a chapter), so test_fold_present_tide.gd runs them and this suite
+## the rest, each well inside CI's time per suite.
+const WATER_WORLD := "res://presentation/water_world.gd"
 const DELTA := 1.0 / 60.0
 ## Snapshots shown per stage: the start, then every this many ticks of the
 ## first recording, then its end.
@@ -138,12 +139,17 @@ func _show(world: Node3D, state: Dictionary, immediate: bool) -> void:
 	world.present(state.duplicate(true), immediate)
 	for i in range(2): world._process(DELTA)
 
-## Whether this suite runs a folded chapter: every one not in a Tide world.
+## Whether this suite runs a folded chapter: every one not on the water.
 func _runs(key: String) -> bool:
-	return not _tide(key)
+	return not _on_water(key)
 
-static func _tide(key: String) -> bool:
-	return key != LIGHTHOUSE and Registry.world_script(key).resource_path == TIDE_WORLD
+static func _on_water(key: String) -> bool:
+	if key == LIGHTHOUSE: return false
+	var script: Script = Registry.world_script(key)
+	while script != null:
+		if script.resource_path == WATER_WORLD: return true
+		script = script.get_base_script()
+	return false
 
 func _run() -> void:
 	var keys: Array = []

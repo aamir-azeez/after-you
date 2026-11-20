@@ -1433,8 +1433,9 @@ static func kept_crossings(checkpoint: Dictionary) -> Array:
 
 ## A scrolling world's camera follows the live spirit (or the memory it waits
 ## for, _camera_slot) at SCROLL_SIZE, and eases out to SCROLL_DONE_SIZE over a
-## finished stage. Every scrolling world looks from ViewFit.CAMERA_FROM, so
-## the stick maps alike in all of them.
+## finished stage. Every scrolling world looks from camera_from(): the same
+## yaw everywhere (a level's follow data may only lower the pitch), so the
+## stick maps alike in all of them.
 const SCROLL_SIZE := 9.2
 const SCROLL_DONE_SIZE := 10.6
 ## How fast the camera closes on the spirit: 1 - e^(-rate t) of the way.
@@ -1443,6 +1444,46 @@ var _active_player := "p0"
 var _follow_center := Vector3.ZERO
 var _follow_size := SCROLL_SIZE
 var _completion_view := false
+
+## A level opts into the close follow camera with its dressing's
+## "camera": {"follow": {...}} (presentation only; nothing reaches the
+## simulation or a recording):
+##   size   view height in metres while a stage plays (else SCROLL_SIZE)
+##   done   view height over a finished stage (else size * 1.15)
+##   axes   "x" (the default, the old strip) or "xz": the plan axes it follows
+##   lift   how much of the pip's height the view rises with (0 to 1)
+##   inset  [x, z] metres the centre stays inside the floors' ends
+##   zoom   [closest, farthest] pinch limits, times size
+##   pan    [x, z] how far a drag may push the view, times size
+##   from   [x, y, z] where the camera stands from the point it looks at (else
+##          ViewFit.CAMERA_FROM): the same yaw, a lower pitch looks up a cliff;
+##          stand it far enough back that low fog and tall tiers stay past the
+##          orthographic camera's near plane
+func _follow_data() -> Dictionary:
+	var data: Variant = dressing.get("camera", {})
+	return data.get("follow", {}) if data is Dictionary else {}
+
+## Where this world's camera stands from the point it looks at
+## (ViewFit.camera_from): what endings, pair tags and label bubbles face.
+func camera_from() -> Vector3:
+	return ViewFit.camera_from(dressing)
+
+func _scroll_size() -> float:
+	return float(_follow_data().get("size", SCROLL_SIZE))
+
+func _scroll_done_size() -> float:
+	var data := _follow_data()
+	return float(data.get("done", float(data.size) * 1.15)) if data.has("size") else SCROLL_DONE_SIZE
+
+## The pinch and drag limits a level's follow data sets (camera_exploration).
+func _apply_follow_limits() -> void:
+	var data := _follow_data()
+	if data.is_empty() or not is_instance_valid(camera_exploration): return
+	var zoom: Array = data.get("zoom", [0.7, 1.6])
+	camera_exploration.minimum_zoom = float(zoom[0])
+	camera_exploration.maximum_zoom = float(zoom[1])
+	var pan: Array = data.get("pan", [0.9, 0.6])
+	camera_exploration.maximum_pan = Vector2(float(pan[0]), float(pan[1]))
 
 ## Whether this world's camera follows the live spirit (else its own framing).
 func _uses_scrolling_camera() -> bool:
@@ -1470,7 +1511,7 @@ func _camera_center() -> Vector3:
 		var limits := _follow_limits()
 		target.x = clampf(target.x, limits[0].x, limits[1].x)
 		target.z = clampf(target.z, limits[0].y, limits[1].y)
-	target.y = 0
+	target.y *= clampf(float(_follow_data().get("lift", 0.0)), 0.0, 1.0)
 	return target
 
 ## The follow camera's centre stays this far (metres) inside the floors'
@@ -1481,7 +1522,19 @@ const FOLLOW_INSET := 4.0
 ## while a stage plays: FOLLOW_INSET inside the floors' west and east ends,
 ## on the z axis.
 func _follow_limits() -> Array[Vector2]:
+	return _floors_follow_limits()
+
+## FOLLOW_INSET inside the floors' west and east ends, on the z axis: the
+## default limits, also for a world whose family keeps a fixed band but whose
+## chapter runs longer (a long journey strip).
+func _floors_follow_limits() -> Array[Vector2]:
 	var floors := _floors_rect()
+	var data := _follow_data()
+	if str(data.get("axes", "x")) == "xz":
+		var inset: Array = data.get("inset", [3.0, 1.5])
+		var low := floors.position + Vector2(float(inset[0]), float(inset[1]))
+		var high := floors.end - Vector2(float(inset[0]), float(inset[1]))
+		return [low.min(floors.get_center()), high.max(floors.get_center())]
 	return [Vector2(floors.position.x + FOLLOW_INSET, 0.0), Vector2(floors.end.x - FOLLOW_INSET, 0.0)]
 
 ## The level's floors together (metres, x and z).
@@ -1504,7 +1557,8 @@ func _present_follow(state: Dictionary, immediate: bool) -> void:
 ## kept world and one built again show the same.
 func _snap_follow() -> void:
 	if actors.has(_active_player): _follow_center = _camera_center()
-	_follow_size = SCROLL_DONE_SIZE if _completion_view else SCROLL_SIZE
+	_follow_size = _scroll_done_size() if _completion_view else _scroll_size()
+	_apply_follow_limits()
 	_frame_camera()
 
 ## Eases the follow camera toward its spirit, once per rendered frame:
@@ -1512,7 +1566,7 @@ func _snap_follow() -> void:
 func _ease_follow(delta: float, rate: float = FOLLOW_RATE) -> void:
 	var weight := 1.0 if reduced_motion else 1.0 - exp(-rate * maxf(delta, 0.0))
 	if actors.has(_active_player): _follow_center = _follow_center.lerp(_camera_center(), weight)
-	_follow_size = lerpf(_follow_size, SCROLL_DONE_SIZE if _completion_view else SCROLL_SIZE, weight)
+	_follow_size = lerpf(_follow_size, _scroll_done_size() if _completion_view else _scroll_size(), weight)
 
 ## Frames the view: a scrolling world over its follow point (_frame_follow);
 ## the others frame themselves.
@@ -1522,7 +1576,7 @@ func _frame_camera() -> void:
 ## The camera over the follow point, at the follow size.
 func _frame_follow() -> void:
 	if not is_instance_valid(camera): return
-	camera.position = _follow_center + ViewFit.CAMERA_FROM
+	camera.position = _follow_center + camera_from()
 	camera.look_at(to_global(_follow_center))
 	camera.keep_aspect = Camera3D.KEEP_HEIGHT
 	camera.size = ViewFit.viewport(_follow_size, self)
@@ -1823,9 +1877,14 @@ func _ground_style(island_id: String) -> String:
 func _build_dressing() -> void:
 	var specs := Props.expand(DressingCatalog.stage_props(dressing, _dressing_stage_id()))
 	var lit := bool(dressing.get("lit", true))
+	# Lamp light on the ground draws where this world's look says (under a fog cover).
+	var glow_order: Variant = Look.preset(str(dressing.get("look", ""))).get("glow_order")
 	var anchors: Array[Vector3] = []
 	for spec: Dictionary in specs:
 		await _build_step()
+		if glow_order != null:
+			spec = spec.duplicate()
+			spec["glow_order"] = glow_order
 		if not GraphicsPolicy.detail_dressing(_motion_quality) and bool(spec.get("detail", false)): continue
 		var surface := str(spec.get("surface", ""))
 		var parent: Node3D = _surface_nodes.get(surface, terrain)
@@ -1881,6 +1940,18 @@ func _advance_fireflies() -> void:
 		var rest: Vector3 = fly.get_meta("rest")
 		var phase := time * 0.7 + float(index) * 1.9
 		fly.position = rest + Vector3(sin(phase) * 0.18, sin(phase * 1.3) * 0.08, cos(phase * 0.8) * 0.12)
+
+## Where the dressing prop whose "anchor" is `anchor_name` stands (its foot,
+## in the world's space): an ending scene's origin (services/ending_scene.gd).
+## null when the shown stage's dressing names none.
+func ending_anchor(anchor_name: String) -> Variant:
+	for spec: Dictionary in DressingCatalog.stage_props(dressing, _dressing_stage_id()):
+		if str(spec.get("anchor", "")) != anchor_name or not spec.has("at"): continue
+		var surface := str(spec.get("surface", ""))
+		var base := (_surface_nodes[surface] as Node3D).position.y if _surface_nodes.has(surface) else _surface_base(surface)
+		var at := Vector3(float(spec.at[0]) / 100.0, base + float(spec.get("y", 0)) / 100.0, float(spec.at[1]) / 100.0)
+		return to_local(terrain.to_global(at))
+	return null
 
 ## A built dressing prop, for a world that wakes a part of it later.
 func _dressed_prop(_prop: Node3D) -> void:

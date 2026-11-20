@@ -46,6 +46,9 @@ const RouteBarriers = preload("res://presentation/kit/route_barriers.gd")
 const HeldPresses = preload("res://services/held_presses.gd")
 ## Every body of water (presentation/kit/water_look.gd).
 const WATER_SURFACE = preload("res://presentation/kit/water_surface.gdshader")
+## The running water of The Falls' pours and curtains (kit/props.gd) and Fog Marsh's fog (kit/fog_cover.gd).
+const FALLS_WATER = preload("res://presentation/kit/falls_water.gdshader")
+const FogCover = preload("res://presentation/kit/fog_cover.gd")
 
 const IDLE_SECONDS := 1.0
 const STAMP_PATH := "user://gl-warmup-v1.json"
@@ -80,6 +83,10 @@ const MATERIALS: Array[Dictionary] = [
 	{"albedo_texture": true},
 	# A shut crossing's faint outline in Turn of the Tide (tide_world.gd _ghost), writing depth so stepping stones above the water stay in view.
 	{"depth_draw_mode": BaseMaterial3D.DEPTH_DRAW_ALWAYS, "shading_mode": BaseMaterial3D.SHADING_MODE_UNSHADED, "transparency": BaseMaterial3D.TRANSPARENCY_ALPHA},
+	# A falls' rainbow (kit/gorge.gd), soft mist and spray (kit/soft_mist.gd) and lamp light under fog (its glow).
+	{"cull_mode": BaseMaterial3D.CULL_DISABLED, "shading_mode": BaseMaterial3D.SHADING_MODE_UNSHADED, "transparency": BaseMaterial3D.TRANSPARENCY_ALPHA, "vertex_color_use_as_albedo": true},
+	{"albedo_texture": true, "cull_mode": BaseMaterial3D.CULL_DISABLED, "shading_mode": BaseMaterial3D.SHADING_MODE_UNSHADED, "transparency": BaseMaterial3D.TRANSPARENCY_ALPHA},
+	{"albedo_texture": true, "blend_mode": BaseMaterial3D.BLEND_MODE_ADD, "cull_mode": BaseMaterial3D.CULL_DISABLED, "shading_mode": BaseMaterial3D.SHADING_MODE_UNSHADED, "transparency": BaseMaterial3D.TRANSPARENCY_ALPHA},
 ]
 ## Which listed keys each chapter draws: "m" indices into MATERIALS, "s" into
 ## shaders(), "l" into LABELS. Kept by tests/test_gl_warmup_coverage.gd.
@@ -105,6 +112,8 @@ const CHAPTERS := {
 	"turn-of-the-tide@3": {"m": [0, 1, 2, 3, 4, 5, 6, 7, 12, 13, 14, 15], "s": [0, 1, 7, 16, 17], "l": [0, 1, 2]},
 	"sleeping-lighthouse@1": {"m": [0, 1, 2, 3, 6, 8, 12], "s": [0], "l": [2]},
 	"sleeping-lighthouse@2": {"m": [0, 1, 2, 3, 6, 8, 12], "s": [0, 16], "l": [2]},
+	"the-falls@1": {"m": [0, 1, 2, 5, 6, 12, 14, 16, 17], "s": [0, 1, 7, 16, 17, 18], "l": [0, 2]},
+	"fog-marsh@1": {"m": [0, 1, 2, 5, 6, 12, 14, 18], "s": [0, 1, 7, 16, 17, 19], "l": [0, 2]},
 }
 ## Every Label3D key the chapters draw ("msdf": the font draws from a distance field).
 const LABELS: Array[Dictionary] = [
@@ -233,7 +242,7 @@ static func order(first: String) -> Array:
 
 ## Every ShaderMaterial shader the worlds draw (then worn cosmetics and the race ghost's face).
 static func shaders() -> Array[Shader]:
-	return [SpiritFace.SHADER, LabelBubble.body_material(false, false).shader, LabelBubble.body_material(false, true).shader, ObjectMotionTrail.SOFT_SHADER, SeedMotionTrail.PATH_SHADER, BallRotationBlur.SPIN_SHADER, BallRotationBlur.BAND_SHADER, GoalBeacon.SHADER, SPIRIT_FACE_TIDE, SPIRIT_BODY_TIDE, SPIRIT_FACE_GHOST, FallEffect.SHADER, PairTags.SHADER, SPIRIT_FACE_PATTERN, SPIRIT_BODY_PATTERN, TRAIL, RouteBarriers.SHADER, WATER_SURFACE]
+	return [SpiritFace.SHADER, LabelBubble.body_material(false, false).shader, LabelBubble.body_material(false, true).shader, ObjectMotionTrail.SOFT_SHADER, SeedMotionTrail.PATH_SHADER, BallRotationBlur.SPIN_SHADER, BallRotationBlur.BAND_SHADER, GoalBeacon.SHADER, SPIRIT_FACE_TIDE, SPIRIT_BODY_TIDE, SPIRIT_FACE_GHOST, FallEffect.SHADER, PairTags.SHADER, SPIRIT_FACE_PATTERN, SPIRIT_BODY_PATTERN, TRAIL, RouteBarriers.SHADER, WATER_SURFACE, FALLS_WATER, FogCover._cover_shader()]
 
 ## A material with exactly that key (a small white texture for each texture).
 static func material_for(key: Dictionary) -> StandardMaterial3D:

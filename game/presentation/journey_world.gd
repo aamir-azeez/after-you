@@ -47,6 +47,9 @@ const LIFT_COST := 2.0
 const LEAN_STEPS: Array[float] = [0.0,0.3,0.6]
 var _journey_switches: Dictionary = {}
 var _bubbles: Array = []
+## The view bubbles are laid out on: the world's camera_from() (kit/view_fit.gd).
+var _view_from: Vector3:
+	get: return camera_from()
 ## Screen boxes of bubbles already placed this frame: the first _placed_count
 ## entries. The array only grows, so a frame allocates nothing.
 var _placed: Array[Rect2] = []
@@ -113,9 +116,10 @@ func show_stage(stage: Dictionary) -> void:
 	# Before the build awaits: a present meanwhile reads this stage's crossings.
 	_wait_hints.setup(stage, _descriptor(), PlayerCopy.WAIT_HINT_CROSSING)
 	await super.show_stage(stage)
-	_stage_built = true
 	_build_seats(stage)
-	_build_items(stage)
+	await _build_step()
+	await _build_items(stage)
+	_stage_built = true
 	_build_wait_marks()
 	_sort_bubbles()
 	_placement_due = true
@@ -127,7 +131,7 @@ func show_stage(stage: Dictionary) -> void:
 
 ## Lowest on screen first: see _lift_bubbles.
 func _sort_bubbles() -> void:
-	var up := LabelBubble.screen_up()
+	var up := LabelBubble.screen_up(_view_from)
 	_bubbles.sort_custom(func(a: LabelBubble, b: LabelBubble) -> bool: return a.anchor.dot(up) < b.anchor.dot(up))
 
 func _configure_shared_view(view: Dictionary) -> void:
@@ -287,7 +291,7 @@ func _place_bubbles() -> void:
 func _lift_bubbles() -> void:
 	if _bubbles.is_empty(): return
 	_follow_knobs()
-	var rise := LabelBubble.screen_up().y
+	var rise := LabelBubble.screen_up(_view_from).y
 	if _placed.size() < _bubbles.size(): _placed.resize(_bubbles.size())
 	_placed_count = 0
 	_find_spirits()
@@ -295,7 +299,7 @@ func _lift_bubbles() -> void:
 		if not is_instance_valid(bubble) or not bubble.visible or bubble.labels[0].no_depth_test: continue
 		var rect := bubble.plane_rect(true)
 		var anchor := (bubble.get_parent() as Node3D).to_global(bubble.anchor)
-		var tip := LabelBubble.plane_point(anchor)
+		var tip := LabelBubble.plane_point(anchor, _view_from)
 		var best_lean := 0.0
 		var best_need := _need(rect,rise,bubble)
 		if _tail_meets_spirit(Rect2(rect.position-Vector2(0,best_need*rise),rect.size),tip,anchor,false):
@@ -363,7 +367,7 @@ func _tail_meets_spirit(placed: Rect2, tip: Vector2, anchor: Vector3, visible_on
 		var torso := _spirit_torsos[index]
 		var trim := 0.0
 		if visible_only:
-			if LabelBubble.behind_card(_spirit_feet[index],anchor) <= SPIRIT_HIDES: continue
+			if LabelBubble.behind_card(_spirit_feet[index],anchor,_view_from) <= SPIRIT_HIDES: continue
 			if head.has_point(tip) or torso.has_point(tip): trim = TIP_OVER_SPIRIT
 		if LabelBubble.tail_crosses(placed,tip,head,trim) or LabelBubble.tail_crosses(placed,tip,torso,trim): return true
 	return false
@@ -382,8 +386,8 @@ func _behind_scenery(bubble: LabelBubble, lean: float, need: float) -> bool:
 	if _sceneries.is_empty(): _gather_scenery()
 	var boxes: Array = _sceneries.get(bubble,_sceneries[&"none"])
 	if boxes.is_empty(): return false
-	var up := LabelBubble.screen_up()
-	var toward := LabelBubble.VIEW.normalized()
+	var up := LabelBubble.screen_up(_view_from)
+	var toward := _view_from.normalized()
 	var right := up.cross(toward)
 	var center: Vector3 = bubble.body.global_position-bubble.position+right*lean+Vector3(0,need,0)
 	var half := Vector2(bubble.body.scale.x*0.5,(bubble.body.scale.y-LabelBubble.TAIL)*0.5)
@@ -412,7 +416,7 @@ func _gather_scenery() -> void:
 			var low := Vector2.INF
 			var high := -Vector2.INF
 			for corner in range(8):
-				var point := LabelBubble.plane_point(box.get_endpoint(corner))
+				var point := LabelBubble.plane_point(box.get_endpoint(corner), _view_from)
 				low = low.min(point)
 				high = high.max(point)
 			boxes.append(box)
@@ -442,10 +446,10 @@ func _find_spirits() -> void:
 		var actor: Node3D = actors[slot]
 		if not actor.visible or not actor_targets.has(slot) or not actor.get_parent() is Node3D: continue
 		var at: Vector3 = (actor.get_parent() as Node3D).global_transform*(actor_targets[slot] as Vector3)
-		var feet := LabelBubble.plane_point(at)
-		var top := LabelBubble.plane_point(at+Vector3(0,SPIRIT_TOP,0))
-		var head := LabelBubble.plane_point(at+Vector3(0,SPIRIT_HEAD.x,0))
-		var torso := LabelBubble.plane_point(at+Vector3(0,SPIRIT_TORSO.x,0))
+		var feet := LabelBubble.plane_point(at, _view_from)
+		var top := LabelBubble.plane_point(at+Vector3(0,SPIRIT_TOP,0), _view_from)
+		var head := LabelBubble.plane_point(at+Vector3(0,SPIRIT_HEAD.x,0), _view_from)
+		var torso := LabelBubble.plane_point(at+Vector3(0,SPIRIT_TORSO.x,0), _view_from)
 		if _spirit_boxes.size() <= _spirit_count:
 			_spirit_boxes.resize(_spirit_count+2)
 			_spirit_heads.resize(_spirit_count+2)
@@ -550,6 +554,9 @@ func _should_cutaway(raised: Node3D, state: Dictionary) -> bool:
 
 func _camera_center() -> Vector3:
 	var target := super._camera_center()
+	# A level with its own follow data (island_world._follow_data) follows
+	# across and up as that data says.
+	if str(_follow_data().get("axes", "x")) == "xz": return target
 	if not _completion_view: target.z = clampf(_focus_point().z,-1.1,2.0)
 	target.y = 0.45
 	return target
@@ -725,7 +732,8 @@ func _present_seats(state: Dictionary, immediate: bool) -> void:
 ## Every item of the level in its style (a pin by id, else the dressing's
 ## "carried_item" pick; a float nobody carries is a raft unless pinned), the
 ## stage's current legs, and the rungs that mark a crossing needing both
-## hands (core/physical/carried_items.gd): a carrier stops at a ladder.
+## hands (core/physical/carried_items.gd): a carrier stops at a ladder. A
+## rope bridge (kit/pieces/deck.gd) needs no rungs.
 func _build_items(stage: Dictionary) -> void:
 	var view: Dictionary = CooperativeCatalog.stage_definition(chapter_definition, str(stage.get("id", "")))
 	if view.get("items", []).is_empty(): return
@@ -739,13 +747,20 @@ func _build_items(stage: Dictionary) -> void:
 		# On a world with the water kit, rings spread from it while it floats.
 		var water: Variant = get("waters")
 		if water != null: water.ripple_from(_item_pieces[id].root)
+		await _build_step()
 	var legs: Array = []
 	for leg: Dictionary in view.get("current_legs", []):
 		legs.append({"from": _item_point(CarriedItems.at_spot(CarriedItems.spot(view, str(leg.from)))), "to": _item_point(CarriedItems.at_spot(CarriedItems.spot(view, str(leg.to)))), "control_id": str(leg.get("control_id", "")), "value": str(leg.get("value", ""))})
 	if not legs.is_empty(): _current_piece = CurrentKit.build(_piece_style("current", str(view.current_legs[0].get("control_id", ""))), legs, terrain)
+	await _build_step()
 	var hands := CarriedItems.hands_routes(view)
 	for route: Dictionary in view.get("bridges", []) + view.get("stairs", []):
-		if hands.has(str(route.id)): _ladder_rungs(route)
+		# A rope bridge's slats and hand ropes are its own cause; rungs that
+		# stay would draw over its gap while it is shut.
+		var rope: bool = new_pieces != null and view.get("bridges", []).has(route) and new_pieces.deck_style(str(route.id)) == "rope"
+		if hands.has(str(route.id)) and not rope:
+			_ladder_rungs(route)
+			await _build_step()
 	# A throw's mark is a cream ring where the thrower stands; its landing the
 	# seed landing's ring of ticks (kit/pieces/socket.gd).
 	for thrown: Dictionary in view.get("throws", []):
@@ -756,6 +771,11 @@ func _build_items(stage: Dictionary) -> void:
 		landing.position = _at(CarriedItems.spot(view, str(thrown.to)))
 		terrain.add_child(landing)
 		SocketKit.landing(landing)
+
+## The node drawing item `id` (on its carrier's back or where it rests), or
+## null: an ending scene hides it while its own stands in for it.
+func item_node(id: String) -> Node3D:
+	return _item_pieces[id].root if _item_pieces.has(id) else null
 
 ## Where an item state rests in the terrain's space (on the water when its
 ## floor is none).
@@ -768,6 +788,8 @@ func _item_point(state: Dictionary) -> Vector3:
 ## Rungs across a both-hands crossing every RUNG_CM along it, at its height
 ## there, with a post at each end: plain leaves the static fold batches.
 const RUNG_CM := 14
+## How far in from the crossing's long edge each end post stands (m).
+const RUNG_POST_IN := 0.075
 func _ladder_rungs(route: Dictionary) -> void:
 	var rect: Array = route.rect_cm
 	var ends := CarriedItems.route_ends(route)
@@ -785,7 +807,8 @@ func _ladder_rungs(route: Dictionary) -> void:
 		at += RUNG_CM
 	for end: Dictionary in ends:
 		for side: float in [-1.0, 1.0]:
-			var post := Vector3(float(end.x) / 100.0, float(end.height) / 100.0 + 0.2, middle + side * (across / 2.0 - 0.03)) if axis == 0 else Vector3(middle + side * (across / 2.0 - 0.03), float(end.height) / 100.0 + 0.2, float(end.z) / 100.0)
+			# In from the crossing's edge, clear of the light strip along it.
+			var post := Vector3(float(end.x) / 100.0, float(end.height) / 100.0 + 0.2, middle + side * (across / 2.0 - RUNG_POST_IN)) if axis == 0 else Vector3(middle + side * (across / 2.0 - RUNG_POST_IN), float(end.height) / 100.0 + 0.2, float(end.z) / 100.0)
 			ItemParts.box(Vector3(0.04, 0.4, 0.04), ItemParts.TIMBER, post, terrain)
 
 ## Each item where the snapshot has it: on its holder's back, resting at its
