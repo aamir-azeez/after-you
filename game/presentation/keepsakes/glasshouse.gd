@@ -8,6 +8,8 @@ extends "res://presentation/keepsakes/keepsake_builder.gd"
 ## their flowers open with the bloom and stay open. Together Hard: a gold sun
 ## on the ridge turns, and the flower's middle turns gold and stays gold.
 const P = preload("res://presentation/keepsakes/keepsake_parts.gd")
+const Models = preload("res://presentation/kit/models.gd")
+const PUMP_MODEL := "res://assets/models/garden_pump.glb"
 const W := 1.9
 const D := 1.35
 const WALL := 1.15
@@ -41,14 +43,14 @@ func build(root: Node3D, state: Dictionary) -> Dictionary:
 	for side: int in [-1, 1]: P.sph(flower, 0.1, P.LEAF, Vector3(side * 0.13, 0.32, 0), Vector3(0.95, 0.45, 0.95), Vector3(0, 0, side * 0.3))
 	P.sph(flower, 0.11, P.PEACH, Vector3(0, 0.55, 0), Vector3(0.8, 1.3, 0.8))
 	parts.flower = flower
-	# The pump outside the door: a post with a long handle the pip pushes, and a pipe in.
-	P.box(root, Vector3(0.16, 0.7, 0.16), P.SLATE, PUMP + Vector3(0, 0.35, 0))
-	P.cyl(root, 0.06, 0.05, P.GOLD, PUMP + Vector3(0, 0.72, 0))
-	var handle := P.pivot(root, PUMP + Vector3(0, 0.72, 0), "Handle")
+	# The pump outside the door, its pipe in to the glass and its handle the pip
+	# pushes (tools/blender/models/garden_pump.py), the handle on its own pivot.
+	Models.still(PUMP_MODEL, "garden_pump", {"body": P.SLATE, "band": P.GOLD, "stone": P.STONE_LIGHT}, root).position = PUMP
+	var handle := Models.still(PUMP_MODEL, "garden_pump_handle", {"arm": P.SLATE_DARK, "grip": P.WOOD}, root)
+	handle.name = "Handle"
+	handle.position += PUMP
 	handle.rotation.z = 0.5
-	P.box(handle, Vector3(0.7, 0.05, 0.05), P.WOOD, Vector3(0.32, 0, 0))
 	parts.handle = handle
-	P.bar(root, PUMP + Vector3(-0.08, 0.55, 0), Vector3(W * 0.5, 0.55, 0.45), 0.06, P.SLATE)
 	if state.get("together", false):
 		var can := P.pivot(root, CAN, "Can")
 		P.cyl(can, 0.2, 0.34, P.MINT, Vector3(0, 0.17, 0), 0.18)

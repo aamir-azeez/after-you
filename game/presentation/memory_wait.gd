@@ -88,6 +88,10 @@ var auto_skip := false
 ## This screen's frame budgets for Fast-forward and for Skip (tests vary them).
 var step_budget_usec := STEP_BUDGET_USEC
 var skip_budget_usec := SKIP_BUDGET_USEC
+## The clock those budgets read: microseconds, and the rendered frame. Tests
+## drive their own, so a budget check counts ticks exactly.
+var clock_usec := Callable(Time, "get_ticks_usec")
+var clock_frame := Callable(Engine, "get_process_frames")
 ## The rendered frame Skip last stepped in, the time it spent there, and
 ## the frame it last showed the world in (once a frame is enough).
 var _skip_frame := -1
@@ -196,10 +200,10 @@ func step_silently(state: Dictionary, sounds: Dictionary) -> void:
 ## screen's own `advance` (which shows and sounds each one), up to
 ## FAST_FORWARD_TICKS of them, at least one. `playing` says the turn still runs.
 func fast_forward_tick(advance: Callable, playing: Callable) -> void:
-	var started := Time.get_ticks_usec()
+	var started: int = clock_usec.call()
 	for index in range(FAST_FORWARD_TICKS):
 		if not _waiting or not playing.call(): return
-		if index > 0 and Time.get_ticks_usec() - started > step_budget_usec: return
+		if index > 0 and clock_usec.call() - started > step_budget_usec: return
 		advance.call(STILL_INPUT)
 
 ## One physics tick of Skip to end: steps the memory silently (cue identities
@@ -209,8 +213,8 @@ func fast_forward_tick(advance: Callable, playing: Callable) -> void:
 ## `advance` as usual. Returns the state reached while the skip goes on, or
 ## {} when it is over.
 func skip_tick(sim: RefCounted, sounds: Callable, advance: Callable) -> Dictionary:
-	var started := Time.get_ticks_usec()
-	var frame := Engine.get_process_frames()
+	var started: int = clock_usec.call()
+	var frame: int = clock_frame.call()
 	if frame != _skip_frame:
 		_skip_frame = frame
 		_skip_spent_usec = 0
@@ -219,12 +223,12 @@ func skip_tick(sim: RefCounted, sounds: Callable, advance: Callable) -> Dictiona
 	while skipping and _waiting and _tick < last and not bool(sim.get("finished")) and str(sim.get("error")).is_empty():
 		state = sim.step(STILL_INPUT)
 		step_silently(state, sounds.call(state))
-		if _skip_spent_usec + Time.get_ticks_usec() - started > skip_budget_usec:
+		if _skip_spent_usec + clock_usec.call() - started > skip_budget_usec:
 			# A tick catching up in a frame already shown leaves the redraw to the next frame.
 			if _skip_shown_frame != frame:
 				_skip_shown_frame = frame
 				show(state, false)
-			_skip_spent_usec += Time.get_ticks_usec() - started
+			_skip_spent_usec += clock_usec.call() - started
 			return state
 	var arriving := skipping and _waiting
 	skipping = false

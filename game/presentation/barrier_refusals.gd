@@ -2,17 +2,25 @@ extends RefCounted
 ## Where a spirit's recorded input meets a barrier, tick by tick: the step its
 ## stick asks for is refused by a rule the world shows as a barrier
 ## (presentation/kit/route_barriers.gd: an owner gate, a stair gate, a zone
-## edge) and it does not move, or it stands at (or presses) a control its
-## friend owns. Each screen that steps a chapter turn keeps one, starts it with
-## the turn (begin) and runs every stepped tick through annotate() before the
-## tick's sounds are worked out, so the snapshot carries:
-##   "refused": [{slot, kind, id, push (unit Vector2)}], a push's first tick
-##     (and again every REPEAT_TICKS while it goes on), and
+## edge) and holds it back, or it stands at (or presses) a control its friend
+## owns. Each screen that steps a chapter turn keeps one, starts it with the
+## turn (begin) and runs every stepped tick through annotate() before the
+## tick's sounds are worked out, and shows and sounds the snapshot it returns,
+## which carries:
+##   "refused": [{slot, kind, id, push (unit Vector2, into the barrier)}], the
+##     first tick a barrier holds the spirit back (and again every REPEAT_TICKS
+##     while it goes on), and
 ##   "locked": [{slot, kind: &"lock", id}], a pip arriving at or pressing a
 ##     control it may not work.
 ## The world wiggles that barrier and bumps the spirit; the sound map plays a
 ## rattle or a clunk (services/chapter_sound_map.gd), named by the barrier, so
 ## a push sounds the same live, as the memory, on a retry and in a replay.
+##
+## Held back means the engine cut at least half of the step the stick asked
+## for (it slides a spirit along an edge it walks into, so a slanted push still
+## moves it a little): a push straight or slanted into a gate bumps on the tick
+## it meets it, while a spirit walking along an edge, brushing it, does not.
+## The bump looks for the barrier along the part of the step that was cut.
 ##
 ## A memory's push is judged against the second turn's open crossings, which
 ## match its own turn's for owners and zones (their rules never change); a
@@ -31,8 +39,11 @@ const Runtime = preload("res://core/physical/runtime.gd")
 const CooperativeCatalog = preload("res://core/cooperative/stage_catalog.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const Index = preload("res://content/chapters/index.gd")
-## A push held into one barrier rattles it again after this many ticks.
+## A spirit held back by barriers bumps again after this many ticks (1 s).
 const REPEAT_TICKS := 30
+## Once it goes more than this many ticks (0.2 s) without being held back (it
+## let go or walked off), its next bump comes at once.
+const RELEASE_TICKS := 6
 const STILL := {"x": 0, "z": 0, "action": false}
 
 var _definition: Dictionary = {}
@@ -46,7 +57,8 @@ var _memory_slot := ""
 var _stair_gates := true
 ## Each spirit's position after the last tick: slot -> Vector2i (cm).
 var _last: Dictionary = {}
-## The barrier each spirit is pushing into: slot -> {id, tick}.
+## Each spirit's last bump: slot -> {tick (the bump's), held (the last tick a
+## barrier held it back)}.
 var _pushing: Dictionary = {}
 ## Who stands at each owned control now: control id -> slot.
 var _at_lock: Dictionary = {}
@@ -84,11 +96,12 @@ func _stage(stage_id: String) -> void:
 	_view = CooperativeCatalog.stage_definition(_definition, stage_id)
 	_layout = RouteBarriers.layout(_view) if not _view.is_empty() else {}
 
-## Adds this tick's "refused" and "locked" to `state` (the snapshot the engine
-## returned for `input`), in place. The caller then works out its sounds and
-## shows it.
-func annotate(state: Dictionary, input: Dictionary = {}) -> void:
-	if _view.is_empty() or not state.get("players") is Dictionary: return
+## `state` (the snapshot the engine returned for `input`) with this tick's
+## "refused" and "locked": `state` itself when there are none, else a shallow
+## copy that adds them. It only reads `state`, which the engine (or a replay)
+## may keep. The caller then works out its sounds from it and shows it.
+func annotate(state: Dictionary, input: Dictionary = {}) -> Dictionary:
+	if _view.is_empty() or not state.get("players") is Dictionary: return state
 	if str(state.get("stage_id", "")) != _stage_id: _stage(str(state.get("stage_id", "")))
 	var tick := int(state.get("tick", 0))
 	var frames := {str(state.get("active_slot", "")): Runtime.quantize_input(input)}
@@ -112,23 +125,39 @@ func annotate(state: Dictionary, input: Dictionary = {}) -> void:
 		_at_lock[lock.id] = who
 	for slot: String in frames: _held[slot] = bool(frames[slot].action)
 	_remember(state)
-	if not refused.is_empty(): state["refused"] = refused
-	if not locked.is_empty(): state["locked"] = locked
+	if refused.is_empty() and locked.is_empty(): return state
+	var shown := state.duplicate()
+	if not refused.is_empty(): shown["refused"] = refused
+	if not locked.is_empty(): shown["locked"] = locked
+	return shown
 
 func _refused(slot: String, frame: Dictionary, player: Variant, state: Dictionary, tick: int) -> Dictionary:
-	var push := Vector2(float(frame.x), float(frame.z))
-	if not player is Dictionary or push.is_zero_approx() or not _last.has(slot) or _last[slot] != Vector2i(int(player.x), int(player.z)):
-		_pushing.erase(slot)
-		return {}
-	var found := RouteBarriers.refusal(_view, state.get("bridges", {}), player, slot, push.normalized(), Runtime.PLAYER_RADIUS, Runtime.MOVE_PER_TICK)
+	if not player is Dictionary or not _last.has(slot): return {}
+	var cut := held_back(frame, _last[slot], Vector2i(int(player.x), int(player.z)))
+	if cut == Vector2i.ZERO: return {}
+	var into := Vector2(cut).normalized()
+	var found := RouteBarriers.refusal(_view, state.get("bridges", {}), player, slot, into, Runtime.PLAYER_RADIUS, Runtime.MOVE_PER_TICK)
 	if not found.is_empty() and found.kind == RouteBarriers.STAIR and not _stair_gates: found = {}
-	if found.is_empty():
-		_pushing.erase(slot)
-		return {}
+	if found.is_empty(): return {}
 	var last: Variant = _pushing.get(slot)
-	if last is Dictionary and last.id == found.id and tick - int(last.tick) < REPEAT_TICKS: return {}
-	_pushing[slot] = {"id": found.id, "tick": tick}
-	return {"slot": slot, "kind": found.kind, "id": found.id, "push": push.normalized()}
+	var bumped := last is Dictionary and tick - int(last.held) <= RELEASE_TICKS and tick - int(last.tick) < REPEAT_TICKS
+	if bumped:
+		last.held = tick
+		return {}
+	_pushing[slot] = {"tick": tick, "held": tick}
+	return {"slot": slot, "kind": found.kind, "id": found.id, "push": into}
+
+## The part (cm) of the step `frame` (quantized input) asked for that the
+## engine cut, from `from` to `to` (a spirit's positions, cm), when it is at
+## least half the step; else zero. The asked step is the engine's own
+## (core/physical/runtime.gd _move), in whole centimetres. A spirit moved
+## further than its step (carried, caught after a fall) was not held back.
+static func held_back(frame: Dictionary, from: Vector2i, to: Vector2i) -> Vector2i:
+	var direction := Vector2(float(frame.x), float(frame.z)).limit_length(100.0)
+	var asked := Vector2i(roundi(direction.x * Runtime.MOVE_PER_TICK / 100.0), roundi(direction.y * Runtime.MOVE_PER_TICK / 100.0))
+	if asked == Vector2i.ZERO or (to - from).length_squared() > asked.length_squared(): return Vector2i.ZERO
+	var cut := asked - (to - from)
+	return cut if 4 * cut.length_squared() >= asked.length_squared() else Vector2i.ZERO
 
 func _remember(state: Dictionary) -> void:
 	var players: Dictionary = state.get("players", {})

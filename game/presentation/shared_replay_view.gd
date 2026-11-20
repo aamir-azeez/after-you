@@ -349,17 +349,16 @@ func _physics_process(delta: float) -> void:
 		_tick_time -= 1.0 / 30.0
 		if cursor >= _frames.size(): _finished(); break
 		var input: Dictionary = _frames[cursor]
-		var snapshot: Dictionary = sim.step(input)
+		var snapshot: Dictionary = _refusals.annotate(sim.step(input), input)
 		cursor += 1
-		memory_wait.step(snapshot, _cues(snapshot, input), false)
+		memory_wait.step(snapshot, _cues(snapshot), false)
 		run_player.step(int(snapshot.get("tick", cursor)))
 		_update_hud(snapshot)
 		if cursor >= _frames.size(): _finished()
 
 ## The watched turn's cues, as its chapter screen plays them; never haptics.
-## `input` is the tick's recorded input, for its pushes into barriers.
-func _cues(snapshot: Dictionary, input: Dictionary = MemoryWait.STILL_INPUT) -> Dictionary:
-	_refusals.annotate(snapshot, input)
+## `snapshot` is the tick's, already marked with its pushes into barriers.
+func _cues(snapshot: Dictionary) -> Dictionary:
 	return ChapterSoundMap.cues(str(entry.room.chapter_key), snapshot, _sound_seen)
 
 func _update_hud(snapshot: Dictionary = {}) -> void:
