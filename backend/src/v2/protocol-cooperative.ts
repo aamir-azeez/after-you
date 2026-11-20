@@ -26,8 +26,8 @@ export const HOUSE_HASH = "f14fb0abf330fa46afdb61078a8e8e99cee4cc2ade845304508cc
 export const WISHING_WELL_HASH = "14cfffbdd9b23cee06056548f29bbae7f1e95c348315ff3ff0098b7190ee5f3e";
 export const HIGH_AND_LOW_V2_HASH = "fbb692198e561d0944358bb4d6635ff2d5e178df82e0881f70941d64db5ed3a2";
 export const WISHING_WELL_V2_HASH = "037322be4ec939f2986a063735c2471589dd87482f717db520af8ed7b1039f3b";
-export const ROLLING_HOME_V2_HASH = "f5852fc8095aded1df95e7aef067a2e095891f5ecd72a4d197a7e48ecd16abca";
-export const HOUSE_V2_HASH = "9018b7e3323cc1f66fc7d4f292b419e7834d31bb5811b20672ddbc79ac79df38";
+export const ROLLING_HOME_V2_HASH = "43943f8c08a4f289a278b9fd2f4a39772ae6ce987a4735a6025adfd36053a3d7";
+export const HOUSE_V2_HASH = "0354b76e8f8120a3eab8c49d9b9cb57984dc8ef2dc49d07d30133b274a88a8fa";
 
 type Surface = { id: string; rect_cm: number[]; height_cm?: number; owner_slot?: string; axis?: string; from_height_cm?: number; to_height_cm?: number };
 type Marker = { id: string; position_cm: number[]; surface_id: string; radius_cm: number; owner_slot?: string; prop_id?: string };
