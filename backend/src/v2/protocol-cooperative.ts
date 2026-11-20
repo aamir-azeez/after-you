@@ -20,7 +20,7 @@ export const HIGH_AND_LOW_HASH = "6aa907e802c92445745a6452c6ec0850dd8e98724e689b
 export const ROLLING_HOME_HASH = "d6aaa6006597dd5e4ce4dbc641d94c81c2ab17c55bd80b50c6a240e0e91cff87";
 export const HOUSE_HASH = "b868745e7bc025bb8fe5a49b698b15dfb0d428ea9fe905ce46fa46dd27d79867";
 export const WISHING_WELL_HASH = "4418a6f1ad6bdc3f1adee6d07d48184d03867a56a1b2d1d42c189584cfec5a94";
-export const HIGH_AND_LOW_V2_HASH = "87bb4afc25b939b1754940f952e54fc4698786762b1b1e13022f7556ac0fdc5f";
+export const HIGH_AND_LOW_V2_HASH = "fbb692198e561d0944358bb4d6635ff2d5e178df82e0881f70941d64db5ed3a2";
 export const WISHING_WELL_V2_HASH = "bc277e6200e0e588b08b16b40b02ff7bc92d1c0f51822c56974190e7ab1bcfd9";
 
 type Surface = { id: string; rect_cm: number[]; height_cm?: number; owner_slot?: string; axis?: string; from_height_cm?: number; to_height_cm?: number };
