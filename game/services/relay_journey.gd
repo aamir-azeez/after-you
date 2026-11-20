@@ -218,6 +218,24 @@ func passes() -> Array:
 	return [] if read_only else _state.get(PASSES, []).duplicate(true)
 
 
+## Open turns: the turn count view a room's coordinator gives (open_turns()),
+## for the turn dots (kit/turn_dots.gd): turn, cap, must_finish, stage_index,
+## and as player_slot the pip this turn steers, since in Solo every turn is the
+## player's. {} on a chapter without open turns.
+func open_turns() -> Dictionary:
+	if not OpenTurns.pinned(_level): return {}
+	_ensure_loaded()
+	if read_only or chapter_complete(): return {}
+	var index := -1
+	for i in range(_level.stages.size()):
+		if str(_level.stages[i].get("id", "")) == str(_checkpoint.next_stage_id): index = i
+	if index < 0: return {}
+	var stage: Dictionary = _level.stages[index]
+	var held: Array = _state.get(PASSES, [])
+	var turn := 1 if role() == "a" else held.size() + 2
+	return {"turn": turn, "cap": OpenTurns.cap(stage), "must_finish": OpenTurns.must_finish(stage, turn), "player_slot": OpenTurns.slot(str(stage.get("first_player_slot", "")), turn), "stage_index": index}
+
+
 ## Open turns: the turns under prior_recording(), oldest first ([] until a
 ## stage has a pass).
 func memory_chain() -> Array:

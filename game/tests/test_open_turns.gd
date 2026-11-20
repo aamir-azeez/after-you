@@ -21,7 +21,9 @@ extends SceneTree
 ##   which still backs up to the Saved Games slot;
 ## - a published two turn stage still proves the published way;
 ## - the turn dots (presentation/kit/turn_dots.gd) ring the last turn: the cap's
-##   once it is next, this one when the room says it must finish;
+##   once it is next, this one when the room says it must finish; the cap's
+##   turn offers no pass, and Solo counts turns as a room does and shows the
+##   dots too (never in a replay);
 ## - Finish while the memory still plays (relay_preview.gd _end_turn_early):
 ##   the pip dozes and stands still, played out live, fast-forwarded or
 ##   skipped; the memory's later presses still land, the turn is byte for byte
@@ -47,6 +49,7 @@ const RecordingCodec = preload("res://core/v2/recording_codec.gd")
 const MemoryWait = preload("res://presentation/memory_wait.gd")
 const Joystick = preload("res://presentation/joystick.gd")
 const ChapterControls = preload("res://presentation/chapter_controls.gd")
+const SpiritLook = preload("res://presentation/spirit_look.gd")
 const TRACES := "user://open-turns-test-traces"
 const TIDE := "turn-of-the-tide@3"
 const STAGE := "set-the-tide"
@@ -160,6 +163,14 @@ func _chain() -> void:
 	var four := Simulation.new()
 	_check(four.reset(level, STAGE, start, pass_three, "b", 0, [a, pass_two]), "Turn 4 starts over turn 3 (%s)" % four.error)
 	_check(four.active_slot == two.active_slot, "Turn 4 is the second pip's")
+	# The cap's turn must finish the stage, in Solo as in a room (OpenTurns.must_finish).
+	_check(three.pass_allowed and four.pass_allowed, "Turns before the cap may pass")
+	var capped: Dictionary = level.duplicate(true)
+	for each: Dictionary in capped.stages:
+		if each.id == STAGE: each.turn_cap = 4
+	var at_cap := Simulation.new()
+	at_cap._reset_trusted(capped, STAGE, start, pass_three, "b", [a, pass_two])
+	_check(at_cap.turn_number == 4 and not at_cap.pass_allowed and not at_cap.can_pass(), "The cap's turn offers no pass")
 	while not four.finished: four.step(b_frames[four.tick] if int(four.tick) < b_frames.size() else {})
 	_check(four.complete, "Turn 4 closes the stage with both pips at the goal (%s)" % four.commit_reason())
 	if not four.complete: return
@@ -176,8 +187,10 @@ func _chain() -> void:
 	# A solo journal keeps the passes and plays each turn over the latest (relay_journey.gd).
 	var path := "user://open-turns-journal.json"
 	var journal := Journey.new(path, null, TIDE)
+	_solo_dots(journal, 1, two.first_player_slot)
 	_check(journal.accept_recording(a) and journal.accept_recording(pass_two) and journal.accept_recording(pass_three), "A solo journal takes turn 1 and two passes (%s)" % journal.last_error)
 	_check(journal.passes().size() == 2 and journal.prior_recording().get("recording_hash") == pass_three.recording_hash and journal.role() == "b", "Its next turn plays over the latest pass")
+	_solo_dots(journal, 4, two.first_player_slot)
 	_check(Journey.new(path, null, TIDE).passes().size() == 2, "The passes survive a reload")
 	# Solo Play my turn again with passes held: the latest pass is taken back in memory, so turn 3 plays over turn 2 again.
 	var plan := journal.redo_plan()
@@ -555,6 +568,8 @@ func _passes(level: Dictionary, start: Dictionary, a: Dictionary, count: int, ti
 		var frames: Array = routes[1 if n % 2 == 0 else 0]
 		# Each route stops where turn 1 ended, short of the goal, then the pip stands still.
 		while int(sim.tick) < ticks and not sim.finished: sim._tick(frames[sim.tick] if int(sim.tick) < mini(frames.size(), int(a.duration_ticks)) else {})
+		# These turns measure checks, not the cap: the cap's turn passes here too.
+		sim.pass_allowed = true
 		if not sim.can_pass():
 			_check(false, "Turn %d may pass (%s)" % [n, sim.commit_reason()])
 			return []
@@ -587,6 +602,26 @@ func _dots() -> void:
 	var early := TurnDots.view({"turn": 6, "cap": 20, "must_finish": true}, "p0")
 	_check(early.last == 6 and early.edge, "A turn that must finish early (the stage's bytes ran out) wears the ring itself")
 	_check(TurnDots.view({"turn": 3, "cap": 10}, "").is_empty() and TurnDots.view({}, "p0").is_empty(), "No stage or no count draws no dots")
+
+## Solo: the journal counts a stage's turns as a room does, its player_slot
+## the pip this turn steers, and the chapter screen shows its dots with no
+## room (relay_preview.gd _open_turns_view), never in a replay.
+func _solo_dots(journal: RefCounted, turn: int, first: String) -> void:
+	var level := Registry.definition(TIDE)
+	var index: int = level.stages.map(func(stage: Dictionary) -> String: return str(stage.id)).find(STAGE)
+	var open: Dictionary = journal.open_turns()
+	var steered := OpenTurns.slot(first, turn)
+	_check(open == {"turn": turn, "cap": OpenTurns.cap(level.stages[index]), "must_finish": false, "player_slot": steered, "stage_index": index}, "Solo turn %d: the journal counts it as a room does (%s)" % [turn, open])
+	var screen := Screen.new()
+	screen.journey = journal
+	screen.definition = level
+	screen.mode = "play"
+	_check(screen.online_session == null and not open.is_empty() and screen._open_turns_view() == TurnDots.view(open, first), "Solo turn %d shows the turn dots" % turn)
+	_check(screen._own_room_color() == (SpiritLook.PEACH if steered == "p0" else SpiritLook.MINT), "Solo turn %d: the Last turn pill wears the steered pip's colour" % turn)
+	screen.mode = "replay"
+	_check(screen._open_turns_view().is_empty(), "A Solo replay shows no turn dots")
+	screen.free()
+	_check(Journey.new("", null, Registry.RELAY).open_turns().is_empty(), "A chapter without open turns counts none in Solo")
 
 func _check(okay: bool, label: String) -> void:
 	checks += 1
