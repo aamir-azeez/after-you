@@ -193,6 +193,8 @@ func _chain() -> void:
 	_solo_dots(journal, 4, two.first_player_slot)
 	# A Solo turn over a pass keeps its draft as it plays (the draft checks the pass it plays over).
 	var live: RefCounted = journal.create_live_simulation()
+	if live != null:
+		for _tick in range(10): live.step({})
 	_check(live != null and journal.save_live_draft(live) and journal.has_draft(), "A Solo turn over a pass saves its draft (%s)" % journal.last_error)
 	_check(journal.save_draft({}) and not journal.has_draft(), "Its draft clears")
 	_check(Journey.new(path, null, TIDE).passes().size() == 2, "The passes survive a reload")
