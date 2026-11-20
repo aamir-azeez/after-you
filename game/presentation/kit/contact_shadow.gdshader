@@ -15,7 +15,7 @@ uniform vec3 tint : source_color = vec3(0.12, 0.23, 0.21);
 uniform bool from_instance = true;
 uniform vec4 shape = vec4(0.1, 0.1, 0.2, 1.0);
 // The world's strength (the graphics quality softens it).
-instance uniform float shadow_strength = 0.34;
+instance uniform float shadow_strength = 0.42;
 
 varying vec2 local;
 varying vec4 form;

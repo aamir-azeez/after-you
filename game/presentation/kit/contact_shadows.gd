@@ -57,8 +57,8 @@ const MERGE := 0.04
 const MOST_FEET := 8
 ## How far a shadow fades out past its footprint: a share of its smaller
 ## half size, at least the first and at most the second (metres).
-const FADE_SHARE := 0.6
-const FADE_RANGE := Vector2(0.035, 0.13)
+const FADE_SHARE := 0.7
+const FADE_RANGE := Vector2(0.04, 0.15)
 ## A root lifted this far over where it rested has no shadow left.
 const LIFT_FADE := 0.35
 ## Roots looked at per frame for moves, and frames a moved one stays watched.

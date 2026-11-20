@@ -56,7 +56,7 @@ static func dressing_contact_shadows(quality: Variant) -> bool:
 	return normalize(quality) != "low"
 
 static func contact_shadow_strength(quality: Variant) -> float:
-	return 0.26 if normalize(quality) == "low" else 0.34
+	return 0.32 if normalize(quality) == "low" else 0.42
 
 ## How many spots on screen spread rings on the water at once.
 static func water_rings(quality: Variant) -> int:
