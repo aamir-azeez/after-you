@@ -306,7 +306,7 @@ var _loading_label: Label
 ## The bridges at the previous tick, for cues that name the bridge that opened.
 var _sound_seen: Dictionary = {}
 ## This turn's refusal finder: its pushes and locked controls ride each tick's
-## snapshot into the tick's sounds and the world (_turn_sounds).
+## snapshot into the tick's sounds and the world.
 var _refusals := BarrierRefusals.new()
 ## The Lighthouse's last stage ends on its lit beacon, held until the player moves on.
 var _moment_replay := false
@@ -2216,7 +2216,8 @@ func advance_input(input: Dictionary) -> void:
 	if mode == "play" and _try_due:
 		_try_due = false
 		_live_tries = turn_tries.start(_try_slot)
-	_wait().step(state, _turn_sounds(state, input), mode == "play")
+	state = _refusals.annotate(state, input)
+	_wait().step(state, _sounds_of(state), mode == "play")
 	_run_player().step(int(state.tick))
 	_update_hud(state)
 	if mode == "play" and (int(state.tick) % 30 == 0 or hard_flow.saves_tick(int(state.tick))) and not state.finished and not _persist_draft("play", true):
@@ -2335,9 +2336,13 @@ func _continue_final_moment() -> void:
 
 ## Maps one tick's simulation events to sound cues and who caused each one,
 ## after marking where `input` (the tick's own; a still one when skipped)
-## pushed into a barrier (presentation/barrier_refusals.gd).
+## pushed into a barrier (presentation/barrier_refusals.gd), for a tick stepped
+## without being shown.
 func _turn_sounds(state: Dictionary, input: Dictionary = MemoryWait.STILL_INPUT) -> Dictionary:
-	_refusals.annotate(state, input)
+	return _sounds_of(_refusals.annotate(state, input))
+
+## The cues of one tick's snapshot, already marked by the refusal finder.
+func _sounds_of(state: Dictionary) -> Dictionary:
 	return ChapterSoundMap.cues(chapter_key, state, _sound_seen)
 
 ## The simulation is back at tick zero: its cues restart their identities.
