@@ -4,6 +4,8 @@
 #   <suite> skip <reason>     CI never runs this suite; say why
 # test_ci_shards.gd checks this file. A new suite can take any shard;
 # python3 scripts/ci_shards.py refresh rebalances them by ci_suite_times.txt.
+a_house_for_two_v2 2
+a_house_for_two_v2_world 3
 action_buttons 2
 android_back 1
 app_state 3
@@ -334,6 +336,8 @@ replay_transfer_session 2
 request_queue 2
 resume_child_sound 3
 review_access 3
+rolling_home_v2 1
+rolling_home_v2_world 2
 rolling_offer 2
 room_action_hooks 3
 room_actions 1
@@ -370,6 +374,7 @@ self_redo 2
 session_release 1
 settings 1
 share_codes 2
+shared_ball 1
 shared_paths 3
 shared_photo_fetch 3
 shared_replay_delete_ui 2

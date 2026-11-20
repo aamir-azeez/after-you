@@ -1,0 +1,24 @@
+{
+	"catch_assistance": true,
+	"checkpoint_hash": "735ff21f54921b093a5cad7ebaa8932e25afe8e9ee397c0a4fa64cac314f2979",
+	"completed": false,
+	"definition_hash": "9018b7e3323cc1f66fc7d4f292b419e7834d31bb5811b20672ddbc79ac79df38",
+	"duration_ticks": 532,
+	"final_state_hash": "171233248ea7fc40cfe1568134e4db24d2f6e4ec02f88a6ab01c9043eff0dbea",
+	"level_id": "a-house-for-two",
+	"level_version": 2,
+	"outcome": {
+		"objective_complete": false,
+		"source_ready": true
+	},
+	"packed": "AQ3EBAAAFgCcSGQAFgBkqAFkABQAnAIAzgIAAAMAACRkABAAZAIAMngAAPVmIoGDFFqouUqJB/sxCzTbJo6RsYGUvIdZfVrVmHmrRvN2hDx9qMmhBpsvl6oigZClm6oB2kaWJx9DcT0SZ1B0/J7t9CYKO6kWhQuBmdGjNQE0EOja5bc7glI5fUbRsqFNPebS4HY7oibA35odv0xybTcYjsGjl67s174QRdwNGisKbRklWF+UdaEjIRRai4qQ2AKm26NhjYuvhbdL4qiSh7EOTdjDvEsyk98kfczPpr9HPYcvhvCwYwLhY1JVjFA5fAS2GBnF3saN3+suW0A=",
+	"player_slot": "p1",
+	"recording_hash": "f4bf17037eadbdf7f7fa4445eb23a8941d28a9721f4310c33c561eb470fe2a8b",
+	"role": "b",
+	"schema_version": 6,
+	"simulation_version": 17,
+	"source_recording_hash": "3cee1757f94b01c5fa3e8e2929141bb86ba4dcb2fdb52aba101d1ffc8f653491",
+	"stage_id": "open-the-house",
+	"stage_version": 1,
+	"tick_rate": 30
+}

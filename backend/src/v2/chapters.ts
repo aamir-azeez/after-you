@@ -2,7 +2,7 @@ import { ApiError, object } from "../protocol";
 import { flagOn, type FlagVar } from "../flags";
 import * as Relay from "./protocol-relay";
 import * as FirstSteps from "./protocol-first-steps";
-import { highAndLow, highAndLowV2, rollingHome, houseForTwo, wishingWell, wishingWellV2 } from "./protocol-cooperative";
+import { highAndLow, highAndLowV2, rollingHome, rollingHomeV2, houseForTwo, houseForTwoV2, wishingWell, wishingWellV2 } from "./protocol-cooperative";
 import { conservatory, conservatoryV2, firstStepsV2, longWayHome, longWayHomeV2, longWayHomeV3, turnOfTheTide, turnOfTheTideV2, turnOfTheTideV3 } from "./protocol-journey";
 import { sleepingLighthouseV2 } from "./protocol-lighthouse";
 import { LEGACY_STAGE_COUNT, type ChapterAdapter, type ChapterKey } from "./chapter-types";
@@ -44,6 +44,8 @@ export const CHAPTERS: readonly { readonly adapter: ChapterAdapter; readonly fla
   { adapter: highAndLowV2, flag: "HIGH_AND_LOW_V2_CHAPTER_ENABLED" },
   { adapter: wishingWellV2, flag: "THE_WISHING_WELL_V2_CHAPTER_ENABLED" },
   { adapter: firstStepsV2, flag: "FIRST_STEPS_V2_CHAPTER_ENABLED" },
+  { adapter: rollingHomeV2, flag: "ROLLING_HOME_V2_CHAPTER_ENABLED" },
+  { adapter: houseForTwoV2, flag: "A_HOUSE_FOR_TWO_V2_CHAPTER_ENABLED" },
 ]);
 const entries: readonly ChapterAdapter[] = CHAPTERS.map(row => row.adapter);
 

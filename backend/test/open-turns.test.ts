@@ -9,7 +9,7 @@ import { MAX_ROW_BYTES, MAX_REPLAY_ARCHIVE_BYTES } from "../src/v2/row-bound";
 import { DEFAULT_TURN_CAP, MAX_OPEN_TURN_TICKS, OPEN_TURN_ID_PATTERN, PACKED_RECORDING_VALUES, fingerprint, mustFinish, openAccepted, openTurnLimits, packedRecordingBytes, recordingBytes, turnId, turnNumber, turnSlot } from "../src/v2/open-turns";
 import { MAX_PACKED_CHARS, checkTicks, packRecording, unpackRecording } from "../src/v2/recording-codec";
 import { conservatoryV2, firstStepsV2, longWayHomeV2, longWayHomeV3, turnOfTheTideV2, turnOfTheTideV3 } from "../src/v2/protocol-journey";
-import { highAndLowV2, wishingWellV2 } from "../src/v2/protocol-cooperative";
+import { highAndLowV2, houseForTwoV2, rollingHomeV2, wishingWellV2 } from "../src/v2/protocol-cooperative";
 import type { ChapterCheckpoint, ChapterRecording } from "../src/v2/chapter-types";
 import type { MutationV2, RoomSnapshotV2 } from "../src/v2/room";
 import type { RedoStateV2 } from "../src/redo-control";
@@ -118,7 +118,7 @@ describe("open turns: rules and bounds", () => {
   it("gives only the open controls chapters open turns, with a cap a stage and bounds that never grow with the stages", () => {
     for (const row of CHAPTERS) {
       const open = row.adapter.open_turns;
-      expect(open !== undefined, row.adapter.key.level_id + "@" + row.adapter.key.level_version).toBe([longWayHomeV3, turnOfTheTideV3, conservatoryV2, highAndLowV2, wishingWellV2, firstStepsV2].includes(row.adapter));
+      expect(open !== undefined, row.adapter.key.level_id + "@" + row.adapter.key.level_version).toBe([longWayHomeV3, turnOfTheTideV3, conservatoryV2, highAndLowV2, wishingWellV2, firstStepsV2, rollingHomeV2, houseForTwoV2].includes(row.adapter));
       if (!open) continue;
       expect(open.caps).toEqual(row.adapter.stages.map(stage => (stage as { turn_cap?: number }).turn_cap ?? DEFAULT_TURN_CAP));
       expect(row.adapter.max_branches).toBe(open.branches);

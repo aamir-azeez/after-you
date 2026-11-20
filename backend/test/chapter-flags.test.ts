@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import * as FirstSteps from "../src/v2/protocol-first-steps";
-import { highAndLow, highAndLowV2, rollingHome, houseForTwo, wishingWell, wishingWellV2 } from "../src/v2/protocol-cooperative";
+import { highAndLow, highAndLowV2, rollingHome, rollingHomeV2, houseForTwo, houseForTwoV2, wishingWell, wishingWellV2 } from "../src/v2/protocol-cooperative";
 import { conservatory, conservatoryV2, firstStepsV2, longWayHome, longWayHomeV2, longWayHomeV3, turnOfTheTide, turnOfTheTideV2, turnOfTheTideV3 } from "../src/v2/protocol-journey";
 import { sleepingLighthouseV2 } from "../src/v2/protocol-lighthouse";
 import { LEGACY_STAGE_COUNT, type ChapterAdapter } from "../src/v2/chapter-types";
@@ -22,7 +22,8 @@ describe("chapter table", () => {
   it("creates and advertises every published chapter, in live's order, whatever CONFIG says", () => {
     // Unreleased chapters follow the published ones, each behind its own flag (off unless CONFIG lists it).
     const UNRELEASED: readonly [ChapterAdapter, string][] = [[longWayHomeV3, "LONG_WAY_HOME_V3_CHAPTER_ENABLED"], [turnOfTheTideV3, "TURN_OF_THE_TIDE_V3_CHAPTER_ENABLED"],
-      [conservatoryV2, "CONSERVATORY_V2_CHAPTER_ENABLED"], [highAndLowV2, "HIGH_AND_LOW_V2_CHAPTER_ENABLED"], [wishingWellV2, "THE_WISHING_WELL_V2_CHAPTER_ENABLED"], [firstStepsV2, "FIRST_STEPS_V2_CHAPTER_ENABLED"]];
+      [conservatoryV2, "CONSERVATORY_V2_CHAPTER_ENABLED"], [highAndLowV2, "HIGH_AND_LOW_V2_CHAPTER_ENABLED"], [wishingWellV2, "THE_WISHING_WELL_V2_CHAPTER_ENABLED"], [firstStepsV2, "FIRST_STEPS_V2_CHAPTER_ENABLED"],
+      [rollingHomeV2, "ROLLING_HOME_V2_CHAPTER_ENABLED"], [houseForTwoV2, "A_HOUSE_FOR_TWO_V2_CHAPTER_ENABLED"]];
     expect(CHAPTERS.map(row => row.adapter)).toEqual([...LIVE_ORDER, ...UNRELEASED.map(([entry]) => entry)]);
     for (const [entry, flag] of UNRELEASED) {
       expect(chapterFlag(entry)).toBe(flag);
