@@ -164,7 +164,7 @@ func _run() -> void:
 	_timed(_test_bloom_waits_for_ring)
 	_timed(_test_auto_skip_save_fails)
 	_timed(_test_lighthouse_auto_skip)
-	await _test_skip_budget_per_frame()
+	_timed(_test_skip_budget_per_frame)
 	for reduced: bool in [false, true]:
 		var started := Time.get_ticks_msec()
 		await _test_fast_forward_badge(reduced)
@@ -957,37 +957,37 @@ func _test_auto_skip_only_live() -> void:
 	_free_preview(run)
 
 ## The skip's budget is per rendered frame: a physics tick catching up in a
-## frame that has spent it steps once, and the next frame gets it back. The
-## budget is about 20 of this machine's cheapest skipped ticks, so a slow
-## runner or one preempted tick cannot use it all.
+## frame that has spent it steps once, and the next frame gets it back. A
+## stand-in clock moves 100 us for each skipped tick and one frame when told,
+## so the counts are exact on any machine.
 func _test_skip_budget_per_frame() -> void:
 	var run := _preview_to_ring()
 	var preview: Preview = run.preview
 	var wait: RefCounted = preview.memory_wait
-	var cheapest := 1 << 40
-	for _tick in range(8):
-		var started := Time.get_ticks_usec()
-		var state: Dictionary = preview.sim.step(MemoryWait.STILL_INPUT)
-		wait.step_silently(state, preview._turn_sounds(state))
-		cheapest = mini(cheapest, Time.get_ticks_usec() - started)
+	var now := {"usec": 0, "frame": 1}
+	wait.clock_usec = func() -> int: return now.usec
+	wait.clock_frame = func() -> int: return now.frame
+	var sounds := func(state: Dictionary) -> Dictionary:
+		now.usec += 100
+		return preview._turn_sounds(state)
 	wait.skipping = true
-	wait.skip_budget_usec = maxi(3000, 20 * cheapest)
+	wait.skip_budget_usec = 1000
 	var ticks := func() -> int: return int(preview.sim.snapshot().tick)
 	var shown := func() -> int: return run.world.presented.size()
-	await process_frame
 	var start: int = ticks.call()
-	wait.skip_tick(preview.sim, preview._turn_sounds, preview.advance_input)
+	var shown_before: int = shown.call()
+	wait.skip_tick(preview.sim, sounds, preview.advance_input)
 	var first: int = ticks.call() - start
-	var shown_first: int = shown.call()
+	_check(first == 11 and shown.call() == shown_before + 1, "A fresh frame steps until its budget is spent, then shows the world once (%d ticks)" % first)
 	start = ticks.call()
-	wait.skip_tick(preview.sim, preview._turn_sounds, preview.advance_input)
-	_check(first > 1 and ticks.call() - start == 1, "A tick catching up in a spent frame steps once (%d, then %d; budget %d us, cheapest tick %d us)" % [first, ticks.call() - start, wait.skip_budget_usec, cheapest])
-	_check(shown.call() == shown_first, "and does not show the world a second time that frame")
-	await process_frame
+	wait.skip_tick(preview.sim, sounds, preview.advance_input)
+	_check(ticks.call() - start == 1, "A tick catching up in a spent frame steps once (%d)" % (ticks.call() - start))
+	_check(shown.call() == shown_before + 1, "and does not show the world a second time that frame")
+	now.frame += 1
 	start = ticks.call()
-	wait.skip_tick(preview.sim, preview._turn_sounds, preview.advance_input)
+	wait.skip_tick(preview.sim, sounds, preview.advance_input)
 	var again: int = ticks.call() - start
-	_check(wait.skipping and again > 1 and shown.call() == shown_first + 1, "The next frame gets the whole budget back (%d ticks, shown %d then %d; budget %d us, cheapest tick %d us)" % [again, shown_first, shown.call(), wait.skip_budget_usec, cheapest])
+	_check(wait.skipping and again == 11 and shown.call() == shown_before + 2, "The next frame gets the whole budget back (%d ticks)" % again)
 	wait.skipping = false
 	preview.mode = "ready"
 	_free_preview(run)
