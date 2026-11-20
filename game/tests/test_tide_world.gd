@@ -20,6 +20,7 @@ var SEA_LEVELS: Dictionary = WaterData.DATA.bodies.filter(func(body: Dictionary)
 const PairTags = preload("res://presentation/kit/pair_tags.gd")
 const Dressing = preload("res://content/dressing/catalog.gd")
 const Props = preload("res://presentation/kit/props.gd")
+const Models = preload("res://presentation/kit/models.gd")
 const Lint = preload("res://tests/test_dressing_lint.gd")
 const Soundscape = preload("res://services/soundscape.gd")
 const SoundMap = preload("res://services/chapter_sound_map.gd")
@@ -202,6 +203,10 @@ func _first_stage(level: Dictionary) -> void:
 	# all through its bob, and a boat sits its draft deep at every level.
 	for kind: String in Floats.KINDS: _check(Floats.keeps_rule(kind) and Floats.least_freeboard(kind) >= 0.0, "A " + kind + " keeps its keel wet and its floor dry through its bob")
 	var rowboat: Dictionary = Floats.kind("rowboat")
+	# The rowboat model's floorboards: its "inside" slot, read from a still copy.
+	var probe := Node3D.new()
+	var inside_box: AABB = (Models.still(Props.ROWBOAT, "rowboat", Props.rowboat_colors(), probe, false).find_child("inside", false, false) as MeshInstance3D).get_aabb()
+	probe.free()
 	for boat: Node3D in world._boats:
 		_check(absf(boat.position.y - (HARBOUR_LEVELS.half - float(rowboat.draft))) <= float(rowboat.bob) + 0.0001, "A moored boat rides the harbour at half water, its draft deep")
 		var lowest := INF
@@ -209,7 +214,7 @@ func _first_stage(level: Dictionary) -> void:
 		for mesh: Node in boat.find_children("*", "MeshInstance3D", true, false):
 			var box: AABB = (mesh as MeshInstance3D).transform * (mesh as MeshInstance3D).get_aabb()
 			lowest = minf(lowest, box.position.y)
-			if mesh.name == "BoatFloor": floor_top = box.end.y
+			if mesh.name == "rowboat": floor_top = ((mesh as MeshInstance3D).transform * inside_box).end.y
 		_check(absf(lowest) < 0.0001 and floor_top >= float(rowboat.floor), "A moored boat's keel is at its origin and its floorboards stand on its solid hull")
 	for tide: String in ["low", "high"]:
 		world.waters.set_level("harbour", float(HARBOUR_LEVELS[tide]), true)

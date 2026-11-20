@@ -10,6 +10,7 @@ extends "res://presentation/keepsakes/keepsake_builder.gd"
 ## on the wheel post that lights at high tide.
 const P = preload("res://presentation/keepsakes/keepsake_parts.gd")
 const Floats = preload("res://presentation/kit/floats.gd")
+const Models = preload("res://presentation/kit/models.gd")
 const RADIUS := 1.05
 ## The water's height at low and high tide.
 const LOW := 0.18
@@ -25,7 +26,7 @@ const LANDING := Vector3(1.38, 0, -0.18)
 ## The rock pool's water, and the toy boat's hull half height: it floats by the
 ## float rule (kit/floats.gd "toy_boat"), its centre that far over its keel.
 const ROCK_WATER := 0.15
-const BOAT_HALF := 0.07
+const BOAT_HALF := 0.06
 
 func build(root: Node3D, state: Dictionary) -> Dictionary:
 	P.cyl(root, RADIUS + 0.05, 0.12, P.STONE, Vector3(0, 0.06, 0), RADIUS + 0.08)
@@ -54,9 +55,7 @@ func build(root: Node3D, state: Dictionary) -> Dictionary:
 		P.ring(root, 0.5, 0.07, P.MINT, at + Vector3(0, 0.22, 0))
 		P.cyl(root, 0.44, 0.02, P.WATER, at + Vector3(0, ROCK_WATER - 0.01, 0))
 		var boat := P.pivot(root, at + Vector3(0, _boat_y(), 0), "Boat")
-		P.sph(boat, BOAT_HALF * 2.0, P.MINT_DEEP, Vector3.ZERO, Vector3(1.05, 0.5, 1.05))
-		P.cyl(boat, 0.01, 0.24, P.WOOD, Vector3(0, 0.14, 0))
-		P.prism(boat, Vector3(0.14, 0.18, 0.015), P.SNOW, Vector3(0.06, 0.16, 0))
+		Models.moving("res://assets/models/sailboat.glb", "sailboat", {"hull": P.MINT_DEEP, "deck": P.MINT, "rim": P.SNOW, "mast": P.WOOD, "sail": P.SNOW}, boat).scale = Vector3.ONE * 0.6
 		P.bar(root, Vector3(0.95, 0.42, 0.35), at + Vector3(-0.4, 0.22, 0), 0.12, P.STONE_LIGHT)
 		parts.boat = boat
 	if state.get("hard", false):

@@ -17,6 +17,7 @@ extends "res://presentation/kit/pieces/piece.gd"
 ## moving part.
 const STYLES := ["parcel", "pipsport", "raft"]
 const Floats = preload("res://presentation/kit/floats.gd")
+const Models = preload("res://presentation/kit/models.gd")
 ## Where an item sits on a spirit's back, in the spirit's own space.
 const BACK := Vector3(0.0, 0.62, -0.2)
 const NAVY := Color("2f3e66")
@@ -43,10 +44,9 @@ func _make(item_style: String, at: Vector3, parent: Node3D, options: Dictionary)
 			Parts.box(Vector3(0.012, 0.047, 0.232), NAVY.lightened(0.25), Vector3(-0.078, 0.02, 0), root)
 			Parts.disc(0.035, 0.008, Parts.GOLD, Vector3(0.01, 0.045, -0.02), root)
 		"raft":
-			for index in range(4):
-				Parts.box(Vector3(0.18, 0.06, 0.72), Parts.TIMBER if index % 2 == 0 else Parts.TIMBER_LIGHT, Vector3(-0.285 + 0.19 * index, 0.03, 0), root)
-			for z: float in [-0.25, 0.25]:
-				Parts.box(Vector3(0.8, 0.03, 0.06), Parts.TIMBER_DARK, Vector3(0, 0.075, z), root)
+			# The log raft model at the float's 0.8 by 0.72 m, resting on its spot.
+			var raft := Models.moving("res://assets/models/raft.glb", "raft", {"log_a": Parts.TIMBER, "log_b": Parts.TIMBER_LIGHT, "lashing": Color("c9b48a"), "bearer": Parts.TIMBER_DARK}, root)
+			raft.transform = Transform3D(Basis.from_scale(Vector3(0.8, 1.0, 0.9)), Vector3(0, 0.169, 0))
 		_:
 			Parts.box(Vector3(0.22, 0.14, 0.18), PAPER, Vector3(0, 0.07, 0), root)
 			Parts.box(Vector3(0.232, 0.152, 0.025), Parts.CREAM, Vector3(0, 0.07, 0), root)

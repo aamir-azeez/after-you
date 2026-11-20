@@ -14,12 +14,13 @@ extends "res://presentation/kit/pieces/piece.gd"
 ## fits them all. It drifts OVER past a stop as it arrives and settles back
 ## (Motion.arrival), then rests exactly on the stop.
 const STYLES := ["logs"]
+const Models = preload("res://presentation/kit/models.gd")
+const MODEL := "res://assets/models/raft.glb"
 const LOG := Color("8a6a4c")
 const LASHING := Color("c9b48a")
 const ROPE := Color("c9b48a")
 ## Metres a second the raft travels.
 const RATE := 1.6
-const LOG_RADIUS := 0.06
 ## How far past its stop the raft drifts as it arrives (m).
 const OVER := 0.02
 
@@ -66,24 +67,22 @@ func _make(raft_style: String, stops: Array[Vector3], size: Vector2, parent: Nod
 	_target = stops[0]
 	_root("Raft_" + raft_style, stops[0], parent)
 	anchor = root
+	# The log raft model (built 1.0 by 0.8 m, logs along x), stretched to the
+	# stop with its logs along the stop's long side.
 	var across_x := size.x <= size.y
-	var count := maxi(3, floori((size.x if across_x else size.y) / (LOG_RADIUS * 2.0)))
-	var long := size.y if across_x else size.x
-	for index in range(count):
-		var offset := -0.5 * (size.x if across_x else size.y) + (float(index) + 0.5) * (size.x if across_x else size.y) / float(count)
-		var log := Parts.rod(LOG_RADIUS, long - 0.04, LOG.darkened(0.07 * float(index % 2)), Vector3(offset, -LOG_RADIUS, 0) if across_x else Vector3(0, -LOG_RADIUS, offset), root)
-		if across_x: log.rotation = Vector3(PI / 2.0, 0, 0)
-	for end: int in [-1, 1]:
-		var at := float(end) * (long * 0.5 - 0.12)
-		Parts.box(Vector3(size.x + 0.02, 0.03, 0.04) if across_x else Vector3(0.04, 0.03, size.y + 0.02), LASHING, Vector3(0, 0.005, at) if across_x else Vector3(at, 0.005, 0), root)
+	var deck := Models.moving(MODEL, "raft", {"log_a": LOG, "log_b": LOG.darkened(0.07), "lashing": LASHING, "bearer": Parts.TIMBER_DARK}, root)
+	deck.scale = Vector3(maxf(size.x, size.y) / 1.0, 1.0, minf(size.x, size.y) / 0.8)
+	if across_x: deck.rotation.y = PI / 2.0
 	# The mast at the corner nearest the rope's line, and the rope between
 	# two posts just beyond the first and last stops, through its ring.
 	var corner := Vector3(size.x * 0.5 - 0.06, 0, -size.y * 0.5 + 0.06)
-	Parts.box(Vector3(0.05, 0.62, 0.05), Parts.TIMBER_DARK, corner + Vector3(0, 0.31, 0), root)
-	Parts.ring(0.045, Parts.IRON, corner + Vector3(0, 0.6, 0), root)
 	var first := stops[0] + corner + Vector3(0, 0.6, 0)
 	var last := stops[stops.size() - 1] + corner + Vector3(0, 0.6, 0)
 	var line := (last - first)
+	var mast := Models.moving(MODEL, "raft_mast", {"mast": Parts.TIMBER_DARK, "ring": Parts.IRON}, root)
+	mast.position = corner
+	# The ring faces along the rope's line.
+	if Vector2(line.x, line.z).length() > 0.01: mast.rotation.y = atan2(line.x, line.z)
 	var reach := line.normalized() * 0.5
 	for post: Vector3 in [first - reach, last + reach]:
 		Parts.box(Vector3(0.07, 0.95, 0.07), Parts.TIMBER_DARK, post - Vector3(0, 0.6, 0) + Vector3(0, 0.3, 0), parent)

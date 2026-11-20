@@ -20,13 +20,15 @@ extends RefCounted
 ## A Blender float model (agent-docs/MODELS.md) meets the same numbers: its
 ## keel at its origin and its inside floor at least `draft + bob + MARGIN` up.
 const MARGIN := 0.01
-## A float whose style has no kind of its own (a pinned style) sits like a raft.
-const DEFAULT_KIND := "raft"
+## A float whose style has no kind of its own (a parcel, a pinned style) sits
+## low and flat, as the code-built log raft did.
+const DEFAULT_KIND := "flat"
 const KINDS := {
+	"flat": {"draft": 0.03, "bob": 0.015, "rate": 2.2, "floor": 0.06, "top": 0.06},
 	"rowboat": {"draft": 0.035, "bob": 0.015, "rate": 1.4, "floor": 0.065, "top": 0.15},
-	"raft": {"draft": 0.03, "bob": 0.015, "rate": 2.2, "floor": 0.06, "top": 0.06},
+	"raft": {"draft": 0.075, "bob": 0.015, "rate": 2.2, "floor": 0.134, "top": 0.169},
 	# A solid painted hull: its floor is its own top.
-	"toy_boat": {"draft": 0.04, "bob": 0.0, "rate": 0.0, "floor": 0.14, "top": 0.14},
+	"toy_boat": {"draft": 0.04, "bob": 0.0, "rate": 0.0, "floor": 0.103, "top": 0.115},
 }
 
 static func kind(name: String) -> Dictionary:
