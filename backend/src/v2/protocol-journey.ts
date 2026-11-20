@@ -22,6 +22,10 @@ import conservatoryV2Definition from "./conservatory-v2.json";
 import conservatoryV2Initial from "./conservatory-v2-initial.json";
 import firstStepsV2Definition from "./first-steps-v2.json";
 import firstStepsV2Initial from "./first-steps-v2-initial.json";
+import theFallsDefinition from "./the-falls.json";
+import theFallsInitial from "./the-falls-initial.json";
+import fogMarshDefinition from "./fog-marsh.json";
+import fogMarshInitial from "./fog-marsh-initial.json";
 
 export const CONSERVATORY_HASH = "5e4741419609acd603db2066a0e799c8ab92182ca08f9df3aa54d410760551a3";
 export const LONG_WAY_HOME_HASH = "79ea6a353b52459acc508c2a74baea488a4afe0c62079a07f7fb479e57193932";
@@ -32,9 +36,11 @@ export const LONG_WAY_HOME_V3_HASH = "dd36a5597d8c06daaec3a34fdb79a0d854ddbc3647
 export const TURN_OF_THE_TIDE_V3_HASH = "f6d35bd1d93cf379cbcd13e17c2194185fb3d77789e6aaa2d1143adc933ce68d";
 export const CONSERVATORY_V2_HASH = "a0a839959180b0608a5967602d49d511f0fe274121fec246c6d2e735fc4aa4f8";
 export const FIRST_STEPS_V2_HASH = "12cbcd0d89a440e6d81889441382d1a86136b58579ce872ff308bbf5f1621840";
+export const THE_FALLS_HASH = "31c50a815a1a8c70a62c67234854ed36cbeb4044c871da0ca5bac49058cf7f8b";
+export const FOG_MARSH_HASH = "0cdfc1875835b016d69e446e9818f89a2bc6ab18664ad1acf6d9546e8994a5cd";
 type Surface = { id: string; rect_cm: number[]; height_cm?: number; owner_slot?: string; axis?: string; from_height_cm?: number; to_height_cm?: number };
 export type Marker = { id: string; position_cm: number[]; surface_id: string; height_cm: number; radius_cm: number; owner_slot?: string };
-export type Predicate = { all?: Predicate[]; any?: Predicate[]; not?: Predicate; control_id?: string; value?: string; lever_id?: string; pad_id?: string; signal_id?: string };
+export type Predicate = { all?: Predicate[]; any?: Predicate[]; not?: Predicate; control_id?: string; value?: string; lever_id?: string; pad_id?: string; signal_id?: string; item_id?: string; carried?: boolean; spot_id?: string };
 type Control = Marker & { values: string[]; initial: string };
 type Stage = { id: string; version: number; first_player_slot: string; turn_cap?: number; controls: Control[]; levers: Marker[]; pressure_pads: Marker[];
   gates: { route_id: string; when?: Predicate }[]; entry_latch_routes: string[]; goal: Marker; goal_policy: { kind?: string; when?: Predicate };
@@ -211,3 +217,7 @@ export const conservatoryV2 = journeyAdapter(conservatoryV2Definition, conservat
 /** Open turns with the new pieces (16): First Steps on the journey rules, its lift a weight lift, its seed a
  * carried item on a solid pedestal, thrown from the loft or carried down. first-steps@1 keeps its own adapter. Unreleased. */
 export const firstStepsV2 = journeyAdapter(firstStepsV2Definition as Definition, firstStepsV2Initial, FIRST_STEPS_V2_HASH);
+/** The new pieces with carried items (16): four stages carrying the pipsport up the falls. Unreleased. */
+export const theFalls = journeyAdapter(theFallsDefinition, theFallsInitial, THE_FALLS_HASH);
+/** The new pieces with carried items (16): three stages catching the pipsport in the marsh and carrying it home. Unreleased. */
+export const fogMarsh = journeyAdapter(fogMarshDefinition, fogMarshInitial, FOG_MARSH_HASH);

@@ -56,6 +56,7 @@ const PartnerFriends = preload("res://services/partner_friends.gd")
 const DuelsClient = preload("res://services/duels_client.gd")
 const RoomPartnerNames = preload("res://services/room_partner_names.gd")
 const MemoryWait = preload("res://presentation/memory_wait.gd")
+const TurnPaths = preload("res://presentation/kit/turn_paths.gd")
 const WaitHints = preload("res://presentation/wait_hints.gd")
 const TurnEndings = preload("res://presentation/turn_endings.gd")
 const EndingBadge = preload("res://presentation/ending_badge.gd")
@@ -1230,17 +1231,18 @@ func _add_room_status_chip(card: VBoxContainer, fixed_text: String = "") -> Pane
 ## The friend-nickname store; tests pass one with its own file. Left empty, the
 ## device's saved nicknames are read when the waiting card is drawn.
 var nickname_store: RefCounted = null
-## Open turns (core/physical/open_turns.gd): the room's turn as the turn dots
-## draw it (kit/turn_dots.gd view()), read from the room's coordinator
-## (open_turns()); {} offline, in a replay, or on a chapter without open turns.
+## Open turns (core/physical/open_turns.gd): the stage's turn as the turn dots
+## draw it (kit/turn_dots.gd view()), read from the room's coordinator or the
+## Solo journal (open_turns()); {} in a replay or on a chapter without open turns.
 func _open_turns_view() -> Dictionary:
-	if mode == "replay" or online_session == null or not journey.has_method("open_turns"): return {}
+	if mode == "replay" or not journey.has_method("open_turns"): return {}
 	var open: Dictionary = journey.open_turns()
 	var index := int(open.get("stage_index", -1))
 	if open.is_empty() or index < 0 or index >= definition.stages.size(): return {}
 	return TurnDots.view(open, str(definition.stages[index].get("first_player_slot", "")))
 
-## The player's pip colour in this room: the host's slot is peach, the guest's mint.
+## The player's pip colour in this room: the host's slot is peach, the guest's
+## mint. In Solo, the pip this turn steers.
 func _own_room_color() -> Color:
 	return SpiritLook.MINT if journey.has_method("open_turns") and str(journey.open_turns().get("player_slot", "p0")) == "p1" else SpiritLook.PEACH
 
@@ -2364,6 +2366,11 @@ func _wait() -> RefCounted:
 ## solo, never a replay); they know when the memory ends.
 func _begin_memory_wait(turn_role: String, prior_recording: Variant, live: bool = false) -> void:
 	_refusals.begin(chapter_key, definition, sim.snapshot(), prior_recording)
+	# A world that keeps where the stage's pips have been gets this turn's history.
+	if is_instance_valid(world) and world.has_method("wants_turn_paths") and world.wants_turn_paths():
+		var chain: Array = _replay_chain
+		if live: chain = journey.memory_chain() if journey.has_method("memory_chain") else []
+		world.present_turn_paths(TurnPaths.of(sim, prior_recording if prior_recording is Dictionary else {}, chain))
 	_wait().reduced_motion = bool(settings.get("reduced_motion", false))
 	memory_wait.auto_skip = MemoryWait.skip_waits(settings)
 	memory_wait.begin(turn_role, MemoryWait.prior_ticks(prior_recording))

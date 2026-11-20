@@ -1,8 +1,8 @@
 import { checkRoutesAndLevers, openPhysicalRecording, physicalRecording, physicalAccepted as accepted } from "./protocol-physical-recording";
 import { ApiError, HASH_PATTERN, canonicalJson, digest, integer, object } from "../protocol";
 import { boundedValue, exact, MAX_CHECKPOINT_BYTES } from "./protocol-relay";
-import { comfortRules, openControls, openTurns, type ChapterAdapter, type ChapterCheckpoint, type ChapterRecording } from "./chapter-types";
-import { OPEN_CHECKPOINT_KEYS, OPEN_CHECKPOINT_SCHEMA, openAccepted, openStageEnds, openTurnsProblem } from "./open-turns";
+import { comfortRules, openControls, openTurns, sharedBall, type ChapterAdapter, type ChapterCheckpoint, type ChapterRecording } from "./chapter-types";
+import { OPEN_CHECKPOINT_KEYS, OPEN_CHECKPOINT_SCHEMA, openAccepted, openBallProblem, openStageEnds, openTurnsProblem } from "./open-turns";
 import highDefinition from "./high-and-low.json";
 import highInitial from "./high-and-low-initial.json";
 import rollingDefinition from "./rolling-home.json";
@@ -15,6 +15,10 @@ import highV2Definition from "./high-and-low-v2.json";
 import highV2Initial from "./high-and-low-v2-initial.json";
 import wellV2Definition from "./the-wishing-well-v2.json";
 import wellV2Initial from "./the-wishing-well-v2-initial.json";
+import rollingV2Definition from "./rolling-home-v2.json";
+import rollingV2Initial from "./rolling-home-v2-initial.json";
+import houseV2Definition from "./a-house-for-two-v2.json";
+import houseV2Initial from "./a-house-for-two-v2-initial.json";
 
 export const HIGH_AND_LOW_HASH = "3b6576badcdd214630373a0f51040706e014845d9b8bc17483bd887f04a9ff40";
 export const ROLLING_HOME_HASH = "3362e8afd9fb3504868ab4b8b436050f62fe601e5c7ff8fea995424064f2dbff";
@@ -22,6 +26,8 @@ export const HOUSE_HASH = "f14fb0abf330fa46afdb61078a8e8e99cee4cc2ade845304508cc
 export const WISHING_WELL_HASH = "14cfffbdd9b23cee06056548f29bbae7f1e95c348315ff3ff0098b7190ee5f3e";
 export const HIGH_AND_LOW_V2_HASH = "fbb692198e561d0944358bb4d6635ff2d5e178df82e0881f70941d64db5ed3a2";
 export const WISHING_WELL_V2_HASH = "037322be4ec939f2986a063735c2471589dd87482f717db520af8ed7b1039f3b";
+export const ROLLING_HOME_V2_HASH = "f5852fc8095aded1df95e7aef067a2e095891f5ecd72a4d197a7e48ecd16abca";
+export const HOUSE_V2_HASH = "9018b7e3323cc1f66fc7d4f292b419e7834d31bb5811b20672ddbc79ac79df38";
 
 type Surface = { id: string; rect_cm: number[]; height_cm?: number; owner_slot?: string; axis?: string; from_height_cm?: number; to_height_cm?: number };
 type Marker = { id: string; position_cm: number[]; surface_id: string; radius_cm: number; owner_slot?: string; prop_id?: string };
@@ -116,7 +122,8 @@ export function adapter(definition: Definition, initial: ChapterCheckpoint, defi
   }
   /** Open turns (open-turns.ts): the stage's turns by hash and a flat checkpoint, as the journey's. Both players end at the bell, and the
    * first turn's own part is not asked again. A route latches only where it was open at the end, so the routes are the earlier ones plus
-   * any of this stage's gates; levers keep their values but this stage's. The turns are stored rows, so only header fields are read. */
+   * any of this stage's gates; levers keep their values but this stage's. The turns are stored rows, so only header fields are read.
+   * The shared ball (17, openBallProblem): a ball home stage ends with its ball in the cradle and both players on the cradle's floor. */
   async function openCheckpoint(value: unknown, previous: ChapterCheckpoint, all: readonly ChapterRecording[]): Promise<ChapterCheckpoint> {
     const { open, limits } = opened!;
     boundedValue(value, limits.checkpoint_bytes, limits.checkpoint_values);
@@ -133,9 +140,16 @@ export function adapter(definition: Definition, initial: ChapterCheckpoint, defi
     const { routes } = checkRoutesAndLevers(mechanisms, prior, definition.stages, index);
     const players = object(c.players); exact(players, ["p0", "p1"]);
     for (const [slot, player] of Object.entries(players)) { exact(object(player), ["x", "z", "height", "surface_id"]); onSurface(player, routes, slot); }
-    need(stage.goal_policy.kind === "ring" && openStageEnds(slot => inside(object(players[slot]), stage.goal), true), "checkpoint_goal_mismatch");
-    exact(object(mechanisms.props), definition.props.map(prop => prop.id));
-    need(definition.props.length === 0, "checkpoint_prop_mismatch");
+    const props = object(mechanisms.props); exact(props, definition.props.map(prop => prop.id));
+    const ball = sharedBall(pinned), home = ball && stage.goal_policy.kind === "ball_home";
+    need((stage.goal_policy.kind === "ring" || home) && openStageEnds(slot => home ? object(players[slot]).surface_id === stage.goal.surface_id : inside(object(players[slot]), stage.goal), true), "checkpoint_goal_mismatch");
+    need(ball || definition.props.length === 0, "checkpoint_prop_mismatch");
+    if (ball) {
+      const problem = openBallProblem(props, object(prior.props), definition.props, stage, value => {
+        exact(object(value), ["status", "holder_slot", "socket_id", "x", "z", "height", "surface_id"]); return onSurface(value, routes);
+      });
+      need(!problem, problem);
+    }
     return hashed(c);
   }
   return { key, recording_version: 6, simulation_version: pinned || 6, supported_simulation_versions: supported, premium: definition.premium, require_supported_simulation_on_join: true,
@@ -152,3 +166,8 @@ export const wishingWell = adapter(wellDefinition, wellInitial, WISHING_WELL_HAS
 export const highAndLowV2 = adapter(highV2Definition, highV2Initial, HIGH_AND_LOW_V2_HASH);
 /** Open turns (14): the Wishing Well with both players at each bell, no owned crossing, and held steps at the garden gate and the rope ladder. Unreleased. */
 export const wishingWellV2 = adapter(wellV2Definition, wellV2Initial, WISHING_WELL_V2_HASH);
+/** Open turns with the shared ball (17): both players push the ball, a player holds each bridge for the other, and the last stage
+ * ends with the ball in its cradle and both players home. Unreleased. */
+export const rollingHomeV2 = adapter(rollingV2Definition, rollingV2Initial, ROLLING_HOME_V2_HASH);
+/** Open turns with the shared ball (17): both players at each bell, a held step at the loft stairs and at the lower hall's passage. Unreleased. */
+export const houseForTwoV2 = adapter(houseV2Definition, houseV2Initial, HOUSE_V2_HASH);

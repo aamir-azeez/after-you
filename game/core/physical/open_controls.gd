@@ -16,15 +16,19 @@ extends RefCounted
 ## 14 and 15 are 12 and 13 with open turns (core/physical/open_turns.gd): they
 ## keep open controls, and 15 keeps the tide. 16 is 15 with the new pieces of
 ## The Falls and Fog Marsh (core/physical/pieces_rules.gd): tide, open controls
-## and open turns all hold for it.
+## and open turns all hold for it. 17 is 14 with one shared ball (runtime.gd
+## _shared_ball): the live pip and its memory both push it, and a ball home
+## stage ends with it in its cradle; OpenTurns.pin gives it to a level with a ball.
 const OPEN_RULES_VERSION := 12
 const OPEN_TIDE_RULES_VERSION := 13
 const OPEN_TURNS_RULES_VERSION := 14
 const OPEN_TURNS_TIDE_RULES_VERSION := 15
 const PIECES_RULES_VERSION := 16
+const SHARED_BALL_RULES_VERSION := 17
 const TIDE_RULES := [10, OPEN_TIDE_RULES_VERSION, OPEN_TURNS_TIDE_RULES_VERSION, PIECES_RULES_VERSION]
-const OPEN_RULES := [OPEN_RULES_VERSION, OPEN_TIDE_RULES_VERSION, OPEN_TURNS_RULES_VERSION, OPEN_TURNS_TIDE_RULES_VERSION, PIECES_RULES_VERSION]
-const OPEN_TURNS_RULES := [OPEN_TURNS_RULES_VERSION, OPEN_TURNS_TIDE_RULES_VERSION, PIECES_RULES_VERSION]
+const OPEN_RULES := [OPEN_RULES_VERSION, OPEN_TIDE_RULES_VERSION, OPEN_TURNS_RULES_VERSION, OPEN_TURNS_TIDE_RULES_VERSION, PIECES_RULES_VERSION, SHARED_BALL_RULES_VERSION]
+const OPEN_TURNS_RULES := [OPEN_TURNS_RULES_VERSION, OPEN_TURNS_TIDE_RULES_VERSION, PIECES_RULES_VERSION, SHARED_BALL_RULES_VERSION]
+const SHARED_BALL_RULES := [SHARED_BALL_RULES_VERSION]
 const KINDS := ["controls", "levers", "pressure_pads"]
 
 ## The open rules that keep `earlier`'s other rules: the tide rules (10) as
