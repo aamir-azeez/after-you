@@ -1135,10 +1135,13 @@ var _fold_frame := -1
 
 ## A chapter screen keeps its world from running behind the ready card; the
 ## scenery folds then too, but never while the world cannot process at all
-## (mid-build).
+## (mid-build). The sky follows the place and the view held there as well (its
+## clock stays still), so a held world shows the sky it plays under.
 func _on_tree_frame() -> void:
 	# A world whose screen has left is out of the tree until it is freed.
-	if is_inside_tree() and can_process(): _fold_static_scenery_once()
+	if not is_inside_tree() or not can_process(): return
+	_fold_static_scenery_once()
+	advance_backdrop(0.0)
 
 ## Over frames, one fold step per engine frame, from whichever of _process
 ## and the tree's frame comes first. A fold done in one go needs no guard.
