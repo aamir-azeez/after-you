@@ -10,6 +10,7 @@ extends "res://presentation/keepsakes/keepsake_builder.gd"
 ## beam turns gold.
 const P = preload("res://presentation/keepsakes/keepsake_parts.gd")
 const Bell = preload("res://presentation/kit/pieces/bell.gd")
+const Models = preload("res://presentation/kit/models.gd")
 ## One full turn of the beam, in seconds, once it is on.
 const SWEEP := 10.0
 ## Pressing it again while it is on: SWITCH fades it off (a lamp switched off);
@@ -53,9 +54,7 @@ func build(root: Node3D, state: Dictionary) -> Dictionary:
 		var at := POND
 		P.cyl(root, 0.52, 0.03, P.WATER, at + Vector3(0, 0.015, 0))
 		P.ring(root, 0.52, 0.07, P.STONE_LIGHT, at + Vector3(0, 0.03, 0))
-		P.sph(root, 0.28, P.MINT, at + Vector3(0, 0.08, 0), Vector3(0.9, 0.42, 0.9))
-		P.box(root, Vector3(0.4, 0.03, 0.18), P.MINT_DEEP, at + Vector3(0, 0.18, 0))
-		P.cyl(root, 0.02, 0.48, P.WOOD, at + Vector3(0, 0.42, 0))
+		Models.moving("res://assets/models/sailboat.glb", "sailboat", {"hull": P.MINT, "deck": P.MINT_DEEP, "rim": P.SNOW, "mast": P.WOOD, "sail": P.SNOW}, root).position = at + Vector3(0, 0.08, 0)
 		var boat_lamp := P.sph(root, 0.07, P.LAMP_OFF, at + Vector3(0, 0.68, 0))
 		boat_lamp.name = "BoatLamp"
 		parts.boat_lamp = boat_lamp
