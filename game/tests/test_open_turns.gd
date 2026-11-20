@@ -34,6 +34,10 @@ extends SceneTree
 ##   says which), replays exactly and is the next turn's memory; the same turn
 ##   on the tide rules before open turns (13) may not be saved;
 ## - open turns show no bell: no Bell card and no bell hint on Tide@3.
+## SUITES splits these parts between this suite and its subclasses
+## (test_open_turns_memories.gd, test_open_turns_long.gd), so each stays well
+## inside CI's 120 s a suite. Nearly all the time is Tide@3's turns simulated;
+## only the solo sizes go through every open turns chapter (about 1 s each).
 const Registry = preload("res://services/chapter_registry.gd")
 const Simulation = preload("res://core/journey/simulation.gd")
 const OpenTurns = preload("res://core/physical/open_turns.gd")
@@ -88,21 +92,36 @@ class ScreenControls extends CanvasLayer:
 	func dim_stick(_dim: bool) -> void: pass
 	func show_tries(_tries: int) -> void: pass
 
+## The parts each open turns suite runs, every part in exactly one.
+const SUITES := {
+	"open_turns": ["rules", "chain", "packed", "sizes", "published", "dots", "end_early", "early_first"],
+	"open_turns_memories": ["memories"],
+	"open_turns_long": ["long_turns"],
+}
+
 func _initialize() -> void: _run.call_deferred()
 
+## The suite this file runs as; each subclass names its own.
+func _suite() -> String:
+	return "open_turns"
+
 func _run() -> void:
-	_rules()
-	_chain()
-	await _hard_runs()
-	_packed_chain()
-	_solo_size()
-	_solo_worst_case()
-	_ten_turns()
-	_published()
-	_dots()
-	_end_early()
-	_early_first_turn()
-	print("OPEN TURNS: %d checks, %d failures" % [checks, failures])
+	var parts: Array = SUITES[_suite()]
+	if "rules" in parts: _rules()
+	if "chain" in parts:
+		_chain()
+		await _hard_runs()
+	if "packed" in parts: _packed_chain()
+	if "sizes" in parts:
+		_solo_size()
+		_solo_worst_case()
+	if "memories" in parts: _memories()
+	if "long_turns" in parts: _long_turns()
+	if "published" in parts: _published()
+	if "dots" in parts: _dots()
+	if "end_early" in parts: _end_early()
+	if "early_first" in parts: _early_first_turn()
+	print("OPEN TURNS (%s): %d checks, %d failures" % [_suite(), checks, failures])
 	quit(1 if failures else 0)
 
 func _rules() -> void:
@@ -499,9 +518,8 @@ func _solo_worst_case() -> void:
 ## may be a memory, and one check of the latest covers the chain. Memories
 ## play back from their kept traces (memory_trace.gd), so the same turns give
 ## the same recordings as simulating every nested memory. Prints how long the
-## checks take: 15 s turns, then 100 s turns (the tide's longest) started and
-## checked with the traces kept.
-func _ten_turns() -> void:
+## check takes with 15 s turns; _long_turns does the same with 100 s turns.
+func _memories() -> void:
 	var level := Registry.definition(TIDE)
 	var start := Registry.initial_checkpoint(TIDE)
 	var a := _fixture("turn-of-the-tide-v3-set-the-tide-a.json")
@@ -520,14 +538,21 @@ func _ten_turns() -> void:
 	MemoryTrace.clear()
 	var cold := Simulation.verify_recording(level, short[5], start, short[4], short.slice(0, 4))
 	_check(cold.valid and Canonical.same(cold, Simulation.verify_recording(level, short[5], start, short[4], short.slice(0, 4))), "A kept check is the check")
-	# 100 s turns, every checked turn persisted as the phone keeps them.
+
+## Ten 100 s turns (the tide's longest), every checked turn persisted as the
+## phone keeps them: turn 10 starts and checks from its memories' kept traces,
+## and again from their files after a restart. Prints how long each takes.
+func _long_turns() -> void:
+	var level := Registry.definition(TIDE)
+	var start := Registry.initial_checkpoint(TIDE)
+	var a := _fixture("turn-of-the-tide-v3-set-the-tide-a.json")
 	TraceStore.attach(TRACES)
 	var long_ticks := Simulation.turn_ticks(level, 15, "b") - 10
 	var long := _passes(level, start, a, 10, long_ticks)
 	if long.size() < 10: return
 	var memory: Dictionary = long[-2]
 	var before: Array = long.slice(0, long.size() - 2)
-	started = Time.get_ticks_msec()
+	var started := Time.get_ticks_msec()
 	var ten := Simulation.new()
 	var ten_started := ten.reset(level, STAGE, start, memory, "b", 0, before)
 	var reset_ms := Time.get_ticks_msec() - started

@@ -61,9 +61,6 @@ func _control_base_height(_entity: Dictionary) -> float:
 
 func _ready() -> void:
 	super._ready()
-	# This lineage authors ten motes; graphics quality counts them after _ready.
-	for index in range(motes.size()):
-		motes[index].visible = index < 10
 	relight("night")
 	_frame_camera()
 
