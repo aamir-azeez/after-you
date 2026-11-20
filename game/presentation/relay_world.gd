@@ -91,7 +91,7 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	_present_crossings(state.bridges, immediate)
 	# A plate stays lit while its crossing is open.
 	for bridge: Dictionary in current_level.bridges:
-		pad_pieces[bridge.plate_id].set_held(bool(state.bridges.get(bridge.id, false)))
+		pad_pieces[bridge.plate_id].set_held(bool(state.bridges.get(bridge.id, false)), immediate or reduced_motion)
 	_present_seed(state.seed, immediate)
 	var garden_complete := bool(state.get("complete", false)) and str(state.get("stage_id", "")) == str(current_level.stages[-1].id)
 	_present_garden(true, garden_complete, immediate)

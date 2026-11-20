@@ -20,6 +20,7 @@ const SpiritLook = preload("res://presentation/spirit_look.gd")
 const ControlTheme = preload("res://presentation/control_theme.gd")
 const CarriedItemKit = preload("res://presentation/kit/pieces/carried_item.gd")
 const Models = preload("res://presentation/kit/models.gd")
+const SafeArea = preload("res://presentation/safe_area.gd")
 
 signal finished(watched: bool)
 
@@ -95,6 +96,8 @@ func start(world: Node3D, data: Dictionary, snapshot: Dictionary, overlay: Contr
 	# hands back on the frame the player had.
 	at.camera = camera.position - _from() if is_instance_valid(camera) else at.origin
 	at.camera_size = camera.size if is_instance_valid(camera) else 10.0
+	var view := world.get_viewport().get_visible_rect().size
+	if view.y > 0.0: at.aspect = view.x / view.y
 	compiled = EndingScene.compile(data, at)
 	_build_props(data.get("props", {}))
 	if overlay != null: _build_layer(overlay)
@@ -184,6 +187,9 @@ func _apply(now: Dictionary, delta: float, immediate: bool) -> void:
 		camera.look_at(_world.to_global(center))
 		camera.keep_aspect = Camera3D.KEEP_HEIGHT
 		camera.size = ViewFit.viewport(float(now.camera.size), _world)
+		# A shake sways the view like a big change's, and its settings turn it off.
+		var sway: Vector2 = now.camera.get("shake", Vector2.ZERO) * camera.size
+		if sway != Vector2.ZERO and not reduced_motion and _world.get("big_change_shake") != false: camera.position += camera.basis.x * sway.x + camera.basis.y * sway.y
 		camera.h_offset = 0.0
 		camera.v_offset = 0.0
 	for id: String in _props:
@@ -296,6 +302,7 @@ func _build_layer(overlay: Control) -> void:
 	_tint.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_tint.visible = false
 	_layer.add_child(_tint)
+	SafeArea.bleed(_tint)
 	for edge: String in ["Top", "Bottom"]:
 		var bar := ColorRect.new()
 		bar.name = edge + "Bar"

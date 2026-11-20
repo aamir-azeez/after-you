@@ -2569,7 +2569,7 @@ const PURCHASES_49387E2DE82E := "Android build with the store configured is requ
 # Purchase and access status — Status or error (on result)
 const PURCHASES_79A34D6B63D8 := "The answer from the store was not clear."
 # Purchase and access status — Status or error (on result)
-const PURCHASES_1A3E50F05727 := "Access to review should be rechecked. Please try again."
+const PURCHASES_1A3E50F05727 := "Couldn't check your purchases. Please try again."
 # Additional source scan; review surrounding UI flow
 const RECOVERY_DETAILS_CE7907464194 := "\\A[ \\t\\r\\n]*(?:After You recovery details[ \\t\\r\\n]+)?Identity:[ \\t\\r\\n]*([A-Za-z0-9_-]{22})[ \\t\\r\\n]+Recovery code:[ \\t\\r\\n]*([A-Za-z0-9_-]{43})[ \\t\\r\\n]*\\z"
 # Relay chapter progress and save errors — Status or error (load data)

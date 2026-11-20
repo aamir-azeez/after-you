@@ -15,6 +15,11 @@ const Selector = preload("res://presentation/kit/pieces/selector.gd")
 const Pad = preload("res://presentation/kit/pieces/pad.gd")
 const Goal = preload("res://presentation/kit/pieces/goal.gd")
 const Lift = preload("res://presentation/kit/pieces/lift.gd")
+const BridgeKit = preload("res://presentation/kit/pieces/bridge.gd")
+const Raft = preload("res://presentation/kit/pieces/raft.gd")
+const Motion = preload("res://presentation/kit/motion.gd")
+## Frames (at 60 a second) that outlast any arrival's overshoot.
+const SETTLE_FRAMES := int(Motion.ARRIVAL_SECONDS * 60.0) + 2
 const Parts = preload("res://presentation/kit/pieces/parts.gd")
 const JourneyWorld = preload("res://presentation/journey_world.gd")
 const AT := Vector3(1, 0.5, 2)
@@ -40,6 +45,7 @@ func _run() -> void:
 	_check_valve(holder)
 	_check_selector_props(holder)
 	_check_goal_light(holder)
+	_check_arrivals(holder)
 	holder.free()
 	print("PIECE STYLES: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -111,9 +117,18 @@ func _check_machines(holder: Node3D) -> void:
 	for style: String in Lever.HANDLES:
 		var handle: RefCounted = Lever.build(style, AT, holder)
 		handle.set_pulled(true)
-		_check(not handle.moving() and is_equal_approx(handle.anchor.rotation.z, -Lever.TILT), "A %s handle snaps over when pulled" % style)
+		_check(handle.moving() and is_equal_approx(handle.anchor.rotation.z, -Lever.TILT), "A %s handle snaps over when pulled, then settles" % style)
+		var deepest := 0.0
+		for frame in range(SETTLE_FRAMES):
+			handle.advance(1.0 / 60.0)
+			deepest = minf(deepest, handle.anchor.rotation.z + Lever.TILT)
+		var thrown: RefCounted = Lever.build(style, AT, holder)
+		thrown.set_pulled(true, true)
+		_check(not handle.moving() and _pose(handle.root) == _pose(thrown.root) and deepest < -0.5 * Lever.HANDLE_OVER, "A thrown %s handle swings past its stop and rests exactly pulled (%.3f)" % [style, deepest])
 		handle.set_value(1)
 		_check(is_equal_approx(handle.anchor.rotation.z, Lever.TILT), "A %s selector handle stands back for any value but the first" % style)
+		handle.set_value(0, true)
+		_check(not handle.moving() and is_equal_approx(handle.anchor.rotation.z, -Lever.TILT), "A %s handle thrown at once (a seek, reduced motion) never swings" % style)
 	for style: String in Lever.MACHINES:
 		var look: RefCounted = Lever.build(style, AT, holder)
 		var built := _pose(look.root)
@@ -123,7 +138,7 @@ func _check_machines(holder: Node3D) -> void:
 		_check(absf(tail - top) < 0.03, "The %s's anchor puts a bubble's tail on its top (%.3f, %.3f)" % [style, tail, top])
 		look.set_pulled(true)
 		_check(look.moving() and look.shown() == 0.0, "A pull eases from where the %s stands" % style)
-		for frame in range(int(ceil(Lever.PULL_SECONDS * 60.0)) + 1): look.advance(1.0 / 60.0)
+		for frame in range(int(ceil(Lever.PULL_SECONDS * 60.0)) + 1 + SETTLE_FRAMES): look.advance(1.0 / 60.0)
 		var eased := _pose(look.root)
 		_check(not look.moving() and look.shown() == 1.0 and eased != built, "The %s's pull plays out and rests pulled" % style)
 		var snapped: RefCounted = Lever.build(style, AT, holder)
@@ -146,7 +161,7 @@ func _check_valve(holder: Node3D) -> void:
 	_check(not valve.moving() and is_equal_approx(valve.wheel().rotation.y, Selector.value_angle(1, 4)), "A valve's first value snaps, never sweeping in")
 	valve.set_value(3)
 	_check(valve.moving(), "A later value eases")
-	for frame in range(60): valve.advance(1.0 / 60.0)
+	for frame in range(60 + SETTLE_FRAMES): valve.advance(1.0 / 60.0)
 	var snapped: RefCounted = Selector.build("valve", AT, holder, {"marks": [0, 1, 2, 3]})
 	snapped.set_value(0)
 	snapped.set_value(3, true)
@@ -218,6 +233,66 @@ func _top(node: Node3D) -> float:
 	return top
 
 ## Every mesh's transform under `node`, rounded to 0.1 mm.
+## Arrivals (Motion.arrival through piece.gd): a crossing gate thudding shut
+## runs past its stop and settles back to exactly where a snap puts it, and
+## with reduced motion it never passes its stop; a raft, a lift and a pressed
+## pad do the same, each resting exactly as before.
+func _check_arrivals(holder: Node3D) -> void:
+	var crossing := {"id": "gate", "rect_cm": [0, 0, 120, 60], "height_cm": 40}
+	for reduced: bool in [false, true]:
+		var gate: RefCounted = BridgeKit.build(crossing, holder)
+		gate.reduced_motion = reduced
+		gate.set_open(true, true)
+		var open := _pose(gate.root)
+		var snapped: RefCounted = BridgeKit.build(crossing, holder)
+		snapped.set_open(false, true)
+		gate.set_open(false)
+		var rest: float = snapped.root.position.y
+		var lowest := INF
+		var frames := 0
+		while gate.moving() and frames < 600:
+			gate.advance(1.0 / 60.0)
+			lowest = minf(lowest, gate.root.position.y)
+			frames += 1
+		var past := rest - lowest
+		var settled: bool = frames < 600 and not gate.moving() and gate.root.position.y == rest and _pose(gate.root) == _pose(snapped.root)
+		if reduced: _check(settled and past <= 0.0, "With reduced motion a shutting gate stops at its rest and never passes it (%.4f)" % past)
+		else: _check(settled and past > 0.5 * BridgeKit.OVER and past < 2.0 * BridgeKit.OVER, "A shutting gate thuds past its rest (%.4f m) and settles exactly where a snap puts it" % past)
+		gate.set_open(true, true)
+		_check(_pose(gate.root) == open and not gate.moving(), "An immediate open puts the gate back as it was")
+		gate.root.free()
+		snapped.root.free()
+	var stops: Array[Vector3] = [Vector3(0, 0.3, 0), Vector3(1.5, 0.3, 0)]
+	var raft: RefCounted = Raft.build("logs", stops, Vector2(0.8, 0.8), holder)
+	raft.set_value(1)
+	var furthest := 0.0
+	for frame in range(120 + SETTLE_FRAMES):
+		raft.advance(1.0 / 60.0)
+		furthest = maxf(furthest, raft.root.position.x)
+	_check(not raft.moving() and raft.root.position == stops[1] and furthest > stops[1].x, "A raft drifts past its stop (%.3f) and rests exactly on it" % furthest)
+	var lift: RefCounted = Lift.build("plain", Rect2(0, 0, 1, 1), 0.0, 1.0, holder)
+	lift.set_height(1.0)
+	lift.arrive(1.0)
+	var highest := 0.0
+	while lift.moving():
+		lift.advance(1.0 / 60.0)
+		highest = maxf(highest, lift.root.position.y)
+	_check(lift.root.position.y == 1.0 and highest > 1.0 and highest - 1.0 <= 1.5 * Lift.OVER, "A lift bobs a little past its stop (%.4f) and rests exactly on it" % highest)
+	for style: String in Pad.STYLES:
+		var pad: RefCounted = Pad.build(style, AT, 0.3, holder)
+		var still: RefCounted = Pad.build(style, AT, 0.3, holder)
+		still.set_held(true, true)
+		pad.set_held(true)
+		var dipped := 0.0
+		var rest: float = pad._dipping().position.y
+		while pad.moving():
+			pad.advance(1.0 / 60.0)
+			dipped = minf(dipped, pad._dipping().position.y - rest)
+		_check(dipped < -0.5 * Pad.DIP and _pose(pad.root) == _pose(still.root), "A pressed %s pad dips (%.4f) and springs back to exactly its held place" % [style, dipped])
+		pad.set_held(false)
+		pad.set_held(true, true)
+		_check(not pad.moving(), "A %s pad held at once never dips" % style)
+
 func _pose(node: Node3D) -> Array:
 	var pose: Array = []
 	for mesh: Node in node.find_children("*", "MeshInstance3D", true, false):
