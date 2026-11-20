@@ -4,7 +4,8 @@ render_mode blend_mix, depth_draw_never, cull_disabled, shadows_disabled, specul
 // over its Blender cliff. COLOR.r picks the part:
 //   1  running water: each tier's strip runs flat over its lip (COLOR.g 0),
 //      then falls (COLOR.g 1). UV.x is across (0 to 1), UV.y metres along
-//      the flow; UV2 is the strip's width and length in metres.
+//      the flow; UV2 is the strip's width and length in metres. COLOR.b 1
+//      is a sheet hanging free of rock (clean ends, thicker water).
 //   0  foam lying where the water lands, on a ledge or the pool. UV is the
 //      spot in -1 to 1 (across, out); UV2 its half size in metres.
 // Bright streaks run down the sheet and thin out to a soft edge where it meets
@@ -31,6 +32,9 @@ void fragment() {
 	float alpha;
 	if (COLOR.r > 0.5) {
 		float falling = COLOR.g;
+		// COLOR.b 1: a sheet hanging free of rock (the curtain over the path
+		// behind the falls): thick water, more white, a clean edge at its ends.
+		float sheet = COLOR.b;
 		float width = UV2.x;
 		float across = UV.x * width;
 		// Faster and longer streaks once the water drops.
@@ -38,20 +42,22 @@ void fragment() {
 		float stretch = mix(1.6, 0.55, falling);
 		float a = noise(vec2(across * 7.0, along * stretch));
 		float b = noise(vec2(across * 19.0 + 3.1, along * stretch * 2.3));
-		float streak = smoothstep(0.52, 0.86, a * 0.62 + b * 0.38);
+		float streak = smoothstep(mix(0.52, 0.4, sheet), 0.86, a * 0.62 + b * 0.38);
 		// White and broken as it nears the foot.
 		float white = smoothstep(UV2.y - 0.9, UV2.y, UV.y) * falling;
-		// The soft, ragged edge into the rock.
+		// The soft, ragged edge into the rock; a free sheet's end is a clean
+		// white line, water seen side on.
 		float edge = min(across, width - across);
-		float ragged = 0.12 + 0.12 * noise(vec2(UV.y * 2.3 - clock * 1.2, step(0.5, UV.x) * 7.0));
+		float ragged = mix(0.12 + 0.12 * noise(vec2(UV.y * 2.3 - clock * 1.2, step(0.5, UV.x) * 7.0)), 0.02, sheet);
 		float soft = smoothstep(0.0, ragged, edge);
+		streak = max(streak, sheet * (1.0 - smoothstep(0.04, 0.1, edge)));
 		// Fine glints running down with the water.
 		float glint = step(0.993, hash12(floor(vec2(across * 26.0, along * 9.0)))) * falling;
 		float bright = clamp(streak * 0.85 + white * 0.75 + glint, 0.0, 1.0);
 		col = mix(water_color.rgb * mix(0.92, 1.0, falling), foam_color.rgb, bright);
 		// Faded in where it starts, so the stream above the top lip comes from
 		// the banks rather than ending square.
-		alpha = mix(water_color.a, 1.0, bright * 0.9) * soft * smoothstep(0.0, 0.8, UV.y);
+		alpha = mix(mix(water_color.a, 0.94, sheet), 1.0, bright * 0.9) * soft * smoothstep(0.0, 0.8, UV.y);
 	} else {
 		vec2 half_m = UV2;
 		vec2 p = UV * half_m;

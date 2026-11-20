@@ -46,6 +46,7 @@ extends Node3D
 const Primitives = preload("res://presentation/kit/primitives.gd")
 const SessionRelease = preload("res://presentation/kit/session_release.gd")
 const SoftMist = preload("res://presentation/kit/soft_mist.gd")
+const ViewFit = preload("res://presentation/kit/view_fit.gd")
 const SCRIPT_PATH := "res://presentation/kit/water_locks.gd"
 const DOOR := "door"
 const SPILL := "spill"
@@ -95,7 +96,7 @@ static var _found: Dictionary = {}
 ## Opening meshes and the door look, kept for the session; they go before
 ## the renderer stops (release_cached), not when this script is freed.
 static var _opening_meshes: Dictionary = {}
-## Pour meshes by Vector2(width, drop), m (_pour_mesh).
+## Pour meshes by Vector3(width m, drop m, turn), (_pour_mesh).
 static var _pours: Dictionary = {}
 static var _door_material_cache: StandardMaterial3D
 
@@ -510,10 +511,11 @@ func _build_spill(run: Dictionary, stone: Node3D) -> void:
 	sheet.visible = false
 	var spray: Node3D = null
 	if spill_style == "falls":
-		# PROTOTYPE: a pour, not a pane. The sheet is rebuilt for each drop
-		# (_pour_mesh): water rolling over a rounded lip, curving out as it
-		# falls and landing in foam, or a short run of rapids where the drop
-		# is small. It shares the falls' running-water look (kit/props.gd).
+		# A pour, not a pane. The sheet is rebuilt for each drop (_pour_mesh):
+		# water rolling over a rounded lip in tongues that curve out and turn
+		# toward the camera as they fall, landing in foam, or a short run of
+		# rapids where the drop is small. It shares the falls' running-water
+		# look (kit/props.gd).
 		sheet.material_override = load("res://presentation/kit/props.gd")._falls_material()
 		spray = Node3D.new()
 		spray.name = "FallsSpray"
@@ -547,43 +549,90 @@ func _build_step(run: Dictionary, stone: Node3D) -> bool:
 		var rock: Node3D = Models.still(STEP_MODEL, "tier_step", Props.FALLS_COLORS, stone)
 		rock.name = "SpillStep"
 		rock.position = _on_run(run, (float(index) + 0.5) * length / float(count) * 100.0, float(run.lip)) + lower_side * (_width(SPILL) * 0.5)
-		rock.basis = Basis.looking_at(-lower_side, Vector3.UP).scaled(Vector3(length / float(count) / STEP_WIDE * 1.04, maxf(float(run.lip) - foot, 0.1), 1.0))
+		# Scaled along the rock's own axes (Basis.scaled would stretch the world's
+		# x, which for a run along z is the rock's depth, and leave gaps between).
+		rock.basis = Basis.looking_at(-lower_side, Vector3.UP) * Basis.from_scale(Vector3(length / float(count) / STEP_WIDE * 1.04, maxf(float(run.lip) - foot, 0.1), 1.0))
 	return true
 
-## A pour `length` wide falling `fall` (m) from its lip at 0 toward +z, in the
-## falls' running-water format (kit/props.gd _falls_strip and _falls_foam).
-static func _pour_mesh(length: float, fall: float) -> ArrayMesh:
-	var key := Vector2(snappedf(length, 0.01), snappedf(fall, 0.01))
+## A pour breaks into tongues about this wide (m).
+const TONGUE := 1.2
+## Where a pour's face would turn away from the camera, its tongues turn this
+## far (radians) toward it as they fall.
+const POUR_TURN := 0.65
+
+## A pour `length` wide falling `fall` (m) from its lip at 0 toward +z, its
+## tongues turned `turn` radians toward +x (a negative turn toward -x) as they
+## fall, in the falls' running-water format (kit/props.gd _falls_strip and
+## _falls_foam). The landing's middle (m out from the lip) is pour_reach().
+static func _pour_mesh(length: float, fall: float, turn: float) -> ArrayMesh:
+	var key := Vector3(snappedf(length, 0.01), snappedf(fall, 0.01), snappedf(turn, 0.01))
 	if _pours.has(key): return _pours[key]
 	var Props: Script = load("res://presentation/kit/props.gd")
 	var tool := SurfaceTool.new()
 	tool.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var points: Array = []
-	var falling: Array = []
-	var reach := 0.0
 	if fall < RAPIDS_BELOW:
 		# Rapids: the water speeds over a low step and runs on in a churn.
-		points = [Vector3(0, 0.02, -0.5), Vector3(0, 0.02, 0), Vector3(0, -fall * 0.55, 0.16), Vector3(0, -fall + 0.02, 0.42), Vector3(0, -fall + 0.02, 0.9)]
-		falling = [0.0, 0.35, 0.9, 0.75, 0.3]
-		reach = 0.9
+		Props._falls_strip(tool, length, [Vector3(0, 0.02, -0.5), Vector3(0, 0.02, 0), Vector3(0, -fall * 0.55, 0.16), Vector3(0, -fall + 0.02, 0.42), Vector3(0, -fall + 0.02, 0.9)], [0.0, 0.35, 0.9, 0.75, 0.3])
 	else:
-		# A pour: flat to the lip, rolling over its round edge, then thrown out
-		# and curving down as it falls (a parabola: out as the root of the drop),
-		# so even a tall drop reads as water arcing off a lip, not a chute.
-		points = [Vector3(0, 0.03, -0.6), Vector3(0, 0.03, -0.04), Vector3(0, 0.0, 0.06), Vector3(0, -0.07, 0.14)]
-		falling = [0.0, 0.0, 0.3, 0.6]
-		var throw := 0.35 + 0.32 * sqrt(fall)
-		for step in range(1, 9):
-			var t := float(step) / 8.0
-			points.append(Vector3(0, -0.07 - (fall - 0.07) * t, 0.14 + throw * sqrt(t)))
-			falling.append(1.0)
-		reach = 0.14 + throw
-	Props._falls_strip(tool, length, points, falling)
-	var foam_out := 0.3 + 0.25 * minf(fall, 2.0)
-	Props._falls_foam(tool, Vector3(0, -fall + 0.03, reach + foam_out * 0.5), Vector2(length * 0.5 + 0.15, foam_out))
+		# A pour: flat to the lip and rolling over its round edge, then in
+		# tongues thrown out and curving down as they fall (a parabola: out as
+		# the root of the drop). Each tongue keeps its edge nearer the camera on
+		# its arc and swings the other edge out, so its face turns toward the
+		# camera even where the drop faces away; gaps open between the tongues
+		# as they turn, so the pour reads as water arcing off a lip, not a chute.
+		Props._falls_strip(tool, length, [Vector3(0, 0.03, -0.6), Vector3(0, 0.03, -0.04), Vector3(0, 0.0, 0.06)], [0.0, 0.0, 0.3])
+		var throw := _pour_throw(fall)
+		var count := maxi(2, roundi(length / TONGUE))
+		var wide := _tongue_wide(length)
+		var near := signf(turn)
+		for index in range(count):
+			var x := lerpf(-length * 0.5 + wide * 0.5, length * 0.5 - wide * 0.5, float(index) / float(count - 1))
+			var points: Array = [Vector3(x, 0.0, 0.06), Vector3(x, -0.07, 0.14)]
+			var across: Array = [Vector3.RIGHT, Vector3.RIGHT]
+			var falling: Array = [0.3, 0.6]
+			for step in range(1, 9):
+				var t := float(step) / 8.0
+				var twist := turn * minf(1.0, t * 2.5)
+				var side := Vector3(cos(twist), 0, -sin(twist))
+				var pivot := Vector3(x + near * wide * 0.5, -0.07 - (fall - 0.07) * t, 0.14 + throw * sqrt(t))
+				points.append(pivot - side * (near * wide * 0.5))
+				across.append(side)
+				falling.append(1.0)
+			# Each tongue hangs free of the rock: thicker water, its edges soft.
+			Props._falls_strip(tool, wide, points, falling, across, 0.5)
+	# The foam reaches out over where every tongue's edges land.
+	var foam_out := _foam_out(fall) + (0.0 if fall < RAPIDS_BELOW else _tongue_wide(length) * 0.5 * absf(sin(turn)))
+	Props._falls_foam(tool, Vector3(0, -fall + 0.03, pour_reach(length, fall, turn)), Vector2(length * 0.5 + 0.15, foam_out))
 	if _pours.is_empty(): SessionRelease.on_exit(Callable(load(SCRIPT_PATH), "release_cached"))
 	_pours[key] = tool.commit()
 	return _pours[key]
+
+## Which way a pour set in `basis` (falling toward its +z) turns its tongues:
+## none where its face already looks at the camera, else POUR_TURN toward the
+## camera's side. Every view keeps CAMERA_FROM's yaw (kit/view_fit.gd).
+static func _pour_turn(basis: Basis) -> float:
+	var camera := basis.inverse() * Vector3(ViewFit.CAMERA_FROM.x, 0.0, ViewFit.CAMERA_FROM.z).normalized()
+	if camera.z > 0.5: return 0.0
+	return POUR_TURN * signf(camera.x)
+
+## How far out a pour of `fall` m is thrown at its foot (m).
+static func _pour_throw(fall: float) -> float:
+	return 0.35 + 0.32 * sqrt(fall)
+
+## The middle of a pour's landing, m out from its lip (_pour_mesh): where its
+## foam lies and its spray rises.
+static func pour_reach(length: float, fall: float, turn: float) -> float:
+	if fall < RAPIDS_BELOW: return 0.9 + _foam_out(fall) * 0.5
+	return 0.14 + _pour_throw(fall) + _tongue_wide(length) * 0.5 * absf(sin(turn))
+
+## How far a pour's foam reaches out from its landing (m), before its tongues.
+static func _foam_out(fall: float) -> float:
+	return 0.3 + 0.25 * minf(fall, 2.0)
+
+## Each tongue's width (m) in a pour `length` wide, a little over its share so
+## neighbours meet at the lip.
+static func _tongue_wide(length: float) -> float:
+	return length / float(maxi(2, roundi(length / TONGUE))) * 1.04
 
 ## The opening's doors: short timber doors side by side (none wider than
 ## DOOR_WIDTH), each with a small cream knob on its top rail, a capped stone
@@ -751,10 +800,11 @@ func present(levels: Dictionary, immediate: bool = false) -> void:
 		var spray: Node3D = spill.get("spray")
 		if spill_style == "falls":
 			# The pour from the lip's edge toward the lower water.
-			sheet.mesh = _pour_mesh(_length(run) - 0.04, fall)
 			sheet.position = _on_run(run, _length(run) * 50.0, float(run.lip)) + lower_side * (_width(SPILL) * 0.5)
 			if not run.along_x: sheet.basis = Basis(Vector3.UP, PI * 0.5 if lower_side.x > 0.0 else -PI * 0.5)
 			else: sheet.basis = Basis() if lower_side.z > 0.0 else Basis(Vector3.UP, PI)
+			var turn := _pour_turn(sheet.basis)
+			sheet.mesh = _pour_mesh(_length(run) - 0.04, fall, turn)
 			if spray != null:
 				for child: Node in spray.get_children(): child.free()
 				spray.visible = sheet.visible and fall >= RAPIDS_BELOW
@@ -762,9 +812,10 @@ func present(levels: Dictionary, immediate: bool = false) -> void:
 				var blots: Array = []
 				var length := _length(run)
 				var count := maxi(2, ceili(length / 1.2))
+				var landing := pour_reach(length - 0.04, fall, turn)
 				for index in range(count):
 					var x := ((float(index) + 0.5) / float(count) - 0.5) * length
-					blots.append([Vector3(x, -fall + 0.35 + 0.1 * float(index % 2), 0.55), Vector2(1.3, 0.9) * minf(1.0 + fall * 0.25, 1.8), "front"])
+					blots.append([Vector3(x, -fall + 0.35 + 0.1 * float(index % 2), landing), Vector2(1.3, 0.9) * minf(1.0 + fall * 0.25, 1.8), "front"])
 				SoftMist.build(blots, Color(0.97, 0.99, 0.99, 0.55), spray)
 			continue
 		sheet.position = _on_run(run, _length(run) * 50.0, float(run.lip) - fall * 0.5) + lower_side * (_width(SPILL) * 0.5 + 0.01)
