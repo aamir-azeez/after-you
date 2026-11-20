@@ -24,7 +24,9 @@ const T := ["t"]
 const MODEL_STAGE_ONE := {
 	"budget": {"low": 460, "half": 418, "high": 494},
 	"deadline": {"low": 2539, "half": 2581, "high": 2505},
-	"a_ticks": {"low": 462, "low-half-first": 618, "half": 464, "half-via-high": 454, "high": 418},
+	# low: 503 since the tide wheel is solid (2026-11-20): the witness walks round
+	# it twice between presses (the model's straight lines still say 462).
+	"a_ticks": {"low": 503, "low-half-first": 618, "half": 464, "half-via-high": 454, "high": 418},
 	"b_real": {"low": 330, "half": 288, "high": 364},
 }
 ## history -> way -> budget, deadline (latest hold_start), p0 presses, p0 real
@@ -681,7 +683,8 @@ static func walk(sim: RefCounted, destination: Array) -> bool:
 			if sim.finished or not sim.error.is_empty(): return false
 			var before := int(sim._players[sim.active_slot][axis])
 			var distance := int(destination[index]) - before
-			if absi(distance) <= 1: break
+			# Exact: a narrow crossing (the punt ferry) takes a pip only on its line.
+			if distance == 0: break
 			if line.rejoin(sim, hands, sim._players[sim.active_slot].duplicate(), signi(distance)): continue
 			var input := {"move_x": 0.0, "move_z": 0.0}
 			input["move_" + axis] = clampf(float(distance) / 8.0, -1.0, 1.0)
@@ -696,8 +699,11 @@ static func walk(sim: RefCounted, destination: Array) -> bool:
 
 ## Both axes at once: full input on each moves 6 cm a tick on each, one axis
 ## alone 8 cm. A blocked step slides along the edge (runtime _move).
+## A diagonal held up by a solid lever or selector goes on by axis legs
+## (walk), which step round it.
 static func walk_both(sim: RefCounted, destination: Array) -> bool:
-	destination = Walk.beside(Walk.hands_of(sim), sim._players[sim.active_slot], destination)
+	var hands := Walk.hands_of(sim)
+	destination = Walk.beside(hands, sim._players[sim.active_slot], destination)
 	var still := 0
 	for _tick in range(sim.duration_limit()):
 		if sim.finished or not sim.error.is_empty(): return false
@@ -713,6 +719,9 @@ static func walk_both(sim: RefCounted, destination: Array) -> bool:
 		sim.step(input)
 		var after := Vector2i(int(sim._players[sim.active_slot].x), int(sim._players[sim.active_slot].z))
 		still = still + 1 if after == before else 0
+		if still > 0:
+			var at: Dictionary = sim._players[sim.active_slot]
+			if (absi(dx) > 1 and Walk.against(hands, at, "x", signi(dx))) or (absi(dz) > 1 and Walk.against(hands, at, "z", signi(dz))): return walk(sim, destination)
 		if still >= STUCK_TICKS: return false
 	return true
 
