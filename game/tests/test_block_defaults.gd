@@ -18,6 +18,7 @@ const SoundMap = preload("res://services/chapter_sound_map.gd")
 const SoundCues = preload("res://services/sound_cues.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const Journey = preload("res://core/journey/stage_catalog.gd")
+const PiecesRules = preload("res://core/physical/pieces_rules.gd")
 const Seven = preload("res://core/journey/seven_mechanisms.gd")
 const Sample = preload("res://tests/block_level_sample.gd")
 const SAMPLE := ["res://tests/block_level_sample.gd", "source"]
@@ -129,12 +130,20 @@ func _open(stage: Dictionary, route: String, players: Dictionary, mechanisms: Di
 		if gate.route_id == route and Seven.predicate(gate.get("when", {}), stage, players, mechanisms): return true
 	return false
 
-## A registered chapter built from blocks is exactly its blocks expanded.
+## A registered chapter built from blocks is exactly its blocks expanded, on
+## the new pieces' rules with its stages' turn caps when it is pinned to them.
 func _check_registered() -> void:
 	for key: String in Index.keys():
 		var data := Index.data(key)
 		if data.block_source.is_empty(): continue
-		_check(Canonical.same(Blocks.expand(Defaults.source_of(data)), Registry.definition(key)), "%s is its block source expanded" % key)
+		var level := Registry.definition(key)
+		var expanded := Blocks.expand(Defaults.source_of(data))
+		if PiecesRules.pinned(level):
+			var caps := {}
+			for stage: Dictionary in level.stages:
+				if stage.has("turn_cap"): caps[stage.id] = stage.turn_cap
+			PiecesRules.pin(expanded, caps)
+		_check(Canonical.same(expanded, level), "%s is its block source expanded" % key)
 		_check(Blocks.problems(Defaults.source_of(data)).is_empty(), "%s's blocks have no problems" % key)
 		if Registry.stage_hud(key) == "stage_copy":
 			for stage: Dictionary in Registry.definition(key).stages:

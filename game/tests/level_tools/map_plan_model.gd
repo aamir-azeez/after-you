@@ -128,7 +128,7 @@ static func _items(view: Dictionary, checkpoint: Dictionary, plan: Dictionary) -
 		var from := CarriedItems.spot(view, str(leg.from))
 		var to := CarriedItems.spot(view, str(leg.to))
 		if from.is_empty() or to.is_empty(): continue
-		plan.legs.append({"from": _point(from.position_cm), "to": _point(to.position_cm), "label": "%s %s" % [leg.control_id, leg.value], "stop": leg.has("stop")})
+		plan.legs.append({"from": _point(from.position_cm), "to": _point(to.position_cm), "label": ("%s %s" % [leg.control_id, leg.get("value", "")]).strip_edges() if leg.has("control_id") else "current", "stop": leg.has("stop")})
 
 ## The item terms of a gate's tree, as words ("raft at berth", "pipsport carried").
 static func _item_terms(value: Variant) -> Array:

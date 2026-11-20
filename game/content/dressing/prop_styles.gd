@@ -29,6 +29,8 @@ const SLOTS := {
 		"green": {"kind": "bush", "flowers": false},
 		"fern": {"kind": "fern"},
 		"pot": {"kind": "pot"},
+		"wild_fern": {"kind": "fern", "pot": false},
+		"reeds": {"kind": "reeds"},
 	},
 	# Low things along the front of a bank. Each stays under kit/props.gd LOW
 	# laid at trim size on a bank's front lip, so it never hides a spirit
@@ -83,6 +85,8 @@ const SLOTS := {
 	"landmark": {
 		"cottage": {"kind": "cottage"},
 		"tower": {"kind": "tower"},
+		"waterfall": {"kind": "waterfall"},
+		"mill": {"kind": "mill_wheel"},
 	},
 	# Hung on a room's back wall above head height.
 	"wall_hanging": {

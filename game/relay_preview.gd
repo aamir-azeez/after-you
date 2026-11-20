@@ -56,6 +56,7 @@ const PartnerFriends = preload("res://services/partner_friends.gd")
 const DuelsClient = preload("res://services/duels_client.gd")
 const RoomPartnerNames = preload("res://services/room_partner_names.gd")
 const MemoryWait = preload("res://presentation/memory_wait.gd")
+const TurnPaths = preload("res://presentation/kit/turn_paths.gd")
 const WaitHints = preload("res://presentation/wait_hints.gd")
 const TurnEndings = preload("res://presentation/turn_endings.gd")
 const EndingBadge = preload("res://presentation/ending_badge.gd")
@@ -2364,6 +2365,11 @@ func _wait() -> RefCounted:
 ## solo, never a replay); they know when the memory ends.
 func _begin_memory_wait(turn_role: String, prior_recording: Variant, live: bool = false) -> void:
 	_refusals.begin(chapter_key, definition, sim.snapshot(), prior_recording)
+	# A world that keeps where the stage's pips have been gets this turn's history.
+	if is_instance_valid(world) and world.has_method("wants_turn_paths") and world.wants_turn_paths():
+		var chain: Array = _replay_chain
+		if live: chain = journey.memory_chain() if journey.has_method("memory_chain") else []
+		world.present_turn_paths(TurnPaths.of(sim, prior_recording if prior_recording is Dictionary else {}, chain))
 	_wait().reduced_motion = bool(settings.get("reduced_motion", false))
 	memory_wait.auto_skip = MemoryWait.skip_waits(settings)
 	memory_wait.begin(turn_role, MemoryWait.prior_ticks(prior_recording))

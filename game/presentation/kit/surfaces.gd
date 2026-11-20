@@ -30,6 +30,14 @@ const STYLES := {
 	"terracotta": {"top": Color("d39c74"), "trim": Color("a5553a"), "skirt": Color("b87a58"), "band": Color("9a5f45"), "rock": Color("a68d69"), "lines": "xz", "line": Color("c08560"), "spacing": 0.6},
 	# Warm honey granite cobbles with a timber edge.
 	"honey_cobble": {"top": Color("a77b45"), "trim": Color("6b4f37"), "skirt": Color("8a6638"), "band": Color("7a5a35"), "rock": Color("8f7f68"), "lines": "xz", "line": Color("8e6636"), "spacing": 0.32},
+	# The Falls: mossy flagstones with a green lip, and pale river stone.
+	"mossy_flags": {"top": Color("939c70"), "trim": Color("7d9460"), "skirt": Color("6f8456"), "band": Color("7c7a66"), "rock": Color("7f7d6c"), "lines": "xz", "line": Color("838d63"), "spacing": 0.5},
+	"river_stone": {"top": Color("c4bea8"), "trim": Color("a9a48c"), "skirt": Color("9d987f"), "band": Color("8a8670"), "rock": Color("8a8670"), "lines": "xz", "line": Color("b0aa93"), "spacing": 0.9},
+	# Fog Marsh: weathered boardwalk planks, every other one a shade darker,
+	# with butt joints staggered along them ("alt", "joints"), and a reedy mud bank.
+	"boardwalk": {"top": Color("c2a77f"), "trim": Color("8c7656"), "skirt": Color("7a6548"), "band": Color("5f4f3b"), "rock": Color("8a7d63"), "lines": "x", "line": Color("7f694b"), "spacing": 0.3,
+		"alt": Color("b0956c"), "joints": 1.1},
+	"reed_bank": {"top": Color("aaa27e"), "trim": Color("8f8a64"), "skirt": Color("7f7a58"), "band": Color("6f6548"), "rock": Color("7f7660"), "lines": ""},
 }
 
 static func has_style(name: String) -> bool:
@@ -67,6 +75,7 @@ static func build(island: Dictionary, style_name: String, parent: Node3D, with_r
 		while x < width / 2.0 - 0.05:
 			Primitives.mesh_node(Primitives.cached_box(Vector3(0.012, 0.006, depth - 0.06)), Primitives.shared_material(style.line), center + Vector3(x, 0.003, 0), parent)
 			x += spacing
+	if lines == "x" and style.has("alt"): _planks(style, width, depth, center, parent)
 	if lines.contains("z"):
 		var spacing := float(style.spacing)
 		var z := -depth / 2.0 + spacing
@@ -80,6 +89,33 @@ static func build(island: Dictionary, style_name: String, parent: Node3D, with_r
 	var rock := lower_rock(center, width, depth, style.rock)
 	rock.name = str(island.id) + "LowerRock"
 	parent.add_child(rock)
+
+## Planks between the seams of an "x" style: every other one a shade darker
+## (its top PLANK_TOP over the floor, clear of the seams' and the trims'
+## tops), and a butt joint across each light plank every "joints" metres,
+## staggered plank to plank, level with the seams. Each stops short of the
+## seams and trims, so no face meets theirs. A joint over a dark plank would
+## rise to the height of the pieces laid on the floor (a stand spot's disc).
+const PLANK_TOP := 0.010
+const JOINT_TOP := 0.006
+
+static func _planks(style: Dictionary, width: float, depth: float, center: Vector3, parent: Node3D) -> void:
+	var spacing := float(style.spacing)
+	var joints := float(style.get("joints", 0.0))
+	var x := -width / 2.0 + spacing
+	var index := 0
+	while x + spacing < width / 2.0 - 0.05:
+		var middle := x + spacing * 0.5
+		var dark := index % 2 == 1
+		if dark: Primitives.mesh_node(Primitives.cached_box(Vector3(spacing - 0.03, PLANK_TOP, depth - 0.10)), Primitives.shared_material(style.alt), center + Vector3(middle, PLANK_TOP * 0.5, 0), parent)
+		if joints > 0.0 and not dark:
+			var top := JOINT_TOP
+			var z := -depth / 2.0 + joints * (0.35 + 0.5 * float(index % 3) / 2.0)
+			while z < depth / 2.0 - 0.15:
+				Primitives.mesh_node(Primitives.cached_box(Vector3(spacing - 0.04, top, 0.012)), Primitives.shared_material(style.line), center + Vector3(middle, top * 0.5, z), parent)
+				z += joints
+		x += spacing
+		index += 1
 
 ## The tapered floating rock under an island, shaded per face.
 static func lower_rock(center: Vector3, width: float, depth: float, color: Color) -> MeshInstance3D:

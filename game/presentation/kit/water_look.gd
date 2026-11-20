@@ -156,9 +156,11 @@ func dress(id: String, body: Dictionary, sheet: MeshInstance3D, holes: Array) ->
 	material.set_shader_parameter(FLOOR_ON, 1.0 if shows.floor else 0.0)
 	material.set_shader_parameter(SPARKLES, 1.0 if shows.sparkles else 0.0)
 	sheet.material_override = material
-	var entry := {"materials": [material], "levels": body.get("levels", {}), "level": 0.0, "maps": {}, "footings": {}, "shown": "", "floor": shows.floor, "rings": shows.rings, "sparkles": shows.sparkles, "bed": null}
+	# The body's own floor (its "bed", WaterBodies.bed), else the block's seabed.
+	var floor_y := float(body.get("bed", _seabed))
+	var entry := {"materials": [material], "levels": body.get("levels", {}), "level": 0.0, "maps": {}, "footings": {}, "shown": "", "floor": shows.floor, "rings": shows.rings, "sparkles": shows.sparkles, "bed": null, "floor_y": floor_y}
 	bodies[id] = entry
-	if shows.floor: entry.bed = _bed(body.get("rects", []), holes)
+	if shows.floor: entry.bed = _bed(body.get("rects", []), holes, floor_y)
 
 ## The material a walled stub's flood draws with: its body's, with no edges
 ## (it fills a walled pit) and its own place in the plan.
@@ -177,7 +179,7 @@ func show_level(id: String, level: float) -> void:
 	var entry: Dictionary = bodies.get(id, {})
 	if entry.is_empty(): return
 	entry.level = level
-	for material: ShaderMaterial in entry.materials: material.set_shader_parameter(DEPTH, maxf(level - _seabed, 0.0))
+	for material: ShaderMaterial in entry.materials: material.set_shader_parameter(DEPTH, maxf(level - float(entry.get("floor_y", _seabed)), 0.0))
 	_pick_map(entry, level)
 
 func _pick_map(entry: Dictionary, level: float) -> void:
@@ -373,7 +375,7 @@ func _set_lamps() -> void:
 ## seabed, tiled in the dressing's style. Under a floor it stands inside the
 ## floor's walls, so it shows only under water and under floors on piers.
 ## Static: it never moves.
-func _bed(rects: Array, holes: Array) -> MeshInstance3D:
+func _bed(rects: Array, holes: Array, floor_y: float) -> MeshInstance3D:
 	var key := [&"water_bed", rects, holes]
 	if not DefinitionGeometry.has(key): DefinitionGeometry.keep(key, _bed_mesh(rects, holes))
 	var mesh: Mesh = DefinitionGeometry.kept(key)
@@ -383,7 +385,7 @@ func _bed(rects: Array, holes: Array) -> MeshInstance3D:
 	bed.mesh = mesh
 	bed.material_override = bed_material(_seabed_style())
 	bed.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	bed.position = Vector3(0.0, _seabed + BED_LIFT, 0.0)
+	bed.position = Vector3(0.0, floor_y + BED_LIFT, 0.0)
 	host.terrain.add_child(bed)
 	return bed
 
