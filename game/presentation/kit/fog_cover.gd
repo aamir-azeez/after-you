@@ -58,7 +58,7 @@ const LANTERN_GROW := 1.8
 const MASK_CELL := 0.5
 const MASK_MARGIN := 7.0
 const STAMP_STEP := 1.0
-const RISE_STEP := 0.25
+const RISE_STEP := 0.1
 const TEXELS_A_FRAME := 2400
 const POINT_COST := 4
 const UPLOAD_GAP := 0.1
@@ -393,14 +393,14 @@ func _swap() -> void:
 	_upload()
 
 ## A stamp a STAMP_STEP square of floor and RISE_STEP of height (terrain
-## metres, which are global here), painted at its middle: the same square
-## always paints the same.
+## metres, which are global here), painted at the square's middle and the
+## step's foot (a floor's own height): the same square always paints the same.
 func _point_key(x_cm: int, z_cm: int, h_cm: int) -> Vector3i:
 	var at := _ground * Vector3(x_cm / 100.0, h_cm / 100.0, z_cm / 100.0)
-	return Vector3i(floori(at.x / STAMP_STEP), floori(at.z / STAMP_STEP), floori(at.y / RISE_STEP))
+	return Vector3i(floori(at.x / STAMP_STEP), floori(at.z / STAMP_STEP), floori(at.y / RISE_STEP + 0.001))
 
 func _key_at(key: Vector3i) -> Vector3:
-	return Vector3((key.x + 0.5) * STAMP_STEP, (key.z + 0.5) * RISE_STEP, (key.y + 0.5) * STAMP_STEP)
+	return Vector3((key.x + 0.5) * STAMP_STEP, key.z * RISE_STEP, (key.y + 0.5) * STAMP_STEP)
 
 func _lantern_key(id: String) -> String:
 	return "l|" + id
