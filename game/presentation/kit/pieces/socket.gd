@@ -20,6 +20,7 @@ extends RefCounted
 ##       where a thrown seed lands.
 const Primitives = preload("res://presentation/kit/primitives.gd")
 const Parts = preload("res://presentation/kit/pieces/parts.gd")
+const ContactShadows = preload("res://presentation/kit/contact_shadows.gd")
 
 const BASE := Color("6b847c")
 const SOIL := Color("244b46")
@@ -48,6 +49,7 @@ const LANDING_TICKS := 0.83
 ## transparent), and a stem in `stem_color` up to a cup in `cup_color` whose
 ## rim is `top` metres up, where the carried thing rests.
 static func stand(root: Node3D, radius: float, top: float, base_color: Color, stem_color: Color, cup_color: Color, ring_color: Color = Color.TRANSPARENT) -> void:
+	ContactShadows.mark(root)
 	_cyl(root, radius, STEP, base_color, Vector3(0, STEP * 0.5, 0))
 	if ring_color.a > 0.0: Parts.ring(radius + 0.01, ring_color, Vector3(0, STEP + 0.01, 0), root)
 	var stem := top - CUP_DEPTH - STEP
@@ -57,6 +59,7 @@ static func stand(root: Node3D, radius: float, top: float, base_color: Color, st
 
 ## A relay socket's look under `root` (the socket node the world names).
 static func relay(root: Node3D) -> void:
+	ContactShadows.mark(root)
 	_cyl(root, 0.42, 0.10, BASE, Vector3(0, 0.05, 0))
 	Parts.ring(0.43, Parts.TEAL, Vector3(0, 0.11, 0), root)
 	# A short timber stump.
@@ -78,6 +81,7 @@ static func relay(root: Node3D) -> void:
 ## A garden planter under `root`, `radius` across, its ring in `ring_color`.
 ## Returns the ring, which the world lights as the goal.
 static func garden(root: Node3D, radius: float, ring_color: Color) -> MeshInstance3D:
+	ContactShadows.mark(root)
 	var drum := Parts.cylinder(radius, PLANTER, BASE, Vector3(0, PLANTER * 0.5, 0), root)
 	drum.name = "Planter"
 	var soil := Parts.cylinder(radius - 0.12, 0.035, SOIL, Vector3(0, PLANTER + 0.015, 0), root)

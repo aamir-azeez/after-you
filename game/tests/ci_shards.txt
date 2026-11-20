@@ -60,6 +60,7 @@ compressed_rooms_client 1
 connectivity 3
 conservatory_v2 1
 conservatory_v2_world 1
+contact_shadows 2
 cooperative 2
 cooperative_admission 1
 cooperative_integration 1

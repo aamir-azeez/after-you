@@ -14,6 +14,7 @@ const Primitives = preload("res://presentation/kit/primitives.gd")
 const SoftMist = preload("res://presentation/kit/soft_mist.gd")
 const Models = preload("res://presentation/kit/models.gd")
 const SessionRelease = preload("res://presentation/kit/session_release.gd")
+const ContactShadows = preload("res://presentation/kit/contact_shadows.gd")
 const MODEL_DIR := "res://assets/models/"
 
 const TIMBER := Color("8a6b4e")
@@ -229,6 +230,7 @@ static func build(spec: Dictionary, parent: Node3D, base_y: float, lit: bool) ->
 		_:
 			root.free()
 			return null
+	ContactShadows.prop(root, spec)
 	return root
 
 ## A Blender model's still part (kit/models.gd), scaled from its foot.

@@ -89,6 +89,15 @@ extends SceneTree
 ##     builds presentation/kit/goal_beacon.gd, the late guide every open turns chapter
 ##     gets with no code of its own. test_open_hints.gd, which must stay in CI, checks
 ##     them on every open turns chapter.
+## (x) contact shadows: presentation/kit/contact_shadows.gd alone draws the soft
+##     shadow where things meet the ground (its shader is preloaded nowhere
+##     else; the pip's shadow takes its look from it), island_world alone makes
+##     a world's shadow layer, and they come by default: every piece kit makes
+##     its root through piece.gd `_root()`, which marks it unless the kit passes
+##     `false` and is in NO_CONTACT_SHADOW with why, and kit/props.gd build()
+##     marks every dressing prop (ContactShadows.PROP_NONE lists the kinds that
+##     get none). test_contact_shadows.gd, which must stay in CI, builds every
+##     style and kind; test_world_looks checks every chapter stage draws them.
 ##
 ## Every allow-list entry says why. An entry that no longer matches anything
 ## fails, so the lists shrink as code moves. KNOWN_FAILURES holds the checks
@@ -412,12 +421,24 @@ const PIECE_OVERRIDES := {
 const PIECE_BASES := ["res://presentation/island_world.gd", "res://presentation/lighthouse_world.gd", "res://presentation/cooperative_world.gd"]
 
 ## Suites that guard a shared path on their own and must stay in CI.
-const GUARD_SUITES := ["shared_paths", "full_screen_bleed", "pollen_mark", "connectivity", "owner_marks", "pair_tags", "fall_effect", "piece_styles", "open_hints"]
+const GUARD_SUITES := ["shared_paths", "full_screen_bleed", "pollen_mark", "connectivity", "owner_marks", "pair_tags", "fall_effect", "piece_styles", "open_hints", "contact_shadows"]
 ## (w) The one reader of the ready line, and the one builder of the goal beacon.
 const READY_LINE := "MAIN_1AAC5BE95E22"
 const READY_LINE_READER := "res://relay_preview.gd"
 const GOAL_BEACON := "res://presentation/kit/goal_beacon.gd"
 const GOAL_BEACON_BUILDER := "res://presentation/cooperative_world.gd"
+## (x) The contact shadow kit, its look, and the piece kits that make no shadow, with why.
+const CONTACT_SHADOWS := "res://presentation/kit/contact_shadows.gd"
+const CONTACT_SHADOW_SHADER := "res://presentation/kit/contact_shadow.gdshader"
+const CONTACT_SHADOW_LAYER := "res://presentation/island_world.gd"
+const PIECE_KIT_BASE := "res://presentation/kit/pieces/piece.gd"
+const NO_CONTACT_SHADOW := {
+	"res://presentation/kit/pieces/bridge.gd": "a crossing is ground itself",
+	"res://presentation/kit/pieces/current.gd": "chevrons and ripples drawn on the water",
+	"res://presentation/kit/pieces/lift.gd": "its deck is a floor that rides up and down",
+	"res://presentation/kit/pieces/raft.gd": "rides the water (the water's rings show it)",
+	"res://presentation/kit/pieces/rope_ladder.gd": "a stair is ground itself",
+}
 
 ## Scripts that name the wallet read only to add request headers, never reading its reply:
 ## rooms_api.gd adds the face version header (backend v2/face-packs.ts), so a wardrobe read
@@ -458,6 +479,7 @@ func _initialize() -> void:
 	_piece_styles()
 	_ui_icons()
 	_turn_guides()
+	_contact_shadows()
 	_suites()
 	for id: String in KNOWN_FAILURES:
 		_check(_known_seen.has(id), "KNOWN_FAILURES names '%s', which no check reached: delete it" % id)
@@ -1066,6 +1088,26 @@ func _turn_guides() -> void:
 	_check(readers == [READY_LINE_READER], "Only %s shows the ready line: %s" % [READY_LINE_READER, readers])
 	_check(_found("\\bOpenTurns\\.pinned\\(", str(_sources.get(READY_LINE_READER, ""))) > 0, "%s skips the ready line on open turns (OpenTurns.pinned)" % READY_LINE_READER)
 	_check(_found("\\bOpenTurns\\.pinned\\(", str(_sources.get(GOAL_BEACON_BUILDER, ""))) > 0, "%s builds the guide for every open turns chapter (OpenTurns.pinned)" % GOAL_BEACON_BUILDER)
+
+# (x) Contact shadows -------------------------------------------------------------
+
+func _contact_shadows() -> void:
+	var opted := {}
+	for path: String in _sources:
+		var source: String = _sources[path]
+		_check(path == CONTACT_SHADOWS or _found("\"" + CONTACT_SHADOW_SHADER + "\"", source) == 0, "%s draws a contact shadow itself: use kit/contact_shadows.gd (mark a root, or single_material for one quad)" % path)
+		var kit := _alias(source, CONTACT_SHADOWS)
+		_check(path == CONTACT_SHADOW_LAYER or kit.is_empty() or _found("\\b" + kit + "\\.new\\(", source) == 0, "%s makes a contact shadow layer: island_world makes one per world" % path)
+		if not path.begins_with(PIECE_KITS) or _found("^extends\\s+\"" + PIECE_KIT_BASE + "\"", source) == 0: continue
+		_check(_found("\\b_root\\(", source) > 0, "%s makes its root itself: make it through piece.gd _root(), which gives it a contact shadow" % path)
+		if _found("\\b_root\\([^\\n]*,\\s*false\\)", source) > 0:
+			opted[path] = true
+			_check(NO_CONTACT_SHADOW.has(path), "%s builds a piece with no contact shadow: add it to NO_CONTACT_SHADOW with why, or let _root() mark it" % path)
+	for path: String in NO_CONTACT_SHADOW:
+		_check(opted.has(path), "NO_CONTACT_SHADOW names %s, which casts its shadow now: delete it" % path)
+	_check(_found("\\bContactShadows\\.mark\\(root\\)", str(_sources.get(PIECE_KIT_BASE, ""))) > 0, "piece.gd _root() marks every piece root for a contact shadow")
+	_check(_found("\\bContactShadows\\.prop\\(root, spec\\)", str(_sources.get("res://presentation/kit/props.gd", ""))) > 0, "kit/props.gd build() marks every dressing prop for a contact shadow")
+	_check(_found("\\bContactShadows\\.(?:single_material|pip_quad)\\(", str(_sources.get("res://presentation/spirit_visual.gd", ""))) > 0, "A pip's shadow takes the contact shadows' look")
 
 func _suites() -> void:
 	var shards := {}

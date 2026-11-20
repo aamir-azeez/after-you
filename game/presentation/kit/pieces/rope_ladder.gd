@@ -57,7 +57,7 @@ func moving_parts() -> Array[Node3D]:
 func _make(ladder_style: String, rect: Rect2, foot: float, head: float, along_x: bool, rising: bool, parent: Node3D) -> void:
 	style = ladder_style
 	var center := Vector3(rect.get_center().x, foot, rect.get_center().y)
-	_root("RopeLadder_" + ladder_style, center, parent)
+	_root("RopeLadder_" + ladder_style, center, parent, false)
 	anchor = root
 	var run := rect.size.x if along_x else rect.size.y
 	var across := rect.size.y if along_x else rect.size.x

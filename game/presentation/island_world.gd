@@ -49,6 +49,9 @@ var dressing: Dictionary = {}
 var _surface_nodes: Dictionary = {}
 var _fireflies: Array[MeshInstance3D] = []
 const StaticBatch = preload("res://presentation/kit/static_batch.gd")
+const ContactShadows = preload("res://presentation/kit/contact_shadows.gd")
+## The world's soft contact shadows (kit/contact_shadows.gd).
+var contact_shadows: Node3D
 ## Every world camera writes its size through this (tall screens keep the authored width).
 const ViewFit = preload("res://presentation/kit/view_fit.gd")
 var _motion_quality := "balanced"
@@ -187,6 +190,10 @@ func _ready() -> void:
 	for i in range(32):
 		var node := Primitives.mesh_node(_sphere_mesh(0.018 + (i % 3) * 0.008), mote_material, Vector3(sin(i*2.17)*11, -2+cos(i*1.23)*3,cos(i*0.91)*9), self)
 		motes.append(node)
+	# Soft contact shadows under everything marked in this world, one draw call.
+	contact_shadows = ContactShadows.new()
+	contact_shadows.set_quality(_motion_quality)
+	add_child(contact_shadows)
 	relight("day")
 	get_tree().process_frame.connect(_on_tree_frame)
 
@@ -205,6 +212,7 @@ func graphics_quality() -> String:
 
 func apply_graphics_quality(quality: String) -> void:
 	_motion_quality = GraphicsPolicy.normalize(quality)
+	if is_instance_valid(contact_shadows): contact_shadows.set_quality(_motion_quality)
 	for trail: Node3D in _motion_trails:
 		if is_instance_valid(trail): trail.set_quality(_motion_quality)
 	# Call after the complete derived _ready: Lighthouse authors ten motes,

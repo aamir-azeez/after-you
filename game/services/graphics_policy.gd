@@ -50,6 +50,14 @@ static func fill_light(quality: Variant) -> bool:
 static func water_detail(quality: Variant) -> bool:
 	return normalize(quality) != "low"
 
+## Soft contact shadows under the dressing (kit/contact_shadows.gd); pieces,
+## keepsakes and items keep theirs on Low, a little lighter.
+static func dressing_contact_shadows(quality: Variant) -> bool:
+	return normalize(quality) != "low"
+
+static func contact_shadow_strength(quality: Variant) -> float:
+	return 0.26 if normalize(quality) == "low" else 0.34
+
 ## How many spots on screen spread rings on the water at once.
 static func water_rings(quality: Variant) -> int:
 	return 4 if normalize(quality) == "low" else 8

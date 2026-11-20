@@ -10,6 +10,8 @@ extends "res://tests/test_world_fingerprint.gd"
 ##   spare. Draws and triangles are what a frame costs a phone (the renderer
 ##   draws no shadows); a stage within both runs like the stages already
 ##   shipped. Frame times are measured on rendered runs, not here.
+## - Each stage draws soft contact shadows under its pieces and props
+##   (kit/contact_shadows.gd), all of them in one MultiMesh.
 ## - Driven through its fixture scenarios, Turn of the Tide @2 (not pinned by
 ##   the world fingerprint) changes no cached look in place.
 
@@ -64,7 +66,11 @@ func _census(key: String, definition: Dictionary, index: int) -> void:
 	var label := "%s stage %d" % [key, index + 1]
 	_check(not world._folds_static_scenery() or world.terrain.has_meta(Batch.FOLDED_META), label + ": its scenery folds")
 	var cost := drawn(world)
-	print("LOOKS|%s|draws %d|triangles %d" % [label, cost.draws, cost.triangles])
+	# Soft contact shadows under its pieces and props, all in one draw.
+	var shadows: Node3D = world.get("contact_shadows")
+	var shown: int = shadows.shown() if shadows != null else 0
+	_check(shadows != null and shadows.find_children("*", "GeometryInstance3D", true, false).size() == 1 and shown > 0, label + ": draws its contact shadows in one MultiMesh (%d)" % shown)
+	print("LOOKS|%s|draws %d|triangles %d|contact shadows %d" % [label, cost.draws, cost.triangles, shown])
 	_check(cost.draws <= MOST_DRAWS, label + ": draws at most %d meshes (%d)" % [MOST_DRAWS, cost.draws])
 	_check(cost.triangles <= MOST_TRIANGLES, label + ": draws at most %d triangles (%d)" % [MOST_TRIANGLES, cost.triangles])
 	viewport.free()
