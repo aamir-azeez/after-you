@@ -15,10 +15,11 @@ const D := 1.35
 const WALL := 1.15
 const RIDGE := 1.75
 const PUMP := Vector3(1.25, 0, 0.62)
-## The can stands behind the pump, clear of the glass, its spout pointing
-## away from the glasshouse (+x), so it never reaches into the glass at rest or
-## as it tips (test_keepsake_props: its pieces stay apart).
-const CAN := Vector3(1.6, 0, -0.3)
+## The can stands back beside the glass, behind the pump (far enough back that
+## the pump handle never crosses it on screen), its spout pointing away from
+## the glasshouse (+x), so it never reaches into the glass at rest or as it
+## tips (test_keepsake_props: its pieces stay apart).
+const CAN := Vector3(1.6, 0, -0.62)
 const CAN_MODEL := "res://assets/models/watering_can.glb"
 ## The rose's middle in the model: its SPOUT end, plus 0.9 ROSE_LENGTH along ROSE_TILT.
 const CAN_ROSE := Vector3(0.51, 0.5, 0)
