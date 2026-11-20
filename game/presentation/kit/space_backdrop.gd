@@ -153,7 +153,8 @@ static func detailed(env: Environment) -> bool:
 static func advance(env: Environment, clock: float, camera: Camera3D, view: Viewport, reduced_motion: bool) -> void:
 	var material := _material(env)
 	if material == null: return
-	if not reduced_motion: material.set_shader_parameter(CLOCK, fposmod(clock, CLOCK_WRAP))
+	var wrapped := fposmod(clock, CLOCK_WRAP)
+	if not reduced_motion and material.get_shader_parameter(CLOCK) != wrapped: material.set_shader_parameter(CLOCK, wrapped)
 	var shooting := 0.0 if reduced_motion else 1.0
 	if material.get_shader_parameter(SHOOTING) != shooting: material.set_shader_parameter(SHOOTING, shooting)
 	var size := buffer_size(view)
