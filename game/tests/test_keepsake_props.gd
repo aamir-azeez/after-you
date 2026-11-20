@@ -15,6 +15,7 @@ const Primitives = preload("res://presentation/kit/primitives.gd")
 const SparkleStar = preload("res://presentation/kit/sparkle_star.gd")
 const Index = preload("res://content/chapters/index.gd")
 const Bell = preload("res://presentation/kit/pieces/bell.gd")
+const Reach = preload("res://tests/keepsake_reach.gd")
 ## Round 2's keepsakes are bigger: the README budget for all eleven with every
 ## upgrade is 45,000 triangles (Home's isles included, counted by the layer suite).
 const MAX_PARTS := 90
@@ -24,6 +25,10 @@ const MAX_MOVING := 6
 ## Kit bells (kit/pieces/bell.gd) move apart from that: each keeps its swing,
 ## hammer and clapper whole (Bell.hold), and a keepsake hangs at most this many.
 const MAX_BELLS := 5
+## A piece that stands on its own (a can, a pump, a boat) never reaches into
+## another piece's solid below a pip's height, at rest or through its tap.
+const SPIRIT_HEIGHT := 1.15
+const TOUCH := 0.02
 ## Every beat, then the ease back to rest.
 const TOTAL_MAX := 5.65
 ## The owner let the Relay Masts take longer (2026-11-02), so its flag keeps
@@ -78,6 +83,7 @@ func _run() -> void:
 		_check_tap_parts(stage, entry, builder, full)
 		_check_explore(stage, entry, builder)
 		_check_upgrades(stage, entry, builder)
+		_check_pieces_apart(stage, entry, builder, full)
 		# Warm-up: every look it draws is a feature key the GL warm-up compiles.
 		for look: Material in builder.materials():
 			var key := GlWarmup.material_key(look as BaseMaterial3D)
@@ -218,6 +224,28 @@ func _check_explore(stage: Node3D, entry: Dictionary, builder: RefCounted) -> vo
 				_check(landing.y == 0.0 and solids.all(func(rect: Rect2) -> bool: return not rect.grow(0.1).has_point(flat)), "%s %s lands the pip on the grass clear of its solids: %s" % [entry.id, state, landing])
 			rider.free()
 			prop.free()
+
+## Each moving part that stands (its pivot below a pip's height; a roof pane
+## hinged overhead does not) stands in the solids round its pivot. Measured by
+## its real meshes' corners at rest and through the whole tap
+## (tests/keepsake_reach.gd), it never reaches into any other solid below a
+## pip's height, so a piece standing beside the keepsake (the Conservatory's
+## watering can) never pokes into it (the glasshouse) as it stands or moves.
+func _check_pieces_apart(stage: Node3D, entry: Dictionary, builder: RefCounted, state: Dictionary) -> void:
+	var solids: Array[Rect2] = builder.solids(state)
+	var reach := Reach.sweep(stage, builder, state)
+	for name: Variant in reach.parts:
+		var part: Dictionary = reach.parts[name]
+		var pivot: Vector3 = part.pivot
+		var own := solids.filter(func(rect: Rect2) -> bool: return rect.has_point(Vector2(pivot.x, pivot.z)))
+		if own.is_empty() or pivot.y >= SPIRIT_HEIGHT: continue
+		var others := solids.filter(func(rect: Rect2) -> bool: return not own.has(rect)).map(func(rect: Rect2) -> Rect2: return rect.grow(-TOUCH))
+		var into := {}
+		for point: Vector3 in part.points:
+			if point.y >= SPIRIT_HEIGHT: continue
+			for solid: Rect2 in others:
+				if solid.has_point(Vector2(point.x, point.z)): into[solid] = true
+		_check(into.is_empty(), "%s's %s stays out of its other pieces at rest and through its tap: reaches into %s" % [entry.id, name, into.keys()])
 
 ## Whether a spirit (0.12 round) can stand somewhere in `area` clear of `solids`.
 func _free_in(area: Rect2, solids: Array[Rect2]) -> bool:
