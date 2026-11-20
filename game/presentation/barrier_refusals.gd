@@ -5,7 +5,8 @@ extends RefCounted
 ## edge) and holds it back, or it stands at (or presses) a control its friend
 ## owns. Each screen that steps a chapter turn keeps one, starts it with the
 ## turn (begin) and runs every stepped tick through annotate() before the
-## tick's sounds are worked out, so the snapshot carries:
+## tick's sounds are worked out, and shows and sounds the snapshot it returns,
+## which carries:
 ##   "refused": [{slot, kind, id, push (unit Vector2, into the barrier)}], the
 ##     first tick a barrier holds the spirit back (and again every REPEAT_TICKS
 ##     while it goes on), and
@@ -95,11 +96,12 @@ func _stage(stage_id: String) -> void:
 	_view = CooperativeCatalog.stage_definition(_definition, stage_id)
 	_layout = RouteBarriers.layout(_view) if not _view.is_empty() else {}
 
-## Adds this tick's "refused" and "locked" to `state` (the snapshot the engine
-## returned for `input`), in place. The caller then works out its sounds and
-## shows it.
-func annotate(state: Dictionary, input: Dictionary = {}) -> void:
-	if _view.is_empty() or not state.get("players") is Dictionary: return
+## `state` (the snapshot the engine returned for `input`) with this tick's
+## "refused" and "locked": `state` itself when there are none, else a shallow
+## copy that adds them. It only reads `state`, which the engine (or a replay)
+## may keep. The caller then works out its sounds from it and shows it.
+func annotate(state: Dictionary, input: Dictionary = {}) -> Dictionary:
+	if _view.is_empty() or not state.get("players") is Dictionary: return state
 	if str(state.get("stage_id", "")) != _stage_id: _stage(str(state.get("stage_id", "")))
 	var tick := int(state.get("tick", 0))
 	var frames := {str(state.get("active_slot", "")): Runtime.quantize_input(input)}
@@ -123,8 +125,11 @@ func annotate(state: Dictionary, input: Dictionary = {}) -> void:
 		_at_lock[lock.id] = who
 	for slot: String in frames: _held[slot] = bool(frames[slot].action)
 	_remember(state)
-	if not refused.is_empty(): state["refused"] = refused
-	if not locked.is_empty(): state["locked"] = locked
+	if refused.is_empty() and locked.is_empty(): return state
+	var shown := state.duplicate()
+	if not refused.is_empty(): shown["refused"] = refused
+	if not locked.is_empty(): shown["locked"] = locked
+	return shown
 
 func _refused(slot: String, frame: Dictionary, player: Variant, state: Dictionary, tick: int) -> Dictionary:
 	if not player is Dictionary or not _last.has(slot): return {}
