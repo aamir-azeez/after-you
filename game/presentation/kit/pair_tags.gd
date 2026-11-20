@@ -431,7 +431,7 @@ func _look(faint: Vector3) -> ShaderMaterial:
 func _plaque(pair: Dictionary) -> void:
 	var post: Dictionary = _world.call(&"_pair_receiver_post", pair.entity)
 	var foot: Vector3 = pair.anchor
-	var facing := ViewFit.CAMERA_FROM.normalized()
+	var facing: Vector3 = (_world.call(&"camera_from") if _world.has_method(&"camera_from") else ViewFit.CAMERA_FROM).normalized()
 	var lean := atan2(Vector2(facing.x, facing.z).length(), facing.y)
 	var side := TAG * PLAQUE_SCALE * PLAQUE_MARGIN
 	var radius := float(post.radius)
@@ -701,8 +701,18 @@ func _layout(view: Dictionary) -> Array[Dictionary]:
 			var ends: Array = _world.call(&"_pair_gate_anchors", route)
 			if ends.is_empty(): continue
 			var joined := false
+			# A crossing in the middle of a row of crossings (a row of stepping
+			# stones), with no floor at either end, shows its tile with the row's
+			# crossing that joins the same two floors for the same control.
+			var homeless := not ends.any(func(end: Vector3) -> bool: return floors.any(func(f: Dictionary) -> bool: return not f.crossing and absf(float(f.y) - end.y) < 0.06 and (f.rect as Rect2).grow(0.05).has_point(_flat(end))))
+			var between := [str(route.get("from_surface", "")), str(route.get("to_surface", ""))]
 			for place: Dictionary in places:
 				if place.kind == GATE and (place.at as Vector3).is_equal_approx(ends[0]):
+					_join(place, pair.index, GATE, str(route.id))
+					joined = true
+			for place: Dictionary in places:
+				if joined or not homeless: break
+				if place.kind == GATE and pair.index in place.pairs and place.surfaces == between:
 					_join(place, pair.index, GATE, str(route.id))
 					joined = true
 			# A gate's tiles lie on the floors its crossing joins, by its entrance

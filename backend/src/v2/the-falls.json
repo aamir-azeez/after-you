@@ -1,0 +1,1122 @@
+{
+	"bridges": [
+		{
+			"from_surface": "mill",
+			"height_cm": 120,
+			"id": "footbridge",
+			"rect_cm": [
+				780,
+				-350,
+				1480,
+				-216
+			],
+			"to_surface": "ledge"
+		},
+		{
+			"from_surface": "beach",
+			"height_cm": 0,
+			"id": "stones",
+			"rect_cm": [
+				780,
+				210,
+				1480,
+				344
+			],
+			"to_surface": "isle"
+		},
+		{
+			"from_surface": "yard",
+			"height_cm": 320,
+			"id": "walkway",
+			"rect_cm": [
+				4920,
+				-70,
+				5120,
+				64
+			],
+			"to_surface": "deck"
+		},
+		{
+			"from_surface": "wtop",
+			"hands": true,
+			"height_cm": 810,
+			"id": "rope-bridge",
+			"rect_cm": [
+				7380,
+				-471,
+				9380,
+				-375
+			],
+			"to_surface": "etop"
+		},
+		{
+			"from_surface": "wledge",
+			"height_cm": 570,
+			"id": "behind",
+			"rect_cm": [
+				6670,
+				369,
+				9380,
+				465
+			],
+			"to_surface": "eledge"
+		},
+		{
+			"from_surface": "look",
+			"height_cm": 940,
+			"id": "log",
+			"rect_cm": [
+				10504,
+				-70,
+				10600,
+				210
+			],
+			"to_surface": "ledge-4"
+		},
+		{
+			"from_surface": "look",
+			"height_cm": 940,
+			"id": "s1",
+			"rect_cm": [
+				10780,
+				-490,
+				10960,
+				-378
+			],
+			"to_surface": "rock"
+		},
+		{
+			"from_surface": "look",
+			"height_cm": 940,
+			"id": "s2",
+			"rect_cm": [
+				10960,
+				-490,
+				11140,
+				-378
+			],
+			"to_surface": "rock"
+		},
+		{
+			"from_surface": "look",
+			"height_cm": 940,
+			"id": "s3",
+			"rect_cm": [
+				11140,
+				-490,
+				11320,
+				-378
+			],
+			"to_surface": "rock"
+		},
+		{
+			"from_surface": "look",
+			"height_cm": 940,
+			"id": "s4",
+			"rect_cm": [
+				11320,
+				-490,
+				11500,
+				-378
+			],
+			"to_surface": "rock"
+		},
+		{
+			"from_surface": "rock",
+			"hands": true,
+			"height_cm": 940,
+			"id": "leap",
+			"rect_cm": [
+				11650,
+				-490,
+				11790,
+				-378
+			],
+			"to_surface": "big"
+		},
+		{
+			"from_surface": "ledge-4",
+			"hands": true,
+			"height_cm": 940,
+			"id": "rope-span",
+			"rect_cm": [
+				10780,
+				299,
+				11790,
+				395
+			],
+			"to_surface": "big"
+		},
+		{
+			"from_surface": "ledge-4",
+			"height_cm": 940,
+			"id": "middle-steps",
+			"rect_cm": [
+				10780,
+				509,
+				11790,
+				605
+			],
+			"to_surface": "big"
+		},
+		{
+			"from_surface": "big",
+			"height_cm": 940,
+			"id": "far-gate",
+			"rect_cm": [
+				12300,
+				-420,
+				12800,
+				-286
+			],
+			"to_surface": "far"
+		}
+	],
+	"closing_ticks": 30,
+	"drops": [],
+	"id": "the-falls",
+	"islands": [
+		{
+			"height_cm": 120,
+			"id": "mill",
+			"rect_cm": [
+				0,
+				-490,
+				780,
+				-70
+			]
+		},
+		{
+			"height_cm": 120,
+			"id": "ledge",
+			"rect_cm": [
+				1480,
+				-490,
+				2520,
+				-70
+			]
+		},
+		{
+			"height_cm": 0,
+			"id": "isle",
+			"rect_cm": [
+				1480,
+				70,
+				2520,
+				490
+			]
+		},
+		{
+			"height_cm": 0,
+			"id": "beach",
+			"rect_cm": [
+				0,
+				70,
+				780,
+				490
+			]
+		},
+		{
+			"height_cm": 200,
+			"id": "bank",
+			"rect_cm": [
+				3120,
+				-350,
+				3720,
+				630
+			]
+		},
+		{
+			"height_cm": 320,
+			"id": "yard",
+			"rect_cm": [
+				4320,
+				-210,
+				4920,
+				210
+			]
+		},
+		{
+			"height_cm": 320,
+			"id": "deck",
+			"rect_cm": [
+				5120,
+				-210,
+				5720,
+				630
+			]
+		},
+		{
+			"height_cm": 440,
+			"id": "loft",
+			"rect_cm": [
+				4320,
+				-630,
+				5720,
+				-350
+			]
+		},
+		{
+			"height_cm": 570,
+			"id": "wledge",
+			"rect_cm": [
+				6220,
+				-630,
+				6670,
+				630
+			]
+		},
+		{
+			"height_cm": 810,
+			"id": "wtop",
+			"rect_cm": [
+				6930,
+				-630,
+				7380,
+				-210
+			]
+		},
+		{
+			"height_cm": 810,
+			"id": "etop",
+			"rect_cm": [
+				9380,
+				-630,
+				9830,
+				-210
+			]
+		},
+		{
+			"height_cm": 570,
+			"id": "eledge",
+			"rect_cm": [
+				9380,
+				210,
+				9830,
+				630
+			]
+		},
+		{
+			"height_cm": 940,
+			"id": "look",
+			"rect_cm": [
+				10330,
+				-630,
+				10780,
+				-70
+			]
+		},
+		{
+			"height_cm": 940,
+			"id": "ledge-4",
+			"rect_cm": [
+				10330,
+				210,
+				10780,
+				630
+			]
+		},
+		{
+			"height_cm": 940,
+			"id": "rock",
+			"rect_cm": [
+				11500,
+				-630,
+				11650,
+				-238
+			]
+		},
+		{
+			"height_cm": 940,
+			"id": "big",
+			"rect_cm": [
+				11790,
+				-630,
+				12300,
+				630
+			]
+		},
+		{
+			"height_cm": 940,
+			"id": "far",
+			"rect_cm": [
+				12800,
+				-630,
+				13250,
+				0
+			]
+		}
+	],
+	"item_spots": [
+		{
+			"height_cm": 0,
+			"id": "post",
+			"position_cm": [
+				1584,
+				434
+			],
+			"surface_id": "isle"
+		},
+		{
+			"height_cm": 0,
+			"id": "pan",
+			"position_cm": [
+				2416,
+				434
+			],
+			"surface_id": "isle"
+		},
+		{
+			"height_cm": 0,
+			"id": "bucket",
+			"position_cm": [
+				2416,
+				126
+			],
+			"surface_id": "isle"
+		},
+		{
+			"height_cm": 120,
+			"id": "bucket-top",
+			"position_cm": [
+				2364,
+				-406
+			],
+			"surface_id": "ledge"
+		},
+		{
+			"height_cm": 320,
+			"id": "hook",
+			"position_cm": [
+				4400,
+				154
+			],
+			"surface_id": "yard"
+		},
+		{
+			"height_cm": 440,
+			"id": "sack-top",
+			"position_cm": [
+				4400,
+				-574
+			],
+			"surface_id": "loft"
+		},
+		{
+			"height_cm": 810,
+			"id": "basket",
+			"position_cm": [
+				7320,
+				-574
+			],
+			"surface_id": "wtop"
+		},
+		{
+			"height_cm": 810,
+			"id": "basket-end",
+			"position_cm": [
+				9440,
+				-574
+			],
+			"surface_id": "etop"
+		}
+	],
+	"items": [
+		{
+			"at": "post",
+			"id": "pipsport"
+		}
+	],
+	"premium": false,
+	"props": [],
+	"schema_version": 7,
+	"simulation_version": 16,
+	"stages": [
+		{
+			"ball_pads": [],
+			"controls": [
+				{
+					"height_cm": 120,
+					"id": "pool",
+					"initial": "HIGH",
+					"kind": "selector",
+					"position_cm": [
+						208,
+						-406
+					],
+					"radius_cm": 28,
+					"surface_id": "mill",
+					"values": [
+						"HIGH",
+						"LOW"
+					]
+				}
+			],
+			"current_legs": [
+				{
+					"control_id": "pool",
+					"from": "bucket",
+					"to": "bucket-top",
+					"value": "HIGH"
+				}
+			],
+			"entry_latch_routes": [],
+			"first_player_slot": "p0",
+			"gates": [
+				{
+					"route_id": "stones",
+					"when": {
+						"control_id": "pool",
+						"value": "LOW"
+					}
+				},
+				{
+					"route_id": "footbridge",
+					"when": {
+						"any": [
+							{
+								"pad_id": "pan"
+							},
+							{
+								"item_id": "pipsport",
+								"spot_id": "pan"
+							}
+						]
+					}
+				},
+				{
+					"route_id": "ladder"
+				}
+			],
+			"goal": {
+				"height_cm": 120,
+				"id": "foot-goal",
+				"owner_slot": "p1",
+				"position_cm": [
+					1688,
+					-406
+				],
+				"radius_cm": 48,
+				"surface_id": "ledge"
+			},
+			"goal_policy": {
+				"kind": "ring",
+				"when": {
+					"carried": true,
+					"item_id": "pipsport"
+				}
+			},
+			"id": "foot-of-the-falls",
+			"item_starts": {
+				"pipsport": "post"
+			},
+			"kind": "route_endpoint",
+			"levers": [],
+			"pressure_pads": [
+				{
+					"height_cm": 0,
+					"id": "pan",
+					"position_cm": [
+						2416,
+						434
+					],
+					"radius_cm": 32,
+					"surface_id": "isle"
+				}
+			],
+			"receiver_action_ticks": 2,
+			"receiver_route_cm": [
+				[
+					1688,
+					-406
+				]
+			],
+			"source_policy": {
+				"kind": "route_endpoint",
+				"when": {}
+			},
+			"turn_cap": 10,
+			"version": 1
+		},
+		{
+			"ball_pads": [],
+			"controls": [],
+			"current_legs": [
+				{
+					"from": "hook",
+					"to": "sack-top",
+					"when": {
+						"any": [
+							{
+								"pad_id": "gate-board"
+							},
+							{
+								"pad_id": "winding-board"
+							}
+						]
+					}
+				}
+			],
+			"entry_latch_routes": [],
+			"first_player_slot": "p1",
+			"gates": [
+				{
+					"route_id": "down-to-bank"
+				},
+				{
+					"route_id": "walkway"
+				},
+				{
+					"route_id": "mill-steps",
+					"when": {
+						"not": {
+							"pad_id": "gate-board"
+						}
+					}
+				},
+				{
+					"route_id": "riverbed",
+					"when": {
+						"pad_id": "gate-board"
+					}
+				},
+				{
+					"route_id": "wheel",
+					"when": {
+						"pad_id": "gate-board"
+					}
+				},
+				{
+					"route_id": "attic-ladder",
+					"when": {
+						"lever_id": "hatch"
+					}
+				}
+			],
+			"goal": {
+				"height_cm": 440,
+				"id": "mill-goal",
+				"owner_slot": "p1",
+				"position_cm": [
+					5120,
+					-490
+				],
+				"radius_cm": 48,
+				"surface_id": "loft"
+			},
+			"goal_policy": {
+				"kind": "ring",
+				"when": {
+					"carried": true,
+					"item_id": "pipsport"
+				}
+			},
+			"id": "the-old-mill",
+			"item_starts": {
+				"pipsport": "p1"
+			},
+			"kind": "route_endpoint",
+			"levers": [
+				{
+					"height_cm": 440,
+					"id": "hatch",
+					"position_cm": [
+						4880,
+						-574
+					],
+					"radius_cm": 28,
+					"surface_id": "loft"
+				}
+			],
+			"pressure_pads": [
+				{
+					"height_cm": 320,
+					"id": "gate-board",
+					"position_cm": [
+						5600,
+						560
+					],
+					"radius_cm": 32,
+					"surface_id": "deck"
+				},
+				{
+					"height_cm": 440,
+					"id": "winding-board",
+					"position_cm": [
+						5560,
+						-574
+					],
+					"radius_cm": 32,
+					"surface_id": "loft"
+				}
+			],
+			"receiver_action_ticks": 2,
+			"receiver_route_cm": [
+				[
+					5120,
+					-490
+				]
+			],
+			"source_policy": {
+				"kind": "route_endpoint",
+				"when": {}
+			},
+			"turn_cap": 10,
+			"version": 1
+		},
+		{
+			"ball_pads": [],
+			"controls": [],
+			"current_legs": [
+				{
+					"from": "basket",
+					"to": "basket-end",
+					"when": {
+						"pad_id": "crank"
+					}
+				}
+			],
+			"entry_latch_routes": [],
+			"first_player_slot": "p1",
+			"gates": [
+				{
+					"route_id": "down-to-ledge"
+				},
+				{
+					"route_id": "west-ladder"
+				},
+				{
+					"route_id": "spray-steps"
+				},
+				{
+					"route_id": "rope-bridge",
+					"when": {
+						"any": [
+							{
+								"pad_id": "crank"
+							},
+							{
+								"pad_id": "east-crank"
+							}
+						]
+					}
+				},
+				{
+					"route_id": "behind",
+					"when": {
+						"lever_id": "water-gate"
+					}
+				}
+			],
+			"goal": {
+				"height_cm": 810,
+				"id": "behind-goal",
+				"owner_slot": "p1",
+				"position_cm": [
+					9590,
+					-420
+				],
+				"radius_cm": 48,
+				"surface_id": "etop"
+			},
+			"goal_policy": {
+				"kind": "ring",
+				"when": {
+					"carried": true,
+					"item_id": "pipsport"
+				}
+			},
+			"id": "behind-the-falls",
+			"item_starts": {
+				"pipsport": "p1"
+			},
+			"kind": "route_endpoint",
+			"levers": [
+				{
+					"height_cm": 810,
+					"id": "water-gate",
+					"position_cm": [
+						9770,
+						-280
+					],
+					"radius_cm": 28,
+					"surface_id": "etop"
+				}
+			],
+			"pressure_pads": [
+				{
+					"height_cm": 810,
+					"id": "crank",
+					"position_cm": [
+						6990,
+						-280
+					],
+					"radius_cm": 32,
+					"surface_id": "wtop"
+				},
+				{
+					"height_cm": 810,
+					"id": "east-crank",
+					"position_cm": [
+						9770,
+						-574
+					],
+					"radius_cm": 32,
+					"surface_id": "etop"
+				}
+			],
+			"receiver_action_ticks": 2,
+			"receiver_route_cm": [
+				[
+					9590,
+					-420
+				]
+			],
+			"source_policy": {
+				"kind": "route_endpoint",
+				"when": {}
+			},
+			"turn_cap": 10,
+			"version": 1
+		},
+		{
+			"ball_pads": [],
+			"controls": [
+				{
+					"height_cm": 940,
+					"id": "stream",
+					"initial": "HIGH",
+					"kind": "selector",
+					"position_cm": [
+						10420,
+						-140
+					],
+					"radius_cm": 28,
+					"surface_id": "look",
+					"values": [
+						"HIGH",
+						"MID",
+						"LOW"
+					]
+				}
+			],
+			"entry_latch_routes": [],
+			"first_player_slot": "p1",
+			"gates": [
+				{
+					"route_id": "down-to-lookout"
+				},
+				{
+					"route_id": "leap"
+				},
+				{
+					"route_id": "log",
+					"when": {
+						"control_id": "stream",
+						"value": "HIGH"
+					}
+				},
+				{
+					"route_id": "middle-steps",
+					"when": {
+						"control_id": "stream",
+						"value": "MID"
+					}
+				},
+				{
+					"route_id": "s1",
+					"when": {
+						"control_id": "stream",
+						"value": "LOW"
+					}
+				},
+				{
+					"route_id": "s2",
+					"when": {
+						"control_id": "stream",
+						"value": "LOW"
+					}
+				},
+				{
+					"route_id": "s3",
+					"when": {
+						"control_id": "stream",
+						"value": "LOW"
+					}
+				},
+				{
+					"route_id": "s4",
+					"when": {
+						"control_id": "stream",
+						"value": "LOW"
+					}
+				},
+				{
+					"route_id": "rope-span",
+					"when": {
+						"pad_id": "look-crank"
+					}
+				},
+				{
+					"route_id": "far-gate",
+					"when": {
+						"any": [
+							{
+								"pad_id": "gate-step"
+							},
+							{
+								"lever_id": "bar"
+							}
+						]
+					}
+				}
+			],
+			"goal": {
+				"height_cm": 940,
+				"id": "stones-goal",
+				"owner_slot": "p1",
+				"position_cm": [
+					13025,
+					-210
+				],
+				"radius_cm": 48,
+				"surface_id": "far"
+			},
+			"goal_policy": {
+				"kind": "ring",
+				"when": {
+					"carried": true,
+					"item_id": "pipsport"
+				}
+			},
+			"id": "the-last-stones",
+			"item_starts": {
+				"pipsport": "p0"
+			},
+			"kind": "route_endpoint",
+			"levers": [
+				{
+					"height_cm": 940,
+					"id": "bar",
+					"position_cm": [
+						13160,
+						-574
+					],
+					"radius_cm": 28,
+					"surface_id": "far"
+				}
+			],
+			"pressure_pads": [
+				{
+					"height_cm": 940,
+					"id": "look-crank",
+					"position_cm": [
+						10720,
+						-140
+					],
+					"radius_cm": 32,
+					"surface_id": "look"
+				},
+				{
+					"height_cm": 940,
+					"id": "gate-step",
+					"position_cm": [
+						12240,
+						560
+					],
+					"radius_cm": 32,
+					"surface_id": "big"
+				}
+			],
+			"receiver_action_ticks": 2,
+			"receiver_route_cm": [
+				[
+					13025,
+					-210
+				]
+			],
+			"sinking": [
+				"s1",
+				"s2",
+				"s3",
+				"s4"
+			],
+			"source_policy": {
+				"kind": "route_endpoint",
+				"when": {}
+			},
+			"turn_cap": 10,
+			"version": 1
+		}
+	],
+	"stairs": [
+		{
+			"axis": "z",
+			"from_height_cm": 120,
+			"from_surface": "ledge",
+			"hands": true,
+			"id": "ladder",
+			"rect_cm": [
+				1896,
+				-70,
+				2146,
+				70
+			],
+			"to_height_cm": 0,
+			"to_surface": "isle"
+		},
+		{
+			"axis": "x",
+			"from_height_cm": 120,
+			"from_surface": "ledge",
+			"id": "down-to-bank",
+			"rect_cm": [
+				2520,
+				-350,
+				3120,
+				-216
+			],
+			"to_height_cm": 200,
+			"to_surface": "bank"
+		},
+		{
+			"axis": "x",
+			"from_height_cm": 200,
+			"from_surface": "bank",
+			"id": "mill-steps",
+			"rect_cm": [
+				3720,
+				-140,
+				4320,
+				-6
+			],
+			"to_height_cm": 320,
+			"to_surface": "yard"
+		},
+		{
+			"axis": "x",
+			"from_height_cm": 200,
+			"from_surface": "bank",
+			"id": "riverbed",
+			"rect_cm": [
+				3720,
+				439,
+				5120,
+				535
+			],
+			"to_height_cm": 320,
+			"to_surface": "deck"
+		},
+		{
+			"axis": "z",
+			"from_height_cm": 440,
+			"from_surface": "loft",
+			"hands": true,
+			"id": "wheel",
+			"one_way": "up",
+			"rect_cm": [
+				5420,
+				-350,
+				5612,
+				-210
+			],
+			"to_height_cm": 320,
+			"to_surface": "deck"
+		},
+		{
+			"axis": "z",
+			"from_height_cm": 440,
+			"from_surface": "loft",
+			"hands": true,
+			"id": "attic-ladder",
+			"rect_cm": [
+				4620,
+				-350,
+				4812,
+				-210
+			],
+			"to_height_cm": 320,
+			"to_surface": "yard"
+		},
+		{
+			"axis": "x",
+			"from_height_cm": 440,
+			"from_surface": "loft",
+			"id": "down-to-ledge",
+			"rect_cm": [
+				5720,
+				-560,
+				6220,
+				-426
+			],
+			"to_height_cm": 570,
+			"to_surface": "wledge"
+		},
+		{
+			"axis": "x",
+			"from_height_cm": 570,
+			"from_surface": "wledge",
+			"hands": true,
+			"id": "west-ladder",
+			"rect_cm": [
+				6670,
+				-490,
+				6930,
+				-356
+			],
+			"to_height_cm": 810,
+			"to_surface": "wtop"
+		},
+		{
+			"axis": "z",
+			"from_height_cm": 810,
+			"from_surface": "etop",
+			"id": "spray-steps",
+			"rect_cm": [
+				9554,
+				-210,
+				9650,
+				210
+			],
+			"to_height_cm": 570,
+			"to_surface": "eledge"
+		},
+		{
+			"axis": "x",
+			"from_height_cm": 810,
+			"from_surface": "etop",
+			"id": "down-to-lookout",
+			"rect_cm": [
+				9830,
+				-490,
+				10330,
+				-356
+			],
+			"to_height_cm": 940,
+			"to_surface": "look"
+		}
+	],
+	"starts": {
+		"p0": {
+			"height_cm": 120,
+			"position_cm": [
+				390,
+				-280
+			],
+			"surface_id": "mill"
+		},
+		"p1": {
+			"height_cm": 0,
+			"position_cm": [
+				390,
+				280
+			],
+			"surface_id": "beach"
+		}
+	},
+	"turn_limits": {
+		"a_ticks": 3600,
+		"b_ticks": 3600
+	},
+	"version": 1
+}

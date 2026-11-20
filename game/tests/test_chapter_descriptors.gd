@@ -122,10 +122,11 @@ func _families() -> void:
 ## A water file (presentation/kit/water_bodies.gd) builds from data alone, so
 ## a typo here would fail deep in a build or leave water still: every field is
 ## present and well formed, each body's control is a selector of the chapter
-## whose values the descriptor's "water_levels" lists in the same order, its
-## rest value is one of its levels, the marks name the first body's levels,
-## every pier is an island, and the look's switches (the block's "look" and a
-## body's own, content/water/looks.gd SWITCHES) are known names set true or false.
+## whose values the descriptor's "water_levels" lists in the same order (or
+## none, for still water at one level), its rest value is one of its levels, the
+## marks name the first body's levels, every pier is an island, and the look's
+## switches (the block's "look" and a body's own, content/water/looks.gd SWITCHES)
+## are known names set true or false.
 func _water_block(key: String, data: Dictionary, block: Dictionary, level: Dictionary) -> void:
 	for field: String in ["seabed", "rate", "wall_top", "inset", "bounds", "bodies", "marks", "stone", "coping", "pit_floor", "plinth", "fender", "piers"]:
 		_check(block.has(field), "Water block of %s has %s" % [key, field])
@@ -143,6 +144,10 @@ func _water_block(key: String, data: Dictionary, block: Dictionary, level: Dicti
 		var selector := str(body.get("selector", ""))
 		_check(not levels.is_empty() and levels.has(str(body.get("rest", ""))) and body.get("color") is Color and not body.get("rects", []).is_empty(), "Water body %s of %s has levels, a rest among them, a colour and rectangles" % [id, key])
 		for rect: Variant in body.get("rects", []): _check(rect is Array and rect.size() == 4 and rect[0] < rect[2] and rect[1] < rect[3], "Water body %s of %s has whole rectangles" % [id, key])
+		# A body with no selector is still water: it rests at its one level.
+		if selector.is_empty():
+			_check(levels.size() == 1, "Still water body %s of %s has one level" % [id, key])
+			continue
 		_check(selectors.has(selector), "Water body %s of %s follows a selector of the chapter: %s" % [id, key, selector])
 		_same(data.water_levels.get(selector, []), levels.keys(), "%s's water_levels lists water body %s's values in its order" % [key, id])
 		for field: String in Looks.SWITCHES:
@@ -292,6 +297,11 @@ func _wait_hints(key: String, data: Dictionary, level: Dictionary) -> void:
 	var goals: Dictionary = {}
 	for stage: Dictionary in level.stages:
 		if stage.get("goal") is Dictionary: goals[str(stage.goal.get("id", ""))] = true
+	# Rules 16's crossings take a deck style, and its one way stairs a ladder.
+	var bridges: Dictionary = {}
+	for route: Dictionary in level.get("bridges", []): bridges[str(route.id)] = true
+	var stairs: Dictionary = {}
+	for route: Dictionary in level.get("stairs", []): stairs[str(route.id)] = true
 	# Rules 16's carried items take a "carried_item" style (kit/pieces/carried_item.gd).
 	var items: Dictionary = {}
 	for item: Dictionary in level.get("items", []): items[str(item.id)] = true
@@ -299,6 +309,7 @@ func _wait_hints(key: String, data: Dictionary, level: Dictionary) -> void:
 	for id: String in data.piece_styles:
 		var style := str(data.piece_styles[id])
 		var suits := (levers.has(id) and styles.has_style("lever", style)) or (selectors.has(id) and styles.has_style("selector", style)) or (pads.has(id) and styles.has_style("pad", style)) or (goals.has(id) and styles.has_style("goal", style)) or (items.has(id) and styles.has_style("carried_item", style))
+		suits = suits or (bridges.has(id) and styles.has_style("deck", style)) or (stairs.has(id) and styles.has_style("ladder", style))
 		_check(suits, "Piece style %s of %s suits its piece: %s" % [id, key, style])
 	# Turn of the Tide's water wheels are valves: no three- or four-way
 	# selector there is left with a plain lever.

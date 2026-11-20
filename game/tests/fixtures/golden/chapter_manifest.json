@@ -109,6 +109,27 @@
 			],
 			"unlock_fruits": 0
 		},
+		"fog-marsh@1": {
+			"definition_fixture": "journey/fog-marsh-definition.json",
+			"definition_hash": "0cdfc1875835b016d69e446e9818f89a2bc6ab18664ad1acf6d9546e8994a5cd",
+			"family": "journey",
+			"flag": "FOG_MARSH_CHAPTER_ENABLED",
+			"hard": false,
+			"initial_checkpoint_hash": "2a26845d634218e9724f2c5b914581629e406d241f52aec475d09a9ed99d4197",
+			"initial_fixture": "journey/fog-marsh-initial-checkpoint.json",
+			"key": "fog-marsh@1",
+			"level_id": "fog-marsh",
+			"level_version": 1,
+			"max_branches": 7,
+			"premium": false,
+			"recording_version": 7,
+			"simulation_version": 16,
+			"stage_count": 3,
+			"supported_simulation_versions": [
+				16
+			],
+			"unlock_fruits": 3
+		},
 		"high-and-low@1": {
 			"definition_fixture": "cooperative/high-and-low-definition.json",
 			"definition_hash": "6aa907e802c92445745a6452c6ec0850dd8e98724e689b58a8ec82915fb08956",
@@ -281,6 +302,27 @@
 			],
 			"unlock_fruits": 0
 		},
+		"the-falls@1": {
+			"definition_fixture": "journey/the-falls-definition.json",
+			"definition_hash": "31c50a815a1a8c70a62c67234854ed36cbeb4044c871da0ca5bac49058cf7f8b",
+			"family": "journey",
+			"flag": "THE_FALLS_CHAPTER_ENABLED",
+			"hard": false,
+			"initial_checkpoint_hash": "e5f89e2c658358cac15e89f4a19278c05ada9b294ce18cd22ff980263a7777ad",
+			"initial_fixture": "journey/the-falls-initial-checkpoint.json",
+			"key": "the-falls@1",
+			"level_id": "the-falls",
+			"level_version": 1,
+			"max_branches": 7,
+			"premium": false,
+			"recording_version": 7,
+			"simulation_version": 16,
+			"stage_count": 4,
+			"supported_simulation_versions": [
+				16
+			],
+			"unlock_fruits": 0
+		},
 		"the-wishing-well@1": {
 			"definition_fixture": "cooperative/the-wishing-well-definition.json",
 			"definition_hash": "4418a6f1ad6bdc3f1adee6d07d48184d03867a56a1b2d1d42c189584cfec5a94",
@@ -405,6 +447,8 @@
 		"conservatory@2",
 		"high-and-low@2",
 		"the-wishing-well@2",
-		"first-steps@2"
+		"first-steps@2",
+		"the-falls@1",
+		"fog-marsh@1"
 	]
 }

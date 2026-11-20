@@ -86,6 +86,11 @@ static func for_key(key: String) -> Dictionary:
 	_placing.unlock()
 	return result
 
+## A chapter's dressing file as written, before placing (no stage views:
+## Placement.stage_view reads it to judge from the level's own camera).
+static func raw(key: String) -> Dictionary:
+	return FILES[key].DATA if FILES.has(key) else {}
+
 static func keys() -> Array:
 	return FILES.keys()
 

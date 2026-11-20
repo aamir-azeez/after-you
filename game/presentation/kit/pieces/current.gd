@@ -17,6 +17,12 @@ const SPACING := 0.3
 const INSET := 0.18
 const LIVE := Color("eef6f2")
 const FAINT := Color("8fb3b4")
+## A mark's middle over its leg's floor or water (m): its top clears a pip's
+## ground shadow (SpiritVisual.SHADOW_TOP) where a leg crosses a floor. The
+## bright row stands LIVE_LIFT over the faint one, so the two rows never
+## share a face.
+const MARK_HEIGHT := 0.035
+const LIVE_LIFT := 0.012
 
 ## [{"control", "value", "live": Node3D, "faint": Node3D}] per leg.
 var _legs: Array = []
@@ -39,32 +45,34 @@ func _make(current_style: String, legs: Array, parent: Node3D) -> void:
 			var row := Node3D.new()
 			row.name = "Leg%d_%s" % [index, shade]
 			root.add_child(row)
-			_lay(row, leg.from, leg.to, LIVE if shade == "live" else FAINT)
+			_lay(row, leg.from, leg.to, LIVE if shade == "live" else FAINT, LIVE_LIFT if shade == "live" else 0.0)
 			entry[shade] = row
 		(entry.live as Node3D).visible = false
 		_legs.append(entry)
 
-## The marks of one leg along `from` to `to`, each turned along the leg.
-func _lay(row: Node3D, from: Vector3, to: Vector3, color: Color) -> void:
+## The marks of one leg along `from` to `to`, each turned along the leg: one
+## mesh a row (a mark is a few boxes), so a long current is one node and one
+## draw a row, however many marks it has.
+func _lay(row: Node3D, from: Vector3, to: Vector3, color: Color, lift: float) -> void:
 	var flat := Vector3(to.x - from.x, 0, to.z - from.z)
 	var length := flat.length()
 	if length < 0.01: return
 	var along := flat / length
 	var count := maxi(1, int(floor((length - 2.0 * INSET) / SPACING)) + 1)
-	var turn := atan2(along.x, along.z)
+	var turn := Basis(Vector3.UP, atan2(along.x, along.z))
+	var tool := SurfaceTool.new()
+	tool.begin(Mesh.PRIMITIVE_TRIANGLES)
 	for index in range(count):
 		var t := INSET + (length - 2.0 * INSET) * (float(index) / maxf(1.0, float(count - 1)) if count > 1 else 0.5)
-		var at := from + along * t + Vector3(0, 0.02, 0)
-		var mark := Node3D.new()
-		mark.position = at
-		mark.rotation.y = turn
-		row.add_child(mark)
+		var mark := Transform3D(turn, from + along * t + Vector3(0, MARK_HEIGHT + lift, 0))
 		if style == "chevrons":
 			for side: float in [-1.0, 1.0]:
-				var arm := Parts.box(Vector3(0.025, 0.012, 0.11), color, Vector3(side * 0.035, 0.004 * side, -0.03), mark)
-				arm.rotation.y = side * 0.7
+				var arm := Transform3D(Basis(Vector3.UP, side * 0.7), Vector3(side * 0.035, 0.004 * side, -0.03))
+				tool.append_from(Parts.Primitives.cached_box(Vector3(0.025, 0.012, 0.11)), 0, mark * arm)
 		else:
-			Parts.box(Vector3(0.035, 0.01, 0.16), color, Vector3.ZERO, mark)
+			tool.append_from(Parts.Primitives.cached_box(Vector3(0.035, 0.01, 0.16)), 0, mark)
+	var marks := Parts.Primitives.mesh_node(tool.commit(), Parts.Primitives.shared_material(color), Vector3.ZERO, row)
+	marks.name = "Marks"
 
 ## Each leg bright while its control shows its value, faint otherwise.
 func set_controls(controls: Dictionary) -> void:
