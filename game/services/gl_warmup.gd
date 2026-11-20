@@ -24,6 +24,7 @@ extends Node
 ##   save or replay reads it. tests/test_gl_warmup_coverage.gd fails when a
 ##   chapter draws a key missing here.
 const GraphicsPolicy = preload("res://services/graphics_policy.gd")
+const SpaceBackdrop = preload("res://presentation/kit/space_backdrop.gd")
 const LabelBubble = preload("res://presentation/kit/label_bubble.gd")
 const SpiritFace = preload("res://presentation/spirit_face.gd")
 ## A pip's face and torso with the Tide body cosmetic (presentation/pip_wear/tide.gd).
@@ -288,11 +289,7 @@ func _open() -> void:
 	add_child(_view)
 	# The chapters' environment and lights (island_world._ready, kit/look.gd).
 	var environment := WorldEnvironment.new()
-	var env := Environment.new()
-	env.background_mode = Environment.BG_COLOR
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
-	environment.environment = env
+	environment.environment = SpaceBackdrop.environment()
 	_view.add_child(environment)
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-52, -32, 0)
