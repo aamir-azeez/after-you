@@ -20,6 +20,9 @@ extends "res://presentation/journey_world.gd"
 const WaterBodies = preload("res://presentation/kit/water_bodies.gd")
 const WaterLocks = preload("res://presentation/kit/water_locks.gd")
 const Gorge = preload("res://presentation/kit/gorge.gd")
+const PropRules = preload("res://presentation/kit/prop_rules.gd")
+## How strongly a prop standing in the water rings it (a float rings at 1).
+const WATERLINE_RINGS := 0.6
 
 ## The water kit for the shown stage.
 var waters := WaterBodies.new(self)
@@ -215,6 +218,27 @@ func _dressed_prop(prop: Node3D) -> void:
 	super._dressed_prop(prop)
 	var part := prop.get_node_or_null("Spin") as Node3D
 	if part != null and part.has_meta("spin"): _spinning.append(part)
+	_waterline(prop)
+
+## A dressing prop standing in the water (over a body, off every floor: a
+## pole down to the bed, a boat, a wreck) makes the water's rings where it
+## meets the surface, at whatever level the water stands, from its foot to its
+## top (WaterLook.ripple_from; the foam band round it comes with the edge
+## maps). Its "Waterline" marker sits halfway up that reach.
+func _waterline(prop: Node3D) -> void:
+	var spec: Dictionary = prop.get_meta("dressing_spec", {})
+	var at := Vector2(prop.position.x, prop.position.z)
+	if str(spec.get("kind", "")) in Props.HUNG + Props.GLOWS or waters.body_under(at * 100.0).is_empty(): return
+	for island: Dictionary in current_level.get("islands", []):
+		if PropRules.rect(island.rect_cm).grow(PropRules.LIP).has_point(at): return
+	var base := prop.position.y + (prop.get_parent() as Node3D).position.y if prop.get_parent() != terrain else prop.position.y
+	var low := base - float(spec.get("wade", 0)) / 100.0
+	var high := base + float(Props.extent(spec).height)
+	var marker := Node3D.new()
+	marker.name = "Waterline"
+	prop.add_child(marker)
+	marker.global_position = terrain.to_global(Vector3(at.x, (low + high) * 0.5, at.y))
+	waters.look.ripple_from(marker, WATERLINE_RINGS, (high - low) * 0.5, true)
 
 ## The water and the floods move with the snapshot, so they stay whole.
 func _static_keep() -> Array:

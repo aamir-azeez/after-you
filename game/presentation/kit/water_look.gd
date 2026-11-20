@@ -51,6 +51,8 @@ const AROUND: Array[Vector2] = [Vector2.ZERO, Vector2(1, 0), Vector2(-1, 0), Vec
 const MESHES_PER_STEP := 400
 ## A round thing marks only its rim, this wide (metres).
 const RIM := 0.04
+## Ring sources by pass: what moves first, still props after (ripple_from).
+const STILL_LAST: Array[bool] = [false, true]
 ## Anything wider than this both ways is a floor or a whole-stage mesh, not
 ## something standing in the water.
 const WIDEST := 1.0
@@ -123,15 +125,17 @@ func start(block: Dictionary) -> void:
 
 ## Makes `node` a source of rings while it stands at the water (within
 ## Looks.RING_REACH of open water and `height` of its level), until the next
-## stage: the one hook boats and floats register with.
-func ripple_from(node: Node3D, strength: float = 1.0, height: float = Looks.FLOAT_HEIGHT) -> void:
-	_add_source(node, strength, height, false)
+## stage: the one hook boats and floats register with. A `still` source (a
+## prop standing in the water) rings only in a spot the pips and the floats
+## leave free, so the spots' cap never takes rings from what moves.
+func ripple_from(node: Node3D, strength: float = 1.0, height: float = Looks.FLOAT_HEIGHT, still: bool = false) -> void:
+	_add_source(node, strength, height, false, still)
 
-func _add_source(node: Node3D, strength: float, height: float, pip: bool) -> void:
+func _add_source(node: Node3D, strength: float, height: float, pip: bool, still: bool = false) -> void:
 	if not is_instance_valid(node): return
 	for source: Array in _sources:
 		if source[0] == node: return
-	_sources.append([node, strength, height, pip])
+	_sources.append([node, strength, height, pip, still])
 
 ## One body's surface: its material, and its seabed sheet when it shows one:
 ## over the body's rectangles, less `holes` (the basins standing in it).
@@ -291,21 +295,25 @@ func _find_spots(cap: int) -> void:
 			if actors[slot] is Node3D: _add_source(actors[slot], 0.9, 0.0, true)
 	_spot_count = 0
 	for index in range(8): _spots[index] = Vector4.ZERO
-	for source: Array in _sources:
-		if _spot_count >= cap: break
-		var node: Node3D = source[0]
-		if not is_instance_valid(node) or not node.visible or not node.is_inside_tree(): continue
-		var at: Vector3 = host.terrain.to_local(node.global_position)
-		var plan := Vector2(snappedf(at.x, 0.05), snappedf(at.z, 0.05))
-		if not (_pip_in_water(at) if source[3] else _at_water(plan, at.y, float(source[2]))): continue
-		var merged := false
-		for index in range(_spot_count):
-			if Vector2(_spots[index].x, _spots[index].y).distance_to(plan) < Looks.RING_MERGE: merged = true
-		if merged: continue
-		# Each spot keeps its own beat, from where it is.
-		var phase := fposmod(sin(plan.x * 12.9898 + plan.y * 78.233) * 43758.5453, 1.0)
-		_spots[_spot_count] = Vector4(plan.x, plan.y, phase, float(source[1]))
-		_spot_count += 1
+	for still: bool in STILL_LAST:
+		for source: Array in _sources:
+			if bool(source[4]) == still: _add_spot(source, cap)
+
+## The spot of one source standing at the water, unless the cap is reached
+## or a spot already near it rings for it.
+func _add_spot(source: Array, cap: int) -> void:
+	if _spot_count >= cap: return
+	var node: Node3D = source[0]
+	if not is_instance_valid(node) or not node.visible or not node.is_inside_tree(): return
+	var at: Vector3 = host.terrain.to_local(node.global_position)
+	var plan := Vector2(snappedf(at.x, 0.05), snappedf(at.z, 0.05))
+	if not (_pip_in_water(at) if source[3] else _at_water(plan, at.y, float(source[2]))): return
+	for index in range(_spot_count):
+		if Vector2(_spots[index].x, _spots[index].y).distance_to(plan) < Looks.RING_MERGE: return
+	# Each spot keeps its own beat, from where it is.
+	var phase := fposmod(sin(plan.x * 12.9898 + plan.y * 78.233) * 43758.5453, 1.0)
+	_spots[_spot_count] = Vector4(plan.x, plan.y, phase, float(source[1]))
+	_spot_count += 1
 
 ## Whether a point (terrain metres) at height y stands at the water of a body
 ## that shows rings: within `height` of its level and reach of open water.

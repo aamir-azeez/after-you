@@ -1,18 +1,19 @@
 extends RefCounted
 ## Fog Marsh's water (presentation/kit/water_bodies.gd): one still, shallow
 ## marsh under every boardwalk, just below the low floors. No wheel moves it
-## (the current wheel only steers what floats). Visual only. Plan positions in
-## cm, heights in metres.
+## (the current wheel only steers what floats). It reaches out past the
+## boardwalks to the landmarks standing in it (content/dressing/fog_marsh.gd).
+## Visual only. Plan positions in cm, heights in metres.
 
 const DATA := {
 	"seabed": -0.60,
 	"rate": 0.9,
 	"wall_top": 0.0,
 	"inset": 3,
-	"bounds": [-1300, -800, 12800, 800],
+	"bounds": [-1300, -1700, 12800, 1700],
 	"bodies": [
 		{"id": "marsh", "node": "MarshWater", "selector": "", "rest": "still",
-			"rects": [[-1300, -800, 12800, 800]],
+			"rects": [[-1300, -1700, 12800, 1700]],
 			"levels": {"still": -0.10}, "color": Color(0.33, 0.47, 0.44, 0.86)},
 	],
 	"marks": {"still": Color("5b6248")},

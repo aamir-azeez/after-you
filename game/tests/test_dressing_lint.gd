@@ -91,6 +91,7 @@ func _run() -> void:
 		for stage_id: String in _stage_ids(key):
 			_lint(key, stage_id, _stage_view(key, stage_id), data)
 		if key != LIGHTHOUSE: _check_water_dressing(key, data)
+	_check_extents()
 	_check_built_worlds()
 	_check_coplanar_worlds()
 	_check_world_text_kit()
@@ -161,6 +162,37 @@ func _known(spec: Dictionary) -> bool:
 	holder.free()
 	return known
 
+## Every kind a dressing stands somewhere (one spot, not a line, a bank or
+## a light) built at size 1: its meshes lie inside its kit extent
+## (Props.extent), no deeper than its base, to within PropRules.CUT, so the placer and the settling
+## judge a model as big as it is, however it is remodelled.
+func _check_extents() -> void:
+	var kinds: Dictionary = {}
+	for key: String in Catalog.keys():
+		var data := Catalog.for_key(key)
+		for stage_id: String in _stage_ids(key):
+			for spec: Dictionary in Props.expand(Catalog.stage_props(data, stage_id)):
+				if spec.has("at") and str(spec.kind) not in ["bank", "waterfall", "rug", "path"] + Props.GLOWS + Props.HUNG: kinds[str(spec.kind)] = true
+	var holder := Node3D.new()
+	root.add_child(holder)
+	for kind: String in kinds:
+		var spec := {"kind": kind, "at": [0, 0]}
+		var prop := Props.build(spec, holder, 0.0, false)
+		var extent := Props.extent(spec)
+		var reach: Rect2 = (extent.rect as Rect2).grow(PropRules.CUT)
+		for mesh: MeshInstance3D in prop.find_children("*", "MeshInstance3D", true, false):
+			var placed := Transform3D.IDENTITY
+			var node: Node = mesh
+			while node != holder:
+				placed = (node as Node3D).transform * placed
+				node = node.get_parent()
+			var box: AABB = placed * mesh.mesh.get_aabb()
+			var flat := Rect2(box.position.x, box.position.z, box.size.x, box.size.z)
+			_check(reach.encloses(flat), "A %s's meshes lie inside its kit extent (kit/props.gd extent): %s reaches %s" % [kind, mesh.name, flat])
+			_check(box.position.y >= float(extent.base) - PropRules.CUT, "A %s's meshes reach no deeper than its kit extent's base (kit/props.gd BELOW): %s reaches %.2f m" % [kind, mesh.name, box.position.y])
+		prop.free()
+	holder.free()
+
 ## Builds each dressed world and proves the scenery has no physics.
 func _check_built_worlds() -> void:
 	for key: String in Catalog.keys():
@@ -170,8 +202,8 @@ func _check_built_worlds() -> void:
 			var dressed: Array = world.terrain.find_children("*", "Node3D", true, false).filter(func(node: Node) -> bool: return node.has_meta("dressing_kind"))
 			var expected := Props.expand(Catalog.stage_props(Catalog.for_key(key), stage_id)).size()
 			_check(dressed.size() == expected, "Every dressing prop is built: %s %s (%d of %d)" % [key, stage_id, dressed.size(), expected])
-			for line: String in unsupported_dressing(world, _stage_view(key, stage_id)):
-				_check(false, "Dressing rests on no floor, crossing or bank in %s %s: %s" % [key, stage_id, line])
+			for line: String in dressing_faults(world, _stage_view(key, stage_id)):
+				_check(false, "Dressing floats or cuts in %s %s: %s" % [key, stage_id, line])
 			var bodies: Array = world.terrain.find_children("*", "CollisionObject3D", true, false) + world.terrain.find_children("*", "CollisionShape3D", true, false)
 			_check(bodies.is_empty(), "Dressing adds no collision: %s %s" % [key, stage_id])
 			# Fading every floor and restoring it must never reach a shared material.
@@ -401,52 +433,186 @@ static func shadow_pairs(world: Node3D, view: Dictionary, gap: float) -> Array[S
 			found.append("spirit shadow at %.4f on %s and %s (%.1f mm apart, needs %.1f, overlap %.0f cm2)" % [shadow, support.name, _path(face.node, world), absf(float(face.at) - shadow) * 1000.0, gap * 1000.0, overlap * 10000.0])
 	return found
 
-## Every built dressing prop that rests on nothing, measured from the built
-## world (kit/prop_rules.gd grounds(), foot_points()): its base where it was
-## built and its foot moved to where it stands, against the stage's floors and
-## crossings and every built bank's meshes. A bank itself must touch its floor
-## or a bank that does. One line each.
-static func unsupported_dressing(world: Node3D, view: Dictionary) -> Array[String]:
+## Dressing that floats or cuts into the stage, measured from the built world,
+## one line each. Every dressing prop either rests on ground or stands in
+## water reaching its bed with a waterline:
+##  - Ground is the top of every shown opaque mesh that is not dressing (a
+##    floor, its lip, a deck, a quay, a foreshore) and of every bank. Each
+##    point under a prop's foot (its lowest meshes, where it meets the ground)
+##    lies on one, the prop's base at most REST over its top and at most PropRules.SUNK
+##    under it. A bank itself touches a floor or a bank that does.
+##  - Over a body of water a point passes when the prop reaches the water's
+##    bed (its lowest mesh at most PropRules.BED_GRACE over it; a boat floats) and
+##    makes the water's rings (WaterLook.ripple_from: its waterline, with the
+##    foam every mesh crossing a level gets), so at every level, low tide too.
+##  - No mesh of a prop cuts into a walking space (the floor's slab or the
+##    room a spirit walks in), a control's place, a wall that rises past its
+##    base, or another prop, by more than PropRules.CUT across, along and in height.
+static func dressing_faults(world: Node3D, view: Dictionary) -> Array[String]:
 	var to_local: Transform3D = world.terrain.global_transform.affine_inverse()
 	var props: Array = world.terrain.find_children("*", "Node3D", true, false).filter(func(node: Node) -> bool: return node.has_meta("dressing_kind") and node.has_meta("dressing_spec"))
-	var banks: Array = []
+	var owner_of := {}
 	for node: Node3D in props:
-		if str(node.get_meta("dressing_kind")) != "bank": continue
-		var box := AABB()
-		var first := true
-		for mesh: MeshInstance3D in node.find_children("*", "MeshInstance3D", true, false):
-			var part: AABB = (to_local * mesh.global_transform) * mesh.mesh.get_aabb()
-			box = part if first else box.merge(part)
-			first = false
-		if not first: banks.append({"rect": Rect2(box.position.x, box.position.z, box.size.x, box.size.z), "top": box.end.y, "bottom": box.position.y, "surface": str((node.get_meta("dressing_spec") as Dictionary).get("surface", ""))})
+		for mesh: Node in node.find_children("*", "MeshInstance3D", true, false): owner_of[mesh] = node
+	var waters: Variant = world.get("waters")
+	var rings: Array = []
+	if waters != null:
+		for source: Array in waters.look._sources: rings.append(source[0])
+	# Every shown opaque mesh as a box: ground tops, walls, and each prop's own.
+	var grounds: Array = []
+	var walls: Array = []
+	var parts := {}
+	var skip: Array = world.actors.values() if "actors" in world else []
+	for node: Node in world.terrain.find_children("*", "MeshInstance3D", true, false):
+		var mesh := node as MeshInstance3D
+		if mesh.mesh == null or not mesh.is_visible_in_tree() or _look(mesh) == "" or _under_any(mesh, skip): continue
+		var shape := _box_of(mesh, to_local)
+		var prop: Node3D = owner_of.get(mesh)
+		if prop == null:
+			grounds.append(shape)
+			if mesh.mesh is BoxMesh: walls.append(shape)
+			continue
+		if str(prop.get_meta("dressing_kind")) == "bank": grounds.append(shape.merged({"bank": prop}))
+		if not parts.has(prop): parts[prop] = []
+		parts[prop].append(shape)
 	var found: Array[String] = []
+	found.append_array(_loose_banks(props, grounds, view))
+	var spaces := PropRules.walkable(view)
+	var places := PropRules.places(view, PropRules.heights(view))
 	var floors := PropRules.grounds(view)
-	# Banks touching a floor first, then banks touching those.
+	for prop: Node3D in props:
+		var spec: Dictionary = prop.get_meta("dressing_spec")
+		var kind := str(spec.get("kind", ""))
+		var shapes: Array = parts.get(prop, [])
+		if kind == "bank" or shapes.is_empty() or kind in Props.HUNG + Props.GLOWS + Props.FIXTURES or bool(spec.get("wall", false)): continue
+		var label := "%s at %s" % [kind, spec.get("at", [spec.get("from", ""), spec.get("to", "")])]
+		var low := INF
+		for shape: Dictionary in shapes: low = minf(low, float(shape.low))
+		var wading := rings.any(func(source: Node) -> bool: return is_instance_valid(source) and (source == prop or prop.is_ancestor_of(source)))
+		# Where it meets the ground: the meshes whose foot is its lowest.
+		var off: Array = []
+		var wet := false
+		for shape: Dictionary in shapes:
+			if float(shape.low) > low + FOOT_BAND: continue
+			for point: Vector2 in shape.foot:
+				# Over open water only what stands above its highest level is ground.
+				var body: String = "" if waters == null or _on_floor(point, floors) else str(waters.body_under(point * 100.0))
+				var dry := -INF if body.is_empty() else _highest(waters, body)
+				if grounds.any(func(ground: Dictionary) -> bool: return ground.get("bank") != prop and float(ground.high) >= dry and low <= float(ground.high) + PropRules.REST and low >= float(ground.high) - PropRules.SUNK and _bounds(ground.outline).grow(PropRules.EDGE_GRACE).has_point(point) and (_bounds(ground.outline).has_point(point) or Geometry2D.is_point_in_polygon(point, ground.outline))):
+					continue
+				if not body.is_empty():
+					wet = true
+					if wading and (kind in Props.FLOATS or low <= float(waters.bed_at(point * 100.0)) + PropRules.BED_GRACE): continue
+				off.append(point)
+		if not off.is_empty():
+			found.append("%s floats: %s (%d foot points off, first at %.2f, %.2f; foot at %.2f m)" % [label, "stands in water short of its bed or with no waterline" if wet else "rests on nothing", off.size(), off[0].x, off[0].y, low])
+		if bool(Props.extent(spec).flat): continue
+		# What it cuts into.
+		var cuts: Dictionary = {}
+		for whole: Dictionary in shapes:
+			var shape := whole.merged({"outline": whole.round}, true)
+			for space: Dictionary in spaces:
+				var room := {"outline": _corners((space.rect as Rect2).grow(-PropRules.EDGE_GRACE)), "low": float(space.y) - SLAB, "high": float(space.y) + float(space.rise) + PropRules.SPIRIT}
+				if _cuts(shape, room): cuts["walking space " + str(space.name)] = true
+			for place: Dictionary in places:
+				var room := {"outline": _corners(place.rect), "low": float(place.y), "high": float(place.y) + PropRules.SPIRIT}
+				if _cuts(shape, room): cuts[str(place.name)] = true
+			for wall: Dictionary in walls:
+				# The ground it stands on or sunk in is not a wall, nor is what hangs
+				# in the air (bunting): a wall rises from about its ground.
+				if float(wall.high) <= low + PropRules.SUNK + 0.001 or float(wall.low) > low + WALL_FOOT: continue
+				if _cuts(shape, wall): cuts["wall %s (%s, %.2f to %.2f m)" % [wall.name, _bounds(wall.outline), wall.low, wall.high]] = true
+			for other: Node3D in parts:
+				if other == prop or str(other.get_meta("dressing_kind")) == "bank" or bool(Props.extent(other.get_meta("dressing_spec")).flat): continue
+				for piece: Dictionary in parts[other]:
+					if _cuts(shape, piece.merged({"outline": piece.round}, true)):
+						var theirs: Dictionary = other.get_meta("dressing_spec")
+						cuts["%s at %s" % [theirs.get("kind", "?"), theirs.get("at", theirs.get("from", ""))]] = true
+		for what: String in cuts: found.append("%s cuts into %s" % [label, what])
+	return found
+
+## A prop's foot: its meshes whose bottom is this near its lowest point.
+const FOOT_BAND := 0.03
+## A wall rises from no higher than this over a prop's foot (metres).
+const WALL_FOOT := 0.3
+## A walking space's slab under its floor, which nothing cuts.
+const SLAB := 0.25
+
+## A mesh as {outline (its box's corners on the ground, terrain space), low,
+## high, name}.
+static func _box_of(mesh: MeshInstance3D, to_local: Transform3D) -> Dictionary:
+	var placed: Transform3D = to_local * mesh.global_transform
+	var aabb := mesh.mesh.get_aabb()
+	var box: AABB = placed * aabb
+	var corners := PackedVector2Array()
+	for index in range(8):
+		var corner: Vector3 = placed * aabb.get_endpoint(index)
+		corners.append(Vector2(corner.x, corner.z))
+	var outline := Geometry2D.convex_hull(corners)
+	if outline.size() > 1 and outline[0] == outline[outline.size() - 1]: outline.remove_at(outline.size() - 1)
+	# Where it meets the ground: points over its bottom face, inside the ellipse
+	# its box holds (a round foot is no wider than itself), a grace in.
+	var foot := PackedVector2Array()
+	var middle := aabb.get_center()
+	var reach := Vector2(maxf(aabb.size.x * 0.5 - PropRules.EDGE_GRACE * 2.0, 0.0), maxf(aabb.size.z * 0.5 - PropRules.EDGE_GRACE * 2.0, 0.0))
+	for i in range(5):
+		for j in range(5):
+			var u := float(i) / 2.0 - 1.0
+			var v := float(j) / 2.0 - 1.0
+			if u * u + v * v > 1.0001: continue
+			var point: Vector3 = placed * Vector3(middle.x + u * reach.x, aabb.position.y, middle.z + v * reach.y)
+			foot.append(Vector2(point.x, point.z))
+	# Its body seen from above as the ellipse its box holds, eight-sided: a
+	# prop's mesh is mostly round, and a turned box's corners are empty air.
+	var round := PackedVector2Array()
+	for index in range(8):
+		var angle := TAU * float(index) / 8.0
+		var point: Vector3 = placed * Vector3(middle.x + cos(angle) * aabb.size.x * 0.5, middle.y, middle.z + sin(angle) * aabb.size.z * 0.5)
+		round.append(Vector2(point.x, point.z))
+	return {"outline": outline, "round": round, "foot": foot, "low": box.position.y, "high": box.end.y, "name": str(mesh.get_parent().name) + "/" + str(mesh.name)}
+
+## A point on a floor or a crossing of the stage (its lip too): never open water.
+static func _on_floor(point: Vector2, floors: Array) -> bool:
+	return floors.any(func(ground: Dictionary) -> bool: return (ground.rect as Rect2).has_point(point))
+
+## The highest a body of water ever stands (metres).
+static func _highest(waters: Variant, body: String) -> float:
+	var top := -INF
+	for level: Variant in (waters.levels_of(body) as Dictionary).values(): top = maxf(top, float(level))
+	return top
+
+## Two boxes share more than PropRules.CUT across, along and in height.
+static func _cuts(one: Dictionary, two: Dictionary) -> bool:
+	if minf(float(one.high), float(two.high)) - maxf(float(one.low), float(two.low)) <= PropRules.CUT: return false
+	if not _bounds(one.outline).intersects(_bounds(two.outline)): return false
+	if (one.outline as PackedVector2Array).size() < 3 or (two.outline as PackedVector2Array).size() < 3: return false
+	for shared: PackedVector2Array in Geometry2D.intersect_polygons(one.outline, two.outline):
+		var area := _bounds(shared)
+		if area.size.x > PropRules.CUT and area.size.y > PropRules.CUT: return true
+	return false
+
+## Banks that touch no floor (stage floor or ground that is not dressing)
+## nor a bank that does.
+static func _loose_banks(props: Array, grounds: Array, view: Dictionary) -> Array[String]:
+	var floors: Array = PropRules.grounds(view).map(func(ground: Dictionary) -> Dictionary: return {"outline": _corners(ground.rect), "low": float(ground.top) - PropRules.SUNK, "high": ground.top})
+	floors.append_array(grounds.filter(func(ground: Dictionary) -> bool: return not ground.has("bank")))
+	var loose: Array = props.filter(func(node: Node3D) -> bool: return str(node.get_meta("dressing_kind")) == "bank")
 	var held: Array = []
-	var loose: Array = banks.duplicate()
 	var grew := true
 	while grew:
 		grew = false
-		for bank: Dictionary in loose.duplicate():
-			var inner := (bank.rect as Rect2).grow(-0.005)
-			if (floors + held).any(func(ground: Dictionary) -> bool: return (ground.rect as Rect2).grow(PropRules.EDGE_GRACE).intersects(inner.grow(0.01)) and float(ground.top) >= float(bank.bottom) and float(ground.bottom) <= float(bank.top)):
+		for bank: Node3D in loose.duplicate():
+			var mine: Array = grounds.filter(func(ground: Dictionary) -> bool: return ground.get("bank") == bank)
+			if mine.is_empty(): continue
+			var touches := func(ground: Dictionary) -> bool:
+				return mine.any(func(part: Dictionary) -> bool: return float(ground.high) >= float(part.low) and float(ground.low) <= float(part.high) and _bounds(ground.outline).grow(PropRules.EDGE_GRACE).intersects(_bounds(part.outline)))
+			var held_parts: Array = grounds.filter(func(ground: Dictionary) -> bool: return held.has(ground.get("bank")))
+			if floors.any(touches) or held_parts.any(touches):
 				held.append(bank)
 				loose.erase(bank)
 				grew = true
-	for bank: Dictionary in loose: found.append("bank over %s touches no floor" % bank.rect)
-	var grounds := PropRules.grounds(view, banks)
-	for node: Node3D in props:
-		var spec: Dictionary = node.get_meta("dressing_spec")
-		var placed: Transform3D = to_local * node.global_transform
-		var moved := spec.duplicate()
-		if spec.has("at"): moved["at"] = [0, 0]
-		var points := PropRules.foot_points(moved)
-		if points.is_empty(): continue
-		var shift := Vector2(placed.origin.x, placed.origin.z)
-		for index in range(points.size()): points[index] += shift
-		var off := PropRules.unsupported(points, placed.origin.y, grounds)
-		if off.is_empty(): continue
-		found.append("%s at %s, base %.2f m: %d of %d foot points off (first at %.2f, %.2f)" % [spec.get("kind", "?"), spec.get("at", [spec.get("from", ""), spec.get("to", "")]), placed.origin.y, off.size(), points.size(), off[0].x, off[0].y])
+	var found: Array[String] = []
+	for bank: Node3D in loose: found.append("bank over %s floats: touches no floor" % [(bank.get_meta("dressing_spec") as Dictionary).get("rect", "")])
 	return found
 
 ## Every built mesh standing where a pip must stand on this stage (the

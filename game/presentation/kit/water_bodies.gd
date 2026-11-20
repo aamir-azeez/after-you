@@ -127,11 +127,26 @@ func bed(id: String) -> float:
 ## The floor under plan point `at` (cm): the bed of the first body whose
 ## rects hold it, else the seabed.
 func bed_at(at: Vector2) -> float:
-	for body: Dictionary in water.get("bodies", []):
+	return bed_in(water, at)
+
+## The body whose rects hold plan point `at` (cm), or "" over no water.
+func body_under(at: Vector2) -> String:
+	return body_in(water, at)
+
+## bed_at() of a water block (the scenery placer reads it before any world).
+static func bed_in(block: Dictionary, at: Vector2) -> float:
+	for body: Dictionary in block.get("bodies", []):
 		if not body.has("bed"): continue
 		for r: Array in body.get("rects", []):
 			if at.x >= float(r[0]) and at.x <= float(r[2]) and at.y >= float(r[1]) and at.y <= float(r[3]): return float(body.bed)
-	return seabed()
+	return float(block.get("seabed", 0.0))
+
+## body_under() of a water block.
+static func body_in(block: Dictionary, at: Vector2) -> String:
+	for body: Dictionary in block.get("bodies", []):
+		for r: Array in body.get("rects", []):
+			if at.x >= float(r[0]) and at.x <= float(r[2]) and at.y >= float(r[1]) and at.y <= float(r[3]): return str(body.id)
+	return ""
 
 func wall_top() -> float:
 	return float(water.get("wall_top", 0.0))

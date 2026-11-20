@@ -29,8 +29,11 @@ extends RefCounted
 ## picked style's kind here, once per key, so every reader (the worlds, the
 ## lint) sees plain kit specs. A prop with "floor" and "edge" is placed from
 ## the floors of each stage (placement.gd), so a placed dressing comes back
-## with its props listed stage by stage. A file with no theme, picks or slot
-## props is returned exactly as written.
+## with its props listed stage by stage. Every dressing's props are then
+## settled on each stage's floors (Placement.settle(): nothing floats, nothing
+## stands in another), the first time a reader asks for the key. Apart from
+## its props, a file with no theme, picks or slot props is returned exactly as
+## written.
 ## tests/test_dressing_lint.gd checks every prop against every route, pad,
 ## lever, goal, start and drop, including the camera's view of them.
 
@@ -67,7 +70,8 @@ static func _files() -> Dictionary:
 static func _resolve_files() -> Dictionary:
 	var result: Dictionary = {}
 	for key: String in FILES:
-		if Placement.used(FILES[key].DATA): continue
+		# Props are settled on each stage's floors, the first time a reader asks.
+		if FILES[key].DATA.has("props"): continue
 		var data: Dictionary = resolve(FILES[key].DATA)
 		# A mixed dressing is new data: locked like the const files it stands for.
 		if not data.is_read_only(): data.make_read_only()
@@ -105,7 +109,12 @@ static func stage_props(data: Dictionary, stage_id: String) -> Array:
 ## Props placed by a floor's edge need the chapter `key` whose floors they
 ## stand by; without it they are left out.
 static func resolve(data: Dictionary, key: String = "") -> Dictionary:
-	if not mixes(data): return data
+	var settles := not key.is_empty() and data.has("props")
+	if not mixes(data):
+		if not settles: return data
+		var plain: Dictionary = data.duplicate()
+		plain["props"] = _settled(data.props, key)
+		return plain
 	var theme: Dictionary = Themes.THEMES.get(str(data.get("theme", "")), {})
 	var result: Dictionary = {}
 	for field: String in theme:
@@ -130,7 +139,7 @@ static func resolve(data: Dictionary, key: String = "") -> Dictionary:
 			var made := _resolve_spec(spec, picks)
 			if not made.is_empty(): specs.append(made)
 		props[stage] = specs
-	if data.has("props"): result["props"] = props
+	if data.has("props"): result["props"] = _settled(props, key) if settles else props
 	return result
 
 ## The theme's edging with the dressing's own over it, edge by edge.
@@ -155,13 +164,28 @@ static func _placed(data: Dictionary, key: String, picks: Dictionary, rules: Dic
 				if not made.is_empty(): plain.append(made)
 			elif spec.has("slot"):
 				var styled := _styled(spec, picks)
-				if not styled.is_empty(): edged.append(styled)
+				if not styled.is_empty(): edged.append(styled.merged({"slot": spec.slot}))
 			else: edged.append(spec.duplicate(true))
 		for spec: Dictionary in Placement.grown(data.get("edged", {}), rules, view):
 			var styled := _styled(spec, picks)
-			if not styled.is_empty(): edged.append(styled)
+			if not styled.is_empty(): edged.append(styled.merged({"slot": spec.slot}))
 		result[stage_id] = Placement.lay(plain, edged, view)
 	return _shared(result)
+
+## {stage id: specs}: each stage's props (rows laid out) settled on its own
+## floors (Placement.settle()), common ones under "*" (_shared).
+static func _settled(props: Dictionary, key: String) -> Dictionary:
+	var level := Placement.definition(key)
+	var stages := Placement.stage_ids(key, level)
+	if stages.is_empty(): return props
+	var result: Dictionary = {}
+	for stage_id: String in stages:
+		result[stage_id] = Placement.settle(stage_props({"props": props}, stage_id), Placement.stage_view(key, stage_id, level))
+	var settled := _shared(result)
+	# A stage the level does not have stays as written (the lint names it).
+	for stage: String in props:
+		if stage != "*" and stage not in stages: settled[stage] = props[stage]
+	return settled
 
 ## Props every stage has in common go under "*" (a world that dresses once
 ## for its whole chapter reads only those); each stage keeps the rest.
