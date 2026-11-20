@@ -42,6 +42,9 @@ extends SceneTree
 ##    each pip a part only it can reach: floor behind a crossing the other
 ##    opens, or a pad away from the crossing it holds, so the pip on it cannot
 ##    walk that crossing too. Published chapters are not on open turns.
+##    On the shared ball (rules 17) a ball pad holds only where a pip that
+##    works could push the ball, and a ball home stage needs the ball rolled
+##    to the cradle's floor with both pips there (level_graph.gd _reach_balls).
 ##  - The new pieces (rules 16, core/physical/pieces_rules.gd): a chapter
 ##    using any (platforms, sinking stones, a one way stair, a "not" gate)
 ##    pins 16, and every piece is sound (PiecesRules.problems: stops of one
@@ -322,6 +325,7 @@ func _run() -> void:
 		_check(_found.has(id), "Known failure still fails, or comes off the list: %s (%s)" % [id, LAID_OUT_WHY])
 	_check(_owned_seen > 50, "The ownership rule meets the published one-pip spots, so it can fail (%d)" % _owned_seen)
 	_needs_both_rule()
+	_ball_rule()
 	_pieces_rule()
 	print("LEVEL CHECKER: %d chapters, skipped %s" % [covered, skipped])
 	print("LEVEL CHECKER: %d checks, %d failures" % [checks, failures])
@@ -556,7 +560,7 @@ static func solo_finish(graph: RefCounted, stage: Dictionary, checkpoint: Dictio
 	var still := "p1" if live == "p0" else "p0"
 	var goal: Dictionary = stage.get("goal", {})
 	if goal.is_empty(): return false
-	if not solo.is_empty() and not graph.ridden(stage, checkpoint.get("players", {}).get(still, {})).any(func(spot: Dictionary) -> bool: return _starts_at(spot, goal)): return false
+	if not solo.is_empty() and not graph.ridden(stage, checkpoint.get("players", {}).get(still, {})).any(func(spot: Dictionary) -> bool: return _starts_at(spot, goal, _on_goal_floor(graph, stage))): return false
 	var found: Dictionary = graph.reach(stage, checkpoint, journey, still)
 	return _goal_holds(graph, stage, checkpoint, journey, found, [live])
 
@@ -600,13 +604,22 @@ static func _goal_holds(graph: RefCounted, stage: Dictionary, checkpoint: Dictio
 	for slot: String in slots:
 		if not found.floors[slot].has(str(goal.get("surface_id", ""))): return false
 		if ring and not graph.can_stand_at(goal, slot, found.open, journey): return false
+	# The shared ball: a ball home goal also needs its ball rolled to the cradle's floor.
+	if _on_goal_floor(graph, stage) and not graph.ball_reaches_goal(stage, found.settable): return false
 	var when: Dictionary = stage.get("goal_policy", {}).get("when", {})
 	# Rules 16: an item carried at the goal is carried on the goal's floor (level_graph.gd with_items).
 	return when.is_empty() or graph.gate_can_hold(graph.with_items({"when": when, "surface_id": str(goal.get("surface_id", ""))}, found.settable), stage, found.settable, checkpoint.get("mechanisms", {}), journey, found.floors)
 
-## Whether a pip's start (a checkpoint player) stands at `goal`: its floor, within its radius.
-static func _starts_at(player: Dictionary, goal: Dictionary) -> bool:
+## Whether a stage ends with both pips on its goal's floor rather than by it:
+## a ball home goal under the shared ball (runtime.gd _at_goal).
+static func _on_goal_floor(graph: RefCounted, stage: Dictionary) -> bool:
+	return graph.shared_ball and str(stage.get("goal_policy", {}).get("kind", "")) == "ball_home"
+
+## Whether a pip's start (a checkpoint player) stands at `goal`: its floor,
+## within its radius (anywhere on it when `floor`).
+static func _starts_at(player: Dictionary, goal: Dictionary, floor: bool = false) -> bool:
 	if player.is_empty() or str(player.get("surface_id", "")) != str(goal.get("surface_id", "")): return false
+	if floor: return true
 	return Vector2i(int(player.x), int(player.z)).distance_squared_to(Vector2i(int(goal.position_cm[0]), int(goal.position_cm[1]))) <= int(goal.get("radius_cm", 28)) ** 2
 
 ## On open controls, a crossing the level keeps owned must be needed: with it
@@ -671,6 +684,29 @@ func _needs_both_rule() -> void:
 	var lights := _graph(returns.view)
 	_check(not presses_alone(lights, returns.view, returns.checkpoint, true, "p0") and presses_alone(lights, beside, returns.checkpoint, true, "p0"), "A pad holds a crossing for the pip on it only when it stands beside that crossing")
 	_check(OpenTurns.cap_valid({"turn_cap": 10}) and OpenTurns.cap_valid({"turn_cap": 11}) and not OpenTurns.cap_valid({"turn_cap": 22}) and not OpenTurns.cap_valid({"turn_cap": 1}) and OpenTurns.cap_valid({}), "A cap is a whole number from 2 to 20; a stage with none gets 10")
+
+## The shared ball (rules 17, core/physical/runtime.gd _shared_ball): a ball
+## pad holds only where some pip that works could push the ball, and a ball
+## home goal needs its ball rolled to the cradle's floor (level_graph.gd
+## _reach_balls), so each probe can fail on a ball stage.
+func _ball_rule() -> void:
+	# Rolling Home@1 on the shared ball as it stood: one pip rolls the ball onto
+	# the shore pad, pulls the lever and walks over, the other only following.
+	var older: Dictionary = OpenControls.open_crossings(OpenTurns.pin(Registry.definition("rolling-home@1").duplicate(true), {}), [])
+	older.access_zones = []
+	var friend: Dictionary = Stages.stages("rolling-home@1", older)[0]
+	_check(int(older.simulation_version) == OpenControls.SHARED_BALL_RULES_VERSION and presses_alone(_graph(friend.view), friend.view, friend.checkpoint, false, "p0"), "Rolling Home@1's first stage on the shared ball lets one pip roll the ball on and walk over while the other walks, so the both-pips probe sees the ball")
+	var weight: Dictionary = _stages_of("rolling-home@2")[0]
+	var graph := _graph(weight.view)
+	_check(not presses_alone(graph, weight.view, weight.checkpoint, false, "p0") and not presses_alone(graph, weight.view, weight.checkpoint, false, "p1"), "Rolling Home@2's first stage needs both pips: the ball crosses only while one holds the shore step")
+	# With the shore step gone nothing lowers the bridge the ball must cross to reach its pad.
+	var stepless: Dictionary = weight.view.duplicate(true)
+	stepless.gates = stepless.gates.filter(func(gate: Dictionary) -> bool: return str(gate.get("pad_id", "")).is_empty())
+	_check(solvable(graph, weight.view, weight.checkpoint, false) and not solvable(graph, stepless, weight.checkpoint, false), "A ball pad across a crossing nothing lowers never holds, so the ball probe can fail")
+	var home: Dictionary = _stages_of("rolling-home@2")[1]
+	var shut: Dictionary = home.view.duplicate(true)
+	shut.gates = shut.gates.filter(func(gate: Dictionary) -> bool: return str(gate.get("pad_id", "")).is_empty())
+	_check(solvable(_graph(home.view), home.view, home.checkpoint, false) and not solvable(_graph(home.view), shut, home.checkpoint, false), "Bring It Home is solvable, and with no far step its ball never gets home")
 
 # --- Props ----------------------------------------------------------------------
 

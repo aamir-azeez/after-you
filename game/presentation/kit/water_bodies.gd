@@ -564,6 +564,13 @@ func build_walls() -> void:
 func holds_water(wall: MeshInstance3D) -> void:
 	walls.append(wall.transform * wall.get_aabb())
 
+## Every wall built so far and the locks' stones (terrain space): what can
+## hide what stands behind it from the camera.
+func standing_walls() -> Array[AABB]:
+	var found: Array[AABB] = walls.duplicate()
+	if locks != null: found.append_array(locks.stones)
+	return found
+
 func _box(size: Vector3, color: Color, at: Vector3, parent: Node3D) -> MeshInstance3D:
 	return Primitives.mesh_node(Primitives.cached_box(size), Primitives.shared_material(color), at, parent)
 

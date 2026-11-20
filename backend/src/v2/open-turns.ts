@@ -159,6 +159,28 @@ export function openStageEnds(atGoal: (slot: Slot) => boolean, objective: boolea
   return objective && atGoal("p0") && atGoal("p1");
 }
 /**
+ * The shared ball (rules 17, chapter-types.ts sharedBall): why a closing checkpoint's balls break it, or "". Each is
+ * held by nobody and either free or fitted: fitted as it was before (a fitted ball never moves again), or into this
+ * stage's own cradle (a ball home goal), exactly at its centre. A ball home stage needs its ball in; the players'
+ * places are openStageEnds's. `onFloor` checks each ball's fields and that it rests on a floor it may (a crossing only
+ * while kept). Bounded by the definition's balls: no loop grows with a packet.
+ */
+export function openBallProblem(props: Record<string, unknown>, prior: Record<string, unknown>, balls: readonly { id: string }[],
+  stage: { goal: { position_cm: number[]; surface_id: string }; goal_policy: { kind: string; prop_id?: string; socket_id?: string } },
+  onFloor: (ball: unknown) => Record<string, unknown>): string {
+  for (const { id } of balls) {
+    const ball = onFloor(props[id]), before = prior[id] as Record<string, unknown> | undefined;
+    const home = stage.goal_policy.kind === "ball_home" && stage.goal_policy.prop_id === id, kept = before?.status === "fitted";
+    if (ball.holder_slot !== "") return "checkpoint_prop_mismatch";
+    if (kept) { if (canonicalJson(ball) !== canonicalJson(before)) return "checkpoint_prop_mismatch"; continue; }
+    if (home) {
+      if (ball.status !== "fitted" || ball.socket_id !== stage.goal_policy.socket_id || ball.surface_id !== stage.goal.surface_id ||
+        ball.x !== stage.goal.position_cm[0] || ball.z !== stage.goal.position_cm[1]) return "checkpoint_prop_mismatch";
+    } else if (ball.status !== "free" || ball.socket_id !== "") return "checkpoint_prop_mismatch";
+  }
+  return "";
+}
+/**
  * Open turns acceptance: a first turn never finishes the stage, and may end at any time, its own part done or not
  * (owner, 2026-11-16), so no turn of an open stage is asked for source_ready; a later turn either closes the stage
  * (completed, its goal holding) or passes without it. Older rules keep physicalAccepted, which asks it of every turn.

@@ -109,8 +109,7 @@ func _check_materials() -> void:
 	_check(b.material_override == a.material_override, "Two meshes of one look lit alike share one material")
 	world._glow(a, Color.WHITE, 0.0)
 	_check(not a.material_override.emission_enabled and not Primitives.is_shared(a.material_override) and b.material_override.emission_enabled, "Put out, a mesh takes its own copy; the glowing look stays lit for the rest")
-	var motes: Array = world.motes
-	_check(not Primitives.is_shared(motes[0].material_override) and motes.all(func(mote: MeshInstance3D) -> bool: return mote.material_override == motes[0].material_override), "The motes share one material of the world's own, which the look tints")
+	_check(world.environment.background_mode == Environment.BG_SKY and world.environment.sky.sky_material is ShaderMaterial, "The world's space backdrop is its sky, with a material of the world's own that the look tints")
 	_check(Primitives.changed_shared_looks().is_empty(), "Building and glowing changed no cached look: %s" % [Primitives.changed_shared_looks()])
 	_check(Primitives.rect_minus_hole([0, 0, 100, 100], []) == [[0, 0, 100, 100]], "No hole keeps the floor whole")
 	_check(Primitives.rect_minus_hole([0, 0, 100, 100], [40, 40, 60, 60]).size() == 4, "A hole leaves four floor pieces")
@@ -173,11 +172,12 @@ func _check_looks() -> void:
 	var env: Environment = (world.find_children("*", "WorldEnvironment", false, false)[0] as WorldEnvironment).environment
 	for name: String in Look.PRESETS:
 		var look := Look.preset(name)
-		for field: String in ["sky", "ambient", "ambient_energy", "sun", "sun_energy", "bounce", "bounce_energy", "mote"]:
+		for field: String in ["sky", "ambient", "ambient_energy", "sun", "sun_energy", "bounce", "bounce_energy", "stars"]:
 			_check(look.has(field), "Look %s defines %s" % [name, field])
 		# Applied twice, as a chapter load does after _ready: the gains never compound.
 		Look.apply(world, name)
 		Look.apply(world, name)
+		_check(env.sky.sky_material.get_shader_parameter(&"sky_color") == look.sky and env.sky.sky_material.get_shader_parameter(&"star_color") == look.stars, "Look %s colours the space backdrop" % name)
 		_check(not world.sun.shadow_enabled and is_equal_approx(world.sun.light_energy, look.sun_energy * Look.SUN_GAIN) and is_equal_approx(env.ambient_light_energy, look.ambient_energy * Look.AMBIENT_GAIN),
 			"Look %s lights the sun and ambient with the shared gains and no shadow pass" % name)
 		var bounce: DirectionalLight3D = world.find_children("*", "DirectionalLight3D", false, false).filter(func(light: DirectionalLight3D) -> bool: return light != world.sun)[0]
