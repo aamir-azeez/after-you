@@ -731,7 +731,8 @@ func _present_seats(state: Dictionary, immediate: bool) -> void:
 ## Every item of the level in its style (a pin by id, else the dressing's
 ## "carried_item" pick; a float nobody carries is a raft unless pinned), the
 ## stage's current legs, and the rungs that mark a crossing needing both
-## hands (core/physical/carried_items.gd): a carrier stops at a ladder.
+## hands (core/physical/carried_items.gd): a carrier stops at a ladder. A
+## rope bridge (kit/pieces/deck.gd) needs no rungs.
 func _build_items(stage: Dictionary) -> void:
 	var view: Dictionary = CooperativeCatalog.stage_definition(chapter_definition, str(stage.get("id", "")))
 	if view.get("items", []).is_empty(): return
@@ -751,7 +752,10 @@ func _build_items(stage: Dictionary) -> void:
 	if not legs.is_empty(): _current_piece = CurrentKit.build(_piece_style("current", str(view.current_legs[0].get("control_id", ""))), legs, terrain)
 	var hands := CarriedItems.hands_routes(view)
 	for route: Dictionary in view.get("bridges", []) + view.get("stairs", []):
-		if hands.has(str(route.id)): _ladder_rungs(route)
+		# A rope bridge's slats and hand ropes are its own cause; rungs that
+		# stay would draw over its gap while it is shut.
+		var rope: bool = new_pieces != null and view.get("bridges", []).has(route) and new_pieces.deck_style(str(route.id)) == "rope"
+		if hands.has(str(route.id)) and not rope: _ladder_rungs(route)
 	# A throw's mark is a cream ring where the thrower stands; its landing the
 	# seed landing's ring of ticks (kit/pieces/socket.gd).
 	for thrown: Dictionary in view.get("throws", []):
