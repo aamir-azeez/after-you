@@ -52,7 +52,7 @@ static func build(rect: Rect2, height: float, parent: Node3D) -> Node3D:
 		var t := float(step) / 7.0
 		points.append(Vector3(0, LIP - 0.12 - (LIP + 0.45) * t, edge + 0.1 + reach * sqrt(t)))
 		falling.append(1.0)
-	Props._falls_strip(tool, wide, points, falling)
+	Props._falls_strip(tool, wide, points, falling, [], 1.0)
 	Props._falls_foam(tool, Vector3(0, 0.04, 0.1), Vector2(wide * 0.5, deep * 0.4))
 	Props._falls_foam(tool, Vector3(0, -0.4, deep * 0.5 + 0.35), Vector2(wide * 0.5, 0.35))
 	var flow := MeshInstance3D.new()

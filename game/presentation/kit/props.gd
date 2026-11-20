@@ -766,17 +766,21 @@ static func _waterfall(root: Node3D, s: float, spec: Dictionary) -> void:
 
 ## Running water down `points` (one row each, `w` across), `falling` (0 flat,
 ## 1 falling) per row: UV.x across, UV.y metres along, UV2 width and length.
-static func _falls_strip(surface: SurfaceTool, w: float, points: Array, falling: Array) -> void:
+## `across` turns each row (a unit vector per row; along x without it), so a
+## tongue of water can twist as it falls. `sheet` 1 marks a sheet hanging free
+## of rock: clean ends and thicker water (falls_water.gdshader).
+static func _falls_strip(surface: SurfaceTool, w: float, points: Array, falling: Array, across: Array = [], sheet: float = 0.0) -> void:
 	var along: Array = [0.0]
 	for index in range(1, points.size()): along.append(float(along.back()) + (points[index] as Vector3).distance_to(points[index - 1]))
 	var length := float(along.back())
 	for index in range(points.size() - 1):
 		var corners := []
 		for row: int in [index, index + 1]:
+			var side: Vector3 = across[row] if row < across.size() else Vector3.RIGHT
 			for edge: float in [0.0, 1.0]:
-				corners.append([(points[row] as Vector3) + Vector3((edge - 0.5) * w, 0, 0), Vector2(edge, float(along[row])), float(falling[row])])
+				corners.append([(points[row] as Vector3) + side * ((edge - 0.5) * w), Vector2(edge, float(along[row])), float(falling[row])])
 		for corner: int in [0, 1, 3, 0, 3, 2]:
-			surface.set_color(Color(1.0, corners[corner][2], 0, 1))
+			surface.set_color(Color(1.0, corners[corner][2], sheet, 1))
 			surface.set_uv(corners[corner][1])
 			surface.set_uv2(Vector2(w, length))
 			surface.set_normal(Vector3.BACK)
