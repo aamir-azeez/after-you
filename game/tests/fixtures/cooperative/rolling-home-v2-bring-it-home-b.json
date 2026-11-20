@@ -1,0 +1,24 @@
+{
+	"catch_assistance": true,
+	"checkpoint_hash": "8965a5ed117d325ac65d004d6eaec73aa89ebbb718d6fb44c3721c92060aa155",
+	"completed": false,
+	"definition_hash": "f5852fc8095aded1df95e7aef067a2e095891f5ecd72a4d197a7e48ecd16abca",
+	"duration_ticks": 463,
+	"final_state_hash": "7e1d132bb3bedb279ffed9088f84d364e405de96acc7d83d19de714e9fcc8a1d",
+	"level_id": "rolling-home",
+	"level_version": 2,
+	"outcome": {
+		"objective_complete": false,
+		"source_ready": true
+	},
+	"packed": "AR9KnAACzgAEAJwCAM4iAJwCAM6gAZwACgBkngFkAAJLAAoAZAhkACQAnAIAtQqcAAgAnEZkAAgAnAIAtQhkACQAZAIAMgqcAALnAAgAZFRkAAIyAAoAnAhkACIAZHgAAAv3qQctU8VRrL74Qy/XFcEdqnj9t3oltnjPiBFrMOrVBE7axtuq1pekvOWM+dT2S0scYOlz/w2xmh/HSnePHAQHxU8TTVxnCutCNA/OxDwF8fbAfRmVd2gfCcx88fjWXy8dI5u7h7EVdIqj3j6I7xpiayn70XEN4jFbUiJL+GQbDx8btm8qzj+qf6Mn/ySep39kfJ77rTtyr9YiHi+SkwueGqFQNJQODEG26ok+f1Fvidp9JZfFF5Hn27V75vtueA==",
+	"player_slot": "p0",
+	"recording_hash": "7b07983cc9395f2e13932961cca6b2148cf87d53c91c1ea8a910dd811580d2a5",
+	"role": "b",
+	"schema_version": 6,
+	"simulation_version": 17,
+	"source_recording_hash": "a0e4b165013c059c1fde65e25031020a249debf02cd3a82e2b5c05011e8240a3",
+	"stage_id": "bring-it-home",
+	"stage_version": 1,
+	"tick_rate": 30
+}

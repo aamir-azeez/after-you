@@ -7,6 +7,7 @@ const Lighthouse = preload("res://presentation/lighthouse_world.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const Look = preload("res://presentation/kit/look.gd")
+const Backdrop = preload("res://presentation/kit/space_backdrop.gd")
 var checks := 0
 var failures := 0
 
@@ -21,6 +22,7 @@ func _check(ok: bool, message: String) -> void:
 
 func _run() -> void:
 	_policy()
+	_layouts()
 	_settings()
 	_frame_rate_migration()
 	var viewport := SubViewport.new()
@@ -33,8 +35,8 @@ func _run() -> void:
 		var world: Node3D = script.new()
 		viewport.add_child(world)
 		world.set_process(false)
-		var authored := _visible_motes(world)
-		_check(authored == (32 if name in ["island", Registry.RELAY, Registry.FIRST_STEPS] else 10), name + ": authored motes captured before policy")
+		var env: Environment = world.environment
+		_check(env.background_mode == Environment.BG_SKY and env.sky.sky_material.shader == Backdrop.SHADER, name + ": the space backdrop is the world's sky, behind everything")
 		var definition: Dictionary = {} if name in ["island", "lighthouse"] else Registry.definition(name)
 		var before := Canonical.digest(definition)
 		if not definition.is_empty(): world.load_level(definition)
@@ -49,22 +51,18 @@ func _run() -> void:
 			_check(viewport.scaling_3d_mode == Viewport.SCALING_3D_MODE_BILINEAR and viewport.size == Vector2i(1280, 720), "UI viewport size stays unchanged")
 			_check(viewport.msaa_3d == (Viewport.MSAA_2X if quality == "high" else Viewport.MSAA_DISABLED), name + ": only High enables 2x MSAA")
 			_check(not world.sun.shadow_enabled, name + ": no quality runs the sun's shadow pass")
-			_check(_visible_motes(world) == (ceili(authored * 0.25) if quality == "low" else authored), name + ": toggles restore exactly the authored mote count")
+			_check(Backdrop.detailed(env) == (quality != "low"), name + ": only Low thins the space backdrop, and toggles bring it back")
 			var flies: Array = world.get("_fireflies") if world.get("_fireflies") != null else []
 			_check(flies.all(func(fly: MeshInstance3D) -> bool: return fly.visible == (quality != "low")), name + ": fireflies show on every quality but Low")
 			_check(world.sun.light_energy == energy and world.sun.light_color == color, name + ": quality does not darken authored lighting")
 			_check(_fill_matches(world, quality), name + ": only Low trades the bounce light for a little more ambient")
 			_check(lanterns.all(func(light: OmniLight3D) -> bool: return light.visible == (quality != "low")), name + ": lantern light pools show on every quality but Low")
 		_check(Canonical.digest(definition) == before, name + ": graphics leave chapter data unchanged")
-		Policy.apply(world, {"graphics_quality": "low"})
-		var hidden: MeshInstance3D = world.motes[authored - 1]
-		var hidden_position := hidden.position
-		world._process(1.0 / 60.0)
-		_check(not hidden.visible and hidden.position == hidden_position, name + ": hidden motes do no animation work")
+		_backdrop_motion(world, name)
 		if not definition.is_empty():
 			world.show_stage(definition.stages[-1])
 			Policy.apply(world, {"graphics_quality": "high"})
-			_check(_visible_motes(world) == authored, name + ": another stage cannot grow the authored mote set")
+			_check(Backdrop.detailed(env), name + ": another stage keeps the backdrop's quality")
 		viewport.remove_child(world)
 		world.free()
 	_quality_before_load(viewport)
@@ -100,11 +98,35 @@ func _quality_before_load(viewport: SubViewport) -> void:
 		viewport.remove_child(world)
 		world.free()
 
-func _visible_motes(world: Node3D) -> int:
-	var count := 0
-	for mote: MeshInstance3D in world.motes:
-		if mote.visible: count += 1
-	return count
+## The backdrop runs on the world's time: Reduce motion holds it and hides the
+## shooting star, and a world with no camera or view is safe.
+func _backdrop_motion(world: Node3D, name: String) -> void:
+	var material: ShaderMaterial = world.environment.sky.sky_material
+	world.reduced_motion = true
+	world.advance_backdrop(0.5)
+	var held: Variant = material.get_shader_parameter(Backdrop.CLOCK)
+	world.advance_backdrop(0.5)
+	_check(material.get_shader_parameter(Backdrop.CLOCK) == held and material.get_shader_parameter(Backdrop.SHOOTING) == 0.0, name + ": Reduce motion holds the backdrop and hides the shooting star")
+	world.reduced_motion = false
+	world.advance_backdrop(0.25)
+	_check(is_equal_approx(float(material.get_shader_parameter(Backdrop.CLOCK)), float(held) + 0.25) and material.get_shader_parameter(Backdrop.SHOOTING) == 1.0, name + ": the backdrop moves by the world's time")
+	var key: String = world.backdrop_layout_key()
+	_check(key.get_slice("@", 0) == (Backdrop.HOME if name == "island" else "sleeping-lighthouse" if name == "lighthouse" else name.get_slice("@", 0)), name + ": the backdrop is laid out for this place, not " + key)
+	_check(is_equal_approx(float(material.get_shader_parameter(Backdrop.LAYOUT)), Backdrop.layout_seed(key)), name + ": the place's layout reaches the sky")
+	# The far layers sit in the world: a pan shifts them, zoom alone does not.
+	var camera: Camera3D = world.camera
+	var shift: Vector2 = material.get_shader_parameter(Backdrop.PARALLAX)
+	camera.size *= 2.0
+	world.advance_backdrop(0.0)
+	_check(material.get_shader_parameter(Backdrop.PARALLAX) == shift, name + ": zoom alone moves no layer of the backdrop")
+	camera.size *= 0.5
+	camera.global_position += camera.global_basis.x * 2.0
+	world.advance_backdrop(0.0)
+	var panned: Vector2 = material.get_shader_parameter(Backdrop.PARALLAX) - shift
+	_check(is_equal_approx(panned.x, 2.0 / Backdrop.PAN_SPAN) and is_zero_approx(panned.y), name + ": a pan shifts the backdrop with the camera")
+	camera.global_position -= camera.global_basis.x * 2.0
+	world.advance_backdrop(0.0)
+	Backdrop.advance(world.environment, 1.0, null, null, false)
 
 func _policy() -> void:
 	# The 3D picture is at most 1080 lines tall on Low and Balanced alike, so Low
@@ -121,8 +143,26 @@ func _policy() -> void:
 	for quality: String in Policy.QUALITIES:
 		var keeps := quality != "low"
 		_check(Policy.motion_trails(quality) == keeps and Policy.fireflies(quality) == keeps and Policy.detail_dressing(quality) == keeps and Policy.fill_light(quality) == keeps and Policy.lantern_lights(quality) == keeps, quality + ": effect cuts belong to Low alone")
-		_check(Policy.mote_count(32, quality) == (8 if quality == "low" else 32), quality + ": mote count")
+		_check(Policy.backdrop_detail(quality) == keeps, quality + ": backdrop detail")
 	window_sized.free()
+
+## Every chapter and Home has its own far islands, the same on every visit and
+## through a gameplay update (@N+1).
+func _layouts() -> void:
+	var seen := {Backdrop.layout_seed(Backdrop.HOME): Backdrop.HOME}
+	for key: String in Registry.keys():
+		var id := key.get_slice("@", 0)
+		var layout := Backdrop.layout_seed(key)
+		_check(layout >= 0.0 and layout < 1.0 and layout == Backdrop.layout_seed(id), key + ": one layout for every version of a chapter")
+		if seen.has(layout) and seen[layout] != id: _check(false, "%s shares its backdrop layout with %s" % [id, seen[layout]])
+		seen[layout] = id
+	var env := Backdrop.environment()
+	Backdrop.set_layout(env, "turn-of-the-tide@2")
+	var once: Variant = env.sky.sky_material.get_shader_parameter(Backdrop.LAYOUT)
+	Backdrop.set_layout(Backdrop.environment(), "high-and-low@1")
+	Backdrop.set_layout(env, "turn-of-the-tide@2")
+	_check(env.sky.sky_material.get_shader_parameter(Backdrop.LAYOUT) == once, "a place's layout is the same each time it is built")
+	_check(Backdrop.environment().sky.sky_material.get_shader_parameter(Backdrop.LAYOUT) == Backdrop.layout_seed(Backdrop.HOME), "a new world starts with Home's layout")
 
 func _settings() -> void:
 	_check(Storage.defaults().settings.graphics_quality == "balanced", "Existing visual quality remains the default")

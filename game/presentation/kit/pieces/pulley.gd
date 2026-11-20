@@ -8,7 +8,8 @@ extends "res://presentation/kit/pieces/piece.gd"
 ##       the crossing is laid.
 ##   "theme_hanger": a white post with red bands and a curled arm with a brass
 ##       wheel; an anchor hangs from it, and a rope coil lies beside its foot,
-##       away from the crossing, where the floor has room for it.
+##       away from the crossing, where the floor has room for it and the
+##       camera sees it (drop_unseen).
 ##   "little_roof": a timber post on a stone foot under a little pitched roof,
 ##       its wheel under the eaves; a flour sack hangs from it.
 ##
@@ -21,6 +22,7 @@ extends "res://presentation/kit/pieces/piece.gd"
 const Primitives = preload("res://presentation/kit/primitives.gd")
 const Styles = preload("res://content/dressing/prop_styles.gd")
 const Models = preload("res://presentation/kit/models.gd")
+const ViewFit = preload("res://presentation/kit/view_fit.gd")
 ## The weights, modelled in Blender (tools/blender/models/pulley_weights.py).
 const WEIGHTS := "res://assets/models/pulley_weights.glb"
 ## The posts, modelled in Blender (tools/blender/models/pulley_posts.py).
@@ -65,6 +67,8 @@ const COIL_SLIDE := 0.2
 
 ## The weight, a held container its world moves (set its rest_y there).
 var weight: Node3D
+## A hanger's coil rings, until drop_unseen() takes them away.
+var _coil: Array[MeshInstance3D] = []
 ## The rope from the wheel down to the weight, stretched by set_laid().
 var _rope: MeshInstance3D
 ## A lantern's glass, lit while laid; null for other weights.
@@ -95,6 +99,22 @@ static func coil_spot(ground: Array[Rect2]) -> Vector2:
 		var slide := spot.distance_to(COIL_AT)
 		if slide <= COIL_SLIDE and spot.length() >= reach + 0.08 and slide < best.distance_to(COIL_AT): best = spot
 	return best
+
+## Whether the camera sees the point `at` past every box in `blockers` (all in
+## one space; the camera is orthographic, so only its direction counts).
+static func seen(at: Vector3, blockers: Array[AABB]) -> bool:
+	var toward := ViewFit.CAMERA_FROM.normalized()
+	for box: AABB in blockers:
+		if box.intersects_ray(at + toward * 0.002, toward) != null: return false
+	return true
+
+## Takes the coil away when the camera cannot see its middle past `blockers`
+## (boxes in the post's parent space: walls its world built in front of it
+## after the post).
+func drop_unseen(blockers: Array[AABB]) -> void:
+	if _coil.is_empty() or seen(root.position + _coil[0].position + Vector3(0, COIL_ROPE, 0), blockers): return
+	for ring: MeshInstance3D in _coil: ring.free()
+	_coil.clear()
 
 ## The rope runs down to wherever the weight hangs now; a lantern glows only
 ## while its crossing is laid.
@@ -147,6 +167,7 @@ func _make_hanger(ground: Array[Rect2]) -> void:
 		for k in range(COIL_RINGS.size()):
 			var ring := Parts.torus(COIL_RINGS[k], COIL_ROPE, ROPE.darkened(0.1 - 0.05 * k), Vector3(coil.x, 0.03 + 0.02 * k, coil.y), root, 20 - 4 * k, 6)
 			ring.name = "Coil"
+			_coil.append(ring)
 	Models.still(POSTS, "pulley_hanger", {"plaster": PLASTER, "band": RED, "knob": NAVY, "wheel": WHEEL, "hub": IRON}, root)
 	_rope_top = 1.10
 

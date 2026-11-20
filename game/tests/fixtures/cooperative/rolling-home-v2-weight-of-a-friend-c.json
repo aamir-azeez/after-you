@@ -1,0 +1,24 @@
+{
+	"catch_assistance": true,
+	"checkpoint_hash": "9138dff3f0adb6cdba9f9b3a66efd5479b066edce10da1ce873a929f57d1ea42",
+	"completed": true,
+	"definition_hash": "f5852fc8095aded1df95e7aef067a2e095891f5ecd72a4d197a7e48ecd16abca",
+	"duration_ticks": 317,
+	"final_state_hash": "9a3f2d2541ed10319d0fb1b8f3b3cb2e9dc4ec63a32d6dba628fa6463ac3aea6",
+	"level_id": "rolling-home",
+	"level_version": 2,
+	"outcome": {
+		"objective_complete": true,
+		"source_ready": true
+	},
+	"packed": "AQwInAAgAJygAQAAQGQAAjIAFgBk4AFkAAIyACoAZEpkAAIyAAIAnEFf8ANE9VtOmUCX0y6SjqBDZM+3aGswxJRF/E2GxPWfsa3i2DDGCUgqoCOYcXpSD5M3DzG2MVarYqlxik0FmR+6dR8PQVERClLTyWu1xAdw46Pt9c7RK78FDBn4OyEJcIrRuI49E5NHHgjtCuIvA9nSKo0wmkLvEnn+0LSWma97",
+	"player_slot": "p0",
+	"recording_hash": "1a80add8567b7f27cdedbcce8b2ed5f5b669e719e558be5426a009e5342226cc",
+	"role": "b",
+	"schema_version": 6,
+	"simulation_version": 17,
+	"source_recording_hash": "a85b3d4d507949a448bed2ff4632026b3fc914ff95e5766972d51ec2f69ea5de",
+	"stage_id": "weight-of-a-friend",
+	"stage_version": 1,
+	"tick_rate": 30
+}

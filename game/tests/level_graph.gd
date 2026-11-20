@@ -44,6 +44,10 @@ extends RefCounted
 ## a gate counts only the pads within a step of that crossing (where standing
 ## on the pad could already put it on the crossing); for the walker every pad
 ## the presser reaches counts. Beams are lit exactly, as for a frozen pip.
+## The shared ball (rules 17, core/physical/runtime.gd _shared_ball): a ball
+## pad holds only where the ball could be pushed (_reach_balls), not always.
+## Pushing is work, like a press: the frozen pip and the walker push nothing,
+## and the presser pushes it only along the crossings open for its own walking.
 const Navigation = preload("res://core/cooperative/navigation.gd")
 const Seven = preload("res://core/journey/seven_mechanisms.gd")
 const OpenControls = preload("res://core/physical/open_controls.gd")
@@ -66,10 +70,12 @@ var open_controls := false        # the definition pins open controls
 var _frozen: Dictionary = {}      # reach's frozen pip: {"slot", "at": player} or {}
 var _walker := ""                 # reach's walking pip, or ""
 var _beside := ""                 # while judging a gate for the presser's own walking: its route
+var shared_ball := false          # the definition pins the shared ball (rules 17)
 
 func _init(definition: Dictionary) -> void:
 	level = definition
 	open_controls = OpenControls.pinned(definition)
+	shared_ball = int(definition.get("simulation_version", 0)) in OpenControls.SHARED_BALL_RULES
 	for island: Dictionary in level.islands: _add(island, "island")
 	for bridge: Dictionary in level.get("bridges", []): _add(bridge, "bridge")
 	for stair: Dictionary in level.get("stairs", []): _add(stair, "stair")
@@ -244,6 +250,7 @@ func reach(stage: Dictionary, checkpoint: Dictionary, journey: bool, frozen: Str
 		var before := JSON.stringify(settable)
 		settable = _settable(stage, mechanisms, floors)
 		_reach_items(stage, checkpoint, floors, open, settable)
+		_reach_balls(stage, checkpoint, floors, own if not walker.is_empty() else open, settable)
 		for gate: Dictionary in stage.get("gates", []):
 			var route := str(gate.get("route_id", ""))
 			if not route_bit.has(route): continue
@@ -343,8 +350,10 @@ func gate_can_hold(gate: Dictionary, stage: Dictionary, settable: Dictionary, me
 		if not _beside.is_empty():
 			for pad: Dictionary in stage.get("pressure_pads", []):
 				if str(pad.id) == str(gate.get("pad_id", "")) and not _pad_beside(pad, _beside): return false
-		# A ball pad holds once the ball is pushed there: always possible here.
-		return true
+		# A ball pad holds once the ball is pushed there: always possible here,
+		# but under the shared ball only where the ball could be pushed (_reach_balls).
+		var ball_pad := str(gate.get("ball_pad_id", ""))
+		return not shared_ball or ball_pad.is_empty() or ball_can_hold(stage, ball_pad, settable)
 	var when: Dictionary = gate.get("when", {})
 	var references: Dictionary = {"controls": {}, "pads": {}, "signals": {}, "levers": {}}
 	_references(when, references)
@@ -465,6 +474,65 @@ func can_stand_at(entity: Dictionary, slot: String, open: Dictionary, journey: b
 		if found.is_empty() or str(found.surface_id) != surface: continue
 		if not journey or Seven.near({"x": spot.x, "z": spot.y, "height": int(found.height), "surface_id": surface}, entity): return true
 	return false
+
+# ---------------------------------------------------------------- balls
+
+## The shared ball (rules 17), as part of reach: for each ball of `stage` the
+## floors it could be pushed onto, written into `settable` as "ball:<id>":
+## [floor ids]. A ball moves only with a pip that works (not the frozen pip,
+## not the walker) and reaches the ball's floor, across crossings open in
+## `routes` (the presser's own while a walker only walks), between floors at
+## one height: never down a drop or along a stair, where a pip behind it
+## stands at another height. A fitted ball stays where it is.
+func _reach_balls(stage: Dictionary, checkpoint: Dictionary, floors: Dictionary, routes: Dictionary, settable: Dictionary) -> void:
+	if not shared_ball: return
+	var pushers: Array = ["p0", "p1"].filter(func(slot: String) -> bool: return slot != _walker and (_frozen.is_empty() or slot != _frozen.slot))
+	for prop: Dictionary in stage.get("props", []):
+		var id := str(prop.id)
+		var state: Dictionary = checkpoint.get("mechanisms", {}).get("props", {}).get(id, {})
+		var start := str(state.get("surface_id", prop.get("surface_id", "")))
+		var seen: Dictionary = {start: true}
+		if str(state.get("status", "free")) != "fitted" and index.has(start):
+			for slot: String in pushers:
+				if not floors.get(slot, {}).has(start): continue
+				var queue: Array = [int(index[start])]
+				var visited: Dictionary = {int(index[start]): true}
+				var head := 0
+				while head < queue.size():
+					var from: int = queue[head]
+					head += 1
+					seen[id_of(from)] = true
+					for edge: Array in edges[slot][from]:
+						var to: int = edge[0]
+						if visited.has(to) or not _rolls(from, to, routes): continue
+						visited[to] = true
+						queue.append(to)
+		var list := seen.keys()
+		list.sort()
+		settable["ball:" + id] = list
+
+## Whether a ball rolls from surface `from` to `to`: neither is a stair, both
+## stand at one height, and each crossing among them is open in `routes`.
+func _rolls(from: int, to: int, routes: Dictionary) -> bool:
+	for surface: int in [from, to]:
+		if surfaces[surface].kind == "stair": return false
+		if route_bit.has(id_of(surface)) and not routes.has(id_of(surface)): return false
+	return int(surfaces[from].item.get("height_cm", 0)) == int(surfaces[to].item.get("height_cm", 0))
+
+## The shared ball: whether the ball pad `pad_id` of `stage` could hold, its
+## ball pushed onto the pad's floor (reach's "ball:<id>"). The engine weighs a
+## pad with the stage's source ball (runtime.gd _gate_open).
+func ball_can_hold(stage: Dictionary, pad_id: String, settable: Dictionary) -> bool:
+	for pad: Dictionary in stage.get("ball_pads", []):
+		if str(pad.id) != pad_id: continue
+		var prop := str(stage.get("source_policy", {}).get("prop_id", pad.get("prop_id", "")))
+		return str(pad.surface_id) in settable.get("ball:" + prop, [])
+	return false
+
+## The shared ball: whether a ball home goal's ball could reach its cradle's floor.
+func ball_reaches_goal(stage: Dictionary, settable: Dictionary) -> bool:
+	var policy: Dictionary = stage.get("goal_policy", {})
+	return str(stage.get("goal", {}).get("surface_id", "")) in settable.get("ball:" + str(policy.get("prop_id", "")), [])
 
 # ---------------------------------------------------------------- items
 

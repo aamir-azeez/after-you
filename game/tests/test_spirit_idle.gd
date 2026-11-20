@@ -273,8 +273,8 @@ func _test_card_frames() -> void:
 	world.footstep.connect(func(_spirit: String) -> void: signals[0] += 1)
 	world.reunion.connect(func() -> void: signals[0] += 1)
 	var camera: Transform3D = world.camera.global_transform
-	var motes: Array = []
-	for mote: Node3D in world.motes: motes.append(mote.position)
+	var backdrop: ShaderMaterial = world.environment.sky.sky_material
+	var backdrop_clock: Variant = backdrop.get_shader_parameter(&"clock")
 	var actor: Node3D = world.actors.values()[0]
 	var moved := 0
 	var quiet_frames_still := true
@@ -291,8 +291,8 @@ func _test_card_frames() -> void:
 	_check(quiet_frames_still, "Between card steps nothing on the spirits changes, so nothing needs drawing")
 	_check(absf(actor._expression_time - clock_before - 3.0) < 0.1, "The spirits' clock keeps real time across card steps")
 	var world_still: bool = world.camera.global_transform == camera
-	for index in range(motes.size()): world_still = world_still and world.motes[index].position == motes[index]
-	_check(world_still, "A card step moves neither the camera nor the motes")
+	world_still = world_still and backdrop.get_shader_parameter(&"clock") == backdrop_clock
+	_check(world_still, "A card step moves neither the camera nor the space backdrop")
 	_check(signals[0] == 0, "Card steps make no footstep or reunion sound")
 	# Same pose as a world advanced every frame for the same time.
 	var other: Node3D = World.new()
