@@ -13,6 +13,7 @@ const CameraExploration = preload("res://presentation/camera_exploration.gd")
 const KeepsakeCatalog = preload("res://services/home_keepsake_catalog.gd")
 const ChapterIndex = preload("res://content/chapters/index.gd")
 const GraphicsPolicy = preload("res://services/graphics_policy.gd")
+const SpaceBackdrop = preload("res://presentation/kit/space_backdrop.gd")
 const ObjectMotionTrail = preload("res://presentation/object_motion_trail.gd")
 const SeedMotionTrail = preload("res://presentation/seed_motion_trail.gd")
 const SeedVisual = preload("res://presentation/seed_visual.gd")
@@ -93,9 +94,13 @@ var reduced_motion := false
 var _mechanism_motion: Dictionary = {}
 var bloomed := false
 var flowers: Array[Node3D] = []
-var motes: Array[MeshInstance3D] = []
-var _authored_motes: Array[MeshInstance3D] = []
-var _graphics_authored := false
+## The world's Environment, whose sky is the space backdrop (kit/space_backdrop.gd).
+var environment: Environment
+## The backdrop's own clock: the world's time while motion is allowed.
+var _backdrop_clock := 0.0
+## What the backdrop's layout was last read from: Home's owner and the loaded
+## level (by reference), so the key is worked out only when one changes.
+var _backdrop_from: Array = []
 var bridge_ready := false
 ## Home Explore raises the bridge while the explorer is near it (home_stage.gd).
 ## It counts only while a Home presentation owns the view; load_level clears it.
@@ -161,11 +166,8 @@ func _ready() -> void:
 	# Every world starts in the day look; later lineages relight it. Colours and
 	# energies come only from kit/look.gd.
 	var environment_node := WorldEnvironment.new()
-	var env := Environment.new()
-	env.background_mode = Environment.BG_COLOR
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
-	environment_node.environment = env
+	environment = SpaceBackdrop.environment()
+	environment_node.environment = environment
 	add_child(environment_node)
 	sun = DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-52,-32,0)
@@ -184,6 +186,7 @@ func _ready() -> void:
 	camera_exploration.camera = camera
 	camera_exploration.reduced_motion = func() -> bool: return reduced_motion
 	add_child(camera_exploration)
+<<<<<<< HEAD
 	# The motes share one material of the world's own: the look tints them all
 	# at once (kit/look.gd).
 	var mote_material := material(Color.WHITE)
@@ -194,6 +197,9 @@ func _ready() -> void:
 	contact_shadows = ContactShadows.new()
 	contact_shadows.set_quality(_motion_quality)
 	add_child(contact_shadows)
+=======
+	SpaceBackdrop.apply_quality(environment, _motion_quality)
+>>>>>>> origin/main
 	relight("day")
 	get_tree().process_frame.connect(_on_tree_frame)
 
@@ -215,17 +221,9 @@ func apply_graphics_quality(quality: String) -> void:
 	if is_instance_valid(contact_shadows): contact_shadows.set_quality(_motion_quality)
 	for trail: Node3D in _motion_trails:
 		if is_instance_valid(trail): trail.set_quality(_motion_quality)
-	# Call after the complete derived _ready: Lighthouse authors ten motes,
-	# while the older island/Relay views author thirty-two. Never grow that set.
 	if not is_node_ready(): return
 	relight(_look)
-	if not _graphics_authored:
-		for mote: MeshInstance3D in motes:
-			if mote.visible: _authored_motes.append(mote)
-		_graphics_authored = true
-	var visible_count := GraphicsPolicy.mote_count(_authored_motes.size(), quality)
-	for index in range(_authored_motes.size()):
-		_authored_motes[index].visible = index < visible_count
+	SpaceBackdrop.apply_quality(environment, _motion_quality)
 	for fly: MeshInstance3D in _fireflies:
 		if is_instance_valid(fly): fly.visible = GraphicsPolicy.fireflies(quality)
 
@@ -1154,10 +1152,13 @@ var _fold_frame := -1
 
 ## A chapter screen keeps its world from running behind the ready card; the
 ## scenery folds then too, but never while the world cannot process at all
-## (mid-build).
+## (mid-build). The sky follows the place and the view held there as well (its
+## clock stays still), so a held world shows the sky it plays under.
 func _on_tree_frame() -> void:
 	# A world whose screen has left is out of the tree until it is freed.
-	if is_inside_tree() and can_process(): _fold_static_scenery_once()
+	if not is_inside_tree() or not can_process(): return
+	_fold_static_scenery_once()
+	advance_backdrop(0.0)
 
 ## Over frames, one fold step per engine frame, from whichever of _process
 ## and the tree's frame comes first. A fold done in one go needs no guard.
@@ -1201,17 +1202,21 @@ func _process(delta: float) -> void:
 	var weight := minf(delta*14.0,1.0)
 	if not (home_view and home_presentation_owner!=0):
 		update_spirit_attention()
+	_advance_carriers(delta)
 	for role in actors:
 		if home_view and home_presentation_owner!=0:
 			continue
 		var actor: SpiritVisual=actors[role]
 		if home_view:
 			actor.visible=true
-		var target: Vector3=actor_targets[role]
-		actor.travel_target=target
 		var previous := actor.position
+		# Whatever carries the spirit takes it along first; its own walk eases on top.
+		var carried := _carry(role,actor)
+		var target: Vector3=actor_targets[role]+carried
+		actor.travel_target=target
+		var ridden := actor.position-previous
 		actor.position=actor.position.lerp(target,weight)
-		actor.advance_motion(actor.position-previous,delta,reduced_motion)
+		actor.advance_motion(actor.position-previous-ridden,delta,reduced_motion)
 	if not (home_view and home_presentation_owner!=0):
 		finish_spirit_motion()
 	_seed_launch_age+=delta
@@ -1226,11 +1231,8 @@ func _process(delta: float) -> void:
 		if piece.moving(): piece.advance(delta)
 	if route_barriers.moving(): route_barriers.advance(delta)
 	_advance_garden_bloom(delta)
-	if not reduced_motion:
-		for i in range(motes.size()):
-			if motes[i].visible:
-				motes[i].position.y+=sin(time*0.4+i)*delta*0.07
 	_advance_fireflies()
+	advance_backdrop(delta)
 	_advance_camera(delta)
 
 ## Moves the planks `weight` of the way to their pose and reports the
@@ -1313,6 +1315,16 @@ func note_big_change(kind: String, seconds: float) -> void:
 	if not BigChange.is_big(kind, _chapter_key()): return
 	if big_change_shake and not reduced_motion and seconds > 0.0 and is_instance_valid(camera_exploration): camera_exploration.shake(seconds)
 	if big_change_haptic.is_valid(): big_change_haptic.call(int(BigChange.HAPTIC.ms), float(BigChange.HAPTIC.amplitude))
+
+## Each frame before the spirits move: whatever can carry a spirit moves
+## first. Nothing does here.
+func _advance_carriers(_delta: float) -> void:
+	pass
+
+## Each frame: moves `actor` (spirit `role`) with whatever carries it, and
+## returns how far its carrier has it from its snapshot place. Nothing here.
+func _carry(_role: String, _actor: Node3D) -> Vector3:
+	return Vector3.ZERO
 
 ## A scrolling world eases its follow camera; Home and the older islands ease
 ## toward their own framing.
@@ -1572,13 +1584,12 @@ func _present_follow(state: Dictionary, immediate: bool) -> void:
 	_completion_view = bool(state.get("complete", false))
 	if immediate and _uses_scrolling_camera(): _snap_follow()
 
-## Puts the follow camera on its spirit at once (an immediate present), the
-## motes with it, so a kept world and one built again show the same.
+## Puts the follow camera on its spirit at once (an immediate present), so a
+## kept world and one built again show the same.
 func _snap_follow() -> void:
 	if actors.has(_active_player): _follow_center = _camera_center()
 	_follow_size = _scroll_done_size() if _completion_view else _scroll_size()
 	_apply_follow_limits()
-	_follow_motes()
 	_frame_camera()
 
 ## Eases the follow camera toward its spirit, once per rendered frame:
@@ -1587,15 +1598,6 @@ func _ease_follow(delta: float, rate: float = FOLLOW_RATE) -> void:
 	var weight := 1.0 if reduced_motion else 1.0 - exp(-rate * maxf(delta, 0.0))
 	if actors.has(_active_player): _follow_center = _follow_center.lerp(_camera_center(), weight)
 	_follow_size = lerpf(_follow_size, _scroll_done_size() if _completion_view else _scroll_size(), weight)
-	_follow_motes()
-
-## Motes are authored around the origin; a scrolling camera carries them along
-## so the far end of a long chapter keeps its drifting specks. Each mote keeps
-## its own spot on a repeating 23 m strip, so nothing slides with the view.
-func _follow_motes() -> void:
-	for mote: MeshInstance3D in motes:
-		if not mote.has_meta("rest_x"): mote.set_meta("rest_x", mote.position.x)
-		mote.position.x = _follow_center.x + wrapf(float(mote.get_meta("rest_x")) - _follow_center.x, -11.5, 11.5)
 
 ## Frames the view: a scrolling world over its follow point (_frame_follow);
 ## the others frame themselves.
@@ -1926,9 +1928,8 @@ func _build_dressing() -> void:
 		_dressed_prop(prop)
 	_build_fireflies(int(dressing.get("fireflies", 0)), anchors)
 
-## Small warm lights drifting near the planting. They are not motes:
-## GraphicsPolicy.fireflies hides them on Low, and they never count as authored
-## motes.
+## Small warm lights drifting near the planting. GraphicsPolicy.fireflies hides
+## them on Low.
 func _build_fireflies(count: int, anchors: Array[Vector3]) -> void:
 	if count <= 0 or anchors.is_empty(): return
 	var root := Node3D.new()
@@ -1943,6 +1944,24 @@ func _build_fireflies(count: int, anchors: Array[Vector3]) -> void:
 		fly.set_meta("rest", at)
 		fly.visible = GraphicsPolicy.fireflies(_motion_quality)
 		_fireflies.append(fly)
+
+## Moves the space backdrop on by delta seconds of the world's time (none
+## under Reduce motion) and shifts it with the camera on screen. An ending
+## (ending_player.gd) calls it while the world's own frame is paused.
+func advance_backdrop(delta: float) -> void:
+	if not reduced_motion: _backdrop_clock += delta
+	var definition: Variant = get("chapter_definition")
+	if _backdrop_from.size() != 3 or _backdrop_from[0] != home_presentation_owner or not is_same(_backdrop_from[1], current_level) or not is_same(_backdrop_from[2], definition):
+		_backdrop_from = [home_presentation_owner, current_level, definition]
+		SpaceBackdrop.set_layout(environment, backdrop_layout_key())
+	SpaceBackdrop.advance(environment, _backdrop_clock, camera, get_viewport() if is_inside_tree() else null, reduced_motion)
+
+## Which far islands and wisps this world shows (SpaceBackdrop.layout_seed):
+## Home's own while Home holds the world, else the chapter's, the same on every
+## visit.
+func backdrop_layout_key() -> String:
+	var key := _chapter_key()
+	return SpaceBackdrop.HOME if home_presentation_owner != 0 or key.is_empty() else key
 
 func _advance_fireflies() -> void:
 	if reduced_motion: return

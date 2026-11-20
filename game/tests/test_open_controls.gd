@@ -42,7 +42,7 @@ func _run() -> void:
 	quit(1 if failures else 0)
 
 func _numbers() -> void:
-	_check(OpenControls.OPEN_RULES == [12, 13, 14, 15, 16] and OpenControls.TIDE_RULES == [10, 13, 15, 16] and OpenControls.OPEN_TURNS_RULES == [14, 15, 16] and 11 not in OpenControls.OPEN_RULES, "Open controls are 12 and 13, 14 and 15 with open turns, 16 with the new pieces too; 11 stays the Lighthouse room's")
+	_check(OpenControls.OPEN_RULES == [12, 13, 14, 15, 16, 17] and OpenControls.TIDE_RULES == [10, 13, 15, 16] and OpenControls.OPEN_TURNS_RULES == [14, 15, 16, 17] and 11 not in OpenControls.OPEN_RULES, "Open controls are 12 and 13, 14 and 15 with open turns, 16 with the new pieces too, 17 with the shared ball; 11 stays the Lighthouse room's")
 	_check(OpenControls.rules_for(9) == 12 and OpenControls.rules_for(7) == 12 and OpenControls.rules_for(10) == 13 and OpenControls.rules_for(15) == 15, "The open rules keep the earlier rules: tide (10) becomes 13, the rest 12, and open turns stay")
 	_check(Registry.supported_rules(HOME) == [14] and Registry.supported_rules(TIDE) == [15] and Registry.supported_rules("conservatory@2") == [14], "Each new version plays only its open rules, with open turns")
 	_check(Simulation._record_version({"simulation_version": 14.0}) == 14 and Simulation._record_version({"simulation_version": 15}) == 15, "A record names its open turns rules, JSON floats included")

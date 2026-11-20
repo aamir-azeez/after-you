@@ -89,7 +89,7 @@ extends SceneTree
 ##     builds presentation/kit/goal_beacon.gd, the late guide every open turns chapter
 ##     gets with no code of its own. test_open_hints.gd, which must stay in CI, checks
 ##     them on every open turns chapter.
-## (x) contact shadows: presentation/kit/contact_shadows.gd alone draws the soft
+## (y) contact shadows: presentation/kit/contact_shadows.gd alone draws the soft
 ##     shadow where things meet the ground (its shader is preloaded nowhere
 ##     else; the pip's shadow takes its look from it), island_world alone makes
 ##     a world's shadow layer, and they come by default: every piece kit makes
@@ -420,6 +420,13 @@ const PIECE_OVERRIDES := {
 ## The base builders the overrides extend.
 const PIECE_BASES := ["res://presentation/island_world.gd", "res://presentation/lighthouse_world.gd", "res://presentation/cooperative_world.gd"]
 
+## (x) The one builder of a world's Environment and its space backdrop sky.
+const SPACE_BACKDROP := "res://presentation/kit/space_backdrop.gd"
+## Scripts that build an Environment themselves, with why.
+const OWN_ENVIRONMENTS := {
+	"res://presentation/kit/pip_stage.gd": "a pip shown alone on a clear background, no world behind it",
+}
+
 ## Suites that guard a shared path on their own and must stay in CI.
 const GUARD_SUITES := ["shared_paths", "full_screen_bleed", "pollen_mark", "connectivity", "owner_marks", "pair_tags", "fall_effect", "piece_styles", "open_hints", "contact_shadows"]
 ## (w) The one reader of the ready line, and the one builder of the goal beacon.
@@ -427,7 +434,7 @@ const READY_LINE := "MAIN_1AAC5BE95E22"
 const READY_LINE_READER := "res://relay_preview.gd"
 const GOAL_BEACON := "res://presentation/kit/goal_beacon.gd"
 const GOAL_BEACON_BUILDER := "res://presentation/cooperative_world.gd"
-## (x) The contact shadow kit, its look, and the piece kits that make no shadow, with why.
+## (y) The contact shadow kit, its look, and the piece kits that make no shadow, with why.
 const CONTACT_SHADOWS := "res://presentation/kit/contact_shadows.gd"
 const CONTACT_SHADOW_SHADER := "res://presentation/kit/contact_shadow.gdshader"
 const CONTACT_SHADOW_LAYER := "res://presentation/island_world.gd"
@@ -479,6 +486,7 @@ func _initialize() -> void:
 	_piece_styles()
 	_ui_icons()
 	_turn_guides()
+	_space_backdrop()
 	_contact_shadows()
 	_suites()
 	for id: String in KNOWN_FAILURES:
@@ -1089,7 +1097,15 @@ func _turn_guides() -> void:
 	_check(_found("\\bOpenTurns\\.pinned\\(", str(_sources.get(READY_LINE_READER, ""))) > 0, "%s skips the ready line on open turns (OpenTurns.pinned)" % READY_LINE_READER)
 	_check(_found("\\bOpenTurns\\.pinned\\(", str(_sources.get(GOAL_BEACON_BUILDER, ""))) > 0, "%s builds the guide for every open turns chapter (OpenTurns.pinned)" % GOAL_BEACON_BUILDER)
 
-# (x) Contact shadows -------------------------------------------------------------
+# (x) Space backdrop ------------------------------------------------------------
+
+func _space_backdrop() -> void:
+	var builders := []
+	for path: String in _sources:
+		if path != SPACE_BACKDROP and _found("\\bEnvironment\\.new\\(", _sources[path]) > 0: builders.append(path)
+	_check(builders == OWN_ENVIRONMENTS.keys(), "Worlds and the warm-up take their Environment from %s (SpaceBackdrop.environment); others build their own: %s" % [SPACE_BACKDROP, builders])
+	_check(_found("\\bSpaceBackdrop\\.environment\\(", str(_sources.get("res://presentation/island_world.gd", ""))) > 0 and _found("\\bSpaceBackdrop\\.environment\\(", str(_sources.get("res://services/gl_warmup.gd", ""))) > 0, "island_world and the GL warm-up build the same Environment (SpaceBackdrop.environment)")
+# (y) Contact shadows -------------------------------------------------------------
 
 func _contact_shadows() -> void:
 	var opted := {}
