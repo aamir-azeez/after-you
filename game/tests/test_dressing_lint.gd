@@ -170,6 +170,8 @@ func _check_built_worlds() -> void:
 			var dressed: Array = world.terrain.find_children("*", "Node3D", true, false).filter(func(node: Node) -> bool: return node.has_meta("dressing_kind"))
 			var expected := Props.expand(Catalog.stage_props(Catalog.for_key(key), stage_id)).size()
 			_check(dressed.size() == expected, "Every dressing prop is built: %s %s (%d of %d)" % [key, stage_id, dressed.size(), expected])
+			for line: String in unsupported_dressing(world, _stage_view(key, stage_id)):
+				_check(false, "Dressing rests on no floor, crossing or bank in %s %s: %s" % [key, stage_id, line])
 			var bodies: Array = world.terrain.find_children("*", "CollisionObject3D", true, false) + world.terrain.find_children("*", "CollisionShape3D", true, false)
 			_check(bodies.is_empty(), "Dressing adds no collision: %s %s" % [key, stage_id])
 			# Fading every floor and restoring it must never reach a shared material.
@@ -397,6 +399,54 @@ static func shadow_pairs(world: Node3D, view: Dictionary, gap: float) -> Array[S
 			var overlap := _overlap(face, disc)
 			if overlap < MIN_OVERLAP: continue
 			found.append("spirit shadow at %.4f on %s and %s (%.1f mm apart, needs %.1f, overlap %.0f cm2)" % [shadow, support.name, _path(face.node, world), absf(float(face.at) - shadow) * 1000.0, gap * 1000.0, overlap * 10000.0])
+	return found
+
+## Every built dressing prop that rests on nothing, measured from the built
+## world (kit/prop_rules.gd grounds(), foot_points()): its base where it was
+## built and its foot moved to where it stands, against the stage's floors and
+## crossings and every built bank's meshes. A bank itself must touch its floor
+## or a bank that does. One line each.
+static func unsupported_dressing(world: Node3D, view: Dictionary) -> Array[String]:
+	var to_local: Transform3D = world.terrain.global_transform.affine_inverse()
+	var props: Array = world.terrain.find_children("*", "Node3D", true, false).filter(func(node: Node) -> bool: return node.has_meta("dressing_kind") and node.has_meta("dressing_spec"))
+	var banks: Array = []
+	for node: Node3D in props:
+		if str(node.get_meta("dressing_kind")) != "bank": continue
+		var box := AABB()
+		var first := true
+		for mesh: MeshInstance3D in node.find_children("*", "MeshInstance3D", true, false):
+			var part: AABB = (to_local * mesh.global_transform) * mesh.mesh.get_aabb()
+			box = part if first else box.merge(part)
+			first = false
+		if not first: banks.append({"rect": Rect2(box.position.x, box.position.z, box.size.x, box.size.z), "top": box.end.y, "bottom": box.position.y, "surface": str((node.get_meta("dressing_spec") as Dictionary).get("surface", ""))})
+	var found: Array[String] = []
+	var floors := PropRules.grounds(view)
+	# Banks touching a floor first, then banks touching those.
+	var held: Array = []
+	var loose: Array = banks.duplicate()
+	var grew := true
+	while grew:
+		grew = false
+		for bank: Dictionary in loose.duplicate():
+			var inner := (bank.rect as Rect2).grow(-0.005)
+			if (floors + held).any(func(ground: Dictionary) -> bool: return (ground.rect as Rect2).grow(PropRules.EDGE_GRACE).intersects(inner.grow(0.01)) and float(ground.top) >= float(bank.bottom) and float(ground.bottom) <= float(bank.top)):
+				held.append(bank)
+				loose.erase(bank)
+				grew = true
+	for bank: Dictionary in loose: found.append("bank over %s touches no floor" % bank.rect)
+	var grounds := PropRules.grounds(view, banks)
+	for node: Node3D in props:
+		var spec: Dictionary = node.get_meta("dressing_spec")
+		var placed: Transform3D = to_local * node.global_transform
+		var moved := spec.duplicate()
+		if spec.has("at"): moved["at"] = [0, 0]
+		var points := PropRules.foot_points(moved)
+		if points.is_empty(): continue
+		var shift := Vector2(placed.origin.x, placed.origin.z)
+		for index in range(points.size()): points[index] += shift
+		var off := PropRules.unsupported(points, placed.origin.y, grounds)
+		if off.is_empty(): continue
+		found.append("%s at %s, base %.2f m: %d of %d foot points off (first at %.2f, %.2f)" % [spec.get("kind", "?"), spec.get("at", [spec.get("from", ""), spec.get("to", "")]), placed.origin.y, off.size(), points.size(), off[0].x, off[0].y])
 	return found
 
 ## Every built mesh standing where a pip must stand on this stage (the

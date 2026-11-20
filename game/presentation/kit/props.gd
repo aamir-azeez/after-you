@@ -39,6 +39,12 @@ const ROPE := Color("d1b98c")
 
 ## Kinds lower than this (metres) never hide a spirit or a control.
 const LOW := 0.16
+## The share of a kind's footprint (extent()) that rests on the ground: a
+## tree stands on its trunk, a lamp on its foot. A kind not named rests on
+## the whole of it.
+const FOOT_SHARE := {"tree": 0.3, "pine": 0.3, "lantern": 0.6, "lamp_post": 0.45, "signpost": 0.35, "tower": 0.8, "bush": 0.8, "flowers": 0.8, "fern": 0.6}
+## Kinds that rest on no floor: hung on a wall, or riding water.
+const UNGROUNDED := ["boat", "ivy", "shelf", "frame", "basket"]
 ## Flat kinds that cover a patch of floor (rugs, and paths of stones or
 ## boards): small markers on the floor keep off them (island_world.floor_covers).
 const FLOOR_COVERS := ["rug", "path"]
@@ -154,6 +160,8 @@ static func build(spec: Dictionary, parent: Node3D, base_y: float, lit: bool) ->
 	var root := Node3D.new()
 	root.name = "Prop_" + kind
 	root.set_meta("dressing_kind", kind)
+	# The spec it stands for: the dressing lint measures where it rests.
+	root.set_meta("dressing_spec", spec)
 	parent.add_child(root)
 	var s := float(spec.get("size", 1.0))
 	if spec.has("at"):
