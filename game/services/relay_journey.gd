@@ -458,13 +458,15 @@ static func _draft_state(job: Dictionary) -> Dictionary:
 	# Compare whole dictionaries so mutating an object while keeping its old
 	# hash cannot reuse a trusted context. These references never leave local
 	# application code; all values are copied before they reach storage.
-	if not str(simulation.get("error")).is_empty() or simulation.get("role") != job.role or not Typed.same(simulation.get("level"), level) or not Typed.same(simulation.get("stage"), family.stage_by_id(level, str(checkpoint.next_stage_id))) or not Typed.same(simulation.get("_checkpoint"), checkpoint) or not Typed.same(simulation.get("_prior"), state.a):
+	# Open turns: a turn over a pass plays over that pass (_memory), not turn 1.
+	var memory := _memory(state)
+	if not str(simulation.get("error")).is_empty() or simulation.get("role") != job.role or not Typed.same(simulation.get("level"), level) or not Typed.same(simulation.get("stage"), family.stage_by_id(level, str(checkpoint.next_stage_id))) or not Typed.same(simulation.get("_checkpoint"), checkpoint) or not Typed.same(simulation.get("_prior"), memory):
 		return {"ok": false, "error": PlayerCopy.LIGHTHOUSE_JOURNEY_A3F995624F41}
 	var recording: Dictionary = simulation.export_recording()
 	if job.chapter != Registry.FIRST_STEPS and recording.get("simulation_version") != state.simulation_version:
 		return {"ok": false, "error": "Unsupported recording version."}
 	var reason: String = family.recording_error(level, recording, checkpoint)
-	var expected_source := str(state.a.get("recording_hash", ""))
+	var expected_source := str(memory.get("recording_hash", ""))
 	if not reason.is_empty() or recording.get("role") != job.role or recording.get("source_recording_hash") != expected_source:
 		return {"ok": false, "error": reason if not reason.is_empty() else PlayerCopy.LIGHTHOUSE_JOURNEY_7D1ED48EEACE}
 	var next: Dictionary = state.duplicate(true)

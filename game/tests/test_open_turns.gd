@@ -191,6 +191,10 @@ func _chain() -> void:
 	_check(journal.accept_recording(a) and journal.accept_recording(pass_two) and journal.accept_recording(pass_three), "A solo journal takes turn 1 and two passes (%s)" % journal.last_error)
 	_check(journal.passes().size() == 2 and journal.prior_recording().get("recording_hash") == pass_three.recording_hash and journal.role() == "b", "Its next turn plays over the latest pass")
 	_solo_dots(journal, 4, two.first_player_slot)
+	# A Solo turn over a pass keeps its draft as it plays (the draft checks the pass it plays over).
+	var live: RefCounted = journal.create_live_simulation()
+	_check(live != null and journal.save_live_draft(live) and journal.has_draft(), "A Solo turn over a pass saves its draft (%s)" % journal.last_error)
+	_check(journal.save_draft({}) and not journal.has_draft(), "Its draft clears")
 	_check(Journey.new(path, null, TIDE).passes().size() == 2, "The passes survive a reload")
 	# Solo Play my turn again with passes held: the latest pass is taken back in memory, so turn 3 plays over turn 2 again.
 	var plan := journal.redo_plan()
