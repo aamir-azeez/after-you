@@ -9,7 +9,10 @@ extends SceneTree
 ##   the second turn lit, and nothing of the turn being played;
 ## - a cover built again mid-turn paints the same mask as the one that watched
 ##   every tick, and going back to tick 0 (a retry) paints the history's mask
-##   again, whatever the turn had opened;
+##   again at once, whatever the turn had opened;
+## - the next turn paints only what it added, and then shows what a cover
+##   built on its history shows; a new view keeps the old mask on screen
+##   until the new one is whole;
 ## - the turn being played opens more as its pip walks.
 const Witness = preload("res://tests/fog_marsh_witness.gd")
 const Registry = preload("res://services/chapter_registry.gd")
@@ -19,6 +22,8 @@ const MemoryTrace = preload("res://core/physical/memory_trace.gd")
 const PathsStore = preload("res://services/turn_paths_store.gd")
 const KEY := "fog-marsh@1"
 const STAGE := 1
+## The lantern stands on a raised floor (m), so a new view moves where it is seen.
+const LANTERN_LIFT := 1.2
 
 var checks := 0
 var failures := 0
@@ -87,17 +92,17 @@ func _paths(evidence: Dictionary) -> void:
 	root.add_child(holder)
 	var lanterns := {}
 	for lever: Dictionary in level.stages[STAGE].levers:
-		if str(lever.id) == "north-lantern": lanterns[lever.id] = Vector3(float(lever.position_cm[0]) / 100.0, 0.0, float(lever.position_cm[1]) / 100.0)
+		if str(lever.id) == "north-lantern": lanterns[lever.id] = Vector3(float(lever.position_cm[0]) / 100.0, LANTERN_LIFT, float(lever.position_cm[1]) / 100.0)
 	var watching: RefCounted = FogCover.build("fog", level.islands, [], lanterns, holder)
 	_check(watching != null, "the fog look has a cover")
 	if watching == null:
 		holder.free()
 		return
 	watching.show_paths(paths)
+	var clock := _settle(watching, 0.0)
 	var history_mask: PackedByteArray = watching.mask_bytes().duplicate()
 	var history_stamps: int = watching.stamp_count()
 	var live := _sim(evidence, 2)
-	var clock := 0.0
 	var inputs: Array = live.expand_recording_inputs(turns[1])
 	var half := inputs.size() / 2
 	for index in range(half):
@@ -111,8 +116,54 @@ func _paths(evidence: Dictionary) -> void:
 	_check(watching.stamp_count() > history_stamps, "the turn being played opens more as its pip walks (%d stamps, %d before)" % [watching.stamp_count(), history_stamps])
 	var built: RefCounted = FogCover.build("fog", level.islands, [], lanterns, holder)
 	built.show_paths(paths)
+	_settle(built, clock)
 	_check(built.mask_bytes() == watching.mask_bytes(), "a cover built again mid-turn paints the same mask as the one that watched every tick")
 	watching.paths_changed(paths.note(_sim(evidence, 2).snapshot()))
-	_check(watching.mask_bytes() == history_mask and paths.live_points.is_empty(), "back at tick 0 (a retry) the mask is the history's again")
+	_check(watching.mask_bytes() == history_mask and paths.live_points.is_empty(), "back at tick 0 (a retry) the mask is the history's again, at once")
 	_check(built.mask_bytes() != history_mask, "and the walked turn had opened more than the history")
+	# The whole turn walked, then the next turn starts over its new history.
+	var replayed := _sim(evidence, 2)
+	for input: Dictionary in replayed.expand_recording_inputs(turns[1]):
+		watching.paths_changed(paths.note(replayed.step(input)))
+		clock += 1.0 / 30.0
+		watching.advance(1.0 / 30.0, clock)
+	clock = _settle(watching, clock)
+	paths.set_history(kept)
+	watching.show_paths(paths)
+	var started := clock
+	clock = _settle(watching, clock)
+	var fresh: RefCounted = FogCover.build("fog", level.islands, [], lanterns, holder)
+	fresh.show_paths(paths)
+	var fresh_frames := roundi((_settle(fresh, clock) - clock) * 60.0)
+	var turn_frames := roundi((clock - started) * 60.0)
+	_check(watching.mask_bytes() == fresh.mask_bytes() and watching.stamp_count() == fresh.stamp_count(), "a new turn's cover shows the same as one built on its history (%d stamps, %d)" % [watching.stamp_count(), fresh.stamp_count()])
+	_check(turn_frames < fresh_frames, "painting only what the turn added (%d frames, %d for the whole)" % [turn_frames, fresh_frames])
+	# A new view paints a second mask and shows it once it is whole.
+	var camera := Camera3D.new()
+	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
+	holder.add_child(camera)
+	camera.look_at_from_position(Vector3(-8, 10, 4), Vector3.ZERO)
+	camera.make_current()
+	var shown: PackedByteArray = watching.mask_bytes().duplicate()
+	clock += 1.0 / 60.0
+	watching.advance(1.0 / 60.0, clock)
+	_check(watching.painting() and watching.mask_bytes() == shown, "a new view keeps the old mask on screen while the new one paints")
+	_settle(watching, clock)
+	var viewed: RefCounted = FogCover.build("fog", level.islands, [], lanterns, holder)
+	viewed.show_paths(paths)
+	_settle(viewed, clock)
+	var moved := 0
+	for index in range(shown.size()): moved += int(watching.mask_bytes()[index] != shown[index])
+	_check(moved > 0, "the new view moves what is seen above the lowest floor (%d texels)" % moved)
+	_check(watching.mask_bytes() == viewed.mask_bytes(), "then shows the same as a cover built under that view")
 	holder.free()
+
+## Advances `cover` frame by frame until it owes no paint.
+func _settle(cover: RefCounted, clock: float) -> float:
+	var frames := 0
+	while cover.painting() and frames < 3000:
+		clock += 1.0 / 60.0
+		cover.advance(1.0 / 60.0, clock)
+		frames += 1
+	_check(not cover.painting(), "the cover's paint finishes within bounded frames (%d)" % frames)
+	return clock
