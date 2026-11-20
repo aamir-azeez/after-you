@@ -676,17 +676,20 @@ static func walk(sim: RefCounted, destination: Array) -> bool:
 	for axis: String in ["x", "z"]:
 		var index := 0 if axis == "x" else 1
 		var still := 0
+		var line := Walk.Line.new(sim, axis)
 		for _tick in range(sim.duration_limit()):
 			if sim.finished or not sim.error.is_empty(): return false
 			var before := int(sim._players[sim.active_slot][axis])
 			var distance := int(destination[index]) - before
 			if absi(distance) <= 1: break
+			if line.rejoin(sim, hands, sim._players[sim.active_slot].duplicate(), signi(distance)): continue
 			var input := {"move_x": 0.0, "move_z": 0.0}
 			input["move_" + axis] = clampf(float(distance) / 8.0, -1.0, 1.0)
 			sim.step(input)
 			still = still + 1 if int(sim._players[sim.active_slot][axis]) == before else 0
 			if still > 0 and Walk.against(hands, sim._players[sim.active_slot], axis, signi(distance)):
-				if not Walk.sidestep(sim, hands, axis, signi(distance)): break
+				line.detour = Walk.sidestep(sim, hands, axis, signi(distance))
+				if line.detour.is_empty(): break
 				still = 0
 			if still >= STUCK_TICKS: return false
 	return true

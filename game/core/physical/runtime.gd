@@ -283,7 +283,7 @@ func _try_move(delta: Vector2i, cells: Dictionary, routes: Dictionary, slot: Str
 	var x := int(previous.x) + delta.x
 	var z := int(previous.z) + delta.y
 	var position := Navigation.at(level, routes, _mechanisms.levers, previous, x, z, slot, PLAYER_RADIUS, true, cells)
-	if position.is_empty() or _in_solid(position): return false
+	if position.is_empty() or _in_solid(position, previous): return false
 	var pushed: Dictionary = {}
 	for prop: Dictionary in level.get("props", []):
 		var ball: Dictionary = _mechanisms.props[prop.id]
@@ -306,11 +306,16 @@ func _try_move(delta: Vector2i, cells: Dictionary, routes: Dictionary, slot: Str
 	if slot == active_slot and int(previous.height) > int(position.height) + 2: _events.append("drop")
 	return true
 
-## Whether `position` stands in a solid spot on its own floor.
-func _in_solid(position: Dictionary) -> bool:
+## Whether `position` stands in a solid spot on its own floor. With `from`
+## (the step's start), a step that leaves a footprint it already stands in
+## (a pip a checkpoint, a start or a ride left there) is let through.
+func _in_solid(position: Dictionary, from: Dictionary = {}) -> bool:
 	if _solids.is_empty(): return false
 	var floor := str(position.surface_id)
-	return Solid.blocked(_solids.filter(func(spot: Dictionary) -> bool: return str(spot.get("surface_id", "")) == floor), Vector2i(int(position.x), int(position.z)), PLAYER_RADIUS)
+	var here := _solids.filter(func(spot: Dictionary) -> bool: return str(spot.get("surface_id", "")) == floor)
+	var to := Vector2i(int(position.x), int(position.z))
+	if from.is_empty() or str(from.get("surface_id", "")) != floor: return Solid.blocked(here, to, PLAYER_RADIUS)
+	return Solid.blocks_step(here, Vector2i(int(from.x), int(from.z)), to, PLAYER_RADIUS)
 
 func _can_push(ball: Dictionary) -> bool:
 	if ball.status == "fitted" or ball.status == "offered": return false

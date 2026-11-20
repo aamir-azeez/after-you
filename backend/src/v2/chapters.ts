@@ -48,8 +48,10 @@ export const CHAPTERS: readonly { readonly adapter: ChapterAdapter; readonly fla
 ]);
 const rows: readonly ChapterAdapter[] = CHAPTERS.map(row => row.adapter);
 /** Every chapter the server plays: the rows, then the published chapters as older apps
- * hold them (legacy-chapters.ts). Those are never advertised: a room made with one, or
- * by an older app that still asks for it, keeps playing and verifying. */
+ * hold them (legacy-chapters.ts). Room level 2 also advertises those after the rows, so
+ * an older app still finds its own hash and starts rooms on it, and a newer app skips
+ * hashes it does not know (chapter_registry.gd supported_capabilities). Room level 1
+ * (0.5.x, a list of at most 16) never lists them. */
 const entries: readonly ChapterAdapter[] = [...rows, ...LEGACY_CHAPTERS];
 
 /** Exact immutable authored registry; unknown versions never fall back. */
@@ -75,5 +77,5 @@ export function creatable(entry: ChapterAdapter, env: Env): boolean {
  * two-stage list, byte-identical to before. Room level 2 adds chapters with more
  * stages and names each chapter's stage count. */
 export function advertisedChapters(env: Env, roomLevel = 1) {
-  return rows.filter(entry => creatable(entry, env) && (roomLevel >= 2 || entry.stages.length === LEGACY_STAGE_COUNT)).map(entry => ({ ...entry.key, premium: entry.premium, recording_version: entry.recording_version, simulation_version: entry.simulation_version, ...(entry.supported_simulation_versions ? { supported_simulation_versions: entry.supported_simulation_versions } : {}), ...(roomLevel >= 2 ? { stage_count: entry.stages.length } : {}) }));
+  return (roomLevel >= 2 ? entries : rows).filter(entry => creatable(entry, env) && (roomLevel >= 2 || entry.stages.length === LEGACY_STAGE_COUNT)).map(entry => ({ ...entry.key, premium: entry.premium, recording_version: entry.recording_version, simulation_version: entry.simulation_version, ...(entry.supported_simulation_versions ? { supported_simulation_versions: entry.supported_simulation_versions } : {}), ...(roomLevel >= 2 ? { stage_count: entry.stages.length } : {}) }));
 }

@@ -47,6 +47,19 @@ static func blocked(entities: Array, at: Vector2i, body_cm: int) -> bool:
 		if _centre(entity).distance_squared_to(at) < keep * keep: return true
 	return false
 
+## True when a step from `from` to `to` ends in one of `entities`' footprints
+## without leaving it: a pip already inside one (a checkpoint or a ride left
+## it there) may always step further out, never further in.
+static func blocks_step(entities: Array, from: Vector2i, to: Vector2i, body_cm: int) -> bool:
+	for entity: Dictionary in entities:
+		var solid := of(entity)
+		if solid.is_empty(): continue
+		var keep := int(solid.radius_cm) + body_cm
+		var centre := _centre(entity)
+		var after := centre.distance_squared_to(to)
+		if after < keep * keep and after <= centre.distance_squared_to(from): return true
+	return false
+
 ## True when a pip of `body_cm` radius centred at `at` may take or place at
 ## `entity`: within reach_cm of a solid footprint's edge, else inside the
 ## spot's radius_cm.

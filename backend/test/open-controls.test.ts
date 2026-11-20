@@ -59,6 +59,9 @@ import highDownEnd from "../../game/tests/fixtures/cooperative/high-and-low-v2-d
 import bundledHigh from "../src/v2/high-and-low-v2.json";
 import bundledHighInitial from "../src/v2/high-and-low-v2-initial.json";
 import { withConfig } from "./config";
+import { LEGACY_CHAPTERS } from "../src/v2/legacy-chapters";
+// The published chapters as older apps hold them, which room level 2 lists after the rows (legacy-chapters.ts).
+const current = <T extends { definition_hash: string }>(items: T[]): T[] => items.filter(item => !LEGACY_CHAPTERS.some(entry => entry.key.definition_hash === item.definition_hash));
 
 /** A fixture checkpoint as an open turns room takes it: no proof nests in it (v2/open-turns.ts fingerprints), and its hash never covered one. */
 function flat<T extends object>(checkpoint: T): Omit<T, "proof"> { const { proof: _proof, ...rest } = checkpoint as T & { proof?: unknown }; void _proof; return rest; }
@@ -124,7 +127,7 @@ describe("open controls (rules 12 and 13)", () => {
       expect(advertisedChapters(withConfig({ ...env }) as Env, 2).some(item => item.level_id === chain.adapter.key.level_id && item.level_version === chain.adapter.key.level_version)).toBe(false);
       const on = withConfig({ ...env, [chain.flag]: "true" }) as Env;
       expect(creatable(chain.adapter, on)).toBe(true);
-      expect(advertisedChapters(on, 2).at(-1)).toMatchObject({ ...chain.adapter.key, supported_simulation_versions: [chain.rules] });
+      expect(current(advertisedChapters(on, 2)).at(-1)).toMatchObject({ ...chain.adapter.key, supported_simulation_versions: [chain.rules] });
       // No control in it names an owner.
       for (const stage of (chain.definition as { stages: Record<string, { owner_slot?: string }[]>[] }).stages)
         for (const kind of ["controls", "levers", "pressure_pads"]) for (const item of stage[kind] ?? []) expect(item, `${kind} ${JSON.stringify(item)}`).not.toHaveProperty("owner_slot");

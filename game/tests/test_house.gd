@@ -26,8 +26,8 @@ func _run() -> void:
 	quit(1 if failures else 0)
 
 func _preservation() -> void:
-	_check(Canonical.digest(Catalog.definition("high-and-low")) == "6aa907e802c92445745a6452c6ec0850dd8e98724e689b58a8ec82915fb08956", "Published free chapter definition remains unchanged")
-	_check(Canonical.digest(Catalog.definition("rolling-home")) == "d6aaa6006597dd5e4ce4dbc641d94c81c2ab17c55bd80b50c6a240e0e91cff87", "Published paid chapter definition remains unchanged")
+	_check(Canonical.digest(Catalog.definition("high-and-low")) == "3b6576badcdd214630373a0f51040706e014845d9b8bc17483bd887f04a9ff40", "Published free chapter definition remains unchanged")
+	_check(Canonical.digest(Catalog.definition("rolling-home")) == "3362e8afd9fb3504868ab4b8b436050f62fe601e5c7ff8fea995424064f2dbff", "Published paid chapter definition remains unchanged")
 	var level := House.definition("a-house-for-two@1")
 	_check(level.schema_version == 6 and level.simulation_version == 6 and level.stages.size() == 2 and level.premium, "House composes the same bounded simulation6 rules and paid-host access")
 

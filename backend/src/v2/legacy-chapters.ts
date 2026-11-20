@@ -22,11 +22,11 @@ import tideV2Initial from "./legacy/turn-of-the-tide-v2-initial.json";
 
 /** Published chapters as older apps hold them, from before every lever, switch,
  * selector and mirror became solid with a longer reach (owner, 2026-11-20; the game's
- * core/solid_footprint.gd with_hands). Each keeps its old definition hash, so a room
- * made before the change, or by an older app, keeps joining, playing and verifying
- * (chapters.ts finds them; it never advertises them, so a new room is always on the new
- * hash). A newer app knows only the new hashes, so the two never share a room. Retire
- * these once CONFIG min_client_version reaches the release with the change.
+ * core/solid_footprint.gd with_hands). Each keeps its old definition hash, so an older
+ * app keeps starting, joining and finishing its own rooms, and a room made before the
+ * change keeps verifying (chapters.ts finds them and advertises them on room level 2,
+ * after the rows). A newer app knows only the new hashes, so the two never share a room.
+ * Retire these once CONFIG min_client_version reaches the release with the change.
  * Byte copies of the published files at origin/main b7789880; never edit them. */
 type Cooperative = Parameters<typeof adapter>;
 type Journey = Parameters<typeof journeyAdapter>;
