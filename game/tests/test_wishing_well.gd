@@ -2,7 +2,7 @@ extends SceneTree
 ## The Wishing Well: route witnesses with real inputs through the native rules.
 const Simulation = preload("res://core/cooperative/simulation.gd")
 const Catalog = preload("res://core/cooperative/stage_catalog.gd")
-const Well = preload("res://core/cooperative/wishing_well_catalog.gd")
+const Well = preload("res://core/cooperative/stage_catalog.gd")
 const Navigation = preload("res://core/cooperative/navigation.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const Canonical = preload("res://core/v2/canonical.gd")

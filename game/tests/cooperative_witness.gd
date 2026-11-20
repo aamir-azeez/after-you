@@ -78,8 +78,7 @@ static func receiver(level: Dictionary, stage_id: String, checkpoint: Dictionary
 ## the side the pip comes from, where it works it; a leg that runs into one
 ## stops there rather than pushing at it.
 static func walk(sim: RefCounted, destination: Array) -> void:
-	var stage: Variant = sim.get("stage")
-	var hands := Solid.solids(stage.get("levers", []) + stage.get("controls", [])) if stage is Dictionary else []
+	var hands := hands_of(sim)
 	destination = beside(hands, sim.snapshot().players[sim.active_slot], destination)
 	for axis: String in ["x", "z"]:
 		var index := 0 if axis == "x" else 1
@@ -92,7 +91,13 @@ static func walk(sim: RefCounted, destination: Array) -> void:
 			input["move_" + axis] = clampf(float(distance) / 8.0, -1.0, 1.0)
 			sim.step(input)
 			var now: Dictionary = sim.snapshot().players[sim.active_slot]
-			if int(now.x) == int(player.x) and int(now.z) == int(player.z) and _against(hands, now, axis, signi(distance)): break
+			if int(now.x) == int(player.x) and int(now.z) == int(player.z) and against(hands, now, axis, signi(distance)):
+				if not sidestep(sim, hands, axis, signi(distance)): break
+
+## The solid hand controls of `sim`'s stage ([] for an engine without stages).
+static func hands_of(sim: RefCounted) -> Array:
+	var stage: Variant = sim.get("stage")
+	return Solid.solids(stage.get("levers", []) + stage.get("controls", [])) if stage is Dictionary else []
 
 ## `destination` moved out of any of `hands`' kept-out circles, to its edge
 ## on the side `player` stands.
@@ -106,8 +111,32 @@ static func beside(hands: Array, player: Dictionary, destination: Array) -> Arra
 		at = centre + (away.normalized() if away.length() >= 1.0 else Vector2.RIGHT) * keep
 	return [roundi(at.x), roundi(at.y)]
 
+## Steps across `axis`, away from the hand in the way, until a step along it
+## the way of `sign` is clear (either side, the way off the hand first).
+## Whether it cleared.
+static func sidestep(sim: RefCounted, hands: Array, axis: String, sign: int) -> bool:
+	var other := "z" if axis == "x" else "x"
+	var start: Dictionary = sim.snapshot().players[sim.active_slot]
+	var away := 1
+	for hand: Dictionary in hands:
+		var at := Vector2i(int(start.x), int(start.z))
+		if Solid.blocked([hand], at + (Vector2i(sign * 8, 0) if axis == "x" else Vector2i(0, sign * 8)), Solid.BODY_CM):
+			var centre := int(hand.position_cm[1 if other == "z" else 0])
+			away = 1 if int(start[other]) >= centre else -1
+	for side: int in [away, -away]:
+		for _tick in range(16):
+			var player: Dictionary = sim.snapshot().players[sim.active_slot]
+			if not against(hands, player, axis, sign): return true
+			var input := {"move_x": 0.0, "move_z": 0.0}
+			input["move_" + other] = float(side)
+			sim.step(input)
+			var now: Dictionary = sim.snapshot().players[sim.active_slot]
+			if int(now.x) == int(player.x) and int(now.z) == int(player.z): break
+		if not against(hands, sim.snapshot().players[sim.active_slot], axis, sign): return true
+	return false
+
 ## Whether a step along `axis` the way of `sign` would enter a hand's footprint.
-static func _against(hands: Array, player: Dictionary, axis: String, sign: int) -> bool:
+static func against(hands: Array, player: Dictionary, axis: String, sign: int) -> bool:
 	var next := Vector2i(int(player.x), int(player.z)) + (Vector2i(sign * 8, 0) if axis == "x" else Vector2i(0, sign * 8))
 	return hands.any(func(hand: Dictionary) -> bool: return str(hand.get("surface_id", "")) == str(player.surface_id) and Solid.blocked([hand], next, Solid.BODY_CM))
 

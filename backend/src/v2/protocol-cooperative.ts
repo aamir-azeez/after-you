@@ -41,7 +41,7 @@ function inside(p: Record<string, unknown>, marker: Marker, radius = marker.radi
 
 /** One bounded structural adapter for the shared native physical simulation.
  * Proof bytes are retained for native deterministic replay; the server does not simulate physics. */
-function adapter(definition: Definition, initial: ChapterCheckpoint, definitionHash: string): ChapterAdapter {
+export function adapter(definition: Definition, initial: ChapterCheckpoint, definitionHash: string): ChapterAdapter {
   const key = Object.freeze({ level_id: definition.id, level_version: definition.version, definition_hash: definitionHash });
   function catalog(value: Record<string, unknown>): void { need(value.level_id === key.level_id && value.level_version === key.level_version && value.definition_hash === key.definition_hash, "unsupported_chapter"); }
   // A definition declaring rules 9+ plays only those rules; published chapters keep 6/8.

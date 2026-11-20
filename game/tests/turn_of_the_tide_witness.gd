@@ -668,7 +668,11 @@ static func play(sim: RefCounted, ops: Array, probe: Callable = Callable()) -> S
 	return ""
 
 ## Same inputs as cooperative_witness.walk; false when the walker stops short.
+## A walk aimed into a solid lever or selector stops beside it, and a leg
+## that runs into one steps round it (cooperative_witness.gd walk).
 static func walk(sim: RefCounted, destination: Array) -> bool:
+	var hands := Walk.hands_of(sim)
+	destination = Walk.beside(hands, sim._players[sim.active_slot], destination)
 	for axis: String in ["x", "z"]:
 		var index := 0 if axis == "x" else 1
 		var still := 0
@@ -681,12 +685,16 @@ static func walk(sim: RefCounted, destination: Array) -> bool:
 			input["move_" + axis] = clampf(float(distance) / 8.0, -1.0, 1.0)
 			sim.step(input)
 			still = still + 1 if int(sim._players[sim.active_slot][axis]) == before else 0
+			if still > 0 and Walk.against(hands, sim._players[sim.active_slot], axis, signi(distance)):
+				if not Walk.sidestep(sim, hands, axis, signi(distance)): break
+				still = 0
 			if still >= STUCK_TICKS: return false
 	return true
 
 ## Both axes at once: full input on each moves 6 cm a tick on each, one axis
 ## alone 8 cm. A blocked step slides along the edge (runtime _move).
 static func walk_both(sim: RefCounted, destination: Array) -> bool:
+	destination = Walk.beside(Walk.hands_of(sim), sim._players[sim.active_slot], destination)
 	var still := 0
 	for _tick in range(sim.duration_limit()):
 		if sim.finished or not sim.error.is_empty(): return false

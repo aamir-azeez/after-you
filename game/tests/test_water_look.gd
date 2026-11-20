@@ -16,7 +16,7 @@ extends SceneTree
 ##   built for them and nothing fails;
 ## - every seabed style makes a material, and nothing in the simulation reads
 ##   the look.
-const TideCatalog = preload("res://core/journey/turn_of_the_tide_catalog.gd")
+const TideCatalog = preload("res://core/journey/stage_catalog.gd")
 const JourneyCatalog = preload("res://core/journey/stage_catalog.gd")
 const World = preload("res://presentation/tide_world.gd")
 const WaterBodies = preload("res://presentation/kit/water_bodies.gd")
@@ -44,7 +44,7 @@ func _initialize() -> void: _run.call_deferred()
 
 func _run() -> void:
 	root.size = Vector2i(1280, 720)
-	var level := TideCatalog.definition()
+	var level := TideCatalog.definition("turn-of-the-tide@1")
 	await _tide(level)
 	await _bare()
 	_styles()

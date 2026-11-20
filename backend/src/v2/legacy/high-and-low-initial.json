@@ -1,0 +1,33 @@
+{
+	"a_recording_hash": "",
+	"b_recording_hash": "",
+	"checkpoint_hash": "b0315be3c521d13bf652a37825279987dce4382634a075aff5ab4baae7512dfc",
+	"completed_stage_id": "",
+	"definition_hash": "6aa907e802c92445745a6452c6ec0850dd8e98724e689b58a8ec82915fb08956",
+	"level_id": "high-and-low",
+	"level_version": 1,
+	"mechanisms": {
+		"latched_bridges": [],
+		"levers": {},
+		"props": {}
+	},
+	"next_stage_id": "upper-path",
+	"players": {
+		"p0": {
+			"height": 0,
+			"surface_id": "shore",
+			"x": -528,
+			"z": -128
+		},
+		"p1": {
+			"height": 0,
+			"surface_id": "shore",
+			"x": -288,
+			"z": 0
+		}
+	},
+	"previous_checkpoint_hash": "",
+	"proof": {},
+	"schema_version": 6,
+	"stage_index": 0
+}

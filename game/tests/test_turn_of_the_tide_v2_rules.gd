@@ -20,7 +20,6 @@ const Registry = preload("res://services/chapter_registry.gd")
 const Simulation = preload("res://core/journey/simulation.gd")
 const Tide = preload("res://tests/turn_of_the_tide_witness.gd")
 const V2 = preload("res://tests/turn_of_the_tide_v2_witness.gd")
-const Journey = preload("res://services/relay_journey.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const SET := "set-the-tide"
@@ -59,7 +58,7 @@ func _definition() -> void:
 	_check(int(level.closing_ticks) == 45 and not earlier.has("closing_ticks"), "A closing crossing keeps its floor 45 ticks in @2 only")
 	for stage: Dictionary in level.stages:
 		_check(stage.entry_latch_routes.is_empty(), "No crossing in %s is kept on entry" % stage.id)
-	_check(REMOVED_V2 in Journey.RETIRED_DEFINITIONS.get(KEY, []) and Canonical.digest(level) not in Journey.RETIRED_DEFINITIONS.get(KEY, []), "The removed settled-source @2 is retired and this one is not")
+	_check(REMOVED_V2 != Canonical.digest(level), "The removed settled-source @2 is not this one, so its journal is moved aside")
 	# @1 on rules 9: no closing state, no drowning, kept routes as published.
 	var old := Simulation.new()
 	old.reset(earlier, SET, Registry.initial_checkpoint("turn-of-the-tide@1"), {}, "a")

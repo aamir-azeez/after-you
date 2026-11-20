@@ -1,0 +1,283 @@
+{
+	"bridges": [
+		{
+			"from_surface": "shore",
+			"height_cm": 0,
+			"id": "lower-causeway",
+			"owner_slot": "p0",
+			"rect_cm": [
+				-240,
+				96,
+				128,
+				192
+			],
+			"to_surface": "lower-ledge"
+		},
+		{
+			"from_surface": "lower-ledge",
+			"height_cm": 0,
+			"id": "red-passage",
+			"owner_slot": "p0",
+			"rect_cm": [
+				576,
+				-48,
+				736,
+				48
+			],
+			"to_surface": "garden"
+		}
+	],
+	"drops": [
+		{
+			"destination_surface": "lower-ledge",
+			"height_cm": 0,
+			"id": "loft-hole",
+			"rect_cm": [
+				216,
+				24,
+				264,
+				72
+			],
+			"requires_lever": "loft-lever",
+			"surface_id": "loft"
+		}
+	],
+	"id": "high-and-low",
+	"islands": [
+		{
+			"height_cm": 0,
+			"id": "shore",
+			"rect_cm": [
+				-640,
+				-240,
+				-240,
+				240
+			]
+		},
+		{
+			"height_cm": 160,
+			"id": "loft",
+			"rect_cm": [
+				-80,
+				-240,
+				320,
+				240
+			]
+		},
+		{
+			"height_cm": 0,
+			"id": "lower-ledge",
+			"rect_cm": [
+				128,
+				-96,
+				576,
+				192
+			]
+		},
+		{
+			"height_cm": 0,
+			"id": "garden",
+			"rect_cm": [
+				736,
+				-176,
+				1088,
+				176
+			]
+		}
+	],
+	"premium": false,
+	"props": [],
+	"schema_version": 6,
+	"simulation_version": 6,
+	"stages": [
+		{
+			"ball_pads": [],
+			"first_player_slot": "p0",
+			"gates": [
+				{
+					"ball_pad_id": "",
+					"lever_id": "shore-lever",
+					"pad_id": "lower-switch",
+					"route_id": "blue-stair"
+				}
+			],
+			"goal": {
+				"id": "loft-bell",
+				"owner_slot": "p1",
+				"position_cm": [
+					160,
+					-128
+				],
+				"radius_cm": 28,
+				"surface_id": "loft"
+			},
+			"goal_policy": {
+				"kind": "ring"
+			},
+			"hint_a": "Help your partner reach the loft.",
+			"hint_b": "Reach the bell above.",
+			"id": "upper-path",
+			"kind": "hold_switch",
+			"levers": [
+				{
+					"id": "shore-lever",
+					"owner_slot": "p0",
+					"position_cm": [
+						-544,
+						112
+					],
+					"radius_cm": 28,
+					"surface_id": "shore"
+				}
+			],
+			"pressure_pads": [
+				{
+					"id": "lower-switch",
+					"owner_slot": "p0",
+					"position_cm": [
+						-448,
+						-128
+					],
+					"radius_cm": 32,
+					"surface_id": "shore"
+				}
+			],
+			"receiver_action_ticks": 1,
+			"receiver_route_cm": [
+				[
+					-288,
+					0
+				],
+				[
+					160,
+					0
+				],
+				[
+					160,
+					-128
+				]
+			],
+			"source_policy": {
+				"kind": "hold_switch",
+				"lever_id": "shore-lever",
+				"minimum_hold_ticks": 15,
+				"pad_id": "lower-switch"
+			},
+			"version": 1
+		},
+		{
+			"ball_pads": [],
+			"first_player_slot": "p1",
+			"gates": [
+				{
+					"ball_pad_id": "",
+					"lever_id": "loft-lever",
+					"pad_id": "lower-ledge-switch",
+					"route_id": "lower-causeway"
+				},
+				{
+					"ball_pad_id": "",
+					"lever_id": "loft-lever",
+					"pad_id": "lower-ledge-switch",
+					"route_id": "red-passage"
+				}
+			],
+			"goal": {
+				"id": "garden-bell",
+				"owner_slot": "p0",
+				"position_cm": [
+					912,
+					0
+				],
+				"radius_cm": 28,
+				"surface_id": "garden"
+			},
+			"goal_policy": {
+				"kind": "ring"
+			},
+			"hint_a": "Open a way through the lower islands.",
+			"hint_b": "Reach the garden bell.",
+			"id": "down-and-around",
+			"kind": "hold_switch",
+			"levers": [
+				{
+					"id": "loft-lever",
+					"owner_slot": "p1",
+					"position_cm": [
+						240,
+						-128
+					],
+					"radius_cm": 28,
+					"surface_id": "loft"
+				}
+			],
+			"pressure_pads": [
+				{
+					"id": "lower-ledge-switch",
+					"owner_slot": "p1",
+					"position_cm": [
+						448,
+						48
+					],
+					"radius_cm": 32,
+					"surface_id": "lower-ledge"
+				}
+			],
+			"receiver_action_ticks": 1,
+			"receiver_route_cm": [
+				[
+					-448,
+					144
+				],
+				[
+					448,
+					144
+				],
+				[
+					448,
+					0
+				],
+				[
+					912,
+					0
+				]
+			],
+			"source_policy": {
+				"kind": "hold_switch",
+				"lever_id": "loft-lever",
+				"minimum_hold_ticks": 15,
+				"pad_id": "lower-ledge-switch"
+			},
+			"version": 1
+		}
+	],
+	"stairs": [
+		{
+			"axis": "x",
+			"from_height_cm": 0,
+			"from_surface": "shore",
+			"id": "blue-stair",
+			"owner_slot": "p1",
+			"rect_cm": [
+				-240,
+				-48,
+				-80,
+				48
+			],
+			"to_height_cm": 160,
+			"to_surface": "loft"
+		}
+	],
+	"starts": {
+		"p0": [
+			-528,
+			-128
+		],
+		"p1": [
+			-288,
+			0
+		]
+	},
+	"title": "High and Low",
+	"version": 1
+}

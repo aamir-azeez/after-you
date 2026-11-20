@@ -1,0 +1,369 @@
+{
+	"access_zones": [
+		{
+			"id": "upper-lane",
+			"owner_slot": "p1",
+			"rect_cm": [
+				656,
+				64,
+				816,
+				208
+			],
+			"surface_id": "far-bank"
+		},
+		{
+			"id": "lower-lane",
+			"owner_slot": "p0",
+			"rect_cm": [
+				656,
+				-208,
+				816,
+				-64
+			],
+			"surface_id": "far-bank"
+		}
+	],
+	"bridges": [
+		{
+			"from_surface": "shore",
+			"height_cm": 0,
+			"id": "shore-middle",
+			"owner_slot": "",
+			"rect_cm": [
+				-240,
+				-56,
+				-80,
+				56
+			],
+			"to_surface": "middle"
+		},
+		{
+			"from_surface": "middle",
+			"height_cm": 0,
+			"id": "middle-far",
+			"owner_slot": "",
+			"rect_cm": [
+				400,
+				-56,
+				560,
+				56
+			],
+			"to_surface": "far-bank"
+		},
+		{
+			"from_surface": "far-bank",
+			"height_cm": 0,
+			"id": "far-home",
+			"owner_slot": "",
+			"rect_cm": [
+				960,
+				-56,
+				1120,
+				56
+			],
+			"to_surface": "home"
+		}
+	],
+	"drops": [],
+	"id": "rolling-home",
+	"islands": [
+		{
+			"height_cm": 0,
+			"id": "shore",
+			"rect_cm": [
+				-640,
+				-208,
+				-240,
+				208
+			]
+		},
+		{
+			"height_cm": 0,
+			"id": "middle",
+			"rect_cm": [
+				-80,
+				-208,
+				400,
+				208
+			]
+		},
+		{
+			"height_cm": 0,
+			"id": "far-bank",
+			"rect_cm": [
+				560,
+				-208,
+				960,
+				208
+			]
+		},
+		{
+			"height_cm": 0,
+			"id": "home",
+			"rect_cm": [
+				1120,
+				-208,
+				1520,
+				208
+			]
+		}
+	],
+	"obstacles": [
+		{
+			"id": "garden-bed",
+			"rect_cm": [
+				656,
+				-64,
+				816,
+				64
+			],
+			"surface_id": "far-bank"
+		}
+	],
+	"premium": true,
+	"props": [
+		{
+			"id": "round-ball",
+			"kind": "ball",
+			"position_cm": [
+				-464,
+				0
+			],
+			"radius_cm": 20,
+			"surface_id": "shore"
+		}
+	],
+	"schema_version": 6,
+	"simulation_version": 6,
+	"stages": [
+		{
+			"ball_pads": [
+				{
+					"id": "heavy-pad",
+					"position_cm": [
+						-304,
+						96
+					],
+					"prop_id": "round-ball",
+					"radius_cm": 36,
+					"surface_id": "shore"
+				}
+			],
+			"first_player_slot": "p0",
+			"gates": [
+				{
+					"ball_pad_id": "heavy-pad",
+					"lever_id": "",
+					"pad_id": "",
+					"route_id": "shore-middle"
+				},
+				{
+					"ball_pad_id": "heavy-pad",
+					"lever_id": "middle-lever",
+					"pad_id": "",
+					"route_id": "middle-far"
+				}
+			],
+			"goal": {
+				"id": "far-bell",
+				"owner_slot": "p1",
+				"position_cm": [
+					896,
+					96
+				],
+				"radius_cm": 28,
+				"surface_id": "far-bank"
+			},
+			"goal_policy": {
+				"kind": "ring"
+			},
+			"hint_a": "Help your partner cross with the ball's weight.",
+			"hint_b": "Find what keeps both crossings open.",
+			"id": "weight-of-a-friend",
+			"kind": "weight_switch",
+			"levers": [
+				{
+					"id": "middle-lever",
+					"owner_slot": "p1",
+					"position_cm": [
+						192,
+						112
+					],
+					"radius_cm": 28,
+					"surface_id": "middle"
+				}
+			],
+			"pressure_pads": [],
+			"receiver_action_ticks": 2,
+			"receiver_route_cm": [
+				[
+					-400,
+					0
+				],
+				[
+					192,
+					0
+				],
+				[
+					192,
+					112
+				],
+				[
+					192,
+					0
+				],
+				[
+					608,
+					0
+				],
+				[
+					608,
+					128
+				],
+				[
+					896,
+					128
+				],
+				[
+					896,
+					96
+				]
+			],
+			"source_policy": {
+				"ball_pad_id": "heavy-pad",
+				"kind": "weight_switch",
+				"minimum_hold_ticks": 15,
+				"prop_id": "round-ball"
+			},
+			"version": 1
+		},
+		{
+			"ball_pads": [],
+			"first_player_slot": "p1",
+			"gates": [
+				{
+					"ball_pad_id": "",
+					"lever_id": "home-lever",
+					"pad_id": "",
+					"route_id": "far-home",
+					"second_lever_id": "route-lever"
+				}
+			],
+			"goal": {
+				"id": "home-cradle",
+				"owner_slot": "p0",
+				"position_cm": [
+					1376,
+					0
+				],
+				"radius_cm": 36,
+				"surface_id": "home"
+			},
+			"goal_policy": {
+				"kind": "ball_home",
+				"prop_id": "round-ball",
+				"socket_id": "home-cradle"
+			},
+			"handoff": {
+				"id": "handoff-mark",
+				"owner_slot": "p1",
+				"position_cm": [
+					240,
+					0
+				],
+				"radius_cm": 36,
+				"surface_id": "middle"
+			},
+			"hint_a": "Bring the ball back for your partner.",
+			"hint_b": "Roll the ball home.",
+			"id": "bring-it-home",
+			"kind": "offer_ball",
+			"levers": [
+				{
+					"id": "home-lever",
+					"owner_slot": "p1",
+					"position_cm": [
+						896,
+						96
+					],
+					"radius_cm": 28,
+					"surface_id": "far-bank"
+				},
+				{
+					"id": "route-lever",
+					"owner_slot": "p0",
+					"position_cm": [
+						240,
+						128
+					],
+					"radius_cm": 28,
+					"surface_id": "middle"
+				}
+			],
+			"pressure_pads": [],
+			"receiver_action_ticks": 2,
+			"receiver_route_cm": [
+				[
+					208,
+					0
+				],
+				[
+					208,
+					128
+				],
+				[
+					240,
+					128
+				],
+				[
+					208,
+					128
+				],
+				[
+					208,
+					0
+				],
+				[
+					608,
+					0
+				],
+				[
+					608,
+					-128
+				],
+				[
+					864,
+					-128
+				],
+				[
+					864,
+					0
+				],
+				[
+					1376,
+					0
+				]
+			],
+			"source_policy": {
+				"kind": "offer_ball",
+				"lever_id": "home-lever",
+				"prop_id": "round-ball",
+				"release_socket_id": "handoff-mark"
+			},
+			"version": 1
+		}
+	],
+	"stairs": [],
+	"starts": {
+		"p0": [
+			-528,
+			0
+		],
+		"p1": [
+			-528,
+			144
+		]
+	},
+	"title": "Rolling Home",
+	"version": 1
+}
