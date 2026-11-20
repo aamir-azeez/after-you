@@ -26,6 +26,8 @@ const Bell = preload("res://presentation/kit/pieces/bell.gd")
 const Models = preload("res://presentation/kit/models.gd")
 ## The bell style's frame, modelled in Blender (tools/blender/models/bell_frame.py).
 const FRAME := "res://assets/models/bell_frame.glb"
+## The harbour lantern style's post (tools/blender/models/harbour_more.py).
+const HARBOUR := "res://assets/models/harbour_more.glb"
 ## A lit goal's light, before the look's lamp scale (kit/look.gd lamp_energy).
 const LIGHT_ENERGY := 1.2
 const STYLES := ["bell", "harbour_lantern", "crest", "window", "walled_window"]
@@ -113,22 +115,16 @@ func _make_lantern(radius_m: float) -> void:
 	Parts.cylinder(radius_m, 0.05, SLATE, Vector3(0, 0.025, 0), root)
 	ring = Parts.ring(radius_m, Parts.CREAM, Vector3(0, 0.06, 0), root)
 	var base := Vector3(0, 0, -0.85)
-	var frame := Parts.TIMBER.darkened(0.25)
-	Parts.box(Vector3(0.50, 0.22, 0.40), Parts.STONE, base + Vector3(0, 0.11, 0), root)
-	Parts.cylinder(0.05, 1.40, Parts.TIMBER.darkened(0.2), base + Vector3(0, 0.92, 0), root)
+	# The plinth, pole, frame and roof (assets/models/harbour_more.glb); the panes
+	# and the lit lantern stay kit parts.
+	Models.still(HARBOUR, "harbour_lantern", {"stone": Parts.STONE, "pole": Parts.TIMBER.darkened(0.2), "frame": Parts.TIMBER.darkened(0.25), "brass": Parts.BRASS}, root).position = base
 	var head := base + Vector3(0, 1.78, 0)
-	Parts.box(Vector3(0.40, 0.05, 0.40), frame, head + Vector3(0, -0.24, 0), root)
-	for corner: Vector2 in [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]:
-		Parts.box(Vector3(0.035, 0.46, 0.035), frame, head + Vector3(corner.x * 0.16, 0, corner.y * 0.16), root)
 	for side: Vector3 in [Vector3(0, 0, 0.16), Vector3(0, 0, -0.16), Vector3(0.16, 0, 0), Vector3(-0.16, 0, 0)]:
 		var pane := Parts.box(Vector3(0.012 if side.x != 0.0 else 0.30, 0.40, 0.012 if side.z != 0.0 else 0.30), Color(1.0, 0.92, 0.72, 0.42), head + side, root)
 		pane.name = "LanternPane"
 		pane.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	bell = Parts.sphere(0.10, Color("e6c98a"), head, root)
 	bell.name = "HarbourLantern"
-	Parts.box(Vector3(0.46, 0.06, 0.46), frame, head + Vector3(0, 0.25, 0), root)
-	Parts.box(Vector3(0.28, 0.08, 0.28), frame, head + Vector3(0, 0.31, 0), root)
-	Parts.sphere(0.05, Parts.BRASS, head + Vector3(0, 0.38, 0), root)
 	_light(Parts.LIGHT, 4.5, head + Vector3(0, 0, 0.2))
 
 ## Low enough to stay clear of the completion bed's discs around it; a round
