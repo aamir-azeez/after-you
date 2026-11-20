@@ -1,0 +1,343 @@
+{
+	"bridges": [
+		{
+			"from_surface": "shore",
+			"height_cm": 0,
+			"id": "lift-low",
+			"rect_cm": [
+				-120,
+				-90,
+				80,
+				90
+			],
+			"to_surface": "loft"
+		},
+		{
+			"from_surface": "shore",
+			"height_cm": 160,
+			"id": "lift-high",
+			"rect_cm": [
+				-120,
+				-90,
+				80,
+				90
+			],
+			"to_surface": "loft"
+		}
+	],
+	"closing_ticks": 30,
+	"drops": [],
+	"id": "first-steps",
+	"islands": [
+		{
+			"height_cm": 0,
+			"id": "shore",
+			"rect_cm": [
+				-600,
+				-240,
+				-120,
+				240
+			]
+		},
+		{
+			"height_cm": 160,
+			"id": "loft",
+			"rect_cm": [
+				80,
+				-240,
+				500,
+				240
+			]
+		}
+	],
+	"item_spots": [
+		{
+			"height_cm": 160,
+			"id": "seed-pedestal",
+			"position_cm": [
+				230,
+				-90
+			],
+			"radius_cm": 36,
+			"solid": {
+				"radius_cm": 28,
+				"reach_cm": 20
+			},
+			"surface_id": "loft"
+		},
+		{
+			"height_cm": 0,
+			"id": "garden",
+			"position_cm": [
+				-300,
+				130
+			],
+			"radius_cm": 48,
+			"surface_id": "shore"
+		},
+		{
+			"height_cm": 0,
+			"id": "landing",
+			"position_cm": [
+				-340,
+				0
+			],
+			"radius_cm": 66,
+			"surface_id": "shore"
+		}
+	],
+	"items": [
+		{
+			"at": "away",
+			"id": "seed"
+		}
+	],
+	"premium": false,
+	"props": [],
+	"schema_version": 7,
+	"simulation_version": 16,
+	"stages": [
+		{
+			"ball_pads": [],
+			"controls": [],
+			"entry_latch_routes": [],
+			"first_player_slot": "p0",
+			"gates": [
+				{
+					"route_id": "lift-low",
+					"when": {
+						"not": {
+							"any": [
+								{
+									"pad_id": "lift-power"
+								},
+								{
+									"pad_id": "loft-winch"
+								}
+							]
+						}
+					}
+				},
+				{
+					"route_id": "lift-high",
+					"when": {
+						"any": [
+							{
+								"pad_id": "lift-power"
+							},
+							{
+								"pad_id": "loft-winch"
+							}
+						]
+					}
+				}
+			],
+			"goal": {
+				"height_cm": 160,
+				"id": "loft-bell",
+				"owner_slot": "p1",
+				"position_cm": [
+					400,
+					-40
+				],
+				"radius_cm": 36,
+				"surface_id": "loft"
+			},
+			"goal_policy": {
+				"kind": "ring"
+			},
+			"id": "a-little-lift",
+			"kind": "route_endpoint",
+			"levers": [],
+			"platforms": [
+				{
+					"id": "little-lift",
+					"stops": [
+						"lift-low",
+						"lift-high"
+					]
+				}
+			],
+			"pressure_pads": [
+				{
+					"height_cm": 0,
+					"id": "lift-power",
+					"position_cm": [
+						-300,
+						-130
+					],
+					"radius_cm": 36,
+					"surface_id": "shore"
+				},
+				{
+					"height_cm": 160,
+					"id": "loft-winch",
+					"position_cm": [
+						360,
+						110
+					],
+					"radius_cm": 36,
+					"surface_id": "loft"
+				}
+			],
+			"receiver_action_ticks": 2,
+			"receiver_route_cm": [
+				[
+					400,
+					-40
+				]
+			],
+			"source_policy": {
+				"kind": "route_endpoint",
+				"when": {}
+			},
+			"turn_cap": 10,
+			"version": 1
+		},
+		{
+			"ball_pads": [],
+			"controls": [],
+			"entry_latch_routes": [],
+			"first_player_slot": "p1",
+			"gates": [
+				{
+					"route_id": "lift-low",
+					"when": {
+						"not": {
+							"any": [
+								{
+									"pad_id": "lift-power"
+								},
+								{
+									"pad_id": "loft-winch"
+								}
+							]
+						}
+					}
+				},
+				{
+					"route_id": "lift-high",
+					"when": {
+						"any": [
+							{
+								"pad_id": "lift-power"
+							},
+							{
+								"pad_id": "loft-winch"
+							}
+						]
+					}
+				}
+			],
+			"goal": {
+				"height_cm": 0,
+				"id": "garden-lamp",
+				"owner_slot": "p1",
+				"position_cm": [
+					-450,
+					130
+				],
+				"radius_cm": 48,
+				"surface_id": "shore"
+			},
+			"goal_policy": {
+				"kind": "ring",
+				"when": {
+					"item_id": "seed",
+					"spot_id": "garden"
+				}
+			},
+			"id": "a-place-to-grow",
+			"item_starts": {
+				"seed": "seed-pedestal"
+			},
+			"kind": "route_endpoint",
+			"levers": [],
+			"platforms": [
+				{
+					"id": "little-lift",
+					"stops": [
+						"lift-low",
+						"lift-high"
+					]
+				}
+			],
+			"pressure_pads": [
+				{
+					"height_cm": 0,
+					"id": "lift-power",
+					"position_cm": [
+						-300,
+						-130
+					],
+					"radius_cm": 36,
+					"surface_id": "shore"
+				},
+				{
+					"height_cm": 160,
+					"id": "loft-winch",
+					"position_cm": [
+						360,
+						110
+					],
+					"radius_cm": 36,
+					"surface_id": "loft"
+				}
+			],
+			"receiver_action_ticks": 2,
+			"receiver_route_cm": [
+				[
+					-450,
+					130
+				]
+			],
+			"source_policy": {
+				"kind": "route_endpoint",
+				"when": {}
+			},
+			"throws": [
+				{
+					"catch_cm": 90,
+					"flight_ticks": 90,
+					"id": "seed-throw",
+					"mark": {
+						"height_cm": 160,
+						"position_cm": [
+							140,
+							-90
+						],
+						"radius_cm": 30,
+						"surface_id": "loft"
+					},
+					"to": "landing"
+				}
+			],
+			"turn_cap": 20,
+			"version": 1
+		}
+	],
+	"stairs": [],
+	"starts": {
+		"p0": {
+			"height_cm": 0,
+			"position_cm": [
+				-420,
+				-130
+			],
+			"surface_id": "shore"
+		},
+		"p1": {
+			"height_cm": 0,
+			"position_cm": [
+				-230,
+				0
+			],
+			"surface_id": "shore"
+		}
+	},
+	"turn_limits": {
+		"a_ticks": 1800,
+		"b_ticks": 1800
+	},
+	"version": 2
+}

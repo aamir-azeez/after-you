@@ -207,7 +207,8 @@ const BUMP_DURATION := 0.28
 const BUMP_FACE := 0.5
 var _bump_age := BUMP_DURATION
 ## A carried item hung on the spirit's back (kit/pieces/carried_item.gd carry):
-## it rides under the spirit root at _back_at, turned _back_turn, and sways.
+## it rides under the facing pivot at _back_at, turned _back_turn, so it stays
+## on the back whichever way the pip faces, and sways.
 var _back_item: Node3D = null
 var _back_at := Vector3.ZERO
 var _back_turn := Vector3.ZERO
@@ -579,10 +580,12 @@ func landing_squash() -> float:
 	if _reduced_motion or land_age>=MOTION_EVENT_END: return 0.0
 	return Motion.settle(land_age,_land_amount,2.8,7.5)
 
-## Hangs `item` (a child of this spirit) on its back at `at`, turned `turn`
-## (euler): it sways with the stride and the stop from now on, until it is
-## taken off (reparented) or freed. Presentation only.
+## Hangs `item` on its back at `at`, turned `turn` (euler), both in the facing
+## pivot's space (+Z the way the pip faces): the item moves under the facing
+## pivot, so it turns with the pip, and sways with the stride and the stop from
+## now on, until it is taken off (reparented) or freed. Presentation only.
 func hang_on_back(item: Node3D, at: Vector3, turn: Vector3) -> void:
+	if item.get_parent()!=facing: item.reparent(facing,false)
 	_back_item=item
 	_back_at=at
 	_back_turn=turn
@@ -590,7 +593,7 @@ func hang_on_back(item: Node3D, at: Vector3, turn: Vector3) -> void:
 
 func _apply_back_sway() -> void:
 	if _back_item==null: return
-	if not is_instance_valid(_back_item) or _back_item.get_parent()!=self:
+	if not is_instance_valid(_back_item) or _back_item.get_parent()!=facing:
 		_back_item=null
 		return
 	var roll := 0.0
@@ -605,8 +608,8 @@ func _apply_back_sway() -> void:
 		_back_item.position=_back_at
 		_back_item.rotation=_back_turn
 		return
-	# The sway is the pip's own (facing space); the item hangs in the root's.
-	var sway := Basis(facing.basis*Vector3.BACK,roll)*Basis(facing.basis*Vector3.RIGHT,swing)
+	# The sway is in the facing pivot's space, where the item hangs.
+	var sway := Basis(Vector3.BACK,roll)*Basis(Vector3.RIGHT,swing)
 	_back_item.position=_back_at+Vector3(0,bob,0)
 	_back_item.basis=sway*Basis.from_euler(_back_turn)
 

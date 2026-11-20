@@ -252,7 +252,7 @@ func _marks_route_owner(route: Dictionary) -> bool:
 
 ## Tide crossings carry a gauge and stubs their own marks instead of a pulley.
 func _hangs_pulley(route: Dictionary) -> bool:
-	return not _quiet_route(route)
+	return super._hangs_pulley(route) and not _quiet_route(route)
 
 ## A route that never needs the pulley: a stub, a tide crossing, or one this
 ## stage leaves closed or always open.

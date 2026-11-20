@@ -52,11 +52,12 @@ func _chapter(key: String, with_stages: bool) -> Dictionary:
 	if with_stages: item["stage_count"] = d.stage_count
 	return item
 
-## A capability answer. Level 1 lists only two-stage chapters, as the server does.
+## A capability answer. Level 1 lists only two-stage chapters, as the server
+## does, and an old server knew at most 16 of them (the first published).
 func _caps(level: int, extra_unknown: int = 0) -> Dictionary:
 	var chapters: Array = []
 	for key: String in Registry.keys():
-		if level < 2 and Registry.descriptor(key).stage_count != 2: continue
+		if level < 2 and (Registry.descriptor(key).stage_count != 2 or chapters.size() >= 16): continue
 		chapters.append(_chapter(key, level >= 2))
 	for index in range(extra_unknown):
 		chapters.append({"level_id": "future-chapter-%d" % index, "level_version": 1, "definition_hash": "f".repeat(64), "premium": false, "recording_version": 8, "simulation_version": 12})

@@ -41,7 +41,7 @@ func _run() -> void:
 		# A chapter's look (content/dressing) is authored lighting too.
 		var energy: float = world.sun.light_energy
 		var lanterns: Array = world.find_children("*", "OmniLight3D", true, false).filter(func(light: OmniLight3D) -> bool: return light.has_meta("lantern"))
-		_check(lanterns.is_empty() != (name == Registry.WISHING_WELL), name + ": only the Wishing Well has lantern light pools")
+		_check(lanterns.is_empty() != name.begins_with(Registry.WISHING_WELL.get_slice("@", 0) + "@"), name + ": only the Wishing Well (every version) has lantern light pools")
 		var color: Color = world.sun.light_color
 		for quality: String in ["low", "high", "balanced", "low", "balanced"]:
 			Policy.apply(world, {"graphics_quality": quality})

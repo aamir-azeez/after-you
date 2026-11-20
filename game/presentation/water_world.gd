@@ -158,7 +158,6 @@ func _build_bridge(definition: Dictionary) -> void:
 	for index in range(before, terrain.get_child_count()): built.append(terrain.get_child(index))
 	# The shared deck builder places every deck at the ground; lift all it made.
 	for node: Node in built: (node as Node3D).position.y += float(definition.get("height_cm", 0)) / 100.0
-	if _weights.has(str(definition.id)): _weights[str(definition.id)].set_meta("rest_y", _weights[str(definition.id)].position.y)
 
 # --- Each snapshot and frame ---
 

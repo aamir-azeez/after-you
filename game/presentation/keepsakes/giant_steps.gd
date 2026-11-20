@@ -11,8 +11,13 @@ extends "res://presentation/keepsakes/keepsake_builder.gd"
 ## climb and a longer ride. Together Hard: a gold flag at the very top pops up
 ## as the pip arrives.
 const P = preload("res://presentation/keepsakes/keepsake_parts.gd")
+const Models = preload("res://presentation/kit/models.gd")
+const SLIDE_MODEL := "res://assets/models/giant_steps_slide.glb"
+const SLIDE_COLORS := {"bed": P.WOOD_LIGHT, "rim": P.PEACH, "post": P.WOOD}
 const STEP_WIDTH := 0.36
 const TOWER := Vector3(1.15, 0, -0.45)
+## The Hard chute's middle line: against the tower's +X side, inside the footprint.
+const HARD_CHUTE_X := 1.48
 const SEESAW := Vector3(-1.4, 0, 0.3)
 
 ## The top of each step.
@@ -25,10 +30,15 @@ static func _tops() -> Array[Vector3]:
 static func _high(state: Dictionary) -> Vector3:
 	return Vector3(TOWER.x, 2.24, TOWER.z) if state.get("hard", false) else _tops()[4]
 
-## The chute from the top down to the grass.
+## The chute from the top down to the grass. On Hard it runs straight down
+## along the tower's side (x HARD_CHUTE_X), beside the ladder on its face
+## rather than over it.
 static func _chute(state: Dictionary) -> Array[Vector3]:
 	var high := _high(state)
-	var start := Vector3(high.x, high.y - 0.02, TOWER.z + 0.22 if state.get("hard", false) else 0.45)
+	if state.get("hard", false):
+		var top := high.y - 0.02
+		return [Vector3(HARD_CHUTE_X, top, TOWER.z), Vector3(HARD_CHUTE_X, top * 0.55, 1.05), Vector3(HARD_CHUTE_X, top * 0.22, 1.45), Vector3(HARD_CHUTE_X, 0.1, 1.75)]
+	var start := Vector3(high.x, high.y - 0.02, 0.45)
 	return [start, Vector3(start.x + 0.2, start.y * 0.55, 1.05), Vector3(start.x + 0.32, start.y * 0.22, 1.45), Vector3(start.x + 0.36, 0.1, 1.75)]
 
 func build(root: Node3D, state: Dictionary) -> Dictionary:
@@ -41,13 +51,10 @@ func build(root: Node3D, state: Dictionary) -> Dictionary:
 		P.plinth(root, 0.7, 0.7, TOWER)
 		P.box(root, Vector3(0.36, 1.9, 0.36), P.SLATE, TOWER + Vector3(0, 0.34 + 0.95, 0))
 		for index in range(8): P.box(root, Vector3(0.32, 0.03, 0.03), P.WOOD_LIGHT, TOWER + Vector3(0, 0.7 + index * 0.18, 0.2))
-	# The chute: a wide trough with low sides, curling down to the grass.
-	var chute := _chute(state)
-	for index in range(3):
-		P.bar(root, chute[index], chute[index + 1], 0.06, P.WOOD_LIGHT)
-		P.bar(root, chute[index] + Vector3(0.16, 0.08, 0), chute[index + 1] + Vector3(0.16, 0.08, 0), 0.05, P.WOOD)
-		P.bar(root, chute[index] + Vector3(-0.16, 0.08, 0), chute[index + 1] + Vector3(-0.16, 0.08, 0), 0.05, P.WOOD)
-	for index in range(3): P.box(root, Vector3(0.06, chute[index].y, 0.06), P.WOOD, Vector3(chute[index].x, chute[index].y * 0.5, chute[index].z))
+	# The chute: a smooth trough with rolled sides, modelled along _chute()'s
+	# points (the Blender recipe giant_steps_slide.py), on a post under each of
+	# the first three.
+	Models.still(SLIDE_MODEL, "chute_high" if hard else "chute_low", SLIDE_COLORS, root)
 	var parts := {}
 	if state.get("together", false):
 		P.prism(root, Vector3(0.22, 0.22, 0.26), P.STONE_LIGHT, SEESAW + Vector3(0, 0.11, 0))

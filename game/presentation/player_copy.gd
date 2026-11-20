@@ -1607,6 +1607,16 @@ const CONSERVATORY_ABOVE_HINT_B := "Reach the garden."
 const CONSERVATORY_RETURNS_TITLE := "The Way Light Returns"
 const CONSERVATORY_RETURNS_HINT_A := "Leave the lower crossing lit and wait in the garden."
 const CONSERVATORY_RETURNS_HINT_B := "Open the return shutter and bring both lights to the garden."
+# first-steps@2 (open turns, the shared rules). Its summary, completion and
+# stage titles are first-steps@1's; the hints are drafts awaiting the owner.
+const FIRST_STEPS_TITLE := "First Steps"
+const FIRST_STEPS_COMPLETION := "The loft is open and the garden is growing."
+const FIRST_STEPS_LIFT_TITLE := "A Little Lift"
+const FIRST_STEPS_LIFT_HINT_A := "The lift goes up while someone stands on a spot. Send your friend up."
+const FIRST_STEPS_LIFT_HINT_B := "Ride up, then stand on the loft's spot to bring your friend up too. Meet at the bell."
+const FIRST_STEPS_GROW_TITLE := "A Place to Grow"
+const FIRST_STEPS_GROW_HINT_A := "Take the seed from beside the pedestal. Throw it from the marked edge, or ride the lift down with it."
+const FIRST_STEPS_GROW_HINT_B := "Put the seed in the garden and meet by its lamp."
 const LONG_WAY_HOME_TITLE := "Long Way Home"
 const LONG_WAY_HOME_SUMMARY := "You went out this morning and you still aren't back. I've been standing at the door since the fireflies came out. Just getting some air, in case you ask. The kettle's been boiled twice and gone cold twice. Come home whichever way you like, just don't take all night."
 # long-way-home@3 (open turns) has its own line.

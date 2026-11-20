@@ -1,0 +1,24 @@
+{
+	"catch_assistance": true,
+	"checkpoint_hash": "853784fec0f5d35275cd1727a0ed265de4dfeef43a08084d615345dd69e67116",
+	"completed": true,
+	"definition_hash": "12cbcd0d89a440e6d81889441382d1a86136b58579ce872ff308bbf5f1621840",
+	"duration_ticks": 263,
+	"final_state_hash": "a13cc93a8eab7b939599ba8d0422cade33e797c537aaf04f233bd8930f4c09ac",
+	"level_id": "first-steps",
+	"level_version": 2,
+	"outcome": {
+		"objective_complete": true,
+		"source_ready": true
+	},
+	"packed": "AQx4AAAeZABGAAAWAGQCABlAZAACMgAyAAAKAGRuZAAKAJwkAAADOutHpzC++eYZKomRcXI4Zq0M79M68CZFGalmWrtXue+aJ4KiozeHuj8E85d1COa/ADReASXxJ3l1I17tI5TYknw/+rjTIbwalSzFkMXNkCSZHLQU1GYK",
+	"player_slot": "p0",
+	"recording_hash": "7386b6594c17df645b46b5c9ce5dcc36d8333047f16f15dadc34dd816ee6c60e",
+	"role": "b",
+	"schema_version": 7,
+	"simulation_version": 16,
+	"source_recording_hash": "c93771761bc9ebffadf400899fedb63b1086926baa523641d67a003d8ac39b16",
+	"stage_id": "a-little-lift",
+	"stage_version": 1,
+	"tick_rate": 30
+}

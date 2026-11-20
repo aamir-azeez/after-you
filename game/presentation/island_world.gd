@@ -1699,6 +1699,18 @@ func _surface_height(id: String) -> float:
 func floor_cables() -> Array:
 	return []
 
+## The dressing's flat floor covers (rugs, and paths of stones or boards) on
+## the shown stage, as {rect, y, what} on their floors: pair tags and
+## ownership marks never lie on them (kit/floor_spots.gd scenery), the same
+## in every world and at every graphics level. Gate posts may stand on them.
+func floor_covers() -> Array:
+	var found: Array = []
+	for spec: Dictionary in Props.expand(DressingCatalog.stage_props(dressing, _dressing_stage_id())):
+		var kind := str(spec.get("kind", ""))
+		if kind not in Props.FLOOR_COVERS: continue
+		found.append({"rect": Props.extent(spec).rect, "y": _surface_height(str(spec.get("surface", ""))) + float(spec.get("y", 0)) / 100.0, "what": "the dressing's " + kind})
+	return found
+
 ## Whether an owned crossing gets an ownership mark at each end. A world that
 ## shows its owner some other way says no, so no mark is made only to be freed.
 func _marks_route_owner(_definition: Dictionary) -> bool:

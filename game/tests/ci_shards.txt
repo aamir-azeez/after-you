@@ -100,6 +100,8 @@ first_steps_lift_continuity 2
 first_steps_photo_world 2
 first_steps_preview 3
 first_steps_ui 1
+first_steps_v2 2
+first_steps_v2_world 2
 first_steps_world 2
 fog_marsh 2
 fog_marsh_world 2
@@ -136,6 +138,8 @@ graphics_settings 3
 hard_mode 1
 hard_mode_room 2
 hard_mode_solo 2
+high_and_low_v2 2
+high_and_low_v2_world 2
 hint_length 3
 history_store 1
 history_sync 2
@@ -163,6 +167,7 @@ intro_comfort 2
 invite_links 1
 ios_free_chapters 1
 ios_platform 1
+item_throws 2
 journey_corrections 3
 journey_proofs 2
 journey_seven 3
@@ -411,6 +416,8 @@ tester_access_integration 1
 tester_switches 2
 the_falls 2
 the_falls_world 2
+the_wishing_well_v2 3
+the_wishing_well_v2_world 3
 tide_world 3
 toast 1
 touch_scrolling 1

@@ -10,6 +10,8 @@ const OpenTurns = preload("res://core/physical/open_turns.gd")
 const PadPiece = preload("res://presentation/kit/pieces/pad.gd")
 const LeverPiece = preload("res://presentation/kit/pieces/lever.gd")
 const SelectorPiece = preload("res://presentation/kit/pieces/selector.gd")
+## The pulley post by a missing crossing, in its style (_hang_pulleys).
+const PulleyPiece = preload("res://presentation/kit/pieces/pulley.gd")
 ## The new pieces' looks (rules 16): decks, platforms, ladders and fog.
 const NewPieces = preload("res://presentation/kit/new_pieces.gd")
 ## The opening glance at the goal (glance_at_goal): this long easing there and
@@ -28,6 +30,11 @@ var _physical_balls: Dictionary = {}
 var _ball_trails: Dictionary = {}
 var _ball_materials: Dictionary = {}
 var _weights: Dictionary = {}
+## Crossing id -> its pulley post (kit/pieces/pulley.gd); its weight is in _weights.
+var _pulleys: Dictionary = {}
+## Crossings a gate link's cable or rope runs to this stage: the cable shows
+## why they open, so they hang no pulley (_hangs_pulley).
+var _cabled: Dictionary = {}
 var _hatches: Dictionary = {}
 var _upper_islands: Array[Node3D] = []
 ## Where the live spirit's turn ends (descriptor "goal_beacon"), or null.
@@ -68,6 +75,8 @@ func show_stage(stage: Dictionary) -> void:
 	_ball_trails.clear()
 	_ball_materials.clear()
 	_weights.clear()
+	_pulleys.clear()
+	_cabled.clear()
 	_hatches.clear()
 	_upper_islands.clear()
 	_ball_radii.clear()
@@ -149,6 +158,7 @@ func show_stage(stage: Dictionary) -> void:
 		# Dashes inside the open shaft make its landing legible from above.
 		for index in range(3): sphere(0.035, CREAM, center + Vector3(0, height * float(index + 1) / 4.0, 0), terrain)
 	_build_gate_links(view)
+	_hang_pulleys(view)
 	_build_goal_beacon(view)
 	# Gates, chains, zone edges and locks, before the marks, which keep clear
 	# of them (_pair_keep_clear). A chapter whose world draws every closed
@@ -240,6 +250,7 @@ func _static_keep() -> Array:
 	if is_instance_valid(_goal_beacon): keep.append(_goal_beacon)
 	# The parts of a piece that move, light or change stay whole; the rest folds.
 	for piece: RefCounted in _lever_pieces.values(): keep.append_array(piece.moving_parts())
+	for piece: RefCounted in _pulleys.values(): keep.append_array(piece.moving_parts())
 	if new_pieces != null: keep.append_array(new_pieces.moving_nodes())
 	return keep
 
@@ -373,28 +384,40 @@ func _flowerbed(r: Array, at: Vector3) -> void:
 			if index % 3 == 1: sphere(0.05, Props.BLOSSOMS[index % Props.BLOSSOMS.size()], Vector3(float(x) / 100.0 + 0.04, at.y + 0.48, float(z) / 100.0 + 0.03), terrain)
 			index += 1
 
-func _build_bridge(definition: Dictionary) -> void:
-	super._build_bridge(definition)
-	var rect: Array = definition.rect_cm
-	var at := point([rect[0], (rect[1] + rect[3]) * 0.5])
-	if not _hangs_pulley(definition): return
-	# A fixed pulley and suspended weight show where a missing crossing goes.
-	var post := at + Vector3(0.05, 0, float(rect[3] - rect[1]) / 200.0 + 0.15)
-	box(Vector3(0.10, 1.1, 0.1), Color("9e9180"), post + Vector3(0, 0.55, 0), terrain)
-	var pulley := ring(0.13, GOLD, post + Vector3(0, 1.1, 0), terrain)
-	pulley.rotation.x = PI / 2.0
-	box(Vector3(0.025, 1.2, 0.025), CREAM, post + Vector3(0.14, 0.45, 0), terrain)
-	var warm := not dressing.is_empty()
-	var weight := box(Vector3(0.22, 0.32, 0.22), Props.STONE_DARK if warm else Color("748998"), post + Vector3(0.14, 0.45, 0), terrain)
-	_weights[definition.id] = weight
-	weight.set_meta("rest_y", weight.position.y)
+## A pulley post by each crossing that needs one (_hangs_pulley), in its style
+## (kit/pieces/pulley.gd), at its west end on the camera's side and at its
+## deck's height. Its weight hangs while the crossing is gone and drops while
+## it is laid, so the post shows where a missing crossing goes. Built after
+## the gate links, which say which crossings a cable already explains. The
+## post is told the floors at its foot, so what lies there stays on them.
+func _hang_pulleys(view: Dictionary) -> void:
+	var floors: Array = RouteBarriers.floors_of(view).filter(func(f: Dictionary) -> bool: return not f.crossing)
+	for definition: Dictionary in view.get("bridges", []):
+		if not _hangs_pulley(definition): continue
+		var id := str(definition.id)
+		var rect: Array = definition.rect_cm
+		var deck: Node3D = _decks.get(definition.id)
+		var post := point([rect[0], rect[3]]) + Vector3(0.05, deck.position.y if deck != null else 0.0, 0.15)
+		var ground: Array[Rect2] = []
+		for f: Dictionary in floors:
+			if absf(float(f.y) - post.y) < 0.02: ground.append(Rect2((f.rect as Rect2).position - Vector2(post.x, post.z), (f.rect as Rect2).size))
+		var piece: RefCounted = PulleyPiece.build(_piece_style("pulley", id), post, terrain, ground)
+		_pulleys[id] = piece
+		_weights[id] = piece.weight
+		piece.weight.set_meta("rest_y", piece.weight.position.y)
 
-## Whether a crossing gets the fixed pulley and suspended weight that show
-## where a missing crossing goes (they are _weights). A world that shows it
-## some other way says no.
+## Whether a crossing gets a pulley post: only where nothing else shows why
+## it comes and goes. One rule for every world; a world that shows it some
+## other way (Tide's gauges) says no as well.
 func _hangs_pulley(definition: Dictionary) -> bool:
 	# A new piece's deck (a rope, stones, the path behind the falls, a platform) is its own cause.
-	return new_pieces == null or not new_pieces.lays(definition)
+	if new_pieces != null and new_pieces.lays(definition): return false
+	# A cable or rope runs to it from the pad or lever that opens it.
+	if _cabled.has(str(definition.get("id", ""))): return false
+	# A crossing only one pip may use has a little gate in its colour at its ends.
+	var owner := str(definition.get("owner_slot", ""))
+	if owner in ["p0", "p1"] and not RouteBarriers.mouths_of(definition, RouteBarriers.floors_of(current_level)).is_empty(): return false
+	return true
 
 ## A new piece lays its own deck (kit/new_pieces.gd); every other crossing
 ## keeps the Lighthouse planks.
@@ -510,6 +533,7 @@ func _build_gate_links(view: Dictionary) -> void:
 			var elbow := Vector3(end.x - 0.18, start.y, start.z)
 			if start.distance_to(elbow) > 0.01: _floor_cable(start, elbow, 0.025, link_color)
 			if elbow.distance_to(end) > 0.01: _floor_cable(elbow, end, 0.025, link_color)
+			_cabled[str(route.id)] = true
 
 ## Gate links that never cross the void: a cable runs along a floor the
 ## mechanism and its route share; otherwise matching tags mark both ends.
@@ -531,6 +555,7 @@ func _build_floor_links(view: Dictionary) -> void:
 			if _shares_floor(start, elbow) and _shares_floor(elbow, end):
 				if start.distance_to(elbow) > 0.01: _floor_cable(start, elbow, LINK_WIDTH, link_color)
 				if elbow.distance_to(end) > 0.01: _floor_cable(elbow, end, LINK_WIDTH, link_color)
+				_cabled[str(route.id)] = true
 
 ## Both points lie on one walkable island at the same height.
 func _shares_floor(a: Vector3, b: Vector3) -> bool:
@@ -640,6 +665,7 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	_present_barriers(state)
 	for id: String in _weights:
 		_weights[id].position.y = float(_weights[id].get_meta("rest_y")) - (0.7 if state.get("bridges", {}).get(id, false) else 0.0)
+	for id: String in _pulleys: _pulleys[id].set_laid(bool(state.get("bridges", {}).get(id, false)))
 	if is_instance_valid(_goal_beacon): _goal_beacon.present(state)
 	if new_pieces != null: new_pieces.present(state, immediate or reduced_motion)
 	if immediate: _snap_follow()

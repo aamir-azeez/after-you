@@ -339,6 +339,10 @@ func gate_can_hold(gate: Dictionary, stage: Dictionary, settable: Dictionary, me
 		for key: String in ["lever_id", "second_lever_id", "pad_id"]:
 			var id := str(gate.get(key, ""))
 			if not id.is_empty() and not settable.has(id): return false
+		# For the presser's own walking only a pad beside the crossing counts (_pad_placings).
+		if not _beside.is_empty():
+			for pad: Dictionary in stage.get("pressure_pads", []):
+				if str(pad.id) == str(gate.get("pad_id", "")) and not _pad_beside(pad, _beside): return false
 		# A ball pad holds once the ball is pushed there: always possible here.
 		return true
 	var when: Dictionary = gate.get("when", {})
@@ -497,6 +501,8 @@ func _reach_items(stage: Dictionary, checkpoint: Dictionary, floors: Dictionary,
 	for item: Dictionary in stage.items:
 		var id := str(item.id)
 		var state: Dictionary = CarriedItems.placed(stage, str(starts[id])) if starts.has(id) else mechanisms.get("items", {}).get(id, CarriedItems.placed(stage, str(item.get("at", ""))))
+		# Away: not in the level this stage, so no one reaches it.
+		if CarriedItems.is_away(state): continue
 		var carried: Dictionary = {}
 		var lying: Dictionary = {}
 		var spots: Dictionary = {}

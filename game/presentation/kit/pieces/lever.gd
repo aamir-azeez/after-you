@@ -29,6 +29,8 @@ extends "res://presentation/kit/pieces/piece.gd"
 
 ## Styles that tilt a handle, and machines that move their own parts.
 const HANDLES := ["plain", "brass"]
+const Models = preload("res://presentation/kit/models.gd")
+const MODEL := "res://assets/models/lever.glb"
 const MACHINES := ["winch", "bolt", "lantern"]
 const REACH := 0.28
 const EAST_SIDE := 0.16
@@ -41,11 +43,14 @@ const HANDLE_OVER := 0.12
 const MACHINE_OVER := 0.05
 ## The plain housing's stone.
 const HOUSING := Color("728788")
+## The handle's knob, the model's "knob" slot (lever_handle in MODEL, its
+## origin the pivot): its centre over the pivot and its radius, m.
+const KNOB_CENTRE := 0.3969
+const KNOB_RADIUS := 0.0877
 ## Where a bubble's tail lands on each machine (its top on its axis, m over
-## its spot), and how far over its anchor that is: journey_world's knob point
-## (KNOB 0.4 over the anchor) plus KNOB_RADIUS (0.09).
+## its spot), and how far over its anchor that is: the knob's top.
 const TOPS := {"winch": 0.63, "bolt": 0.63, "lantern": 0.90}
-const KNOB_REACH := 0.49
+const KNOB_REACH := KNOB_CENTRE + KNOB_RADIUS
 ## Winch: drum height and its coil's radius, slack and wound; turns of the crank.
 const DRUM_Y := 0.50
 const DRUM_X := -0.03
@@ -155,10 +160,9 @@ func _make(lever_style: String, at: Vector3, parent: Node3D, knob: Color) -> voi
 	_pose()
 
 func _make_handle(knob: Color) -> void:
-	Parts.cylinder(0.18, 0.2, Parts.BRASS if style == "brass" else HOUSING, Vector3(0, 0.1, 0), root)
-	if style == "brass": Parts.cylinder(0.19, 0.04, Parts.TIMBER, Vector3(0, 0.19, 0), root)
-	Parts.box(Vector3(0.055, 0.40, 0.055), Parts.CREAM, Vector3(0, 0.2, 0), anchor)
-	Parts.sphere(0.09, knob, Vector3(0, 0.4, 0), anchor)
+	var brass := style == "brass"
+	Models.still(MODEL, "lever_base", {"housing": Parts.BRASS if brass else HOUSING, "band": Parts.TIMBER if brass else HOUSING, "slit": (Parts.TIMBER if brass else HOUSING).darkened(0.45)}, root)
+	Models.moving(MODEL, "lever_handle", {"handle": Parts.CREAM, "knob": knob}, anchor, false)
 
 ## One chain link (a flattened ring), cached by the kit like every shape.
 static func _link(parent: Node3D) -> MeshInstance3D:

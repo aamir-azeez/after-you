@@ -14,10 +14,12 @@ extends RefCounted
 ##   ground round each spot, blurred, worked out once per stage build from the
 ##   water's own wet cells and the footprints of what crosses that level
 ##   (walls, stones, posts), and shared through kit/definition_geometry.gd.
-## - Rings: anything that registers with ripple_from() (the pips, boats that
-##   ride the water, floats) makes rings while it stands at the water. The
-##   spots are worked out each snapshot and written to the shader only when
-##   they change; the rings themselves move in the shader.
+## - Rings: what registers with ripple_from() (boats that ride the water,
+##   floats) makes rings while it stands at the water; a pip only while it is
+##   in or on the water at its own spot: wading, or on a stepping stone that
+##   stands in it (content/water/looks.gd). The spots are worked out each
+##   snapshot and written to the shader only when they change; the rings
+##   themselves move in the shader.
 ## - Its clock moves only in advance(), so a held world or Reduce motion shows
 ##   still water; nothing reads TIME.
 ##
@@ -81,12 +83,14 @@ var host: Node3D
 var clock := 0.0
 ## Per body id: {"materials" (the sheet's and its floods'), "levels" (value ->
 ## level), "maps" (value -> {"texture", "image", "rect"}), "shown" (the value
-## whose map is set), "floor", "rings", "sparkles", "bed" (node or null)}.
+## whose map is set), "footings" (value -> [[foot, top]]: the round things
+## standing in the water at that level, which a pip may stand on), "floor",
+## "rings", "sparkles", "bed" (node or null)}.
 var bodies: Dictionary = {}
 var _seabed := 0.0
 var _switches: Dictionary = {}
 ## Things that make rings at the water: [node, strength, height (how far
-## above or below the level it still does)].
+## above or below the level it still does), pip (judged at its own spot)].
 var _sources: Array = []
 ## Ring spots worked out, and the ones last written (both kept at 8 long).
 var _spots := PackedVector4Array()
@@ -119,12 +123,15 @@ func start(block: Dictionary) -> void:
 
 ## Makes `node` a source of rings while it stands at the water (within
 ## Looks.RING_REACH of open water and `height` of its level), until the next
-## stage: the one hook boats, floats and the pips register with.
+## stage: the one hook boats and floats register with.
 func ripple_from(node: Node3D, strength: float = 1.0, height: float = Looks.FLOAT_HEIGHT) -> void:
+	_add_source(node, strength, height, false)
+
+func _add_source(node: Node3D, strength: float, height: float, pip: bool) -> void:
 	if not is_instance_valid(node): return
 	for source: Array in _sources:
 		if source[0] == node: return
-	_sources.append([node, strength, height])
+	_sources.append([node, strength, height, pip])
 
 ## One body's surface: its material, and its seabed sheet when it shows one:
 ## over the body's rectangles, less `holes` (the basins standing in it).
@@ -151,7 +158,7 @@ func dress(id: String, body: Dictionary, sheet: MeshInstance3D, holes: Array) ->
 	sheet.material_override = material
 	# The body's own floor (its "bed", WaterBodies.bed), else the block's seabed.
 	var floor_y := float(body.get("bed", _seabed))
-	var entry := {"materials": [material], "levels": body.get("levels", {}), "level": 0.0, "maps": {}, "shown": "", "floor": shows.floor, "rings": shows.rings, "sparkles": shows.sparkles, "bed": null, "floor_y": floor_y}
+	var entry := {"materials": [material], "levels": body.get("levels", {}), "level": 0.0, "maps": {}, "footings": {}, "shown": "", "floor": shows.floor, "rings": shows.rings, "sparkles": shows.sparkles, "bed": null, "floor_y": floor_y}
 	bodies[id] = entry
 	if shows.floor: entry.bed = _bed(body.get("rects", []), holes, floor_y)
 
@@ -215,12 +222,15 @@ func build_edges(roots: Dictionary, skip: Array = []) -> void:
 			# thing (a stone, a post) as the disc it is.
 			var solids: Array[Rect2] = []
 			var rounds: Array[Rect2] = []
+			var footings: Array = []
 			for item: Array in standing:
 				var box: AABB = item[0]
 				if box.position.y >= level or box.end.y <= level: continue
 				var foot := Rect2(box.position.x, box.position.z, box.size.x, box.size.z)
 				if not foot.intersects(rect): continue
 				(rounds if item[1] else solids).append(_at_least(foot, THINNEST))
+				if item[1]: footings.append([foot, box.end.y])
+			entry.footings[value] = footings
 			var key := [&"water_edges", wet, rect, solids, rounds]
 			if not done.has(key):
 				if not DefinitionGeometry.has(key):
@@ -278,7 +288,7 @@ func _find_spots(cap: int) -> void:
 	var actors: Variant = host.get("actors")
 	if actors is Dictionary:
 		for slot: Variant in actors:
-			if actors[slot] is Node3D: ripple_from(actors[slot], 0.9, Looks.RING_HEIGHT)
+			if actors[slot] is Node3D: _add_source(actors[slot], 0.9, 0.0, true)
 	_spot_count = 0
 	for index in range(8): _spots[index] = Vector4.ZERO
 	for source: Array in _sources:
@@ -287,7 +297,7 @@ func _find_spots(cap: int) -> void:
 		if not is_instance_valid(node) or not node.visible or not node.is_inside_tree(): continue
 		var at: Vector3 = host.terrain.to_local(node.global_position)
 		var plan := Vector2(snappedf(at.x, 0.05), snappedf(at.z, 0.05))
-		if not _at_water(plan, at.y, float(source[2])): continue
+		if not (_pip_in_water(at) if source[3] else _at_water(plan, at.y, float(source[2]))): continue
 		var merged := false
 		for index in range(_spot_count):
 			if Vector2(_spots[index].x, _spots[index].y).distance_to(plan) < Looks.RING_MERGE: merged = true
@@ -307,6 +317,25 @@ func _at_water(plan: Vector2, y: float, height: float) -> bool:
 		var map: Dictionary = entry.maps[entry.shown]
 		for offset: Vector2 in AROUND:
 			if _solid_at(map, plan + offset * Looks.RING_REACH) < 0.5: return true
+	return false
+
+## Whether a pip standing at `at` (terrain metres) is in or on the water of a
+## body that shows rings, at its own spot: open water under it with its feet
+## at the surface or under it, or on the top of a stone standing in the
+## water not far above it (content/water/looks.gd).
+func _pip_in_water(at: Vector3) -> bool:
+	var plan := Vector2(at.x, at.z)
+	for id: String in bodies:
+		var entry: Dictionary = bodies[id]
+		if not entry.rings or str(entry.shown).is_empty(): continue
+		var level := float(entry.level)
+		if at.y <= level + Looks.PIP_SURFACE and _solid_at(entry.maps[entry.shown], plan) < 0.5: return true
+		for footing: Array in entry.footings.get(entry.shown, []):
+			var top := float(footing[1])
+			if absf(at.y - top) > Looks.PIP_FOOTING or top - level > Looks.PIP_RISE: continue
+			# Inside its disc (an ellipse if stretched).
+			var foot: Rect2 = footing[0]
+			if ((plan - foot.get_center()) / (foot.size * 0.5)).length_squared() <= 1.0: return true
 	return false
 
 ## The share of solid ground at a point of a map (1 off the map).

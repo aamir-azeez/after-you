@@ -14,6 +14,7 @@ const Primitives = preload("res://presentation/kit/primitives.gd")
 const SoftMist = preload("res://presentation/kit/soft_mist.gd")
 const Models = preload("res://presentation/kit/models.gd")
 const SessionRelease = preload("res://presentation/kit/session_release.gd")
+const MODEL_DIR := "res://assets/models/"
 
 const TIMBER := Color("8a6b4e")
 const TIMBER_LIGHT := Color("b08a62")
@@ -40,6 +41,9 @@ const ROPE := Color("d1b98c")
 
 ## Kinds lower than this (metres) never hide a spirit or a control.
 const LOW := 0.16
+## Flat kinds that cover a patch of floor (rugs, and paths of stones or
+## boards): small markers on the floor keep off them (island_world.floor_covers).
+const FLOOR_COVERS := ["rug", "path"]
 ## A bank's top layer: this thick (metres), its top face half of it above the
 ## bank's height, so it never shares a depth with the bank's sides.
 const BANK_LAYER := 0.03
@@ -227,6 +231,12 @@ static func build(spec: Dictionary, parent: Node3D, base_y: float, lit: bool) ->
 			return null
 	return root
 
+## A Blender model's still part (kit/models.gd), scaled from its foot.
+static func _model(root: Node3D, model: String, part: String, colors: Dictionary, scale: Vector3) -> Node3D:
+	var node := Models.still(MODEL_DIR + model + ".glb", part, colors, root)
+	node.scale = scale
+	return node
+
 static func _m(color: Color, glow: float = 0.0) -> StandardMaterial3D:
 	return Primitives.shared_material(color, 0.9, LAMP_GLOW if glow > 0.0 else Color(0, 0, 0, 0), glow)
 
@@ -242,13 +252,9 @@ static func _rod(radius: float, height: float, color: Color, at: Vector3, parent
 	return Primitives.mesh_node(Primitives.shared_mesh("cylinder", radius, height, radius), _m(color), at, parent)
 
 static func _tree(root: Node3D, s: float, variant: int) -> void:
-	_rod(0.07 * s, 0.85 * s, TRUNK, Vector3(0, 0.42 * s, 0), root)
 	var tints := [CROWN, CROWN_LIGHT, LEAF] if variant % 2 == 0 else [LEAF_DARK, CROWN, LEAF_LIGHT]
-	for lobe in range(3):
-		_ball(0.4 * s, tints[lobe], Vector3((lobe - 1) * 0.2 * s, (1.02 + 0.2 * (1 - absi(lobe - 1))) * s, 0.02 * lobe * s), root, Vector3(0.84, 1.22, 0.84))
-	if variant % 3 != 2:
-		for j in range(3):
-			_ball(0.06 * s, FRUIT if variant % 3 == 0 else BLOSSOMS[1], Vector3(sin(j * 2.1) * 0.29 * s, (0.96 + 0.12 * j) * s, cos(j * 2.1) * 0.24 * s + 0.08 * s), root)
+	_model(root, "orchard_tree", "orchard_tree", {"trunk": TRUNK, "crown_a": tints[0], "crown_b": tints[1], "crown_c": tints[2]}, Vector3.ONE * s)
+	if variant % 3 != 2: _model(root, "orchard_tree", "orchard_tree_fruit", {"fruit": FRUIT if variant % 3 == 0 else BLOSSOMS[1]}, Vector3.ONE * s)
 
 static func _pine(root: Node3D, s: float) -> void:
 	_rod(0.06 * s, 0.5 * s, TRUNK, Vector3(0, 0.25 * s, 0), root)
@@ -257,20 +263,11 @@ static func _pine(root: Node3D, s: float) -> void:
 		cone.name = "Tier%d" % tier
 
 static func _bush(root: Node3D, s: float, flowered: Variant) -> void:
-	for lobe in range(3):
-		_ball(0.2 * s, LEAF.darkened(0.06 * lobe), Vector3((lobe - 1) * 0.16 * s, 0.2 * s, 0.03 * (lobe % 2) * s), root, Vector3(1.1, 0.95, 0.95))
-	if flowered:
-		for j in range(3):
-			_ball(0.045 * s, BLOSSOMS[j % BLOSSOMS.size()], Vector3((j - 1) * 0.15 * s, 0.36 * s, 0.1 * s), root)
+	_model(root, "bush", "bush", {"leaf_a": LEAF, "leaf_b": LEAF.darkened(0.06), "leaf_c": LEAF.darkened(0.12)}, Vector3.ONE * s)
+	if flowered: _model(root, "bush", "bush_blooms", {"bloom_a": BLOSSOMS[0], "bloom_b": BLOSSOMS[1], "bloom_c": BLOSSOMS[2]}, Vector3.ONE * s)
 
 static func _flowers(root: Node3D, s: float) -> void:
-	for j in range(7):
-		var a := float(j) * 2.39996
-		var r := (0.06 + 0.04 * float(j % 4)) * s * 1.5
-		var at := Vector3(sin(a) * r, 0.0, cos(a) * r)
-		_rod(0.012 * s, 0.12 * s, LEAF_DARK, at + Vector3(0, 0.06 * s, 0), root)
-		_ball(0.045 * s, BLOSSOMS[j % BLOSSOMS.size()], at + Vector3(0, 0.125 * s, 0), root)
-	_ball(0.16 * s, LEAF, Vector3(0, 0.02 * s, 0), root, Vector3(1.6, 0.25, 1.4))
+	_model(root, "flower_patch", "flower_patch", {"leaf": LEAF, "stem": LEAF_DARK, "bloom_a": BLOSSOMS[0], "bloom_b": BLOSSOMS[1], "bloom_c": BLOSSOMS[2], "bloom_d": BLOSSOMS[3]}, Vector3.ONE * s)
 
 static func _tuft(root: Node3D, s: float) -> void:
 	for j in range(3):
@@ -286,26 +283,23 @@ static func _rock(root: Node3D, s: float, moss: bool = false) -> void:
 		_ball(0.07 * s, MOSS.lightened(0.12), Vector3(0.17 * s, 0.09 * s, 0.07 * s), root, Vector3(1.3, 0.35, 1.0))
 
 static func _lantern(root: Node3D, s: float, lit: bool) -> void:
-	var h := 0.85 * s
-	_box(Vector3(0.05, h, 0.05) * Vector3(s, 1, s), TIMBER_DARK, Vector3(0, h * 0.5, 0), root)
-	_box(Vector3(0.17, 0.03, 0.03) * s, TIMBER_DARK, Vector3(0.06 * s, h - 0.02 * s, 0), root)
-	var glass := _box(Vector3(0.12, 0.15, 0.12) * s, LAMP, Vector3(0.12 * s, h - 0.13 * s, 0), root, 0.8 if lit else 0.0)
+	_model(root, "post_lantern", "post_lantern", {"post": TIMBER_DARK, "cap": TIMBER_DARK}, Vector3.ONE * s)
+	var glass := _model(root, "post_lantern", "post_lantern_glass", {"glass": {"color": LAMP, "glow": LAMP_GLOW, "energy": 0.8} if lit else LAMP}, Vector3.ONE * s)
 	glass.name = "LanternGlass"
-	_box(Vector3(0.16, 0.035, 0.16) * s, TIMBER_DARK, Vector3(0.12 * s, h - 0.04 * s, 0), root)
 
 static func _lamp_post(root: Node3D, s: float, lit: bool) -> void:
-	_rod(0.1 * s, 0.06 * s, TIMBER_DARK, Vector3(0, 0.03 * s, 0), root)
-	_rod(0.03 * s, 1.2 * s, Color("4f4a44"), Vector3(0, 0.6 * s, 0), root)
-	var glass := _ball(0.13 * s, LAMP, Vector3(0, 1.3 * s, 0), root, Vector3(0.9, 1.1, 0.9))
-	glass.material_override = _m(LAMP, 1.1 if lit else 0.0)
+	_model(root, "lamp_post", "lamp_post", {"base": TIMBER_DARK, "iron": Color("4f4a44")}, Vector3.ONE * s)
+	var holder := _model(root, "lamp_post", "lamp_post_glass", {"glass": {"color": LAMP, "glow": LAMP_GLOW, "energy": 1.1} if lit else LAMP}, Vector3.ONE * s)
+	# The glass leaf straight under the prop, named as before: Tide finds and lights it.
+	var glass := holder.get_child(0) as MeshInstance3D
+	holder.remove_child(glass)
+	glass.transform = holder.transform * glass.transform
+	root.add_child(glass)
+	holder.free()
 	glass.name = "LampGlass"
-	var cap := Primitives.mesh_node(Primitives.shared_mesh("cone", 0.17 * s, 0.12 * s), _m(Color("4f4a44")), Vector3(0, 1.45 * s, 0), root)
-	cap.name = "LampCap"
 
 static func _bench(root: Node3D, s: float) -> void:
-	_box(Vector3(0.82, 0.05, 0.24) * s, TIMBER_LIGHT, Vector3(0, 0.25 * s, 0), root)
-	_box(Vector3(0.82, 0.16, 0.04) * s, TIMBER_LIGHT, Vector3(0, 0.38 * s, -0.11 * s), root)
-	for x: float in [-0.34, 0.34]: _box(Vector3(0.05, 0.25, 0.2) * s, TIMBER, Vector3(x * s, 0.125 * s, 0), root)
+	_model(root, "bench", "bench", {"seat": TIMBER_LIGHT, "frame": TIMBER}, Vector3.ONE * s)
 
 static func _pot(root: Node3D, s: float) -> void:
 	Primitives.mesh_node(Primitives.shared_mesh("cylinder", 0.08 * s, 0.14 * s, 0.11 * s), _m(POT), Vector3(0, 0.07 * s, 0), root)
@@ -335,26 +329,10 @@ static func _signpost(root: Node3D, s: float) -> void:
 	two.rotation.y = -0.2
 
 static func _cottage(root: Node3D, s: float, width: float, depth: float, lit: bool) -> void:
-	var w := width * s
-	var d := depth * s
-	var wall_h := 1.15 * s
-	_box(Vector3(w, wall_h, d), PLASTER, Vector3(0, wall_h * 0.5, 0), root)
-	_box(Vector3(w + 0.06, 0.12 * s, d + 0.04), STONE_DARK, Vector3(0, 0.06 * s, 0), root)
-	var roof := Primitives.mesh_node(Primitives.shared_mesh("prism", w + 0.24 * s, 0.72 * s, d + 0.22 * s), _m(ROOF), Vector3(0, wall_h + 0.36 * s, 0), root)
-	roof.name = "CottageRoof"
-	_box(Vector3(0.14, 0.42, 0.14) * s, ROOF_DARK, Vector3(w * 0.28, wall_h + 0.55 * s, -d * 0.15), root)
-	# The door and windows face the camera (+z), STANDOFF clear of the
-	# plinth's front at any size.
-	var face := d * 0.5 + 0.02 + STANDOFF
-	_box(Vector3(0.34, 0.66, 0.03) * s, TIMBER, Vector3(-w * 0.18, 0.33 * s, face), root)
-	_box(Vector3(0.05, 0.05, 0.04) * s, Color("e3c27a"), Vector3(-w * 0.18 + 0.1 * s, 0.33 * s, face + 0.02), root)
-	for x: float in [w * 0.22]:
-		var pane := _box(Vector3(0.34, 0.3, 0.03) * s, WINDOW_WARM if lit else Color("8fb3ad"), Vector3(x, 0.66 * s, face), root, 0.9 if lit else 0.0)
-		pane.name = "CottageWindow"
-		_box(Vector3(0.4, 0.05, 0.05) * s, TIMBER_DARK, Vector3(x, 0.49 * s, face + 0.015), root)
-		_box(Vector3(0.025, 0.29, 0.035) * s, TIMBER_DARK, Vector3(x, 0.66 * s, face + 0.015), root)
-	for x: float in [-w * 0.36, w * 0.38]:
-		_ball(0.13 * s, LEAF, Vector3(x, 0.12 * s, d * 0.5 + 0.12 * s), root, Vector3(1.2, 0.85, 0.9))
+	var scale := Vector3(width / 1.6, 1.0, depth / 1.1) * s
+	_model(root, "cottage", "cottage", {"wall": PLASTER, "plinth": STONE_DARK, "roof": ROOF, "trim": ROOF_DARK, "door": TIMBER, "knob": Color("e3c27a"), "frame": TIMBER_DARK, "leaf": LEAF}, scale)
+	var pane := _model(root, "cottage", "cottage_window", {"window": {"color": WINDOW_WARM, "glow": LAMP_GLOW, "energy": 0.9} if lit else Color("8fb3ad")}, scale)
+	pane.name = "CottageWindow"
 
 static func _tower(root: Node3D, s: float, lit: bool) -> void:
 	# A small striped lighthouse: tapered body, gallery, lamp room and cap.

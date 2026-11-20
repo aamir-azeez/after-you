@@ -1,0 +1,24 @@
+{
+	"catch_assistance": true,
+	"checkpoint_hash": "f5e32f8a0b6e2af34aa3063872d28959a9a5087b139e038e7c07ad2bb5775342",
+	"completed": true,
+	"definition_hash": "87bb4afc25b939b1754940f952e54fc4698786762b1b1e13022f7556ac0fdc5f",
+	"duration_ticks": 186,
+	"final_state_hash": "576384ec8c3eed3f74d8a0c9d3ad0b098d9269085f3002df072d458873abad37",
+	"level_id": "high-and-low",
+	"level_version": 2,
+	"outcome": {
+		"objective_complete": true,
+		"source_ready": true
+	},
+	"packed": "AQoUZAACAAADAAAsAGQMAJyYAmQAAjIABABkAgAyBGQAjrxGe8UcPkWMXYxhqKEBpT8ShnC8/M1znxohZPPC+otorxglEtaewgB4f54Dh65gCDFeqwVWtIlqJMQp7PcjjUTb5XUJIDim",
+	"player_slot": "p1",
+	"recording_hash": "c58d4f9642e32cbccfb485ec40caf3d49f4d4aa20f4a1e1445cd38bf0fe9e6d1",
+	"role": "b",
+	"schema_version": 6,
+	"simulation_version": 14,
+	"source_recording_hash": "9e7273b06c750d0a893ac56e1393a3a0eff2d38168d5211fa116e9b1ec1d6329",
+	"stage_id": "down-and-around",
+	"stage_version": 1,
+	"tick_rate": 30
+}

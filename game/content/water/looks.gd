@@ -28,12 +28,22 @@ const CLEAR_TO := 1.30
 const CLEAR_ALPHA := 0.24
 const DEEP_ALPHA := 0.90
 
-## Rings spread from a thing at the water within this many metres of open
-## water: a pip standing this far above or below its level, a float (a boat, a
-## raft) this close to it.
+## Rings spread from a float (a boat, a raft) within this many metres of open
+## water and this close to its level.
 const RING_REACH := 0.45
-const RING_HEIGHT := 0.75
 const FLOAT_HEIGHT := 0.2
+## A pip spreads rings only in or on the water, judged at its own spot: it
+## wades where open water lies under it and its feet stand at most
+## PIP_SURFACE above the level (a punt's deck stands 6 cm over the shut sea),
+## or it stands on the top of a round thing standing in the water (a stepping
+## or sinking stone), its feet within PIP_FOOTING of that top and the top at
+## most PIP_RISE above the level (Turn of the Tide's stones stand 24 cm proud
+## at half, 70 cm at low). Floors, decks, quays, stairs and bridges never
+## count: what stands in the water under them is walls, or piles and posts
+## whose tops stand 4 to 12 cm under the walk.
+const PIP_SURFACE := 0.04
+const PIP_FOOTING := 0.015
+const PIP_RISE := 0.30
 ## Spots closer than this (metres) share one set of rings.
 const RING_MERGE := 0.30
 

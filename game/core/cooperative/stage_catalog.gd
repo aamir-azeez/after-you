@@ -3,7 +3,9 @@ extends RefCounted
 const Canonical = preload("res://core/v2/canonical.gd")
 const HouseCatalog = preload("res://core/cooperative/house_catalog.gd")
 const WishingWellCatalog = preload("res://core/cooperative/wishing_well_catalog.gd")
-const KEYS := ["high-and-low@1", "rolling-home@1", "a-house-for-two@1", "the-wishing-well@1"]
+const HighAndLowV2Catalog = preload("res://core/cooperative/high_and_low_v2_catalog.gd")
+const TheWishingWellV2Catalog = preload("res://core/cooperative/the_wishing_well_v2_catalog.gd")
+const KEYS := ["high-and-low@1", "rolling-home@1", "a-house-for-two@1", "the-wishing-well@1", "high-and-low@2", "the-wishing-well@2"]
 
 static func definition(key: String = "high-and-low") -> Dictionary:
 	match key:
@@ -11,10 +13,15 @@ static func definition(key: String = "high-and-low") -> Dictionary:
 		"rolling-home", "rolling-home@1": return _rolling_home()
 		"a-house-for-two", "a-house-for-two@1": return HouseCatalog.definition()
 		"the-wishing-well", "the-wishing-well@1": return WishingWellCatalog.definition()
+		"high-and-low@2": return HighAndLowV2Catalog.definition()
+		"the-wishing-well@2": return TheWishingWellV2Catalog.definition()
 	return {}
 
+## Bare ids keep naming the first version; a definition is checked against its own id@version.
 static func known(value: Dictionary) -> bool:
-	var expected := definition(str(value.get("id", "")))
+	var version: Variant = value.get("version")
+	if not (version is int or version is float) or float(version) != floor(float(version)): return false
+	var expected := definition("%s@%d" % [str(value.get("id", "")), int(version)])
 	return not expected.is_empty() and Canonical.same(value, expected)
 
 static func stage_definition(level: Dictionary, stage_id: String) -> Dictionary:

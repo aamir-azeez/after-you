@@ -11,6 +11,8 @@ const DATA := {
 	"fireflies": 14,
 	# Every goal is a window of the house (content/dressing/piece_styles.gd).
 	"goal": "window",
+	# The garden's pulley post: a crook with a leafy lantern.
+	"pulley": "lantern_hook",
 	"props": {"*": [
 		# Source court: trees and a lamp behind, a hedge to the west.
 		{"kind": "bank", "rect": [-660, -440, -256, -352], "surface": "source-court", "height": 12},
