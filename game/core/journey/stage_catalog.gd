@@ -1,6 +1,7 @@
 extends RefCounted
 ## Pinned authored chapters for the separate simulation7 ruleset.
 const Canonical = preload("res://core/v2/canonical.gd")
+const Solid = preload("res://core/solid_footprint.gd")
 const CarriedItems = preload("res://core/physical/carried_items.gd")
 const Home = preload("res://core/journey/long_way_home_catalog.gd")
 const Conservatory = preload("res://core/journey/conservatory_catalog.gd")
@@ -12,7 +13,12 @@ const ConservatoryV2Catalog = preload("res://core/journey/conservatory_v2_catalo
 const FirstStepsV2Catalog = preload("res://core/journey/first_steps_v2_catalog.gd")
 const KEYS := ["conservatory@1","long-way-home@1","long-way-home@2","turn-of-the-tide@1","turn-of-the-tide@2","long-way-home@3","turn-of-the-tide@3","conservatory@2","first-steps@2"]
 
+## Every chapter's definition as it plays: its catalog's, with the hand
+## controls made solid (core/solid_footprint.gd with_hands, the one rule).
 static func definition(key: String = "long-way-home") -> Dictionary:
+	return Solid.with_hands(_authored(key))
+
+static func _authored(key: String) -> Dictionary:
 	if key in ["long-way-home", "long-way-home@1"]: return Home.definition()
 	if key == "long-way-home@2": return Home.definition_v2()
 	if key in ["conservatory", "conservatory@1"]: return Conservatory.definition()

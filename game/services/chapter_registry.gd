@@ -7,6 +7,7 @@ const RecordingCodec = preload("res://core/v2/recording_codec.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Emphasis = preload("res://presentation/emphasis.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const Solid = preload("res://core/solid_footprint.gd")
 const Index = preload("res://content/chapters/index.gd")
 const Families = preload("res://services/chapter_families.gd")
 const Typed = preload("res://services/typed_values.gd")
@@ -104,10 +105,12 @@ static func open_scene(key: String) -> String:
 	var earlier := "" if source.is_empty() else str(load(source[0]).call(source[1]))
 	return earlier if not earlier.is_empty() else solo_scene(key)
 
+## A chapter's hashed definition: its catalog's, with the hand controls made
+## solid (core/solid_footprint.gd with_hands, as the family catalogs give it).
 static func definition(key: String) -> Dictionary:
 	var source: Array = _chapter(key).get("definition", [])
 	if source.is_empty(): return {}
-	return _scripts[source[0]].callv(source[1], source.slice(2))
+	return Solid.with_hands(_scripts[source[0]].callv(source[1], source.slice(2)))
 
 ## descriptor() digests the whole bundled definition, up to 8 ms for the
 ## larger chapters, and a journey load asks for every chapter's. The bundled

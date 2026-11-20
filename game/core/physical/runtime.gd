@@ -93,8 +93,9 @@ var _own_toggles: Dictionary = {"levers": {}, "controls": {}}
 ## hash, the recording and the navigation index read it instead of digesting
 ## the whole definition again. "" until first used.
 var _definition_hash := ""
-## The level's item spots that are solid (core/solid_footprint.gd), set at
-## reset: a pip walks round them. [] on every level without one.
+## The level's item spots and the stage's hand controls that are solid
+## (core/solid_footprint.gd), set at reset: a pip walks round them. [] on a
+## definition without one.
 var _solids: Array = []
 
 ## `chain`: open turns only, the stage's turns before `prior_a` (the memory),
@@ -128,8 +129,8 @@ func reset(definition: Dictionary, stage_id: String, checkpoint: Dictionary, pri
 func _reset_trusted(definition: Dictionary, stage_id: String, checkpoint: Dictionary, prior_a: Dictionary, current_role: String, chain: Array = []) -> void:
 	level = definition.duplicate(true)
 	_definition_hash = ""
-	_solids = Solid.solids(level.get("item_spots", []))
 	stage = stage_by_id(level, stage_id)
+	_solids = Solid.solids(level.get("item_spots", []) + stage.get("levers", []) + stage.get("controls", []))
 	role = current_role
 	first_player_slot = stage.first_player_slot
 	# Odd turns are the first pip's, even turns the other's: before open turns, a then b.
@@ -592,7 +593,8 @@ func _part_done() -> bool:
 
 func walkable_at(x: int, z: int, slot: String = "") -> bool:
 	var selected := active_slot if slot.is_empty() else slot
-	return not Navigation.at(level, _walk_routes(selected), _mechanisms.levers, _players[selected], x, z, selected, PLAYER_RADIUS, true, _navigation_cells()).is_empty()
+	var found := Navigation.at(level, _walk_routes(selected), _mechanisms.levers, _players[selected], x, z, selected, PLAYER_RADIUS, true, _navigation_cells())
+	return not found.is_empty() and not _in_solid(found)
 
 func export_recording() -> Dictionary:
 	if tick == 0 or level.is_empty(): return {}
@@ -656,8 +658,13 @@ static func _entity(entities: Array, id: String) -> Dictionary:
 static func _other(slot: String) -> String:
 	return "p1" if slot == "p0" else "p0"
 
+## Whether `player` is at `target` on its floor: within `radius`, or else
+## within its reach (Solid.within_reach: a solid control's reach beside its
+## footprint, any other spot's radius_cm).
 static func _near_entity(player: Dictionary, target: Dictionary, radius: int = -1) -> bool:
-	return player.surface_id == target.surface_id and Vector2i(player.x,player.z).distance_squared_to(Vector2i(target.position_cm[0],target.position_cm[1])) <= (int(target.radius_cm) if radius < 0 else radius) ** 2
+	if player.surface_id != target.surface_id: return false
+	if radius < 0: return Solid.within_reach(target, Vector2i(player.x,player.z), PLAYER_RADIUS)
+	return Vector2i(player.x,player.z).distance_squared_to(Vector2i(target.position_cm[0],target.position_cm[1])) <= radius ** 2
 
 static func _action(id: String, label: String, enabled: bool, target: String) -> Dictionary:
 	return {"id":id,"label":label,"enabled":enabled,"target_id":target}

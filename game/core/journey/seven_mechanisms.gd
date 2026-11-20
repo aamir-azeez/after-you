@@ -1,5 +1,6 @@
 extends RefCounted
 const CarriedItems = preload("res://core/physical/carried_items.gd")
+const Solid = preload("res://core/solid_footprint.gd")
 ## Pure selectors and terminal-route predicates for authored simulation7.
 ## No shared mutable state: all dictionaries belong to a single simulation.
 ## `open`: open controls (runtime.gd OPEN_RULES_VERSION), where a pad holds for
@@ -29,7 +30,7 @@ static func predicate(value: Dictionary, stage: Dictionary, players: Dictionary,
 	return value.is_empty()
 
 static func near(player: Dictionary, target: Dictionary) -> bool:
-	return player.surface_id == target.surface_id and int(player.height) == int(target.get("height_cm", 0)) and Vector2i(player.x,player.z).distance_squared_to(Vector2i(target.position_cm[0],target.position_cm[1])) <= int(target.radius_cm) ** 2
+	return player.surface_id == target.surface_id and int(player.height) == int(target.get("height_cm", 0)) and Solid.within_reach(target, Vector2i(player.x,player.z), Solid.BODY_CM)
 
 ## Whether a pip holds `pad`: its owner, or under open controls either pip.
 static func held(players: Dictionary, pad: Dictionary, open: bool = false) -> bool:

@@ -1,13 +1,19 @@
 extends RefCounted
 ## Bounded physical chapters; all positions and walking heights use integer cm.
 const Canonical = preload("res://core/v2/canonical.gd")
+const Solid = preload("res://core/solid_footprint.gd")
 const HouseCatalog = preload("res://core/cooperative/house_catalog.gd")
 const WishingWellCatalog = preload("res://core/cooperative/wishing_well_catalog.gd")
 const HighAndLowV2Catalog = preload("res://core/cooperative/high_and_low_v2_catalog.gd")
 const TheWishingWellV2Catalog = preload("res://core/cooperative/the_wishing_well_v2_catalog.gd")
 const KEYS := ["high-and-low@1", "rolling-home@1", "a-house-for-two@1", "the-wishing-well@1", "high-and-low@2", "the-wishing-well@2"]
 
+## Every chapter's definition as it plays: its catalog's, with the hand
+## controls made solid (core/solid_footprint.gd with_hands, the one rule).
 static func definition(key: String = "high-and-low") -> Dictionary:
+	return Solid.with_hands(_authored(key))
+
+static func _authored(key: String) -> Dictionary:
 	match key:
 		"high-and-low", "high-and-low@1": return _high_and_low()
 		"rolling-home", "rolling-home@1": return _rolling_home()
