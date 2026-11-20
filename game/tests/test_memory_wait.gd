@@ -957,13 +957,21 @@ func _test_auto_skip_only_live() -> void:
 	_free_preview(run)
 
 ## The skip's budget is per rendered frame: a physics tick catching up in a
-## frame that has spent it steps once, and the next frame gets it back.
+## frame that has spent it steps once, and the next frame gets it back. The
+## budget is about 20 of this machine's cheapest skipped ticks, so a slow
+## runner or one preempted tick cannot use it all.
 func _test_skip_budget_per_frame() -> void:
 	var run := _preview_to_ring()
 	var preview: Preview = run.preview
 	var wait: RefCounted = preview.memory_wait
+	var cheapest := 1 << 40
+	for _tick in range(8):
+		var started := Time.get_ticks_usec()
+		var state: Dictionary = preview.sim.step(MemoryWait.STILL_INPUT)
+		wait.step_silently(state, preview._turn_sounds(state))
+		cheapest = mini(cheapest, Time.get_ticks_usec() - started)
 	wait.skipping = true
-	wait.skip_budget_usec = 3000
+	wait.skip_budget_usec = maxi(3000, 20 * cheapest)
 	var ticks := func() -> int: return int(preview.sim.snapshot().tick)
 	var shown := func() -> int: return run.world.presented.size()
 	await process_frame
@@ -973,12 +981,13 @@ func _test_skip_budget_per_frame() -> void:
 	var shown_first: int = shown.call()
 	start = ticks.call()
 	wait.skip_tick(preview.sim, preview._turn_sounds, preview.advance_input)
-	_check(first > 1 and ticks.call() - start == 1, "A tick catching up in a spent frame steps once (%d, then %d)" % [first, ticks.call() - start])
+	_check(first > 1 and ticks.call() - start == 1, "A tick catching up in a spent frame steps once (%d, then %d; budget %d us, cheapest tick %d us)" % [first, ticks.call() - start, wait.skip_budget_usec, cheapest])
 	_check(shown.call() == shown_first, "and does not show the world a second time that frame")
 	await process_frame
 	start = ticks.call()
 	wait.skip_tick(preview.sim, preview._turn_sounds, preview.advance_input)
-	_check(ticks.call() - start > 1 and shown.call() == shown_first + 1, "The next frame gets the whole budget back")
+	var again: int = ticks.call() - start
+	_check(wait.skipping and again > 1 and shown.call() == shown_first + 1, "The next frame gets the whole budget back (%d ticks, shown %d then %d; budget %d us, cheapest tick %d us)" % [again, shown_first, shown.call(), wait.skip_budget_usec, cheapest])
 	wait.skipping = false
 	preview.mode = "ready"
 	_free_preview(run)
