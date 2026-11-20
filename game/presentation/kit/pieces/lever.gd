@@ -18,10 +18,12 @@ extends "res://presentation/kit/pieces/piece.gd"
 ##       The world clears the fog round a lit one (kit/fog.gd).
 ##
 ## A handle style's anchor is its tilting pivot (the knob at journey_world
-## KNOB); a machine's is a fixed point anchor_lift() over its spot. A machine
-## stands inside its control's reach (REACH every way, the 28 cm interaction
-## radius) and keeps its east side no further than the plain housing
-## (EAST_SIDE), so a lamp or mark a world stands beside a lever stays clear.
+## KNOB); a machine's is a fixed point anchor_lift() over its spot. Every
+## style stands within REACH every way, inside the circle a solid hand
+## control keeps a pip's body out of (core/solid_footprint.gd HAND: 32 cm),
+## so a pip working it stands beside it and never hides its pull. A machine
+## keeps its east side no further than the plain housing (EAST_SIDE), so a
+## lamp or mark a world stands beside a lever stays clear.
 ## A machine eases over PULL_SECONDS; a handle snaps. Either then overshoots
 ## its stop a little and settles (HANDLE_OVER, MACHINE_OVER) unless the call
 ## was immediate. Every part's place follows from the shown value and that

@@ -168,6 +168,7 @@ func _build_mirror(control: Dictionary) -> void:
 	wheel.rotation.x = PI/2.0
 	box(Vector3(0.035,0.26,0.035),CREAM,Vector3.ZERO,hand)
 	_journey_handles[control.id] = hand
+	_hand_controls[control.id] = control
 	mark_sound("control:%s" % control.id, hand)
 
 ## One speech bubble per selector, over the lever and pointing down at it,
