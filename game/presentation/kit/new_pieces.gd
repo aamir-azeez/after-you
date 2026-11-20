@@ -9,7 +9,8 @@ extends RefCounted
 ##   - each moving platform as one piece riding between its stops, whose own
 ##     decks stay empty: a lift (kit/pieces/lift.gd, "lift" style) where its
 ##     stops share a rectangle at two heights, else a raft (kit/pieces/raft.gd,
-##     "raft" style); it eases to the stop the snapshot opens;
+##     "raft" style); it eases to the stop the snapshot opens, and whatever
+##     stands or rests on its stop rides its deck (ride);
 ##   - each one way stair as a pull-up rope ladder (kit/pieces/rope_ladder.gd,
 ##     "ladder" style), hung while a pip is at its foot or on it, rolled up at
 ##     its head otherwise, or as a wheel ride ("wheel"), turning while open;
@@ -34,6 +35,9 @@ const FallsCurtain = preload("res://presentation/kit/pieces/falls_curtain.gd")
 const PAN_WATER := Color("7fa7b0")
 ## A lift's ride, metres a second.
 const LIFT_RATE := 0.8
+## How many times faster a platform eases while it carries a pip that has
+## already stepped off it (ride_off).
+const HURRY := 4.0
 ## How near a stair's foot (m) a pip lets its ladder down.
 const FOOT_REACH := 0.8
 
@@ -42,7 +46,9 @@ var _view: Dictionary
 ## Stop crossing id -> true; stones id -> true.
 var _stops: Dictionary = {}
 var _stones: Dictionary = {}
-## [{"piece", "stops": [ids], "heights": [m], "lift": bool, "shown": m, "target": m}]
+## [{"piece", "stops": [ids], "heights": [m], "anchors": [the piece's root
+## at each stop], "half": the deck's half size (m), "lift": bool, "shown": m, "target": m, "at": the stop it
+## goes to, "hurry": bool (ride_off)}]
 var _platforms: Array = []
 ## Stair id -> {"piece", "rect" (m), "foot" (m)}.
 var _ladders: Dictionary = {}
@@ -107,14 +113,16 @@ func build(lantern_spots: Dictionary) -> void:
 		var rect := _rect(stops[0].rect_cm)
 		var heights: Array = stops.map(func(stop: Dictionary) -> float: return float(stop.get("height_cm", 0)) / 100.0)
 		var lift: bool = stops.all(func(stop: Dictionary) -> bool: return stop.rect_cm == stops[0].rect_cm)
-		var entry := {"stops": Array(platform.stops).map(func(id: Variant) -> String: return str(id)), "heights": heights, "lift": lift, "shown": heights[0], "target": heights[0]}
+		var anchors: Array = []
+		for index in range(stops.size()): anchors.append(Vector3(_rect(stops[index].rect_cm).get_center().x, heights[index], _rect(stops[index].rect_cm).get_center().y))
+		var entry := {"stops": Array(platform.stops).map(func(id: Variant) -> String: return str(id)), "heights": heights, "anchors": anchors, "half": rect.size / 2.0, "lift": lift, "shown": heights[0], "target": heights[0], "at": 0, "hurry": false}
 		if lift:
 			entry.piece = Lift.build(_world._piece_style("lift", str(platform.id)), rect, heights.min(), heights.max(), _world.terrain, _drive(platform))
 			entry.piece.set_height(heights[0])
 			_fill_pans(platform, lantern_spots)
 		else:
 			var centres: Array[Vector3] = []
-			for index in range(stops.size()): centres.append(Vector3(_rect(stops[index].rect_cm).get_center().x, heights[index], _rect(stops[index].rect_cm).get_center().y))
+			centres.assign(anchors)
 			entry.piece = Raft.build(_world._piece_style("raft", str(platform.id)), centres, rect.size, _world.terrain)
 		_platforms.append(entry)
 	fog = Fog.build(str(_world.dressing.get("fog", "mist")) if not _world.dressing.is_empty() else "mist", _view, lantern_spots, _world.terrain)
@@ -134,6 +142,8 @@ func present(state: Dictionary, immediate: bool) -> void:
 	for entry: Dictionary in _platforms:
 		var index: int = entry.stops.find_custom(func(id: String) -> bool: return bool(routes.get(id, false)))
 		if index < 0: continue
+		if index != int(entry.at) or immediate: entry.hurry = false
+		entry.at = index
 		if entry.lift:
 			entry.target = float(entry.heights[index])
 			if immediate:
@@ -162,17 +172,51 @@ func moving() -> bool:
 	if _ladders.values().any(func(ladder: Dictionary) -> bool: return ladder.piece.moving()): return true
 	return _platforms.any(func(entry: Dictionary) -> bool: return entry.piece.moving() or (entry.lift and float(entry.shown) != float(entry.target)))
 
+## The one rider rule: the deck under stop `surface` as [its piece's root,
+## how far that root stands from its place at the stop], or [] off a platform.
+## The simulation moves a platform and all on it to its new stop in one tick
+## (core/journey/simulation.gd _move_platforms); its deck eases there. So a pip,
+## the live one or a memory, and an item resting on the stop are drawn that
+## far from their snapshot place, moved with the root as it goes (the world's
+## _carry and _advance_carriers), and an item on a pip's back rides with the pip.
+func ride(surface: String) -> Array:
+	if not _stops.has(surface): return []
+	for entry: Dictionary in _platforms:
+		var index: int = entry.stops.find(surface)
+		if index >= 0: return [entry.piece.root, (entry.piece.root as Node3D).position - (entry.anchors[index] as Vector3)]
+	return []
+
+## A pip that stepped off the deck `root` (ride's) onto a floor while that deck
+## is still on its way, as the simulation lets it: it waits on the deck until
+## the deck reaches the stop it goes to, and the deck hurries there (HURRY), so
+## the pip never hops the rest of the way nor walks through the floor's edge.
+## [root, how far the root stands from that stop, the deck's half size (m)],
+## or [] once the deck is there.
+func ride_off(root: Node3D) -> Array:
+	for entry: Dictionary in _platforms:
+		if entry.piece.root != root: continue
+		var anchor: Vector3 = entry.anchors[int(entry.at)]
+		var away: bool = float(entry.shown) != float(entry.target) if entry.lift else not root.position.is_equal_approx(anchor)
+		if not away: return []
+		entry.hurry = true
+		return [root, root.position - anchor, entry.half]
+	return []
+
 func advance(delta: float) -> void:
 	for ladder: Dictionary in _ladders.values():
 		if ladder.piece.moving(): ladder.piece.advance(delta)
 	for entry: Dictionary in _platforms:
+		var pace: float = HURRY if entry.hurry else 1.0
 		if not entry.lift:
-			if entry.piece.moving(): entry.piece.advance(delta)
+			if entry.piece.moving(): entry.piece.advance(delta * pace)
+			if entry.piece.root.position.is_equal_approx(entry.anchors[int(entry.at)]): entry.hurry = false
 		elif float(entry.shown) != float(entry.target):
 			var was := float(entry.shown)
-			entry.shown = move_toward(was, float(entry.target), maxf(delta, 0.0) * LIFT_RATE)
+			entry.shown = move_toward(was, float(entry.target), maxf(delta, 0.0) * LIFT_RATE * pace)
 			entry.piece.set_height(entry.shown)
-			if float(entry.shown) == float(entry.target): entry.piece.arrive(float(entry.target) - was)
+			if float(entry.shown) == float(entry.target):
+				entry.hurry = false
+				entry.piece.arrive(float(entry.target) - was)
 		elif entry.piece.moving(): entry.piece.advance(delta)
 
 ## The fog's slow drift at `seconds` on the world's clock (each frame unless

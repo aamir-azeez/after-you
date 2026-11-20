@@ -1185,17 +1185,21 @@ func _process(delta: float) -> void:
 	var weight := minf(delta*14.0,1.0)
 	if not (home_view and home_presentation_owner!=0):
 		update_spirit_attention()
+	_advance_carriers(delta)
 	for role in actors:
 		if home_view and home_presentation_owner!=0:
 			continue
 		var actor: SpiritVisual=actors[role]
 		if home_view:
 			actor.visible=true
-		var target: Vector3=actor_targets[role]
-		actor.travel_target=target
 		var previous := actor.position
+		# Whatever carries the spirit takes it along first; its own walk eases on top.
+		var carried := _carry(role,actor)
+		var target: Vector3=actor_targets[role]+carried
+		actor.travel_target=target
+		var ridden := actor.position-previous
 		actor.position=actor.position.lerp(target,weight)
-		actor.advance_motion(actor.position-previous,delta,reduced_motion)
+		actor.advance_motion(actor.position-previous-ridden,delta,reduced_motion)
 	if not (home_view and home_presentation_owner!=0):
 		finish_spirit_motion()
 	_seed_launch_age+=delta
@@ -1294,6 +1298,16 @@ func note_big_change(kind: String, seconds: float) -> void:
 	if not BigChange.is_big(kind, _chapter_key()): return
 	if big_change_shake and not reduced_motion and seconds > 0.0 and is_instance_valid(camera_exploration): camera_exploration.shake(seconds)
 	if big_change_haptic.is_valid(): big_change_haptic.call(int(BigChange.HAPTIC.ms), float(BigChange.HAPTIC.amplitude))
+
+## Each frame before the spirits move: whatever can carry a spirit moves
+## first. Nothing does here.
+func _advance_carriers(_delta: float) -> void:
+	pass
+
+## Each frame: moves `actor` (spirit `role`) with whatever carries it, and
+## returns how far its carrier has it from its snapshot place. Nothing here.
+func _carry(_role: String, _actor: Node3D) -> Vector3:
+	return Vector3.ZERO
 
 ## A scrolling world eases its follow camera; Home and the older islands ease
 ## toward their own framing.
