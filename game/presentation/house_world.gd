@@ -51,7 +51,8 @@ func present_history(checkpoint: Dictionary) -> void:
 			ring(float(pad.radius_cm)/100.0,Color("8f8a72"),at+Vector3(0,0.025,0),_house_memories)
 	for route: Dictionary in chapter_definition.bridges+chapter_definition.get("stairs",[]):
 		if route.id not in _latched_bridge_ids: continue
-		var r: Array = route.rect_cm
+		# By the crossing as drawn (drawn_rect).
+		var r := drawn_rect(route)
 		var at := point([r[0]+12,r[3]+16])
 		# A small fixed bracket replaces the idea of another live weight.
 		box(Vector3(0.24,0.06,0.18),TIMBER,at+Vector3(0,0.03,0),_house_memories)
@@ -65,18 +66,21 @@ func _shore(island: Dictionary, _color: Color) -> void:
 	terrain.add_child(room)
 	_surface_nodes[str(island.id)] = room
 	if room.position.y > 0.5: _upper_islands.append(room)
-	var r: Array = island.rect_cm
+	var r := drawn_rect(island)
 	var hole: Array = []
 	for drop: Dictionary in current_level.get("drops", []):
 		if drop.surface_id == island.id: hole = drop.rect_cm
-	for piece: Array in Primitives.rect_minus_hole(r, hole):
+	var shape: Array = []
+	for drawn: Array in drawn_pieces(island): shape.append_array(WalkReach.minus(drawn, hole) if not hole.is_empty() else [drawn])
+	for piece: Array in shape:
 		var width := float(piece[2]-piece[0])/100.0
 		var depth := float(piece[3]-piece[1])/100.0
 		var at := point([(piece[0]+piece[2])*0.5,(piece[1]+piece[3])*0.5])
 		box(Vector3(width,0.28,depth),TIMBER,at+Vector3(0,-0.14,0),room)
-		ContactShadows.ground(room, Rect2(at.x-width/2.0, at.z-depth/2.0, width, depth), at.y, false)
 		for x in range(int(piece[0])+36,int(piece[2]),36):
 			box(Vector3(0.012,0.008,depth),FRAME,Vector3(float(x)/100.0,0.004,at.z),room)
+	# The room's floor stays its first child, the mesh its cutaway fades first.
+	ContactShadows.ground_cm(room, shape, 0.0, false)
 	# The front stays entirely open. Low side skirting outlines the rooms
 	# without suggesting a solid wall across a traversable threshold.
 	var width := float(r[2]-r[0])/100.0
@@ -115,7 +119,7 @@ func _build_obstacle(obstacle: Dictionary) -> void:
 
 func _build_bridge(definition: Dictionary) -> void:
 	super._build_bridge(definition)
-	var r: Array = definition.rect_cm
+	var r := drawn_rect(definition)
 	var length := float(r[2]-r[0])/100.0
 	var depth := float(r[3]-r[1])/100.0
 	var at := point([(r[0]+r[2])*0.5,(r[1]+r[3])*0.5])

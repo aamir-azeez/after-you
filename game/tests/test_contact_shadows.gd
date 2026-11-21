@@ -268,6 +268,18 @@ func _check_bake() -> void:
 	for tile: Rect2 in tiles: covered += tile.get_area()
 	_check(covered < rect.get_area() * 0.5 and tiles.all(func(tile: Rect2) -> bool: return rect.encloses(tile)), "The overlay covers only tiles with shade, inside the floor: %.2f of %.2f m2" % [covered, rect.get_area()])
 	_check(ContactShadows.bake(rect, [[Vector2(9, 9), Vector2(0.2, 0.2), 1.0, Vector2.RIGHT]], [], true).is_empty(), "A floor with nothing on it bakes nothing")
+	# A floor drawn as two pieces cut round a neighbour (kit/walk_reach.gd): one
+	# ground, a foot by the seam baked whole, shade drawn only over the pieces.
+	var cut_parent := Node3D.new()
+	var cut := ContactShadows.ground_cm(cut_parent, [[0, 0, 200, 200], [200, 0, 400, 100]], 0.0, true)
+	var cut_rect: Rect2 = cut.get_meta(ContactShadows.GROUND_RECT_META)
+	var cut_pieces: Array = cut.get_meta(ContactShadows.GROUND_PIECES_META)
+	_check(cut_rect == rect and ContactShadows.holds(cut, Vector2(3, 0.5)) and not ContactShadows.holds(cut, Vector2(3, 1.5)), "A floor in pieces is one ground over their bounds that holds only its pieces")
+	var by_seam := ContactShadows.bake(cut_rect, [[Vector2(2.0, 0.6), Vector2(0.3, 0.3), 1.0, Vector2.RIGHT], [Vector2(3.0, 0.9), Vector2(0.3, 0.3), 1.0, Vector2.RIGHT]], [], true, cut_pieces)
+	var seam_image: Image = by_seam.image
+	_check(seam_image.get_pixel(int(1.9 / ContactShadows.TEXEL), 12).r > 0.99 and seam_image.get_pixel(int(2.1 / ContactShadows.TEXEL), 12).r > 0.99, "A foot on a seam between pieces shades both sides")
+	_check((by_seam.tiles as Array).all(func(tile: Rect2) -> bool: return cut_pieces.any(func(piece: Rect2) -> bool: return piece.encloses(tile))), "Shade is drawn only over the floor's pieces, never over its cut")
+	cut_parent.free()
 	var cast := ContactShadows.bake(rect, [], [[Vector2(2, 1), Vector2(1, 0), Vector2(0.5, 0.2), 0.1]], true)
 	_check((cast.image as Image).get_pixel(int(2.4 / ContactShadows.TEXEL), int(1.0 / ContactShadows.TEXEL)).b > 0.9 and (cast.image as Image).get_pixel(int(2.4 / ContactShadows.TEXEL), int(1.0 / ContactShadows.TEXEL)).r == 0.0, "The sun's shadow has its own channel")
 	var look := FileAccess.get_file_as_string(ContactShadows.SHADE_SHADER.resource_path)

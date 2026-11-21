@@ -248,8 +248,7 @@ func _shore(island: Dictionary, _color: Color) -> void:
 	for drop: Dictionary in current_level.get("drops", []):
 		if drop.surface_id == island.id: hole = drop
 	# A drop keeps a real opening in its floor; no decal covers it.
-	for piece: Array in Primitives.rect_minus_hole(island.rect_cm, hole.get("rect_cm", [])):
-		Surfaces.build({"id": island.id, "rect_cm": piece}, style, raised, false)
+	Surfaces.build(island, style, raised, false, _floor_shape(island, hole.get("rect_cm", [])))
 	if str(island.id) in waters.water.get("piers", []):
 		# A floor on piers: water runs under it, so it gets no walls.
 		raised.set_meta("tide_occluder", true)
@@ -271,15 +270,30 @@ func _wall_color(_height_cm: int) -> Color:
 func _piers(_island: Dictionary, _raised: Node3D) -> void:
 	pass
 
+## The rectangles a floor is drawn as (drawn_pieces), less a drop's `hole`.
+func _floor_shape(island: Dictionary, hole: Array) -> Array:
+	var shape: Array = []
+	for piece: Array in drawn_pieces(island):
+		shape.append_array(WalkReach.minus(piece, hole) if not hole.is_empty() else [piece])
+	return shape
+
 func _deck_walls(island: Dictionary, raised: Node3D) -> void:
-	var r: Array = island.rect_cm
+	var shape := drawn_pieces(island)
+	for r: Array in shape: _deck_wall(island, raised, r, shape)
+
+## The wall under one piece `r` (cm) of a floor's drawn `shape`: a centimetre
+## in from each side the shape's edge runs along, flush where the next piece meets it.
+func _deck_wall(island: Dictionary, raised: Node3D, r: Array, shape: Array) -> void:
 	var height := raised.position.y
 	# Down to the bed of the pool it stands in (WaterBodies.bed_at).
 	var bed := waters.bed_at(Vector2(float(r[0] + r[2]), float(r[1] + r[3])) * 0.5)
 	var bottom := bed - height
 	var color: Color = _wall_color(int(island.get("height_cm", 0)))
-	var size := Vector3(float(r[2] - r[0]) / 100.0 - 0.02, -0.20 - bottom, float(r[3] - r[1]) / 100.0 - 0.02)
-	var wall := box(size, color, Vector3(float(r[0] + r[2]) / 200.0, (bottom - 0.20) * 0.5, float(r[1] + r[3]) / 200.0), raised)
+	var inset: Array = Surfaces.outer_sides(r, shape).map(func(outer: bool) -> float: return 0.01 if outer else 0.0)
+	var low := Vector2(float(r[0]) / 100.0 + inset[0], float(r[1]) / 100.0 + inset[1])
+	var high := Vector2(float(r[2]) / 100.0 - inset[2], float(r[3]) / 100.0 - inset[3])
+	var size := Vector3(high.x - low.x, -0.20 - bottom, high.y - low.y)
+	var wall := box(size, color, Vector3((low.x + high.x) * 0.5, (bottom - 0.20) * 0.5, (low.y + high.y) * 0.5), raised)
 	wall.name = str(island.id) + "Wall"
 	# One weathered course on the face toward the camera, just under the deck.
 	box(Vector3(size.x - 0.012, 0.03, 0.02), color.darkened(0.18), Vector3(wall.position.x, -0.34, float(r[3]) / 100.0 - 0.005), raised)
@@ -293,6 +307,9 @@ func _deck_walls(island: Dictionary, raised: Node3D) -> void:
 		if clear: box(Vector3(size.x + 0.016, 0.012, size.z + 0.016), color.darkened(0.10), Vector3(wall.position.x, y, wall.position.z), raised).name = "WallCourse"
 		y -= course
 	waters.mark_bands(Vector3(wall.position.x, 0, wall.position.z) + Vector3(0, height, 0), Vector2(size.x, size.z), bed, height - 0.20, raised, height)
+
+func _framed_stairs() -> bool:
+	return false
 
 func _surface_height(id: String) -> float:
 	# Markers on a raised crossing (the waiting steps, posts and catwalks) stand

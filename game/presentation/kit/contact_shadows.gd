@@ -66,9 +66,11 @@ const NODE_NAME := "ContactShadows"
 const GROUP := &"contact_shadow"
 ## Floor tops a still thing can be baked into (ground()).
 const GROUND_GROUP := &"contact_ground"
-## On a ground: its walkable rect in its own space (x, z) and whether it is
-## grass that wears round a base.
+## On a ground: its bounds in its own space (x, z), the rectangles of them
+## its floor is drawn as (shade lies only over these) and whether it is grass
+## that wears round a base.
 const GROUND_RECT_META := &"contact_ground_rect"
+const GROUND_PIECES_META := &"contact_ground_pieces"
 const GROUND_WORN_META := &"contact_ground_worn"
 ## On a marked root: its feet, [[centre Vector2, half Vector2, y, round,
 ## across Vector2 (unit), strength 0..1, wears grass]] in its own space; []
@@ -205,14 +207,21 @@ static func prop(root: Node3D, spec: Dictionary) -> void:
 	root.set_meta(LOOK_META, "soft" if PROP_SOFT.has(kind) else "firm")
 	mark(root)
 
-## Registers a floor top under `parent`: `rect` (x, z in parent space) walked
-## at height `top`; `worn` for grass, which wears round a base. A shared floor
+## Registers a floor top under `parent`: `rect` (x, z in parent space) at
+## height `top`, its whole drawn top (past the walkable edge where it is drawn
+## wider, kit/walk_reach.gd); `worn` for grass, which wears round a base. A
+## floor drawn as several rectangles that meet edge to edge (cut round its
+## neighbours) names them as `pieces`, inside `rect`: one ground, so a foot by
+## a seam is baked whole, with shade drawn only over them. A shared floor
 ## builder calls it once per floor it lays; the layer bakes what stands on it.
-static func ground(parent: Node3D, rect: Rect2, top: float, worn: bool) -> Node3D:
+static func ground(parent: Node3D, rect: Rect2, top: float, worn: bool, pieces: Array[Rect2] = []) -> Node3D:
 	var node := Node3D.new()
 	node.name = "Ground"
 	node.position = Vector3(0, top, 0)
 	node.set_meta(GROUND_RECT_META, rect)
+	var drawn: Array[Rect2] = pieces.duplicate()
+	if drawn.is_empty(): drawn.append(rect)
+	node.set_meta(GROUND_PIECES_META, drawn)
 	node.set_meta(GROUND_WORN_META, worn)
 	node.add_to_group(GROUND_GROUP)
 	parent.add_child(node)
@@ -226,21 +235,41 @@ static func ground(parent: Node3D, rect: Rect2, top: float, worn: bool) -> Node3
 	look.shader = SHADE_SHADER
 	look.set_shader_parameter("dark_tint", Vector3(TINT.r, TINT.g, TINT.b))
 	overlay.material_override = look
-	_empty_overlay(overlay, rect)
-	node.add_child(overlay)
 	node.set_meta(OVERLAY_META, overlay)
+	_empty_overlay(node)
+	node.add_child(overlay)
 	return node
+
+## ground() for a floor drawn as `pieces_cm` ([x0, z0, x1, z1] cm in parent
+## space, meeting edge to edge: WalkReach.pieces), over their bounds.
+static func ground_cm(parent: Node3D, pieces_cm: Array, top: float, worn: bool) -> Node3D:
+	var pieces: Array[Rect2] = []
+	var bounds := Rect2()
+	for piece: Array in pieces_cm:
+		var rect := Rect2(Vector2(float(piece[0]), float(piece[1])) / 100.0, Vector2(float(piece[2] - piece[0]), float(piece[3] - piece[1])) / 100.0)
+		bounds = rect if pieces.is_empty() else bounds.merge(rect)
+		pieces.append(rect)
+	return ground(parent, bounds, top, worn, pieces)
+
+## Whether a ground's drawn top holds `at` (its own x, z), `grow` metres past
+## its pieces' sides.
+static func holds(ground: Node3D, at: Vector2, grow: float = 0.0) -> bool:
+	for piece: Rect2 in ground.get_meta(GROUND_PIECES_META):
+		if piece.grow(grow).has_point(at): return true
+	return false
 
 ## A ground's overlay (null for a node that is not one).
 static func overlay_of(ground: Node3D) -> MeshInstance3D:
 	var overlay: Variant = ground.get_meta(OVERLAY_META, null)
 	return overlay if is_instance_valid(overlay) else null
 
-## An overlay holding no shade: the floor's quad (rect), on no render layer,
-## so it is a whole mesh that costs no draw.
-static func _empty_overlay(overlay: MeshInstance3D, rect: Rect2) -> void:
-	var whole: Array[Rect2] = [rect]
-	overlay.mesh = overlay_mesh(rect, whole)
+## A ground's overlay holding no shade: the floor's quads (its pieces), on
+## no render layer, so it is a whole mesh that costs no draw.
+static func _empty_overlay(ground: Node3D) -> void:
+	var overlay: MeshInstance3D = ground.get_meta(OVERLAY_META)
+	var pieces: Array[Rect2] = []
+	pieces.assign(ground.get_meta(GROUND_PIECES_META))
+	overlay.mesh = overlay_mesh(ground.get_meta(GROUND_RECT_META), pieces)
 	overlay.layers = 0
 
 ## Whether root has its shadow switched off (or its kind none).
@@ -488,7 +517,9 @@ static func worn_for(half: Vector2) -> float:
 ## `rect` (see ground_shade.gdshader). Returns {image, tiles: [Rect2]} or {}
 ## when nothing shows. Every input is snapped first (SNAP), and the stamps
 ## keep the darkest, so the image is the same on any platform, in any order.
-static func bake(rect: Rect2, feet_list: Array, casts: Array, worn: bool) -> Dictionary:
+## `pieces`: the rectangles of rect the floor is drawn as (all of it when
+## empty); its tiles are drawn only over them.
+static func bake(rect: Rect2, feet_list: Array, casts: Array, worn: bool, pieces: Array = []) -> Dictionary:
 	var width := maxi(1, ceili(rect.size.x / TEXEL))
 	var height := maxi(1, ceili(rect.size.y / TEXEL))
 	var data := PackedByteArray()
@@ -511,7 +542,10 @@ static func bake(rect: Rect2, feet_list: Array, casts: Array, worn: bool) -> Dic
 	var tiles: Array[Rect2] = []
 	for key: int in marked:
 		var tile := Rect2(rect.position + Vector2(key % tiles_across, key / tiles_across) * per_tile * TEXEL, Vector2.ONE * per_tile * TEXEL)
-		tiles.append(tile.intersection(rect))
+		for piece: Rect2 in (pieces if not pieces.is_empty() else [rect]):
+			var part := tile.intersection(piece.intersection(rect))
+			if part.has_area(): tiles.append(part)
+	if tiles.is_empty(): return {}
 	tiles.sort_custom(func(a: Rect2, b: Rect2) -> bool: return a.position.y < b.position.y or (a.position.y == b.position.y and a.position.x < b.position.x))
 	return {"image": Image.create_from_data(width, height, false, Image.FORMAT_RGB8, data), "tiles": tiles}
 
@@ -770,7 +804,7 @@ func _gather(members: int, grounds_count: int) -> void:
 	for ground: Node3D in grounds:
 		_shade_quality(ground)
 		var entry: Array = on_ground[ground]
-		var signature := hash([entry[2], entry[1], ground.get_meta(GROUND_RECT_META), ground.get_meta(GROUND_WORN_META)])
+		var signature := hash([entry[2], entry[1], ground.get_meta(GROUND_RECT_META), ground.get_meta(GROUND_PIECES_META), ground.get_meta(GROUND_WORN_META)])
 		if _baked.has(ground) and int(_baked[ground].signature) == signature: continue
 		_to_bake.append([ground, entry[0], entry[1], signature])
 	_place_live(live)
@@ -783,8 +817,7 @@ func _ground_for(root: Node3D, foot: Array, grounds: Array[Node3D]) -> Node3D:
 	var best_gap := INF
 	for ground: Node3D in grounds:
 		var local := ground.global_transform.affine_inverse() * at
-		var rect: Rect2 = ground.get_meta(GROUND_RECT_META)
-		if local.y < -0.06 or local.y > 0.12 or not rect.grow(0.02).has_point(Vector2(local.x, local.z)): continue
+		if local.y < -0.06 or local.y > 0.12 or not holds(ground, Vector2(local.x, local.z), 0.02): continue
 		if absf(local.y) < best_gap:
 			best_gap = absf(local.y)
 			best = ground
@@ -846,7 +879,7 @@ func _bake_some() -> void:
 
 func _bake_ground(ground: Node3D, feet_list: Array, casts: Array, signature: int) -> void:
 	var rect: Rect2 = ground.get_meta(GROUND_RECT_META)
-	var baked := bake(rect, feet_list, casts if GraphicsPolicy.cast_shadows(_quality) else [], bool(ground.get_meta(GROUND_WORN_META)))
+	var baked := bake(rect, feet_list, casts if GraphicsPolicy.cast_shadows(_quality) else [], bool(ground.get_meta(GROUND_WORN_META)), ground.get_meta(GROUND_PIECES_META))
 	_baked[ground] = {"signature": signature, "image": null}
 	if baked.is_empty():
 		_clear(ground)
@@ -862,7 +895,7 @@ func _bake_ground(ground: Node3D, feet_list: Array, casts: Array, signature: int
 func _clear(ground: Node3D) -> void:
 	var overlay := overlay_of(ground)
 	if overlay == null or overlay.layers == 0: return
-	_empty_overlay(overlay, ground.get_meta(GROUND_RECT_META))
+	_empty_overlay(ground)
 	(overlay.material_override as ShaderMaterial).set_shader_parameter("shade", null)
 
 ## Draws the live shadows: the biggest first, equal ones by where they stand

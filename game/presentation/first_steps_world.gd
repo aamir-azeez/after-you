@@ -110,7 +110,7 @@ func load_level(definition: Dictionary) -> void:
 ## The lift in its style (content/dressing/piece_styles.gd "lift"); a
 ## rope_tower's winch stands beside the first stage's power spot.
 func _build_lift(authored: Dictionary) -> void:
-	var r: Array = authored.rect_cm
+	var r := drawn_rect(authored)
 	var area := Rect2(float(r[0]) / 100.0, float(r[1]) / 100.0, float(r[2] - r[0]) / 100.0, float(r[3] - r[1]) / 100.0)
 	var drive := Vector3.ZERO
 	for control: Dictionary in current_level.controls:
