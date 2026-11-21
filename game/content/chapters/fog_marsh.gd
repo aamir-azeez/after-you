@@ -43,8 +43,9 @@ const DATA := {
 	# The chapter's keepsake on Home (presentation/keepsakes/).
 	"home_keepsake": {
 		"builder": "res://presentation/keepsakes/fog_marsh.gd",
-		"island": "right",
-		"slot": [0.0, 0.0],
+		"island": "brook",
+		"slot": [-1.0, 1.8],
+		"yaw": 0.0,
 		"copy": {
 			"name": PlayerCopy.FOG_MARSH_KEEPSAKE_NAME,
 			"action": PlayerCopy.FOG_MARSH_KEEPSAKE_ACTION,
@@ -52,7 +53,7 @@ const DATA := {
 			"hard": PlayerCopy.FOG_MARSH_KEEPSAKE_HARD,
 			"top": PlayerCopy.FOG_MARSH_KEEPSAKE_TOP,
 		},
-		"sounds": {"base": "garden_opened", "together": "lift_ready", "hard": "bell_rung", "top": "island_bloomed"},
+		"sounds": {"base": "lantern_lit", "together": "well_plunk", "hard": "waypoint", "top": "island_bloomed"},
 	},
 	"unlock": {"fruits": 3},
 	"dressing": "res://content/dressing/fog_marsh.gd",

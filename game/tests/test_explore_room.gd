@@ -179,9 +179,11 @@ func _check_room(name: String, friend: bool, hard: Dictionary) -> void:
 	for key: String in squeezed: _room(false, key, squeezed[key])
 	for key: String in KNOWN_SQUEEZES:
 		if key.begins_with(name + "|squeeze on ") and not squeezed.has(key): _room(true, key, "")
-	# Each bridge and each keepsake is reached with room.
+	# Each bridge (an isle and its bridge are built only while a keepsake
+	# stands on it) and each keepsake is reached with room.
 	var crossings: Array = [[Vector2(0, 0), "Home"]]
-	for id: String in Isles.ISLES: crossings.append([(Isles.ISLES[id].bridge[0] as Vector2).lerp(Isles.ISLES[id].bridge[1], 0.5), id])
+	for id: String in Isles.ISLES:
+		if layer.island_ids().has(id): crossings.append([(Isles.ISLES[id].bridge[0] as Vector2).lerp(Isles.ISLES[id].bridge[1], 0.5), id])
 	for crossing: Array in crossings:
 		var cell := _cell(grid, Vector3(crossing[0].x, 0, crossing[0].y))
 		_room(cell >= 0 and route.has(cell), "%s|bridge %s" % [name, crossing[1]], "%s: the %s bridge is reached with room" % [name, crossing[1]])
