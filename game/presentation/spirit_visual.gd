@@ -93,10 +93,11 @@ const GREETING_DURATION := 1.2
 ## through it in stripes. It lies over the floor's lines, trims, rugs, caps
 ## and zone strips (up to 2.1 cm) and under the bridge deck trims (2.75 cm),
 ## pads and plates, 3.25 mm from the nearest. The dressing lint keeps every
-## chapter clear of it wherever a spirit stands (test_dressing_lint.gd).
+## chapter clear of it wherever a spirit stands (test_dressing_lint.gd). The
+## floors' baked shade lies at the same height (ContactShadows.SHADE_TOP).
 const SHADOW_RADIUS := 0.30
 const SHADOW_FADE := 0.18
-const SHADOW_TOP := 0.02425
+const SHADOW_TOP := ContactShadows.SHADE_TOP
 
 var facing := Node3D.new()
 var upper_body := Node3D.new()

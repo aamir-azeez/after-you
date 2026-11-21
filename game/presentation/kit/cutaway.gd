@@ -9,13 +9,24 @@ const FADED_ALPHA := 0.10
 ## like the beams of the Conservatory's balcony on posts, so a faded deck
 ## keeps its timber and never reads as a box.
 const KEEP := "cutaway_keep"
+## A mesh a world marks with this meta hides while its floor fades instead
+## (a floor's baked shade, kit/contact_shadows.gd), so it never hangs over a
+## see-through floor.
+const HIDE := "cutaway_hide"
 
 ## Fades (or restores) every mesh under node. Shared scenery materials are
 ## copied first, so fading one floor never fades the same prop elsewhere.
 static func set_faded(node: Node, faded: bool) -> void:
+	if hides(node, faded): return
 	if node is MeshInstance3D and node.material_override is StandardMaterial3D:
 		if not fade_mesh(node, faded): return
 	for child: Node in node.get_children(): set_faded(child, faded)
+
+## Hides (or shows) node when it is marked HIDE; false for any other node.
+static func hides(node: Node, faded: bool) -> bool:
+	if not node is GeometryInstance3D or not node.has_meta(HIDE): return false
+	(node as GeometryInstance3D).visible = not faded
+	return true
 
 ## Fades one mesh. Returns false when it already shows that state, in which
 ## case its subtree is already in that state too.

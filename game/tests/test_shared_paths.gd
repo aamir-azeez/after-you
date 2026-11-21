@@ -96,8 +96,11 @@ extends SceneTree
 ##     its root through piece.gd `_root()`, which marks it unless the kit passes
 ##     `false` and is in NO_CONTACT_SHADOW with why, and kit/props.gd build()
 ##     marks every dressing prop (ContactShadows.PROP_NONE lists the kinds that
-##     get none). test_contact_shadows.gd, which must stay in CI, builds every
-##     style and kind; test_world_looks checks every chapter stage draws them.
+##     get none). The floor builders (FLOOR_GROUNDS) register every floor top
+##     as a ground, so what stands still on it is baked into its shade (both
+##     shaders are preloaded by the kit alone). test_contact_shadows.gd, which
+##     must stay in CI, builds every style and kind; test_world_looks checks
+##     every chapter stage bakes them and that every floor is a ground.
 ##
 ## Every allow-list entry says why. An entry that no longer matches anything
 ## fails, so the lists shrink as code moves. KNOWN_FAILURES holds the checks
@@ -436,7 +439,17 @@ const GOAL_BEACON := "res://presentation/kit/goal_beacon.gd"
 const GOAL_BEACON_BUILDER := "res://presentation/cooperative_world.gd"
 ## (y) The contact shadow kit, its look, and the piece kits that make no shadow, with why.
 const CONTACT_SHADOWS := "res://presentation/kit/contact_shadows.gd"
-const CONTACT_SHADOW_SHADER := "res://presentation/kit/contact_shadow.gdshader"
+const CONTACT_SHADOW_SHADERS := ["res://presentation/kit/contact_shadow.gdshader", "res://presentation/kit/ground_shade.gdshader"]
+## (y) The shared floor builders, each registering the floor tops it lays as
+## grounds (ContactShadows.ground), with what they lay.
+const FLOOR_GROUNDS := {
+	"res://presentation/kit/surfaces.gd": "every ground style's floor",
+	"res://presentation/island_world.gd": "the floating grass shell (plain floors, Home's isles)",
+	"res://presentation/lighthouse_world.gd": "the Lighthouse family's plain stone floors",
+	"res://presentation/house_world.gd": "A House for Two's timber rooms",
+	"res://presentation/wishing_well_world.gd": "the Wishing Well's stone tiers",
+	"res://presentation/kit/props.gd": "a bank, which is ground itself",
+}
 const CONTACT_SHADOW_LAYER := "res://presentation/island_world.gd"
 const PIECE_KIT_BASE := "res://presentation/kit/pieces/piece.gd"
 const NO_CONTACT_SHADOW := {
@@ -1111,7 +1124,9 @@ func _contact_shadows() -> void:
 	var opted := {}
 	for path: String in _sources:
 		var source: String = _sources[path]
-		_check(path == CONTACT_SHADOWS or _found("\"" + CONTACT_SHADOW_SHADER + "\"", source) == 0, "%s draws a contact shadow itself: use kit/contact_shadows.gd (mark a root, or single_material for one quad)" % path)
+		for shader: String in CONTACT_SHADOW_SHADERS:
+			_check(path == CONTACT_SHADOWS or _found("\"" + shader + "\"", source) == 0, "%s draws a contact shadow itself: use kit/contact_shadows.gd (mark a root, register a floor, or single_material for one quad)" % path)
+		if path != CONTACT_SHADOWS and _found("\\bContactShadows\\.ground\\(", source) > 0: _check(FLOOR_GROUNDS.has(path), "%s registers floor grounds: add it to FLOOR_GROUNDS with what it lays" % path)
 		var kit := _alias(source, CONTACT_SHADOWS)
 		_check(path == CONTACT_SHADOW_LAYER or kit.is_empty() or _found("\\b" + kit + "\\.new\\(", source) == 0, "%s makes a contact shadow layer: island_world makes one per world" % path)
 		if not path.begins_with(PIECE_KITS) or _found("^extends\\s+\"" + PIECE_KIT_BASE + "\"", source) == 0: continue
@@ -1121,6 +1136,8 @@ func _contact_shadows() -> void:
 			_check(NO_CONTACT_SHADOW.has(path), "%s builds a piece with no contact shadow: add it to NO_CONTACT_SHADOW with why, or let _root() mark it" % path)
 	for path: String in NO_CONTACT_SHADOW:
 		_check(opted.has(path), "NO_CONTACT_SHADOW names %s, which casts its shadow now: delete it" % path)
+	for path: String in FLOOR_GROUNDS:
+		_check(_found("\\bContactShadows\\.ground\\(", str(_sources.get(path, ""))) > 0, "FLOOR_GROUNDS names %s, which registers no ground now: delete it" % path)
 	_check(_found("\\bContactShadows\\.mark\\(root\\)", str(_sources.get(PIECE_KIT_BASE, ""))) > 0, "piece.gd _root() marks every piece root for a contact shadow")
 	_check(_found("\\bContactShadows\\.prop\\(root, spec\\)", str(_sources.get("res://presentation/kit/props.gd", ""))) > 0, "kit/props.gd build() marks every dressing prop for a contact shadow")
 	_check(_found("\\bContactShadows\\.(?:single_material|pip_quad)\\(", str(_sources.get("res://presentation/spirit_visual.gd", ""))) > 0, "A pip's shadow takes the contact shadows' look")

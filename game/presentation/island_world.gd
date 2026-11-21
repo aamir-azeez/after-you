@@ -547,13 +547,18 @@ func _make_island(cx: float, cz: float, width: float, depth: float, grass: Color
 	for i in range(2):
 		var tx := cx + (-0.85 if i==0 else 0.65)
 		var tz := cz-depth/2+0.28
-		cylinder(0.07,0.8,Color("806f59"),Vector3(tx,0.4,tz),terrain)
+		# Each tree under its own root, grounded like any prop.
+		var tree := Node3D.new()
+		tree.name = "Tree"
+		terrain.add_child(tree)
+		ContactShadows.mark(tree)
+		cylinder(0.07,0.8,Color("806f59"),Vector3(tx,0.4,tz),tree)
 		var foliage := Color("659d86") if i==0 else Color("8daf83")
 		for lobe in range(3):
-			var crown := sphere(0.40,foliage.lightened(lobe*0.045),Vector3(tx+(lobe-1)*0.19,1.02+0.19*(1-abs(lobe-1)),tz),terrain)
+			var crown := sphere(0.40,foliage.lightened(lobe*0.045),Vector3(tx+(lobe-1)*0.19,1.02+0.19*(1-abs(lobe-1)),tz),tree)
 			crown.scale=Vector3(0.82,1.28,0.82)
 			for j in range(3):
-				sphere(0.065,Color("ebc28f"),Vector3(tx+sin(j*2.1)*0.29,0.95+0.12*j,tz+cos(j*2.1)*0.25),terrain)
+				sphere(0.065,Color("ebc28f"),Vector3(tx+sin(j*2.1)*0.29,0.95+0.12*j,tz+cos(j*2.1)*0.25),tree)
 
 ## Rear-edge scenery that differs per island: tree count and placement, fruit
 ## or blossom, a flowering bush or a bench. Static props share materials.
@@ -650,6 +655,8 @@ func _island_shell(cx: float, cz: float, width: float, depth: float, grass: Colo
 	shell_material.cull_mode=BaseMaterial3D.CULL_DISABLED
 	shell.material_override=shell_material
 	(parent if parent != null else terrain).add_child(shell)
+	# Its grass is a ground what stands on it is baked into (kit/contact_shadows.gd).
+	ContactShadows.ground(parent if parent != null else terrain, Rect2(cx-hx, cz-hz, width, depth), 0.0, true)
 
 func _shell_triangle(surface: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, color: Color) -> void:
 	surface.set_color(color)

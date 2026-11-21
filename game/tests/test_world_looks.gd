@@ -10,8 +10,9 @@ extends "res://tests/test_world_fingerprint.gd"
 ##   spare. Draws and triangles are what a frame costs a phone (the renderer
 ##   draws no shadows); a stage within both runs like the stages already
 ##   shipped. Frame times are measured on rendered runs, not here.
-## - Each stage draws soft contact shadows under its pieces and props
-##   (kit/contact_shadows.gd), all of them in one MultiMesh.
+## - Each stage grounds its pieces and props (kit/contact_shadows.gd): every
+##   floor is a ground, what stands still on it is baked into it, and what
+##   moves draws in one MultiMesh.
 ## - Driven through its fixture scenarios, Turn of the Tide @2 (not pinned by
 ##   the world fingerprint) changes no cached look in place.
 
@@ -65,17 +66,44 @@ func _census(key: String, definition: Dictionary, index: int) -> void:
 	if world._folds_static_scenery(): world._fold_static_scenery()
 	var label := "%s stage %d" % [key, index + 1]
 	_check(not world._folds_static_scenery() or world.terrain.has_meta(Batch.FOLDED_META), label + ": its scenery folds")
-	var cost := drawn(world)
-	# Soft contact shadows under its pieces and props, all in one draw.
+	# Grounding: still things baked into their floors, live ones in one draw.
 	var shadows: Node3D = world.get("contact_shadows")
-	var shown: int = shadows.shown() if shadows != null else 0
-	_check(shadows != null and shadows.find_children("*", "GeometryInstance3D", true, false).size() == 1 and shown > 0, label + ": draws its contact shadows in one MultiMesh (%d)" % shown)
-	print("LOOKS|%s|draws %d|triangles %d|contact shadows %d" % [label, cost.draws, cost.triangles, shown])
+	for _frame in range(120):
+		if shadows == null or shadows.settled(): break
+		await process_frame
+	var cost := drawn(world)
+	var baked: int = shadows.baked_roots().size() if shadows != null else 0
+	var overlays: int = shadows.overlays().size() if shadows != null else 0
+	_check(shadows != null and shadows.find_children("*", "MultiMeshInstance3D", true, false).size() == 1 and baked > 0 and overlays > 0, label + ": bakes what stands on its floors (%d roots on %d floors) and draws what moves in one MultiMesh" % [baked, overlays])
+	_check(_floors_grounded(world, stage, definition).is_empty(), label + ": every floor is a ground its things are baked into: %s" % [_floors_grounded(world, stage, definition)])
+	print("LOOKS|%s|draws %d|triangles %d|baked %d|floors %d|live %d" % [label, cost.draws, cost.triangles, baked, overlays, shadows.shown() if shadows != null else 0])
 	_check(cost.draws <= MOST_DRAWS, label + ": draws at most %d meshes (%d)" % [MOST_DRAWS, cost.draws])
 	_check(cost.triangles <= MOST_TRIANGLES, label + ": draws at most %d triangles (%d)" % [MOST_TRIANGLES, cost.triangles])
 	viewport.free()
 
 const Batch = preload("res://presentation/kit/static_batch.gd")
+const ContactShadows = preload("res://presentation/kit/contact_shadows.gd")
+
+## The floors of the stage with no ground at their height over any of their
+## spots (a world that lays its floors its own way must register them with
+## ContactShadows.ground()).
+func _floors_grounded(world: Node3D, stage: Dictionary, definition: Dictionary) -> Array[String]:
+	var grounds: Array[Node3D] = []
+	for found: Node in world.get_tree().get_nodes_in_group(ContactShadows.GROUND_GROUP):
+		if world.is_ancestor_of(found): grounds.append(found as Node3D)
+	var missing: Array[String] = []
+	for island: Dictionary in world.get("current_level").get("islands", stage.get("islands", definition.get("islands", []))):
+		var r: Array = island.rect_cm
+		var height := float(island.get("height_cm", 0)) / 100.0
+		var found := false
+		for step in range(25):
+			var spot := world.global_transform * Vector3(lerpf(float(r[0]), float(r[2]), 0.1 + 0.2 * (step % 5)) / 100.0, height, lerpf(float(r[1]), float(r[3]), 0.1 + 0.2 * (step / 5)) / 100.0)
+			for ground: Node3D in grounds:
+				var local := ground.global_transform.affine_inverse() * spot
+				if absf(local.y) < 0.03 and (ground.get_meta(ContactShadows.GROUND_RECT_META) as Rect2).has_point(Vector2(local.x, local.z)): found = true
+			if found: break
+		if not found: missing.append(str(island.id))
+	return missing
 
 ## What a world draws a frame, everything shown in view or not: {draws,
 ## triangles}. An upper bound on the renderer's own count, which leaves out

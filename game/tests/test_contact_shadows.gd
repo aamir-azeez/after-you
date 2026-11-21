@@ -2,9 +2,10 @@ extends SceneTree
 ## Soft contact shadows (presentation/kit/contact_shadows.gd): every piece
 ## style and every dressing kind gets one by default, sized from its own feet,
 ## unless it is ground itself, hangs or rides the water (each listed with why);
-## a world draws them all in one MultiMesh that follows what moves, hides what
-## is hidden, carried or afloat, and keeps only the pieces' on Low. Every
-## chapter stage's world draws them (test_world_looks counts them there).
+## a world bakes what stands still into the floor it stands on (soft, round,
+## never doubled, grass worn round a base) and draws what moves in one
+## MultiMesh that follows it and hides what is hidden, carried or afloat.
+## Every chapter stage's world bakes them (test_world_looks checks it there).
 const ContactShadows = preload("res://presentation/kit/contact_shadows.gd")
 const Props = preload("res://presentation/kit/props.gd")
 const Styles = preload("res://content/dressing/prop_styles.gd")
@@ -18,6 +19,7 @@ const CarriedItem = preload("res://presentation/kit/pieces/carried_item.gd")
 const Socket = preload("res://presentation/kit/pieces/socket.gd")
 const SpiritVisual = preload("res://presentation/spirit_visual.gd")
 const Primitives = preload("res://presentation/kit/primitives.gd")
+const Cutaway = preload("res://presentation/kit/cutaway.gd")
 const AT := Vector3(1, 0.5, 2)
 var checks := 0
 var failures := 0
@@ -38,6 +40,7 @@ func _run() -> void:
 	_check_pieces(holder)
 	_check_feet(holder)
 	holder.free()
+	_check_bake()
 	await _check_layer()
 	_check_pip()
 	print("CONTACT SHADOWS: %d checks, %d failures" % [checks, failures])
@@ -145,60 +148,114 @@ func _marked(holder: Node3D) -> Node3D:
 func _box(parent: Node3D, size: Vector3, at: Vector3) -> MeshInstance3D:
 	return Primitives.mesh_node(Primitives.cached_box(size), Primitives.shared_material(Color("8a6b4e")), at, parent)
 
-## A world's layer: one draw for every shadow; it follows a move, drops a
-## hidden, carried or floating thing, fades one lifted off its rest, and
-## keeps only the pieces' on Low.
+## Baking a floor: each foot its own soft shape, the darkest of overlapping
+## feet (never their sum), round feet round, grass worn round a base, the
+## space between two feet left clear, and drawn only over tiles that hold some.
+func _check_bake() -> void:
+	var rect := Rect2(0, 0, 4, 2)
+	var round_foot := [Vector2(0.6, 0.6), Vector2(0.2, 0.2), 1.0, 0.0]
+	var square_foot := [Vector2(1.4, 0.6), Vector2(0.2, 0.2), 0.0, 0.0]
+	var baked := ContactShadows.bake(rect, [round_foot, square_foot], [], true)
+	var image: Image = baked.image
+	var at := func(x: float, z: float) -> Color: return image.get_pixel(int(x / ContactShadows.TEXEL), int(z / ContactShadows.TEXEL))
+	_check(at.call(0.6, 0.6).r > 0.99 and at.call(1.4, 0.6).r > 0.99, "A foot is darkest where it stands")
+	_check(at.call(0.6 + 0.19, 0.6 + 0.19).r < at.call(0.6 + 0.19, 0.6).r - 0.2, "A round foot's shade is round, not a box: %.2f by %.2f" % [at.call(0.79, 0.79).r, at.call(0.79, 0.6).r])
+	_check(at.call(1.4 + 0.19, 0.6 + 0.19).r > 0.9, "A square foot's shade fills its corners")
+	_check(at.call(1.0, 0.6).r == 0.0 and at.call(1.0, 0.6).g > 0.0, "Between two feet a little apart the grass is worn, not dark")
+	_check(at.call(3.5, 1.5) == Color.BLACK, "Far from any foot the floor is untouched")
+	var twice := ContactShadows.bake(rect, [round_foot, round_foot], [], true)
+	_check((twice.image as Image).get_data() == ContactShadows.bake(rect, [round_foot], [], true).image.get_data(), "Two feet in one place shade like one: no doubled layers")
+	var bare := ContactShadows.bake(rect, [round_foot], [], false)
+	_check((bare.image as Image).get_pixel(int(0.6 / ContactShadows.TEXEL) + 5, int(0.6 / ContactShadows.TEXEL)).g == 0.0, "A floor that is not grass does not wear")
+	var tiles: Array[Rect2] = baked.tiles
+	var covered := 0.0
+	for tile: Rect2 in tiles: covered += tile.get_area()
+	_check(covered < rect.get_area() * 0.5 and tiles.all(func(tile: Rect2) -> bool: return rect.encloses(tile)), "The overlay covers only tiles with shade, inside the floor: %.2f of %.2f m2" % [covered, rect.get_area()])
+	_check(ContactShadows.bake(rect, [[Vector2(9, 9), Vector2(0.2, 0.2), 1.0, 0.0]], [], true).is_empty(), "A floor with nothing on it bakes nothing")
+	var cast := ContactShadows.bake(rect, [], [[Vector2(2, 1), Vector2(1, 0), Vector2(0.5, 0.2), 0.1]], true)
+	_check((cast.image as Image).get_pixel(int(2.4 / ContactShadows.TEXEL), int(1.0 / ContactShadows.TEXEL)).b > 0.9 and (cast.image as Image).get_pixel(int(2.4 / ContactShadows.TEXEL), int(1.0 / ContactShadows.TEXEL)).r == 0.0, "The sun's shadow has its own channel")
+	var look := FileAccess.get_file_as_string(ContactShadows.SHADE_SHADER.resource_path)
+	_check(look.contains("blend_mul") and look.contains("depth_draw_never") and look.contains("max(s.r"), "The floor's shade multiplies the floor, writes no depth and takes the darker of contact and sun")
+
+## A world's layer: still things are baked into the floor they stand on, one
+## overlay per floor; what moves, or stands on no floor, gets a live quad in
+## one draw that follows it, fades as it is lifted and goes when it is hidden,
+## carried or afloat. A still thing that moves is baked again where it settles.
 func _check_layer() -> void:
 	var world := Node3D.new()
 	root.add_child(world)
 	var layer: Node3D = ContactShadows.new()
 	world.add_child(layer)
+	var lawn := ContactShadows.ground(world, Rect2(-3, -3, 6, 6), 0.0, true)
 	var lamp := Props.build({"kind": "lantern", "at": [100, 0]}, world, 0.0, false)
 	var crate := Props.build({"kind": "crate", "at": [-100, 0]}, world, 0.0, false)
-	var lever: RefCounted = Lever.build("plain", Vector3(0, 0.2, 1), world)
+	var lever: RefCounted = Lever.build("plain", Vector3(0, 0, 1), world)
+	var aloft: RefCounted = Lever.build("plain", Vector3(0, 0.6, 2), world)
 	var item: RefCounted = CarriedItem.build("parcel", Vector3(0, 0, -1), world, {"id": "p"})
-	await _frames(2)
+	await _settle(layer)
+	var baked: Array = layer.baked_roots().map(func(entry: Array) -> Node3D: return entry[0])
+	_check(lamp in baked and crate in baked and lever.root in baked and baked.size() == 3, "Still things on the floor are baked into it: %s" % [baked])
+	var overlays: Array = layer.overlays()
+	_check(overlays.size() == 1 and overlays[0].ground == lawn and (overlays[0].overlay as Node).get_parent() == lawn, "One overlay for the floor, under its ground (so it moves and hides with it)")
+	var overlay: MeshInstance3D = overlays[0].overlay
+	_check((overlay.material_override as ShaderMaterial).shader == ContactShadows.SHADE_SHADER and is_equal_approx(overlay.mesh.get_aabb().position.y, ContactShadows.SHADE_TOP), "The overlay lies at the shadows' height in the floor's look")
+	var image: Image = overlays[0].image
+	var texel := func(of: Image, x: float, z: float) -> Color: return of.get_pixel(int((x + 3.0) / ContactShadows.TEXEL), int((z + 3.0) / ContactShadows.TEXEL))
+	_check(texel.call(image, -1.0, 0.0).r > 0.9 and texel.call(image, 1.0, 0.0).r > 0.9, "The crate and the lamp shade the floor where they stand")
 	var many: MultiMesh = (layer.get_node("Shadows") as MultiMeshInstance3D).multimesh
-	_check(layer.find_children("*", "GeometryInstance3D", true, false).size() == 1 and many.instance_count == 4 and layer.shown() == 4, "Four shadows in one draw: %d" % many.instance_count)
-	_check(not (layer.get_node("Shadows") as GeometryInstance3D).material_override.shader.code.contains("depth_draw_always"), "Shadows write no depth")
-	var lever_index := _index(layer, lever.root)
-	_check(lever_index >= 0 and lever_index < 2 and _index(layer, item.root) < 2, "The pieces' shadows come first")
-	_check(is_equal_approx((layer.shadow(lever_index).transform as Transform3D).origin.y, 0.2 + ContactShadows.LIFT), "A piece's shadow lies on its spot's level")
-	# Moved: followed within a few frames, without gathering again.
-	lever.root.position.x = 3.0
-	await _frames(ceili(4.0 / ContactShadows.POLL_PER_FRAME) + 2)
-	_check(is_equal_approx((layer.shadow(_index(layer, lever.root)).transform as Transform3D).origin.x, 3.0 + (ContactShadows.feet(lever.root)[0][0] as Vector2).x), "A moved piece's shadow follows it")
-	# Lifted off its rest: it stays on the ground and fades.
-	crate.position.y = ContactShadows.LIFT_FADE * 0.5
+	var live_roots := {}
+	for index in range(layer.shown()): live_roots[layer.shadow(index).root] = true
+	_check(live_roots.keys() == [item.root, aloft.root] or live_roots.keys() == [aloft.root, item.root], "Only the item and the lever on no floor get live shadows: %s" % [live_roots.keys()])
+	_check(many.instance_count == layer.shown(), "One quad per live foot")
+	_check(layer.find_children("*", "MultiMeshInstance3D", true, false).size() == 1, "Live shadows draw in one MultiMesh")
+	_check(is_equal_approx((layer.shadow(_index(layer, aloft.root)).transform as Transform3D).origin.y, 0.6 + ContactShadows.SHADE_TOP), "A live shadow lies on its spot's level")
+	# A live thing is followed within a few frames, without gathering again.
+	item.root.position.x = 2.0
+	await _frames(ceili(2.0 / ContactShadows.POLL_PER_FRAME) + 3)
+	_check(is_equal_approx((layer.shadow(_index(layer, item.root)).transform as Transform3D).origin.x, 2.0 + (ContactShadows.feet(item.root)[0][0] as Vector2).x), "A moved item's shadow follows it")
+	item.root.position.y = ContactShadows.LIFT_FADE * 0.5
 	await _frames(3)
-	var lifted := _index(layer, crate)
-	var drawn: Dictionary = layer.shadow(lifted)
-	_check(is_equal_approx(float(drawn.strength), 0.5) and is_equal_approx((drawn.transform as Transform3D).origin.y, ContactShadows.LIFT), "A lifted thing's shadow stays on the ground, half faded: %.2f" % float(drawn.strength))
+	var drawn: Dictionary = layer.shadow(_index(layer, item.root))
+	_check(is_equal_approx(float(drawn.strength), 0.5) and is_equal_approx((drawn.transform as Transform3D).origin.y, ContactShadows.SHADE_TOP), "A lifted thing's shadow stays on the ground, half faded: %.2f" % float(drawn.strength))
+	item.root.position = Vector3(2, 0, -1)
+	# A still thing moved is baked again where it settles.
+	crate.position.x = -2.0
+	await _frames(ContactShadows.HOT_FRAMES + 20)
+	await _settle(layer)
+	image = layer.overlays()[0].image
+	_check(texel.call(image, -2.0, 0.0).r > 0.9 and texel.call(image, -1.0, 0.0).r == 0.0, "A still thing moved is baked again where it settled")
 	# Hidden, carried, floating: gone; set down: back.
 	lamp.visible = false
-	await _frames(2)
-	_check(many.instance_count == 3, "A hidden prop's shadow goes")
+	await _settle(layer)
+	_check(lamp not in layer.baked_roots().map(func(entry: Array) -> Node3D: return entry[0]), "A hidden prop is baked out")
 	item.carry(world)
 	await _frames(2)
-	_check(many.instance_count == 2, "A carried item's shadow goes (the pip shows it)")
+	_check(_index(layer, item.root) < 0, "A carried item's shadow goes (the pip shows it)")
 	item.rest(Vector3(0, 0, -1), world, true)
 	await _frames(2)
-	_check(many.instance_count == 2, "A floating item has none (the water shows it)")
+	_check(_index(layer, item.root) < 0, "A floating item has none (the water shows it)")
 	item.rest(Vector3(0, 0, -1), world, false)
 	await _frames(2)
-	_check(many.instance_count == 3, "An item set down has its shadow again")
-	lamp.visible = true
-	await _frames(2)
+	_check(_index(layer, item.root) >= 0, "An item set down has its shadow again")
 	layer.set_quality("low")
-	_check(many.visible_instance_count == 2 and layer.shown() == 2, "Low keeps the pieces' shadows only")
+	_check(not bool((overlay.material_override as ShaderMaterial).get_shader_parameter("detail")), "Low drops the worn grass's detail")
 	layer.set_quality("balanced")
-	_check(many.visible_instance_count == -1 and layer.shown() == 4, "Balanced shows them all")
-	crate.free()
-	await _frames(2)
-	_check(many.instance_count == 3, "A freed prop's shadow goes")
+	_check(bool((overlay.material_override as ShaderMaterial).get_shader_parameter("detail")), "Balanced keeps it")
+	Cutaway.set_faded(world, true)
+	_check(not overlay.visible, "A faded floor hides its shade")
+	Cutaway.set_faded(world, false)
+	_check(overlay.visible, "A floor shown again shows it")
+	lawn.visible = false
+	await _settle(layer)
+	_check(layer.overlays().is_empty() and layer.baked_roots().is_empty(), "A hidden floor bakes nothing")
 	world.free()
 
-
+## Frames until the layer has baked everything waiting.
+func _settle(layer: Node3D) -> void:
+	await _frames(2)
+	for frame in range(60):
+		if layer.settled(): return
+		await process_frame
 ## process_frame comes before the nodes' _process: a change shows a frame later.
 func _frames(count: int) -> void:
 	for frame in range(count): await process_frame

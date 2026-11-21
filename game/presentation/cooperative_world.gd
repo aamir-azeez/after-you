@@ -342,6 +342,7 @@ func _surface_base(surface_id: String) -> float:
 
 func _set_cutaway(node: Node, faded: bool) -> void:
 	# Recurses through this method so leaves can extend each mesh (glass).
+	if Cutaway.hides(node, faded): return
 	if node is MeshInstance3D and node.material_override is StandardMaterial3D:
 		if not Cutaway.fade_mesh(node, faded): return
 	for child: Node in node.get_children(): _set_cutaway(child, faded)

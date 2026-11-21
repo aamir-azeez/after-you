@@ -450,6 +450,8 @@ static func _bank(root: Node3D, spec: Dictionary) -> void:
 	var top := Color(str(spec.get("top", "7fa36a")))
 	_box(Vector3(width, height + 0.30, depth), side, center + Vector3(0, (height - 0.30) * 0.5, 0), root)
 	_box(Vector3(width - 0.02, BANK_LAYER, depth - 0.02), top, center + Vector3(0, height, 0), root)
+	# A bank is ground: what stands on it is baked into it (kit/contact_shadows.gd).
+	ContactShadows.ground(root, Rect2(center.x - width / 2.0, center.z - depth / 2.0, width, depth), height, true)
 
 static func _wall(root: Node3D, from: Vector2, to: Vector2, height: float, thickness: float, color: Variant) -> void:
 	var middle := (from + to) * 0.5

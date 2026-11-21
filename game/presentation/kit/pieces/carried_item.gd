@@ -48,6 +48,8 @@ static func build(item_style: String, at: Vector3, parent: Node3D, options: Dict
 func _make(item_style: String, at: Vector3, parent: Node3D, options: Dictionary) -> void:
 	style = item_style
 	_root("CarriedItem_" + str(options.get("id", "")), at, parent)
+	# It is picked up and set down: a live shadow, never baked.
+	ContactShadows.mark(root, true)
 	anchor = root
 	_rest_at = at
 	match item_style:
