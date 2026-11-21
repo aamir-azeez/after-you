@@ -6,6 +6,7 @@ import { syncMemberName, syncMemberNameIfKnown } from "./leaderboards/members";
 import { resolveFriendAlias } from "./friend-aliases";
 import { blockedName } from "./name-filter";
 import { shopOn } from "./pollen/features";
+import { lookupUsername, usernameIndex, usernameShaped, usernamesOn } from "./usernames";
 
 export { blockedName };
 
@@ -287,13 +288,13 @@ async function clearRooms(env: Env, player: string, rooms: readonly string[]): P
 export const FRIEND_LINK_ORIGIN = "https://aamirazeez.com";
 /** Seconds a browser, and this worker's edge cache, may keep an answer. */
 export const FRIEND_LINK_MAX_AGE = 300;
-const FRIEND_LINK_PATH = /^\/v1\/friend-link\/([A-Za-z0-9_-]{1,32})\/name$/;
+const FRIEND_LINK_PATH = /^\/v1\/friend-link\/([A-Za-z0-9._-]{1,32})\/name$/;
 const FRIEND_LINK_HEADERS = Object.freeze({
   "Cache-Control": `public, max-age=${FRIEND_LINK_MAX_AGE}`, "Access-Control-Allow-Origin": FRIEND_LINK_ORIGIN, "Vary": "Origin",
   "X-Content-Type-Options": "nosniff", "Content-Type": "application/json; charset=utf-8"
 });
 
-/** The friend id or short name in a GET /v1/friend-link/<code>/name path, or null for any other path. */
+/** The friend id, short name or username in a GET /v1/friend-link/<code>/name path, or null for any other path. */
 export function friendLinkCode(path: string): string | null {
   return FRIEND_LINK_PATH.exec(path)?.[1] ?? null;
 }
@@ -306,27 +307,31 @@ function friendLinkAnswer(name: string | null): Response {
  * GET /v1/friend-link/<friend id or short name>/name, for the friend link page's headline. It
  * answers only a chosen display name, or null. An unknown code, a deleted or never-made identity, an
  * anonymous player, a removed name and the flag off all answer the same null, so the page cannot tell
- * them apart. A short name resolves through CONFIG's friend aliases as an Add friend does. At most one Player
- * read, which stores nothing for an id nobody created; answers are kept for FRIEND_LINK_MAX_AGE.
+ * them apart. A short name resolves through CONFIG's friend aliases as an Add friend does, and while usernames are
+ * on a username through the index (one read) with its holder's Player confirming it. At most one Player read, which
+ * stores nothing for an id nobody created; answers are kept for FRIEND_LINK_MAX_AGE.
  */
 export async function routeFriendLinkName(request: Request, code: string, env: Env): Promise<Response> {
   if (!flags.displayNames(env)) return friendLinkAnswer(null);
-  const id = ID_PATTERN.test(code) ? code : resolveFriendAlias(env, code);
-  if (id === null) return friendLinkAnswer(null);
-  // Keyed by the resolved id, so a short name and its long code share one entry.
-  const key = new Request(`${new URL(request.url).origin}/__friend-link-name/${id}`);
+  const alias = ID_PATTERN.test(code) ? code : resolveFriendAlias(env, code);
+  const named = alias === null && usernamesOn(env) && usernameShaped(code);
+  if (alias === null && !named) return friendLinkAnswer(null);
+  // Keyed by the resolved id, so a short name and its long code share one entry; a username by its lowercase form.
+  const key = new Request(`${new URL(request.url).origin}/__friend-link-name/${alias ?? "u." + code.toLowerCase()}`);
   const cache = typeof caches === "undefined" ? null : caches.default;
   const kept = cache ? await cache.match(key).catch(() => undefined) : undefined;
   if (kept) return new Response(kept.body, { status: 200, headers: FRIEND_LINK_HEADERS });
-  const answer = friendLinkAnswer(shownName(await env.PLAYERS.getByName(id).publicDisplayName(id)));
+  const found = alias !== null ? { id: alias, key: undefined } : await lookupUsername(env, code);
+  const answer = friendLinkAnswer(found === null ? null : shownName(await env.PLAYERS.getByName(found.id).publicDisplayName(found.id, found.key)));
   if (cache) await cache.put(key, answer.clone()).catch(() => undefined);
   return answer;
 }
 
 const OPERATOR_PATH = /^\/operator\/safety\/players\/([A-Za-z0-9_-]{22})\/clear-name$/;
 /**
- * POST /operator/safety/players/<id>/clear-name, after requireOperator: clears the name, locks new
- * names for DISPLAY_NAME_LOCK_MS and deletes the player's row in each of their v2 rooms (at most
+ * POST /operator/safety/players/<id>/clear-name, after requireOperator: clears the name and the
+ * username (retired in the index, so nobody takes it again), locks new names and usernames for
+ * DISPLAY_NAME_LOCK_MS and deletes the player's row in each of their v2 rooms (at most
  * MAX_CLEARED_ROOMS, four at a time). Every step can run again, so a failed or repeated call is safe
  * to resend; a repeat extends the lock from the time of the repeat. Null when the path is another one.
  */
@@ -337,11 +342,13 @@ export async function routeDisplayNameOperator(request: Request, path: string, e
   const input = await boundedJson(request, 1024);
   if (!isObject(input) || Object.keys(input).length !== 1 || input.schema_version !== 1) throw new ApiError(400, "invalid_safety_request");
   const player = match[1];
-  const rooms = unwrap(await env.PLAYERS.getByName(player).operatorClearDisplayName(player));
+  const { rooms, username } = unwrap(await env.PLAYERS.getByName(player).operatorClearDisplayName(player));
+  // A cleared username is retired in the index: nobody may take it again (usernames.ts).
+  const retired = username === null ? true : await usernameIndex(env, username).retire(username, player, Date.now()).then(() => true, () => false);
   const reached = await clearRooms(env, player, rooms);
   // Boards drop the name too, whatever the leaderboards flag says; a failure asks for the repeat this route allows.
   // A player who never touched leaderboards shows no name there, so only a read happens and nothing is stored.
   const boards = await syncMemberNameIfKnown(env, player).then(() => true, () => false);
-  if (reached.some(done => !done) || !boards) throw new ApiError(503, "display_name_clear_incomplete");
+  if (reached.some(done => !done) || !boards || !retired) throw new ApiError(503, "display_name_clear_incomplete");
   return { schema_version: 1, cleared: true, rooms: rooms.length };
 }
