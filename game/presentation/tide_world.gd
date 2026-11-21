@@ -176,6 +176,15 @@ func _build_water_scenery() -> void:
 func _decks_data() -> Dictionary:
 	return DressingCatalog.for_key(_chapter_key()).get("decks", {})
 
+## The dressing's "stones" decks, with any a new piece lays.
+func _stepping_stones() -> Array:
+	var found: Array = super._stepping_stones()
+	var decks := _decks_data()
+	for id: String in decks:
+		if str(decks[id]) == "stones" and id not in found: found.append(id)
+	found.sort()
+	return found
+
 ## Every control, lever and pad of every stage: id -> its owner slot.
 func _mechanism_owners() -> Dictionary:
 	var found := {}
@@ -249,8 +258,14 @@ func _gate_for(route_id: String) -> Dictionary:
 ## hump, round stepping stones, piled timber, a rope-railed gangway, flagged
 ## towpath stones or a punt, over the whole crossing. The long edges glow while
 ## the crossing is open, in gold where the tide opens it.
-func _lay_deck(route: Dictionary, deck: Node3D, width: float, depth: float, across_x: bool, _low: float, _high: float) -> void:
+func _lay_deck(route: Dictionary, deck: Node3D, full_width: float, full_depth: float, across_x: bool, low: float, high: float) -> void:
 	var id := str(route.id)
+	# Laid over the open span only (low..high along the crossing): where a
+	# floor at the deck's height reaches over its end (kit/walk_reach.gd),
+	# that floor is already drawn there.
+	var before := deck.get_child_count()
+	var width := high - low if across_x else full_width
+	var depth := full_depth if across_x else high - low
 	var length := width if across_x else depth
 	var lane := depth if across_x else width
 	var kind := str(_decks_data().get(id, "timber"))
@@ -304,6 +319,8 @@ func _lay_deck(route: Dictionary, deck: Node3D, width: float, depth: float, acro
 		trim.name = "OpenEdge"
 		_glow(trim, GOLD if tide else LIGHT_COLOR, 0.9 if tide else 0.65)
 		trim.set_meta("edge", [GOLD if tide else LIGHT_COLOR, 0.9 if tide else 0.65])
+	var shift := Vector3((low + high) * 0.5, 0, 0) if across_x else Vector3(0, 0, (low + high) * 0.5)
+	for index in range(before, deck.get_child_count()): (deck.get_child(index) as Node3D).position += shift
 
 ## A shut crossing stays in view as a faint outline at its own height (sunk
 ## under the water when the tide covers it), so the other ways can be read.
@@ -343,10 +360,18 @@ func _ghost(route: Dictionary) -> void:
 func _kept_pennant(route: Dictionary) -> void:
 	var memories: Node3D = _memory_markers.get(route.id)
 	if memories == null: return
-	var r: Array = route.rect_cm
-	var width := float(r[2] - r[0]) / 100.0
-	var depth := float(r[3] - r[1]) / 100.0
-	var at := Vector3(-width / 2.0 + 0.10, 0, depth / 2.0 - 0.10)
+	# On the deck as laid: its drawn width over the open span (open_span),
+	# never on a floor reaching over its end.
+	var r := drawn_rect(route)
+	var across_x := WalkReach.run_axis(route, WalkReach.walkable(current_level)) == 0
+	var span := open_span(route)
+	var centre := Vector2(float(r[0] + r[2]), float(r[1] + r[3])) / 200.0
+	var middle := (float(span[0]) + float(span[1])) / 200.0 - (centre.x if across_x else centre.y)
+	var length := (float(span[1]) - float(span[0])) / 100.0
+	var width := length if across_x else float(r[2] - r[0]) / 100.0
+	var depth := float(r[3] - r[1]) / 100.0 if across_x else length
+	var shift := Vector3(middle, 0, 0) if across_x else Vector3(0, 0, middle)
+	var at := Vector3(-width / 2.0 + 0.10, 0, depth / 2.0 - 0.10) + shift
 	var post := box(Vector3(0.06, 0.50, 0.06), CREAM, at + Vector3(0, 0.25, 0), memories)
 	post.name = "KeptPost"
 	post.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -356,21 +381,20 @@ func _kept_pennant(route: Dictionary) -> void:
 	flag.name = "KeptPennant"
 	_glow(flag, GOLD, 1.0)
 	# The mast rides the water over its crossing (the first body's off the water).
-	var body := waters.body_of(r)
+	var body := waters.body_of(route.rect_cm)
 	if body.is_empty(): body = waters.first_body()
 	var mast := {"deck": float(route.get("height_cm", 0)) / 100.0, "post": post, "knob": knob, "flag": flag}
 	_kept_masts.append(mast)
 	waters.ride(body, _raise_mast.bind(mast))
-	var across_x := width >= depth
 	for side in [-1, 1]:
-		var edge := box(Vector3(width - 0.05, 0.02, 0.08) if across_x else Vector3(0.08, 0.02, depth - 0.05), GOLD, Vector3(0, 0.035, side * (depth / 2.0 - 0.075)) if across_x else Vector3(side * (width / 2.0 - 0.075), 0.035, 0), memories)
+		var edge := box(Vector3(width - 0.05, 0.02, 0.08) if across_x else Vector3(0.08, 0.02, depth - 0.05), GOLD, shift + (Vector3(0, 0.035, side * (depth / 2.0 - 0.075)) if across_x else Vector3(side * (width / 2.0 - 0.075), 0.035, 0)), memories)
 		edge.name = "KeptEdge"
 		_glow(edge, GOLD, 1.4)
 
 ## A stub's timber frame stays in view while its boards are up, so its pads
 ## and levers never float; posts carry it down to the harbour floor.
 func _stub_frame(route: Dictionary) -> void:
-	var r: Array = route.rect_cm
+	var r := drawn_rect(route)
 	var y := float(route.height_cm) / 100.0 - 0.07
 	var frame := Node3D.new()
 	frame.name = "StubFrame_" + str(route.id)
@@ -387,7 +411,7 @@ func _stub_frame(route: Dictionary) -> void:
 		cylinder(0.035, y - waters.seabed(), PILE, Vector3(x, (y + waters.seabed()) * 0.5, tip), frame)
 
 func _piles(route: Dictionary) -> void:
-	var r: Array = route.rect_cm
+	var r := drawn_rect(route)
 	var top := float(route.height_cm) / 100.0 - 0.10
 	for x: int in [r[0] + 10, r[2] - 10]:
 		for z: int in [r[1] + 8, r[3] - 8]:
@@ -553,7 +577,7 @@ func _water_mark(value: String) -> int:
 ## Where a route's marks and pair tags sit: a stub's mouth on its own floor,
 ## or just before a crossing's west end, at the route's own height.
 func _route_anchor(route: Dictionary) -> Vector3:
-	var r: Array = route.rect_cm
+	var r := drawn_rect(route)
 	var height := float(route.get("height_cm", route.get("from_height_cm", 0))) / 100.0 + 0.025
 	if _is_stub(route):
 		for island: Dictionary in chapter_definition.islands:
@@ -588,11 +612,13 @@ func _deck_edge_strips() -> Array:
 	var found: Array = []
 	for route: Dictionary in current_level.get("bridges", []):
 		if not _decks.has(str(route.id)): continue
-		var r: Array = route.rect_cm
-		var width := float(r[2] - r[0]) / 100.0
-		var depth := float(r[3] - r[1]) / 100.0
-		var across_x := width >= depth
-		var centre := Vector2(float(r[0] + r[2]) * 0.005, float(r[1] + r[3]) * 0.005)
+		# As _lay_deck lays them: the drawn width, over the open span.
+		var r := drawn_rect(route)
+		var across_x := WalkReach.run_axis(route, WalkReach.walkable(current_level)) == 0
+		var span := open_span(route)
+		var width := (float(span[1]) - float(span[0])) / 100.0 if across_x else float(r[2] - r[0]) / 100.0
+		var depth := float(r[3] - r[1]) / 100.0 if across_x else (float(span[1]) - float(span[0])) / 100.0
+		var centre := Vector2((float(span[0]) + float(span[1])) * 0.005, float(r[1] + r[3]) * 0.005) if across_x else Vector2(float(r[0] + r[2]) * 0.005, (float(span[0]) + float(span[1])) * 0.005)
 		var half := Vector2(width * 0.5, 0.0175) if across_x else Vector2(0.0175, depth * 0.5)
 		for side in [-1, 1]:
 			var at := centre + (Vector2(0, side * (depth / 2.0 - 0.025)) if across_x else Vector2(side * (width / 2.0 - 0.025), 0))
@@ -627,7 +653,7 @@ func _build_post_mark(route: Dictionary, value: String) -> void:
 ## capped with a wave sign that keeps its size on screen.
 ## A crossing over water stands its post in the channel; a stub on its floor.
 func _build_gauge(route: Dictionary, values: Array) -> void:
-	var r: Array = route.rect_cm
+	var r := drawn_rect(route)
 	var base := waters.seabed()
 	var at := point([r[0] + 16, r[3] + 12])
 	var top := float(route.get("height_cm", 0)) / 100.0 + 0.92
@@ -739,7 +765,7 @@ func _build_mouth_lamps() -> void:
 		for candidate: Dictionary in chapter_definition.get("bridges", []):
 			if candidate.id == MOUTHS[value]: route = candidate
 		if route.is_empty(): continue
-		var r: Array = route.rect_cm
+		var r := drawn_rect(route)
 		var at := point([r[0] + 40, r[3] + 12])
 		var top := 1.20
 		# The lamp post's glass stands where the lamp always has, its foot on a
@@ -844,7 +870,7 @@ func _build_ramps() -> void:
 	_ramp_on = RampRules.ramps(chapter_definition, waters.water)
 	for id: String in _ramp_on:
 		var route := _route(id)
-		var r: Array = route.rect_cm
+		var r := drawn_rect(route)
 		var length := float(r[2] - r[0]) / 100.0
 		var lane := float(r[3] - r[1]) / 100.0
 		var hinge := Node3D.new()
@@ -853,9 +879,9 @@ func _build_ramps() -> void:
 		terrain.add_child(hinge)
 		for index in range(6):
 			var along := (float(index) + 0.5) / 6.0 * length
-			box(Vector3(length / 6.0 - 0.012, 0.05, lane - 0.28), TIMBER.lightened(0.08 * float(index % 2)), Vector3(along, 0, 0), hinge)
+			box(Vector3(length / 6.0 - 0.012, 0.05, lane - 0.06), TIMBER.lightened(0.08 * float(index % 2)), Vector3(along, 0, 0), hinge)
 		for side in [-1, 1]:
-			box(Vector3(length, 0.06, 0.05), TIMBER.darkened(0.2), Vector3(length * 0.5, 0.02, side * (lane * 0.5 - 0.125)), hinge)
+			box(Vector3(length, 0.06, 0.05), TIMBER.darkened(0.2), Vector3(length * 0.5, 0.02, side * (lane * 0.5 - 0.03)), hinge)
 			cylinder(0.04, 0.42, PILE, Vector3(-0.06, 0.21, side * (lane * 0.5 - 0.06)) + hinge.position, terrain).name = "RampPost"
 		var drum := cylinder(0.07, lane - 0.16, ROPE.darkened(0.15), hinge.position + Vector3(-0.06, 0.36, 0), terrain)
 		drum.name = "RampDrum"

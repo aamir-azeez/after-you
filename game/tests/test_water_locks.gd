@@ -561,16 +561,19 @@ func _kept_door_dips(world: Node3D, locks: WaterLocks, sim: Simulation, stage: D
 ## Whether a recorded water wall stands along each side of a crossing that no
 ## floor meets.
 func _walled_sides(world: Node3D, route: String) -> bool:
-	var r: Array = world._route(route).rect_cm
-	var sides := [[true, float(r[1])], [true, float(r[3])], [false, float(r[0])], [false, float(r[2])]]
+	var a: Array = world._route(route).rect_cm
+	# The walls stand along the crossing's drawn sides (kit/walk_reach.gd).
+	var r: Array = world.drawn_rect(world._route(route))
+	var sides := [[true, float(a[1]), float(r[1])], [true, float(a[3]), float(r[3])], [false, float(a[0]), float(r[0])], [false, float(a[2]), float(r[2])]]
 	for side: Array in sides:
 		var along_x: bool = side[0]
-		var line: float = side[1]
+		var walk: float = side[1]
+		var line: float = side[2]
 		var floor_met := false
 		for island: Dictionary in world.chapter_definition.islands:
 			var q: Array = island.rect_cm
-			if along_x and (is_equal_approx(float(q[1]), line) or is_equal_approx(float(q[3]), line)) and float(q[0]) < float(r[2]) and float(q[2]) > float(r[0]): floor_met = true
-			if not along_x and (is_equal_approx(float(q[0]), line) or is_equal_approx(float(q[2]), line)) and float(q[1]) < float(r[3]) and float(q[3]) > float(r[1]): floor_met = true
+			if along_x and (is_equal_approx(float(q[1]), walk) or is_equal_approx(float(q[3]), walk)) and float(q[0]) < float(a[2]) and float(q[2]) > float(a[0]): floor_met = true
+			if not along_x and (is_equal_approx(float(q[0]), walk) or is_equal_approx(float(q[2]), walk)) and float(q[1]) < float(a[3]) and float(q[3]) > float(a[1]): floor_met = true
 		if floor_met: continue
 		var held := false
 		for wall: AABB in world.waters.walls:

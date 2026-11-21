@@ -159,30 +159,31 @@ func _build_rock(island: Dictionary, top_hole: Array, body_hole: Array, top_colo
 	raised.set_meta("bounds", island.rect_cm.duplicate())
 	if raised.position.y > 0.5: _upper_islands.append(raised)
 	var height := raised.position.y
-	for piece: Array in _pieces(island.rect_cm, top_hole):
+	var drawn := drawn_rect(island)
+	var shape := drawn_pieces(island)
+	for piece: Array in _cut(shape, top_hole):
 		_slab(piece, -0.20, -0.012, top_color, raised)
 		# The lighter cap ends at the walking surface, so the pair tags and floor
 		# lines lying just over it show; its sides never lie on the slab's
 		# (coplanar faces flicker as the camera moves).
 		_slab(piece, -0.012, 0.0, top_color.lightened(0.12), raised)
-	for piece: Array in _pieces(island.rect_cm, body_hole):
+	for piece: Array in _cut(shape, body_hole):
 		_slab(piece, -height - 1.45, -0.20, body_color, raised)
-	var r: Array = island.rect_cm
+	var r := drawn
 	var front := float(r[3]) / 100.0
 	# Weathered courses across the visible face; none cross the shaft.
 	for course: float in [-0.45, -0.85, -1.25]:
-		for piece: Array in _pieces(island.rect_cm, body_hole):
+		for piece: Array in _cut(shape, body_hole):
 			if int(piece[3]) != int(r[3]): continue
 			var width := float(piece[2] - piece[0]) / 100.0
 			box(Vector3(width, 0.025, 0.012), STONE_DARK, Vector3(float(piece[0] + piece[2]) / 200.0, course, front + 0.004), raised)
 	_surface_built(island, raised)
 
-static func _pieces(rect: Array, hole: Array) -> Array:
-	if hole.is_empty(): return [rect]
-	var result: Array = []
-	for cut: Array in [[rect[0], rect[1], hole[0], rect[3]], [hole[2], rect[1], rect[2], rect[3]], [hole[0], rect[1], hole[2], hole[1]], [hole[0], hole[3], hole[2], rect[3]]]:
-		if cut[2] > cut[0] and cut[3] > cut[1]: result.append(cut)
-	return result
+## Every piece of `shape` less `hole`.
+static func _cut(shape: Array, hole: Array) -> Array:
+	var found: Array = []
+	for piece: Array in shape: found.append_array(WalkReach.minus(piece, hole) if not hole.is_empty() else [piece])
+	return found
 
 func _slab(rect: Array, bottom: float, top: float, color: Color, parent: Node3D) -> MeshInstance3D:
 	var size := Vector3(float(rect[2] - rect[0]) / 100.0, top - bottom, float(rect[3] - rect[1]) / 100.0)
@@ -336,7 +337,7 @@ func _build_bridge(definition: Dictionary) -> void:
 	var lift := float(definition.get("height_cm", 0)) / 100.0
 	for index in range(before, terrain.get_child_count()):
 		terrain.get_child(index).position.y += lift
-	var r: Array = definition.rect_cm
+	var r := drawn_rect(definition)
 	var deck: Node3D = _decks.get(definition.id)
 	for side: int in [-1, 1]:
 		var z := float(r[1] if side < 0 else r[3]) / 100.0
@@ -351,7 +352,7 @@ func _build_stair(stair: Dictionary) -> void:
 	if stair.axis == "x":
 		_build_ladder(stair)
 		return
-	var r: Array = stair.rect_cm
+	var r := drawn_rect(stair)
 	var width := float(r[2] - r[0]) / 100.0
 	var top_z := float(r[1]) / 100.0
 	var foot_z := float(r[3]) / 100.0
@@ -377,7 +378,7 @@ func _build_stair(stair: Dictionary) -> void:
 ## The well ladder is a rope ladder that unrolls from the winch drum down into
 ## the pit. Its rungs follow the exact ramp the simulation walks.
 func _build_ladder(stair: Dictionary) -> void:
-	var r: Array = stair.rect_cm
+	var r := drawn_rect(stair)
 	var low := Vector3(float(r[0]) / 100.0, float(stair.from_height_cm) / 100.0, float(r[1] + r[3]) / 200.0)
 	var high := Vector3(float(r[2]) / 100.0, float(stair.to_height_cm) / 100.0, low.z)
 	var width := float(r[3] - r[1]) / 100.0

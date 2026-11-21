@@ -30,6 +30,7 @@ const Props = preload("res://presentation/kit/props.gd")
 ## Scenery as data (content/dressing) and the ground styles it names.
 const DressingCatalog = preload("res://content/dressing/catalog.gd")
 const Surfaces = preload("res://presentation/kit/surfaces.gd")
+const WalkReach = preload("res://presentation/kit/walk_reach.gd")
 ## A piece's style (content/dressing/piece_styles.gd) and the pad kit.
 const PieceStyles = preload("res://content/dressing/piece_styles.gd")
 const PadKit = preload("res://presentation/kit/pieces/pad.gd")
@@ -1760,7 +1761,7 @@ func _build_island_ground(definition: Dictionary) -> void:
 func _build_crossings(bridges: Array) -> void:
 	crossing_pieces.clear()
 	for bridge: Dictionary in bridges:
-		var piece: RefCounted = BridgeKit.build(bridge, terrain)
+		var piece: RefCounted = BridgeKit.build(bridge.merged({"rect_cm": drawn_rect(bridge)}, true), terrain)
 		crossing_pieces[str(bridge.id)] = piece
 		mark_sound("bridge:%s" % bridge.id, piece.root)
 		await _build_step()
@@ -1804,13 +1805,37 @@ func _build_floors(islands: Array) -> void:
 		if root != terrain: _surface_nodes[str(island.id)] = root
 		await _build_step()
 
-## Builds `island` in the dressing's ground style under `parent`; false, with
-## nothing built, when the dressing gives it none.
+## Builds `island` in the dressing's ground style under `parent`, to its drawn
+## rectangle (drawn_rect); false, with nothing built, when the dressing gives
+## it none.
 func _dressed_ground(island: Dictionary, parent: Node3D) -> bool:
 	var style := _ground_style(str(island.id))
 	if style.is_empty(): return false
-	Surfaces.build(island, style, parent)
+	Surfaces.build(island, style, parent, true, drawn_pieces(island))
 	return true
+
+## The rectangle (cm) a walkable surface of the shown plan is drawn to: past
+## its walkable edge by what the drawn pip reaches over it (kit/walk_reach.gd).
+## A piece of a floor cut round a hole names its own ("drawn_cm").
+func drawn_rect(surface: Dictionary) -> Array:
+	if surface.has("drawn_cm"): return surface.drawn_cm.duplicate()
+	return WalkReach.rect(current_level, surface, _stepping_stones())
+
+## The rectangles (cm) a floor of the shown plan is drawn as: its drawn
+## rectangle cut round the neighbours that meet it (kit/walk_reach.gd).
+func drawn_pieces(surface: Dictionary) -> Array:
+	if surface.has("drawn_cm"): return [surface.drawn_cm.duplicate()]
+	return WalkReach.pieces(current_level, surface, _stepping_stones())
+
+## The stretch (cm along its run) of a crossing of the shown plan that no
+## floor reaches over: where its deck is laid (WalkReach open_span).
+func open_span(crossing: Dictionary) -> Array:
+	return WalkReach.open_span(current_level, crossing, _stepping_stones())
+
+## The crossings of the shown plan laid as stepping stones (no floor reaches
+## over their ends: WalkReach "open"); a world that lays stones names them.
+func _stepping_stones() -> Array:
+	return []
 
 ## Where a floor is built: a root named for it at its height.
 func _floor_root(island: Dictionary) -> Node3D:
@@ -1824,7 +1849,7 @@ func _floor_root(island: Dictionary) -> Node3D:
 ## each island varied by its place in the list (built in `terrain`, here the
 ## floor's root).
 func _plain_floor(island: Dictionary, index: int) -> void:
-	var rect: Array = island.rect_cm
+	var rect := drawn_rect(island)
 	_make_island(float(rect[0] + rect[2]) / 200.0, float(rect[1] + rect[3]) / 200.0,
 		float(rect[2] - rect[0]) / 100.0, float(rect[3] - rect[1]) / 100.0, _plain_floor_colour(), index + 1)
 

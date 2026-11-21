@@ -30,7 +30,8 @@ func _shore(island: Dictionary, color: Color) -> void:
 func _surface_built(island: Dictionary, surface: Node3D) -> void:
 	surface.name = "Homeward_"+str(island.id)
 	if island.id != "home-room": return
-	var r: Array = island.rect_cm
+	# The room's walls stand at its floor's drawn edges (drawn_rect).
+	var r := drawn_rect(island)
 	var width := float(r[2]-r[0])/100.0
 	var depth := float(r[3]-r[1])/100.0
 	var middle := point([(r[0]+r[2])*0.5,(r[1]+r[3])*0.5])

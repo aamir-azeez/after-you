@@ -276,13 +276,17 @@ static func _superseded(spots: Array, index: int, position_cm: Array) -> bool:
 
 func _shore(island: Dictionary, color: Color) -> void:
 	if _dressed_ground(island, terrain): return
-	var bounds: Array = island.rect_cm
+	var bounds := drawn_rect(island)
 	var width := float(bounds[2] - bounds[0]) / 100.0
 	var depth := float(bounds[3] - bounds[1]) / 100.0
 	var center := point([(bounds[0] + bounds[2]) / 2.0, (bounds[1] + bounds[3]) / 2.0])
-	# The visible top is exactly the authored walkable rectangle, at height 0.
+	# The visible top is the floor's drawn shape (drawn_pieces), at height 0.
 	# The tapered lower rock is decorative and remains below the floor.
-	box(Vector3(width, 0.20, depth), color, center + Vector3(0, -0.10, 0), terrain).name = str(island.id) + "Floor"
+	var shape := drawn_pieces(island)
+	for index in range(shape.size()):
+		var piece: Array = shape[index]
+		var top := box(Vector3(float(piece[2] - piece[0]) / 100.0, 0.20, float(piece[3] - piece[1]) / 100.0), color, point([(piece[0] + piece[2]) / 2.0, (piece[1] + piece[3]) / 2.0]) + Vector3(0, -0.10, 0), terrain)
+		if index == 0: top.name = str(island.id) + "Floor"
 	var corners := [Vector2(-1, -1), Vector2(1, -1), Vector2(1, 1), Vector2(-1, 1)]
 	var top: Array[Vector3] = []
 	var bottom: Array[Vector3] = []
@@ -304,10 +308,13 @@ func _shore(island: Dictionary, color: Color) -> void:
 	rock_material.cull_mode = BaseMaterial3D.CULL_DISABLED
 	var rock := Primitives.mesh_node(surface.commit(), rock_material, Vector3.ZERO, terrain)
 	rock.name = str(island.id) + "LowerRock"
-	# Edge strips start at the walking surface, clear of the floor's sides.
-	for side in [-1, 1]:
-		box(Vector3(width, 0.0175, 0.035), color.lightened(0.12), center + Vector3(0, 0.00875, side * (depth / 2.0 - 0.018)), terrain)
-		box(Vector3(0.035, 0.0175, depth), color.lightened(0.12), center + Vector3(side * (width / 2.0 - 0.018), 0.00875, 0), terrain)
+	# Edge strips start at the walking surface, clear of the floor's sides,
+	# along the shape's outer edges.
+	for edge: Array in WalkReach.outline(shape):
+		var length := (float(edge[0][1]) - float(edge[0][0])) / 100.0
+		var middle := (float(edge[0][0]) + float(edge[0][1])) / 200.0
+		var line := float(edge[1]) / 100.0 - float(edge[2]) * 0.0275
+		box(Vector3(length, 0.0175, 0.035) if edge[3] else Vector3(0.035, 0.0175, length), color.lightened(0.12), Vector3(middle, 0.00875, line) if edge[3] else Vector3(line, 0.00875, middle), terrain)
 	# Only a few small stones at the outer corners; no invented obstacles or
 	# extra stepping-stones through the real gap.
 	for x_side in [-1, 1]:
@@ -315,7 +322,7 @@ func _shore(island: Dictionary, color: Color) -> void:
 		stone.scale = Vector3(1.4, 0.5, 0.9)
 
 func _build_bridge(definition: Dictionary) -> void:
-	var rect: Array = definition.rect_cm
+	var rect := drawn_rect(definition)
 	var width := float(rect[2] - rect[0]) / 100.0
 	var depth := float(rect[3] - rect[1]) / 100.0
 	_deck = Node3D.new()
@@ -324,7 +331,7 @@ func _build_bridge(definition: Dictionary) -> void:
 	terrain.add_child(_deck)
 	_decks[definition.id] = _deck
 	mark_sound("bridge:%s" % definition.id, _deck)
-	var across_x := width >= depth
+	var across_x := WalkReach.run_axis(definition, WalkReach.walkable(current_level)) == 0
 	# The deck spans only the open gap: where a route crosses a floor at its
 	# own height, that floor is already drawn there, and two tops at one
 	# height z-fight. `low`/`high` bound the gap along the crossing.
@@ -337,8 +344,9 @@ func _build_bridge(definition: Dictionary) -> void:
 	var memories := Node3D.new()
 	memories.name = "RememberedFootsteps"
 	_deck.add_child(memories)
+	# Clear of the span's ends, where a floor's trim runs.
 	for index in range(3):
-		var along := middle + ((float(index) + 0.5) / 3.0 - 0.5) * length
+		var along := middle + ((float(index) + 0.5) / 3.0 - 0.5) * maxf(length - 0.20, 0.0)
 		for side in [-1, 1]:
 			var at := Vector3(along + side * 0.05, 0.011, side * 0.11) if across_x else Vector3(side * 0.11, 0.011, along + side * 0.05)
 			var footprint := cylinder(0.038, 0.005, Color("a68c60"), at, memories)
@@ -373,19 +381,23 @@ func _lay_deck(_definition: Dictionary, deck: Node3D, width: float, depth: float
 		var trim := box(trim_size, LIGHT_COLOR, trim_at, deck)
 		_glow(trim, LIGHT_COLOR, 0.65)
 
-## The part of a route's crossing axis (deck-local metres, from its centre)
-## not already covered by a floor at the route's height.
+## The part of a route's crossing axis (deck-local metres, from its drawn
+## centre) not already covered by a floor at the route's height: where a floor
+## reaches over its end (open_span), and where a floor spanning its whole
+## width lies over it.
 func _open_span(definition: Dictionary, across_x: bool) -> Array:
-	var rect: Array = definition.rect_cm
+	var rect := drawn_rect(definition)
+	var authored: Array = definition.rect_cm
 	var axis := 0 if across_x else 1
-	var low := float(rect[axis])
-	var high := float(rect[axis + 2])
-	var centre := (low + high) * 0.5
+	var centre := (float(rect[axis]) + float(rect[axis + 2])) * 0.5
+	var span := open_span(definition)
+	var low := float(span[0])
+	var high := float(span[1])
 	for island: Dictionary in current_level.get("islands", []):
 		if int(island.get("height_cm", 0)) != int(definition.get("height_cm", 0)): continue
 		var r: Array = island.rect_cm
 		# Only a floor spanning the route's whole width covers the deck there.
-		if float(r[1 - axis]) > float(rect[1 - axis]) or float(r[3 - axis]) < float(rect[3 - axis]): continue
+		if float(r[1 - axis]) > float(authored[1 - axis]) or float(r[3 - axis]) < float(authored[3 - axis]): continue
 		if float(r[axis]) <= low and float(r[axis + 2]) > low: low = minf(float(r[axis + 2]), high)
 		if float(r[axis + 2]) >= high and float(r[axis]) < high: high = maxf(float(r[axis]), low)
 	if high - low < 8.0: return [(float(rect[axis]) - centre) / 100.0, (float(rect[axis + 2]) - centre) / 100.0]

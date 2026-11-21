@@ -65,11 +65,13 @@ func _shore(island: Dictionary, _color: Color) -> void:
 	terrain.add_child(room)
 	_surface_nodes[str(island.id)] = room
 	if room.position.y > 0.5: _upper_islands.append(room)
-	var r: Array = island.rect_cm
+	var r := drawn_rect(island)
 	var hole: Array = []
 	for drop: Dictionary in current_level.get("drops", []):
 		if drop.surface_id == island.id: hole = drop.rect_cm
-	for piece: Array in Primitives.rect_minus_hole(r, hole):
+	var shape: Array = []
+	for drawn: Array in drawn_pieces(island): shape.append_array(WalkReach.minus(drawn, hole) if not hole.is_empty() else [drawn])
+	for piece: Array in shape:
 		var width := float(piece[2]-piece[0])/100.0
 		var depth := float(piece[3]-piece[1])/100.0
 		var at := point([(piece[0]+piece[2])*0.5,(piece[1]+piece[3])*0.5])
@@ -114,7 +116,7 @@ func _build_obstacle(obstacle: Dictionary) -> void:
 
 func _build_bridge(definition: Dictionary) -> void:
 	super._build_bridge(definition)
-	var r: Array = definition.rect_cm
+	var r := drawn_rect(definition)
 	var length := float(r[2]-r[0])/100.0
 	var depth := float(r[3]-r[1])/100.0
 	var at := point([(r[0]+r[2])*0.5,(r[1]+r[3])*0.5])

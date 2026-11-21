@@ -39,10 +39,13 @@ const DefinitionGeometry = preload("res://presentation/kit/definition_geometry.g
 const WaterLocks = preload("res://presentation/kit/water_locks.gd")
 const WallFade = preload("res://presentation/kit/wall_fade.gd")
 const WaterLook = preload("res://presentation/kit/water_look.gd")
+const WalkReach = preload("res://presentation/kit/walk_reach.gd")
 ## Water grid lines worked out between two build steps.
 const LINES_PER_STEP := 8
 ## Wall layout samples (4 cm apart) worked out between two build steps.
 const WALL_SAMPLES_PER_STEP := 48
+## The shortest parapet run built (cm): anything shorter is a sliver past a corner.
+const MIN_RUN_CM := 6.0
 
 ## The world that holds the kit: its terrain, chapter_definition,
 ## reduced_motion and _build_step.
@@ -316,9 +319,10 @@ func _keepable_routes(stage: Dictionary, already: Array[String]) -> Array[String
 ## body that is not a basin leaves out every island, every basin and every
 ## walled crossing; a basin leaves out only the islands. Await it.
 func build_bodies() -> void:
-	var islands: Array = host.chapter_definition.get("islands", []).map(func(island: Dictionary) -> Array: return island.rect_cm)
+	var islands: Array = []
+	for island: Dictionary in host.chapter_definition.get("islands", []): islands.append_array(host.drawn_pieces(island))
 	var cut: Array = basin_rects()
-	for id: String in walled: cut.append(_route(id).rect_cm)
+	for id: String in walled: cut.append(host.drawn_rect(_route(id)))
 	for body: Dictionary in water.get("bodies", []):
 		var holes: Array = ([] if bool(body.get("basin", false)) else cut) + islands
 		var root := await build_body(str(body.node), body.rects, holes, body.color)
@@ -673,26 +677,31 @@ func _wall_layout() -> Dictionary:
 	var definition: Dictionary = host.chapter_definition
 	var islands: Array = definition.get("islands", [])
 	var routes: Array = definition.get("bridges", []) + definition.get("stairs", [])
-	var key := [&"water_wall_layout", islands, routes, water]
+	# Walls stand at the floors' and crossings' drawn edges (kit/walk_reach.gd).
+	var drawn: Array = islands.map(func(island: Dictionary) -> Array: return host.drawn_pieces(island))
+	var route_rects: Array = routes.map(func(route: Dictionary) -> Array: return host.drawn_rect(route))
+	var key := [&"water_wall_layout", islands, routes, drawn, route_rects, water]
 	if DefinitionGeometry.has(key): return DefinitionGeometry.kept(key)
 	var holes: Array = basin_rects()
-	for island: Dictionary in islands: holes.append(island.rect_cm)
+	for shape: Array in drawn: holes.append_array(shape)
 	var found: Array = []
-	for island: Dictionary in islands:
-		found.append_array(await _island_parapet_runs(island, holes, routes))
+	for index in range(islands.size()):
+		found.append_array(await _island_parapet_runs(islands[index], drawn[index], holes, route_rects))
 		await host._build_step()
 	var sea_walls: Array = await _sea_wall_runs(holes)
 	await host._build_step()
 	return DefinitionGeometry.keep(key, {"parapets": found, "sea_walls": sea_walls})
 
-## One island's parapet runs, in _wall_layout order, a side at a time. An
-## island on piers, or inside a basin, has none. Await it.
-func _island_parapet_runs(island: Dictionary, holes: Array, routes: Array) -> Array:
+## One island's parapet runs, in _wall_layout order, an edge at a time, along
+## the outer edges of `shape`, the rectangles it is drawn as (WalkReach
+## outline); `route_rects` are the crossings' drawn rectangles. An island on
+## piers, or inside a basin, has none. Await it.
+func _island_parapet_runs(island: Dictionary, shape: Array, holes: Array, route_rects: Array) -> Array:
 	var found: Array = []
-	var r: Array = island.rect_cm
 	if str(island.id) in water.get("piers", []): return found
+	var a: Array = island.rect_cm
 	for basin: Array in basin_rects():
-		if r[0] >= basin[0] and r[1] >= basin[1] and r[2] <= basin[2] and r[3] <= basin[3]: return found
+		if a[0] >= basin[0] and a[1] >= basin[1] and a[2] <= basin[2] and a[3] <= basin[3]: return found
 	var height := float(island.get("height_cm", 0)) / 100.0
 	var waters: Array = []
 	# Each open body's rects with the highest it ever stands.
@@ -702,14 +711,14 @@ func _island_parapet_runs(island: Dictionary, holes: Array, routes: Array) -> Ar
 		var top := -INF
 		for level: float in body.levels.values(): top = maxf(top, level)
 		tops.append([body.rects, top])
-	var route_rects: Array = []
-	for route: Dictionary in routes: route_rects.append(route.rect_cm)
-	for side in range(4):
-		var along_x := side < 2
-		var edge := float(r[1] if side == 0 else r[3] if side == 1 else r[0] if side == 2 else r[2])
-		var outward := -1.0 if side == 0 or side == 2 else 1.0
-		var start := float(r[0] if along_x else r[1]) - 8.0
-		var finish := float(r[2] if along_x else r[3]) + 8.0
+	for outer: Array in WalkReach.outline(shape):
+		var along_x: bool = outer[3]
+		var edge := float(outer[1])
+		var outward := float(outer[2])
+		# Past each end to meet the walls beside it, except where the floor
+		# itself carries on round the corner (a cut in it).
+		var start := float(outer[0][0]) - (0.0 if _floor_beyond(shape, along_x, edge, outward, float(outer[0][0]) - 1.0) else 8.0)
+		var finish := float(outer[0][1]) + (0.0 if _floor_beyond(shape, along_x, edge, outward, float(outer[0][1]) + 1.0) else 8.0)
 		# Every sample lies on one line beside the edge: only the rectangles
 		# that line crosses can hold a sample, so only their spans along it
 		# are tested (the same strict test as _inside).
@@ -733,9 +742,20 @@ func _island_parapet_runs(island: Dictionary, holes: Array, routes: Array) -> Ar
 			else: runs[-1][1] = t + 2.0
 			t += 4.0
 		for run: Array in runs:
-			if run[2] == "wall": found.append([_clear_of_mouths(run, mouths), edge, outward, along_x, height, run[3]])
+			if run[2] != "wall": continue
+			var clear := _clear_of_mouths(run, mouths)
+			# A sliver left past a corner holds nothing.
+			if float(clear[1]) - float(clear[0]) >= MIN_RUN_CM: found.append([clear, edge, outward, along_x, height, run[3]])
 		await host._build_step()
 	return found
+
+## Whether `shape` carries on just inside an edge on `line` (outward
+## `outward`), at `at` along it: the edge ends at an inside corner there.
+static func _floor_beyond(shape: Array, along_x: bool, line: float, outward: float, at: float) -> bool:
+	var point := Vector2(at, line - outward) if along_x else Vector2(line - outward, at)
+	for piece: Array in shape:
+		if point.x > float(piece[0]) and point.x < float(piece[2]) and point.y > float(piece[1]) and point.y < float(piece[3]): return true
+	return false
 
 ## Every sea-wall run, in _wall_layout order, giving a staged build the frame
 ## back every WALL_SAMPLES_PER_STEP samples. Only inside the block's bounds.
@@ -819,36 +839,42 @@ func _build_route_walls() -> void:
 	for id: String in walled:
 		await host._build_step()
 		var route := _route(id)
-		var r: Array = route.rect_cm
+		# Walls stand along the crossing's drawn sides (kit/walk_reach.gd);
+		# where it meets its floors is read from the walkable rectangles.
+		var a: Array = route.rect_cm
+		var r: Array = host.drawn_rect(route)
 		var stub := is_stub(route)
 		var floors: Array = []
 		var front: Array = []
 		for surface: Variant in [route.get("from_surface", ""), route.get("to_surface", "")]:
 			if str(surface) == id: continue
 			for item: Dictionary in definition.get("islands", []) + definition.get("bridges", []):
-				if item.id == surface: floors.append(item.rect_cm)
+				if item.id == surface: floors.append([item.rect_cm, host.drawn_pieces(item) if item in definition.get("islands", []) else [host.drawn_rect(item)]])
 		for side in range(4):
 			var along_x := side < 2
 			var edge := float(r[1] if side == 0 else r[3] if side == 1 else r[0] if side == 2 else r[2])
+			var walk_edge := float(a[1] if side == 0 else a[3] if side == 1 else a[0] if side == 2 else a[2])
 			var outward := -1.0 if side == 0 or side == 2 else 1.0
 			var mouth := false
-			for floor: Array in floors:
-				var touches := absf(float(floor[3] if outward < 0 else floor[1]) - edge) <= 2.0 if along_x else absf(float(floor[2] if outward < 0 else floor[0]) - edge) <= 2.0
-				var overlaps := float(floor[0]) < float(r[2]) and float(floor[2]) > float(r[0]) if along_x else float(floor[1]) < float(r[3]) and float(floor[3]) > float(r[1])
+			for pair: Array in floors:
+				var floor: Array = pair[0]
+				var touches := absf(float(floor[3] if outward < 0 else floor[1]) - walk_edge) <= 2.0 if along_x else absf(float(floor[2] if outward < 0 else floor[0]) - walk_edge) <= 2.0
+				var overlaps := float(floor[0]) < float(a[2]) and float(floor[2]) > float(a[0]) if along_x else float(floor[1]) < float(a[3]) and float(floor[3]) > float(a[1])
 				if touches and overlaps: mouth = true
 			if mouth: continue
 			# Past each end of the crossing to meet the walls beside it, but
-			# never onto a floor it lands on, where a pip walks.
+			# never onto a floor it lands on (as drawn), where a pip walks.
 			var run: Array = [float(r[0]) - 9.0, float(r[2]) + 9.0] if along_x else [float(r[1]) - 9.0, float(r[3]) + 9.0]
-			for floor: Array in floors:
-				var across: Array = [float(floor[1]), float(floor[3])] if along_x else [float(floor[0]), float(floor[2])]
-				# The wall's own strip, outside the crossing's edge, must lie on the floor.
-				var strip: Array = [edge, edge + 9.0] if outward > 0.0 else [edge - 9.0, edge]
-				if strip[1] <= across[0] or strip[0] >= across[1]: continue
-				var low := float(floor[0] if along_x else floor[1])
-				var high := float(floor[2] if along_x else floor[3])
-				if high <= float(r[0] if along_x else r[1]) + 2.0: run[0] = maxf(run[0], high)
-				if low >= float(r[2] if along_x else r[3]) - 2.0: run[1] = minf(run[1], low)
+			for pair: Array in floors:
+				var floor: Array = pair[0]
+				# Each piece the floor is drawn as that the wall's own strip,
+				# outside the crossing's edge, lies on.
+				for shown: Array in pair[1]:
+					var across: Array = [float(shown[1]), float(shown[3])] if along_x else [float(shown[0]), float(shown[2])]
+					var strip: Array = [edge, edge + 9.0] if outward > 0.0 else [edge - 9.0, edge]
+					if strip[1] <= across[0] or strip[0] >= across[1]: continue
+					if float(floor[2] if along_x else floor[3]) <= float(a[0] if along_x else a[1]) + 2.0: run[0] = maxf(run[0], float(shown[2] if along_x else shown[3]))
+					if float(floor[0] if along_x else floor[1]) >= float(a[2] if along_x else a[3]) - 2.0: run[1] = minf(run[1], float(shown[0] if along_x else shown[1]))
 			var pieces := _capped_wall(run, edge, outward, along_x, 0.09, seabed(), root, 0.0, "CrossingWall_" + id, "CrossingCoping")
 			var size := (pieces[0].mesh as BoxMesh).size
 			var before := root.get_child_count()
@@ -868,7 +894,7 @@ func _build_route_walls() -> void:
 			# A spirit on it stands below its coping: the walls toward the camera
 			# fade while one stands there. A wall across the gap to a neighbour
 			# never hides it from the follow camera's height.
-			fade.add(r, front)
+			fade.add(a, front)
 		if route.has("axis"):
 			var top := float(low_cm(route)) / 100.0 - 0.12
 			var plinth := _box(Vector3(width - 0.04, top - seabed(), depth - 0.04), (water.plinth as Color).darkened(0.08), center + Vector3(0, (top + seabed()) * 0.5, 0), root)
@@ -935,15 +961,17 @@ func plan() -> Dictionary:
 	if water.is_empty(): return {}
 	var definition: Dictionary = host.chapter_definition
 	var areas: Array = []
+	# Floors, pits and walkways as drawn (kit/walk_reach.gd): what holds the
+	# water stands at their drawn edges.
 	for island: Dictionary in definition.get("islands", []):
-		areas.append({"id": "island:" + str(island.id), "kind": "floor", "rects": [island.rect_cm], "height": float(island.get("height_cm", 0)) / 100.0})
-	for id: String in walled: areas.append({"id": "crossing:" + id, "kind": "pit", "rects": [_route(id).rect_cm]})
+		areas.append({"id": "island:" + str(island.id), "kind": "floor", "rects": host.drawn_pieces(island), "height": float(island.get("height_cm", 0)) / 100.0})
+	for id: String in walled: areas.append({"id": "crossing:" + id, "kind": "pit", "rects": [host.drawn_rect(_route(id))]})
 	var all: Array = water.get("bodies", [])
 	for body: Dictionary in all.filter(func(each: Dictionary) -> bool: return bool(each.get("basin", false))) + open_bodies():
 		areas.append({"id": str(body.id), "kind": "water", "rects": body.rects})
 	var mouths: Array = []
 	for route: Dictionary in definition.get("bridges", []) + definition.get("stairs", []):
-		mouths.append({"id": str(route.id), "rect": route.rect_cm})
+		mouths.append({"id": str(route.id), "rect": host.drawn_rect(route)})
 	var states: Array = []
 	_states(water_levels(), all, 0, {}, states)
 	var found := {"areas": areas, "bounds": water.bounds, "mouths": mouths, "walls": walls.duplicate(), "states": states, "seabed": seabed(), "wall_top": wall_top()}
