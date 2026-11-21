@@ -61,6 +61,10 @@ func _friend_input() -> void:
 	_ok(ShareCodes.parse(lookalike, friend), friend, lookalike, "A 22-character legacy ID beginning with room- is still a friend ID")
 	# friend- and 15 characters reads as that username now.
 	_ok(ShareCodes.parse("friend-abcdefghijklmno", friend), friend, "abcdefghijklmno", "friend- and a 15-character name reads as that name")
+	_ok(ShareCodes.parse("@TheBlue.Beanie", friend), friend, "theblue.beanie", "@ and a name reads as that name, lowercased")
+	_ok(ShareCodes.parse("thebluebeanie", friend), friend, "thebluebeanie", "A bare name reads as that name")
+	_check(not ShareCodes.parse("@" + FRIEND_ID, friend).ok, "@ never takes a player ID")
+	_check(not ShareCodes.parse("@a", friend).ok, "@ and a too-short name is refused")
 	_fails(ShareCodes.parse("room-" + ROOM_CODE, friend), "wrong_type", ShareCodes.ROOM, "A room code in Add friend is the wrong type")
 	_fails(ShareCodes.parse(ROOM_CODE, friend), "wrong_type", ShareCodes.ROOM, "A legacy room code in Add friend is the wrong type")
 	_fails(ShareCodes.parse("room-" + ROOM_CODE.to_lower(), friend), "wrong_type", ShareCodes.ROOM, "Any room code form is recognised")
