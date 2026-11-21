@@ -7,6 +7,8 @@ extends "res://presentation/keepsakes/keepsake_builder.gd"
 ## rope, and the coin skips three times. Together Hard: a gold star on the roof
 ## and a gold fountain rises from the water.
 const P = preload("res://presentation/keepsakes/keepsake_parts.gd")
+const Models = preload("res://presentation/kit/models.gd")
+const MODEL := "res://assets/models/wishing_well.glb"
 const HARD_LIFT := 0.32
 const MINT_BUCKET := Vector3(-1.25, 0, 0.45)
 ## Where a coin starts without a pip: over the rim's front.
@@ -19,26 +21,18 @@ func build(root: Node3D, state: Dictionary) -> Dictionary:
 	var hard: bool = state.get("hard", false)
 	var y0 := _y0(state)
 	if hard: P.plinth(root, 1.75, 1.75)
-	P.cyl(root, 0.72, 0.62, P.STONE, Vector3(0, y0 + 0.31, 0), 0.74)
-	P.ring(root, 0.73, 0.1, P.CREAM, Vector3(0, y0 + 0.62, 0))
-	P.cyl(root, 0.64, 0.02, P.WATER, Vector3(0, y0 + 0.62, 0))
-	for x: float in [-0.66, 0.66]: P.box(root, Vector3(0.12, 1.35, 0.12), P.WOOD, Vector3(x, y0 + 1.3, 0))
-	P.prism(root, Vector3(1.9, 0.6, 1.1), P.ROOF, Vector3(0, y0 + 2.25, 0))
-	P.box(root, Vector3(1.5, 0.09, 0.09), P.WOOD_LIGHT, Vector3(0, y0 + 1.8, 0))
-	var crank := P.pivot(root, Vector3(0.8, y0 + 1.8, 0), "Crank")
-	P.box(crank, Vector3(0.06, 0.28, 0.06), P.WOOD_LIGHT, Vector3(0, -0.1, 0.06))
-	# The bucket hangs on its rope from the winch beam; the rope travels with it.
-	var bucket := P.pivot(root, Vector3(0, y0 + 1.05, 0), "Bucket")
-	P.cyl(bucket, 0.16, 0.22, P.WOOD, Vector3.ZERO, 0.18)
-	P.box(bucket, Vector3(0.025, 0.75, 0.025), P.CREAM, Vector3(0, 0.375 + 0.11, 0))
+	# The well, its crank and its bucket (tools/blender/models/wishing_well.py); the
+	# crank and the bucket on their own pivots, the bucket's rope travelling with it.
+	Models.still(MODEL, "well", {"stone": P.STONE, "course": P.STONE_LIGHT, "rim": P.CREAM, "water": P.WATER, "post": P.WOOD, "beam": P.WOOD_LIGHT, "rope": P.CREAM, "roof": P.ROOF, "ridge": P.ROOF.darkened(0.15)}, root).position.y = y0
+	var crank := Models.still(MODEL, "well_crank", {"beam": P.WOOD_LIGHT, "grip": P.WOOD}, root)
+	crank.name = "Crank"
+	crank.position.y += y0
+	var bucket := Models.still(MODEL, "well_bucket", {"bucket": P.WOOD, "hoop": P.SLATE, "rope": P.CREAM}, root)
+	bucket.name = "Bucket"
+	bucket.position.y += y0
 	var parts := {"crank": crank, "bucket": bucket}
 	if state.get("together", false):
-		var at := MINT_BUCKET
-		P.cyl(root, 0.24, 0.32, P.MINT, at + Vector3(0, 0.16, 0), 0.28)
-		P.ring(root, 0.27, 0.05, P.MINT_DEEP, at + Vector3(0, 0.32, 0))
-		P.box(root, Vector3(0.44, 0.04, 0.04), P.MINT_DEEP, at + Vector3(0, 0.5, 0))
-		for x: float in [-0.24, 0.24]: P.box(root, Vector3(0.035, 0.18, 0.035), P.MINT_DEEP, at + Vector3(x, 0.41, 0))
-		for index in range(3): P.node(root, P.Primitives.shared_mesh("cylinder", 0.1, 0.02, 0.1), P.gold(), at + Vector3(-0.05 + index * 0.05, 0.33 + index * 0.022, 0))
+		Models.still(MODEL, "coin_bucket", {"bucket": P.MINT, "band": P.MINT_DEEP, "coin": {"color": P.GOLD_DEEP, "roughness": 0.6, "glow": P.GOLD_DEEP, "energy": 0.45}}, root).position = MINT_BUCKET
 	if hard:
 		for index in range(3): P.ring(root, 0.2 - index * 0.025, 0.06, P.WOOD_LIGHT, Vector3(-0.68, 0.36 + index * 0.05, 0.62))
 	if state.get("top", false):
