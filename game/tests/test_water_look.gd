@@ -146,7 +146,8 @@ func _tide(level: Dictionary) -> void:
 		for spot: Vector4 in look.ring_spots(): on_stone = on_stone or Vector2(spot.x, spot.y).distance_to(stones) < 0.06
 		# At high the stones lie under the water, so a pip on one wades.
 		if value == "low": _check(not on_stone, "A pip on a stepping stone at low, far above the water, spreads none")
-		else: _check(look.ring_spots().size() == none + 1 and on_stone, "A pip on a stepping stone at %s spreads rings: %s" % [value, look.ring_spots()])
+		# A pip's rings come before a still prop's, so with every spot taken one of those gives way.
+		else: _check(look.ring_spots().size() == mini(none + 1, look._spots.size()) and on_stone, "A pip on a stepping stone at %s spreads rings: %s" % [value, look.ring_spots()])
 	pip.global_position = kept + Vector3(0, 5.0, 0)
 	look.present()
 	_check(look.ring_spots().size() == spots.size(), "A pip far above the water spreads none")

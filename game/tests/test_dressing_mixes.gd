@@ -55,7 +55,10 @@ func _check_published() -> void:
 		var written: Dictionary = Catalog.FILES[key].DATA
 		_check(Catalog.problems(written).is_empty(), "Dressing %s resolves cleanly: %s" % [key, Catalog.problems(written)])
 		if not Catalog.mixes(written):
-			_check(is_same(Catalog.for_key(key), written), "A dressing with no slots comes back exactly as written: " + key)
+			# Its props settle on each stage's floors (Placement.settle()); the rest is as written.
+			var given := Catalog.for_key(key)
+			var as_written := given.size() == written.size() and written.keys().all(func(field: String) -> bool: return field == "props" or is_same(given.get(field), written[field]))
+			_check(as_written, "A dressing with no slots comes back as written but for its settled props: " + key)
 
 func _check_styles() -> void:
 	for slot: String in Styles.SLOTS:
@@ -108,7 +111,8 @@ func _check_mixes_lint() -> void:
 	var mixes := Samples.mixes()
 	for name: String in mixes:
 		_check(Catalog.problems(mixes[name]).is_empty(), "Mix %s has no problems: %s" % [name, Catalog.problems(mixes[name])])
-		var resolved := Catalog.resolve(mixes[name])
+		# Settled on the level's floors, as every reader gets it.
+		var resolved := Catalog.resolve(mixes[name], Samples.KEY)
 		var before := failures
 		for stage_id: String in _stage_ids(Samples.KEY):
 			_lint(Samples.KEY, stage_id, _stage_view(Samples.KEY, stage_id), resolved)

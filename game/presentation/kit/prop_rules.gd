@@ -166,6 +166,101 @@ static func solid(spec: Dictionary, floor_heights: Dictionary) -> Dictionary:
 	var base := float(floor_heights.get(str(spec.get("surface", "")), 0.0)) + float(extent.base)
 	return {"rect": extent.rect, "round": str(spec.get("kind", "")) not in SQUARE_KINDS, "low": base, "high": base + float(extent.height)}
 
+## --- Resting on the ground ------------------------------------------------------
+## Every prop rests on ground (a floor with its lip LIP past its rectangle, a
+## crossing's deck, a bank, or ground a world lays as data: the view's
+## "grounds"), or stands in water down to its bed. A prop resting on nothing
+## floats over the void or the water past an island's edge. The placer settles
+## every prop onto ground (content/dressing/placement.gd settle()) and the lint
+## measures every built prop (tests/test_dressing_lint.gd dressing_faults()).
+
+## How far a floor's lip reaches past its rectangle (kit/surfaces.gd skirt).
+const LIP := 0.05
+## On the water a floor's edge carries a fender or a parapet up to this deep
+## (kit/water_bodies.gd): a pole standing in the water stands clear of it.
+const WATER_RIM := 0.10
+## A prop's base may stand this far above its ground (a bank's top layer).
+const REST := 0.04
+## How far under a ground's top a prop may stand sunk in it (a post in its
+## floor, a foot in a bank).
+const SUNK := 0.45
+## A prop standing in water reaches its bed to within this (metres).
+const BED_GRACE := 0.05
+## A foot point this near a ground's edge still rests on it.
+const EDGE_GRACE := 0.01
+## Two things meet only when they share more than this across, along and in
+## height (metres): less is a touch.
+const CUT := 0.04
+
+## The ground of a stage: its floors and crossings, the view's own "grounds"
+## and `banks`, each {rect (metres), top, name}.
+static func grounds(view: Dictionary, banks: Array = []) -> Array:
+	var found: Array = []
+	for island: Dictionary in view.get("islands", []):
+		found.append({"rect": rect(island.rect_cm).grow(LIP), "top": float(island.get("height_cm", 0)) / 100.0, "name": "floor " + str(island.id)})
+	for route: Dictionary in view.get("bridges", []):
+		found.append({"rect": rect(route.rect_cm), "top": float(route.get("height_cm", route.get("from_height_cm", 0))) / 100.0, "name": "crossing " + str(route.get("id", ""))})
+	for ground: Dictionary in view.get("grounds", []):
+		found.append({"rect": rect(ground.rect_cm), "top": float(ground.height_cm) / 100.0, "name": str(ground.get("id", "ground"))})
+	for bank: Dictionary in banks: found.append(bank.merged({"name": "bank"}))
+	return found
+
+## A bank's ground: its top layer's top over its rectangle.
+static func bank_ground(spec: Dictionary, floor_heights: Dictionary) -> Dictionary:
+	return {"rect": Props.extent(spec).rect, "top": float(floor_heights.get(str(spec.get("surface", "")), 0.0)) + Props.bank_top(spec) / 100.0}
+
+## Points over where a prop rests (kit/props.gd FOOT_SHARE of its footprint,
+## a line along its length), metres; empty for a prop that rests on no floor
+## (Props.HUNG, wall-hung) and for a bank, which is ground itself.
+static func foot_points(spec: Dictionary) -> PackedVector2Array:
+	var points := PackedVector2Array()
+	var kind := str(spec.get("kind", ""))
+	if kind in Props.HUNG or kind in Props.GLOWS or kind == "bank" or bool(spec.get("wall", false)): return points
+	var extent := Props.extent(spec)
+	if spec.has("from") and spec.has("to"):
+		var from := Vector2(float(spec.from[0]), float(spec.from[1])) / 100.0
+		var to := Vector2(float(spec.to[0]), float(spec.to[1])) / 100.0
+		var across := (to - from).orthogonal().normalized()
+		var half := minf((extent.rect as Rect2).size.x, (extent.rect as Rect2).size.y) * 0.5 - EDGE_GRACE
+		var count := maxi(2, ceili(from.distance_to(to) / 0.1) + 1)
+		for index in range(count):
+			var at := from.lerp(to, float(index) / float(count - 1))
+			for side: float in [-1.0, 0.0, 1.0]: points.append(at + across * half * side)
+		return points
+	var area: Rect2 = extent.rect
+	var share := float(Props.FOOT_SHARE.get(kind, 1.0))
+	area = Rect2(area.get_center() - area.size * share * 0.5, area.size * share).grow(-EDGE_GRACE)
+	var round := kind not in SQUARE_KINDS
+	for i in range(5):
+		for j in range(5):
+			var point := area.position + area.size * Vector2(float(i) / 4.0, float(j) / 4.0)
+			if round and point.distance_to(area.get_center()) > area.size.x * 0.5 + 0.0001: continue
+			points.append(point)
+	return points
+
+## Whether a foot point at `point`, the prop's base at `base` (metres), rests
+## on `ground` ({rect, top}).
+static func rests_on(point: Vector2, base: float, ground: Dictionary) -> bool:
+	return base <= float(ground.top) + REST and base >= float(ground.top) - SUNK and (ground.rect as Rect2).grow(EDGE_GRACE).has_point(point)
+
+## Whether a placed spec rests whole on `grounds`.
+static func rests(spec: Dictionary, floor_heights: Dictionary, grounds: Array) -> bool:
+	var base := float(floor_heights.get(str(spec.get("surface", "")), 0.0)) + float(Props.extent(spec).base)
+	for point: Vector2 in foot_points(spec):
+		if not grounds.any(func(ground: Dictionary) -> bool: return rests_on(point, base, ground)): return false
+	return true
+
+## Two solid props (solid()) stand in each other more than CUT every way:
+## the stricter rule settled scenery keeps, as the lint measures it.
+static func meet(one: Dictionary, two: Dictionary) -> bool:
+	if one.is_empty() or two.is_empty(): return false
+	if minf(float(one.high), float(two.high)) - maxf(float(one.low), float(two.low)) <= CUT: return false
+	var shared := (one.rect as Rect2).intersection(two.rect)
+	if shared.size.x <= CUT or shared.size.y <= CUT: return false
+	# A round footprint meets only inside its circle.
+	var centre := shared.get_center()
+	return _covers_point(one, centre) and _covers_point(two, centre)
+
 ## Two solid props stand in each other.
 static func clash(one: Dictionary, two: Dictionary) -> bool:
 	if one.is_empty() or two.is_empty(): return false
