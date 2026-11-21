@@ -64,7 +64,11 @@
 						-560,
 						-100
 					],
-					"radius_cm": 36
+					"radius_cm": 36,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					}
 				},
 				"optics": {
 					"blockers": [],
@@ -199,7 +203,11 @@
 							-80,
 							0
 						],
-						"radius_cm": 36
+						"radius_cm": 36,
+						"solid": {
+							"radius_cm": 20,
+							"reach_cm": 20
+						}
 					}
 				],
 				"first_player_slot": "p1",
@@ -411,7 +419,11 @@
 							-80,
 							60
 						],
-						"radius_cm": 36
+						"radius_cm": 36,
+						"solid": {
+							"radius_cm": 20,
+							"reach_cm": 20
+						}
 					},
 					{
 						"id": "south-mirror",
@@ -422,7 +434,11 @@
 							56,
 							350
 						],
-						"radius_cm": 36
+						"radius_cm": 36,
+						"solid": {
+							"radius_cm": 20,
+							"reach_cm": 20
+						}
 					}
 				],
 				"emitter_sources": [
@@ -740,6 +756,10 @@
 							350
 						],
 						"radius_cm": 36,
+						"solid": {
+							"radius_cm": 20,
+							"reach_cm": 20
+						},
 						"states": [
 							"off",
 							"first",
@@ -1417,7 +1437,11 @@
 							632,
 							-80
 						],
-						"radius_cm": 28
+						"radius_cm": 28,
+						"solid": {
+							"radius_cm": 20,
+							"reach_cm": 20
+						}
 					},
 					{
 						"id": "beacon-lower-mirror",
@@ -1428,7 +1452,11 @@
 							668,
 							80
 						],
-						"radius_cm": 28
+						"radius_cm": 28,
+						"solid": {
+							"radius_cm": 20,
+							"reach_cm": 20
+						}
 					}
 				],
 				"emitter_sources": [

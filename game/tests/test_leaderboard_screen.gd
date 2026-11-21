@@ -71,7 +71,7 @@ func _ids_and_times() -> void:
 	var relay: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/v2/final-checkpoint.json"))
 	_check(Runs.run_time(Registry.RELAY, relay) == {"ticks": 588, "assisted": true}, "a run's time sums every turn, and catch assistance marks it")
 	var chain: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/lighthouse/v2-chain.json"))
-	_check(Runs.run_time(Registry.LIGHTHOUSE_V2, chain.checkpoints[-1]) == {"ticks": 1470, "assisted": false}, "a Lighthouse run is never assisted")
+	_check(Runs.run_time(Registry.LIGHTHOUSE_V2, chain.checkpoints[-1]) == {"ticks": 1473, "assisted": false}, "a Lighthouse run is never assisted")
 	_check(Runs.run_time(Registry.LIGHTHOUSE_V2, chain.checkpoints[-2]).is_empty(), "an unfinished run has no time")
 	_check(Runs.time_text(0) == "0:00.0" and Runs.time_text(1470) == "0:49.0" and Runs.time_text(1801) == "1:00.0" and Runs.time_text(1803) == "1:00.1", "times read as minutes, seconds and tenths")
 
@@ -88,7 +88,7 @@ func _own_runs() -> void:
 	Runs.note(OWNER, _snapshot(ROOM, 1, final), Registry.LIGHTHOUSE_V2)
 	Runs.note(OWNER, _snapshot(ROOM, 2, final), Registry.LIGHTHOUSE_V2)
 	var mine := Runs.on_board(OWNER, "sleeping-lighthouse@2")
-	_check(mine.size() == 2 and mine[0].entry_id == Runs.entry_id(ROOM, 1) and mine[0].ticks == 1470, "each finished branch is one run, kept once: %s" % [mine])
+	_check(mine.size() == 2 and mine[0].entry_id == Runs.entry_id(ROOM, 1) and mine[0].ticks == 1473, "each finished branch is one run, kept once: %s" % [mine])
 	Runs.use_path(RUNS_PATH)
 	_check(Runs.on_board(OWNER, "sleeping-lighthouse@2").size() == 2 and Runs.runs_of("someone-else").is_empty(), "runs survive a restart and stay per player")
 	# Account deletion forgets one player's runs, straight after a start too; the other players' runs stay.

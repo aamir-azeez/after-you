@@ -11,12 +11,15 @@ extends SceneTree
 ## - nothing on its floor that blocks a pip (an obstacle, an owned zone) comes
 ##   within its reach, so it is never worked through a wall.
 ## A control on a floor too small for its footprint (fits()) keeps its plain
-## spot, and the suite lists them.
+## spot, and the suite lists them. Sleeping Lighthouse's stages embed their
+## own stage of flat islands (core/lighthouse): the same checks walk those
+## islands on a grid (_check_native).
 const Solid = preload("res://core/solid_footprint.gd")
 const Navigation = preload("res://core/cooperative/navigation.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const ChapterIndex = preload("res://content/chapters/index.gd")
 const Placement = preload("res://content/dressing/placement.gd")
+const LightCatalog = preload("res://core/lighthouse/stage_catalog.gd")
 const STEP := 8
 const BODY := Solid.BODY_CM
 ## How far the walk round one footprint may spread before it counts as cut.
@@ -47,6 +50,9 @@ func _run() -> void:
 		var cells := Navigation.index_for(level, Canonical.digest(level))
 		for stage: Variant in level.stages:
 			if not stage is Dictionary: continue
+			if stage.get("native") is Dictionary:
+				solid_count += _check_native(key, stage, plain)
+				continue
 			var hands: Array = stage.get("levers", []) + stage.get("controls", [])
 			var solids := Solid.solids(hands + level.get("item_spots", []))
 			for control: Dictionary in hands:
@@ -66,6 +72,80 @@ func _run() -> void:
 	print("HAND REACH: %d solid hand controls; plain on floors too small: %s" % [solid_count, ", ".join(plain)])
 	print("HAND REACH: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
+
+## A Lighthouse stage (core/lighthouse/room_catalog.gd): each mirror and
+## selector on its island the same as above, that island's free floor walked
+## on a STEP grid (core/lighthouse/borrowed_light.gd keeps a pip's body on its
+## island). Returns how many hand controls are solid.
+func _check_native(key: String, stage: Dictionary, plain: Array[String]) -> int:
+	var native: Dictionary = stage.native
+	var hands := LightCatalog.controls_of(native)
+	var solids := Solid.solids(hands)
+	for control: Dictionary in hands:
+		if Solid.of(control).is_empty(): plain.append("%s %s %s" % [key, stage.id, control.id])
+	for control: Dictionary in solids:
+		var where := "%s, stage %s, %s" % [key, stage.id, control.id]
+		_check(Solid.of(control) == Solid.HAND, "%s: a hand control's footprint is HAND" % where)
+		var rect: Array = _island_under(native, control).get("rect_cm", [])
+		_check(not rect.is_empty(), "%s: stands on an island" % where)
+		if rect.is_empty(): continue
+		var centre := Vector2i(int(control.position_cm[0]), int(control.position_cm[1]))
+		var keep := int(Solid.of(control).radius_cm) + BODY
+		var stands := 0
+		var boundary: Array[Vector2i] = []
+		var span := (keep + int(Solid.of(control).reach_cm)) / STEP + 1
+		for i in range(-span, span + 1):
+			for j in range(-span, span + 1):
+				var point := centre + Vector2i(i, j) * STEP
+				if not _on_island(rect, point) or Solid.blocked(solids, point, BODY): continue
+				if Solid.within_reach(control, point, BODY): stands += 1
+				if point.distance_squared_to(centre) <= (keep + STEP * 2) * (keep + STEP * 2): boundary.append(point)
+		_check(stands > 0, "%s: no free floor within reach" % where)
+		_check(boundary.size() < 2 or _walk_island(rect, solids, boundary), "%s: its footprint cuts the floor round it in two" % where)
+	# Every spot a pip stands at keeps floor to stand on inside it.
+	var spots: Array = native.get("hold_pads", []) + native.get("sockets", []) + native.get("props", [])
+	for one: String in ["plate", "goal"]:
+		if native.get(one) is Dictionary: spots.append(native[one])
+	for spot: Dictionary in spots:
+		var rect: Array = _island_under(native, spot).get("rect_cm", [])
+		var centre := Vector2i(int(spot.position_cm[0]), int(spot.position_cm[1]))
+		var radius := int(spot.radius_cm)
+		var room := false
+		for i in range(-radius / STEP, radius / STEP + 1):
+			for j in range(-radius / STEP, radius / STEP + 1):
+				var point := centre + Vector2i(i, j) * STEP
+				room = room or (point.distance_squared_to(centre) <= radius * radius and _on_island(rect, point) and not Solid.blocked(solids, point, BODY))
+		_check(room, "%s, stage %s, %s: a hand control's footprint leaves no floor to stand on inside it" % [key, stage.id, spot.id])
+	return solids.size()
+
+## The island of `native` that holds `entity`'s centre, else {}.
+func _island_under(native: Dictionary, entity: Dictionary) -> Dictionary:
+	for island: Dictionary in native.islands:
+		if _on_island(island.rect_cm, Vector2i(int(entity.position_cm[0]), int(entity.position_cm[1])), 0): return island
+	return {}
+
+## Whether a pip of BODY (or `body`) radius centred at `point` stands wholly on `rect`.
+func _on_island(rect: Array, point: Vector2i, body: int = BODY) -> bool:
+	return rect.size() == 4 and point.x - body >= int(rect[0]) and point.x + body <= int(rect[2]) and point.y - body >= int(rect[1]) and point.y + body <= int(rect[3])
+
+## Whether every point of `wanted` is reached from the first over `rect`'s free floor.
+func _walk_island(rect: Array, solids: Array, wanted: Array[Vector2i]) -> bool:
+	var left := {}
+	for point: Vector2i in wanted: left[point] = true
+	var seen := {wanted[0]: true}
+	var queue: Array[Vector2i] = [wanted[0]]
+	var head := 0
+	while head < queue.size() and not left.is_empty():
+		if head >= MOST_NODES: return false
+		var at := queue[head]
+		head += 1
+		left.erase(at)
+		for offset: Vector2i in [Vector2i(STEP, 0), Vector2i(-STEP, 0), Vector2i(0, STEP), Vector2i(0, -STEP)]:
+			var next := at + offset
+			if seen.has(next) or not _on_island(rect, next) or Solid.blocked(solids, next, BODY): continue
+			seen[next] = true
+			queue.append(next)
+	return left.is_empty()
 
 ## The rule on made-up floors.
 func _rule_checks() -> void:

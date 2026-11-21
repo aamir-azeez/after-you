@@ -9,7 +9,7 @@ const Memo = preload("res://core/lighthouse/room_proof_memo.gd")
 const Catalog = preload("res://core/lighthouse/room_catalog.gd")
 ## Bump when anything a verification depends on changes (engine, facade,
 ## catalog or this proof); a persisted index with another stamp is ignored.
-const VERIFIER_VERSION := 1
+const VERIFIER_VERSION := 2
 const MEMO_LIMIT := 512
 const INDEX_MAX_BYTES := 131072
 const INDEX_SCHEMA := 1

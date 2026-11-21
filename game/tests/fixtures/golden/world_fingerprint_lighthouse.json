@@ -299,7 +299,7 @@
 						"OmniLight3D": 1,
 						"WorldEnvironment": 1
 					},
-					"hash": "07ba61e0b9e1dc8826ea0b5275f75e59ebc909c48b5fa0538afab74aaa45ff83",
+					"hash": "d77aaad75baf7e5a206ad918ac45178e766536d49cf1d52f2d53b72e41205a4a",
 					"nodes": 260,
 					"story_camera": {
 						"_follow_center": [
@@ -321,7 +321,7 @@
 						"@DirectionalLight3D#2": "85731af4b0c48736",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "f6c84914374c10dd",
-						"BorrowedLightShore": "6acb45ec548463bb"
+						"BorrowedLightShore": "fa3af9d9e6806ee0"
 					}
 				},
 				"s3.b.end": {
@@ -336,7 +336,7 @@
 						"OmniLight3D": 1,
 						"WorldEnvironment": 1
 					},
-					"hash": "992ee202562a616a653620d6caddab9a5532a3edec2d335909e4ebd045c6077d",
+					"hash": "1942ef72753fbfb30dea2857dc19e9398aae9d3f9be16baa666e213e2b293dcc",
 					"nodes": 260,
 					"story_camera": {
 						"_view_center": [
@@ -352,7 +352,7 @@
 						"@DirectionalLight3D#2": "85731af4b0c48736",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "6204a73c4762e4be",
-						"BorrowedLightShore": "419c9d5403297779"
+						"BorrowedLightShore": "80d608ee778908e1"
 					}
 				},
 				"s3.start": {
@@ -898,7 +898,7 @@
 						"OmniLight3D": 1,
 						"WorldEnvironment": 1
 					},
-					"hash": "e026445eaebb423e49bd7f420b34ed568a905827328895f072c69d611fb70eb4",
+					"hash": "676301716ebe943bba51b2db8629a09d1e3c83f5fb3787cdbf3d236acbbd4337",
 					"nodes": 260,
 					"story_camera": {
 						"_follow_center": [
@@ -920,7 +920,7 @@
 						"@DirectionalLight3D#2": "85731af4b0c48736",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "cd425353361e981d",
-						"BorrowedLightShore": "d7b194b9d4407d8e"
+						"BorrowedLightShore": "ad253e5bf396ce50"
 					}
 				},
 				"s3.b.end": {
@@ -935,7 +935,7 @@
 						"OmniLight3D": 1,
 						"WorldEnvironment": 1
 					},
-					"hash": "4f9110299403bb29f0ed252b533f85e7328c8a67d5f68af53d3c941343f9fbd3",
+					"hash": "a74acf2ff13c23a0de070dc2260e97b606acf9bf18799092df2bfa1110610690",
 					"nodes": 260,
 					"story_camera": {
 						"_view_center": [
@@ -951,7 +951,7 @@
 						"@DirectionalLight3D#2": "85731af4b0c48736",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "2d35e58bfb89a677",
-						"BorrowedLightShore": "84b10d86f0220f9b"
+						"BorrowedLightShore": "a40d348c518428ea"
 					}
 				},
 				"s3.start": {
@@ -1213,8 +1213,8 @@
 				"s2.a.end": "7aa3f86d6f3d1058a340c2efa4972c1e180d2fa11002dd328d360080226c3bfe",
 				"s2.b.end": "433da69ef335d57377b56746bfdad80ac4ccb7fd9eb9a0fc25483cd13b5e988f",
 				"s2.start": "c01c0c7eecb828acc07c34789437d1954efd7abe6208562519c49998da0e14e4",
-				"s3.a.end": "796beec6a639478966a8257f7b315f3bac71387d81a345b2a7e5f628f5047b00",
-				"s3.b.end": "97703bfd5b91f7f919c92c2ffcc4cba80de16a3aecdba0dedfd85194726adf18",
+				"s3.a.end": "1183534d7a124beca3216fa649ca189c48818883d8323a1148008d2a6202b4b2",
+				"s3.b.end": "505d88549abc67c3fd7a2675a3a415851563eea4dfd8109fba52cccc141da321",
 				"s3.start": "04e1cc29fa2d0854da64debb7608b3d437841cb3c1c85d61f84bd7ca32eed7fe",
 				"s4.a.end": "9e2f311e0fe7d1739935e869e0d3b5a1f2bb1e804139a876f856a0794fc54980",
 				"s4.b.end": "e6585381002adb8fb17483ee6e490f7b23f3aa4a5fda4c2d614132df88a91201",
@@ -1233,8 +1233,8 @@
 				"s2.a.end": "ee46e76c0c1cbba6e23215625bcdb3cc741d544709b8832410e41a9f692d8dfe",
 				"s2.b.end": "853c755379002ccc95b7cee667d26fd06e412cf10e1e875e8932221320ef1fca",
 				"s2.start": "969c4e32205877057bcc37b418bce4a8bfb8bbcf29759bec10cdb00adafea52c",
-				"s3.a.end": "b090a5533c2e38561baee2ee5abb2b9b8d5c5876f8867859b61a2bc3177f24a9",
-				"s3.b.end": "97f6c8f39d43c85d7a3859f89457477e1d4f4ce9fcb13a05df9e5bdda3c070cd",
+				"s3.a.end": "9c18ff23ee70f6b2b65ff6146747f37176123516e04d388de46e3593efdcfe3b",
+				"s3.b.end": "6abb7282e21a35544610997cab3c8234e6c3304be21bae401bedd10db9d591d7",
 				"s3.start": "f03a87e0bccb897c6555d7a512dd0fb0cdcdacaeaf7008d5d9b63c6223df52f9",
 				"s4.a.end": "411179f0625cf979142d1ae84329d760176c32cbc1918f57b901c8604b313f05",
 				"s4.b.end": "337cbac1aea973b16c9f0db3dc2d7c69c42be13b05bafa9524f0b9f19a5d7e3f",

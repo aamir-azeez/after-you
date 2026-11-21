@@ -22,7 +22,10 @@ extends RefCounted
 ## (presentation/kit/pieces/lever.gd REACH), and a pip works it from that
 ## circle out to reach_cm further (52 cm from its centre). A control whose own
 ## floor has no room for that (fits(): a catwalk the pip stands on) keeps its
-## plain spot. Pads, ball pads and goals stay spots a pip stands on.
+## plain spot. Pads, ball pads and goals stay spots a pip stands on. Sleeping
+## Lighthouse @2's mirrors and selector take the same rule inside each stage's
+## embedded native stage (core/lighthouse/borrowed_light.gd plays them); solo
+## @1 keeps its plain catalog.
 
 ## A pip's body radius (core/physical/runtime.gd PLAYER_RADIUS).
 const BODY_CM := 12
@@ -80,19 +83,44 @@ static func solids(entities: Array) -> Array:
 ## alone: it is worked out again each time, so a catalog built on another's
 ## definition gets the answer for its own floors.
 static func with_hands(level: Dictionary) -> Dictionary:
+	var floors := _floors(level)
+	for stage: Variant in level.get("stages", []):
+		if not stage is Dictionary: continue
+		# A Lighthouse stage (core/lighthouse/room_catalog.gd) embeds its own
+		# stage: its own floors, its mirrors and selectors, Borrowed Light's
+		# one mirror_control, each on the island it stands in.
+		var native: Variant = stage.get("native")
+		if native is Dictionary:
+			var own := _floors(native)
+			var hands: Array = native.get("controls", []) + ([native.mirror_control] if native.get("mirror_control") is Dictionary else [])
+			for control: Variant in hands:
+				if control is Dictionary and control.get("position_cm") is Array: _hand(control, _floor_under(own, control))
+			continue
+		for list: String in HAND_LISTS:
+			for control: Variant in stage.get(list, []):
+				if control is Dictionary and control.get("position_cm") is Array: _hand(control, floors.get(str(control.get("surface_id", "")), {}))
+	return level
+
+## One hand control on `floor` ({} for none): solid where it fits.
+static func _hand(control: Dictionary, floor: Dictionary) -> void:
+	control.erase("solid")
+	if not floor.is_empty() and fits(control, floor.rect_cm, HAND, BODY_CM): control["solid"] = HAND.duplicate()
+
+## Floor id -> floor, of `level`'s islands, bridges and stairs.
+static func _floors(level: Dictionary) -> Dictionary:
 	var floors: Dictionary = {}
 	for list: String in ["islands", "bridges", "stairs"]:
 		for floor: Variant in level.get(list, []):
 			if floor is Dictionary: floors[str(floor.get("id", ""))] = floor
-	for stage: Variant in level.get("stages", []):
-		if not stage is Dictionary: continue
-		for list: String in HAND_LISTS:
-			for control: Variant in stage.get(list, []):
-				if not control is Dictionary or not control.get("position_cm") is Array: continue
-				control.erase("solid")
-				var floor: Dictionary = floors.get(str(control.get("surface_id", "")), {})
-				if not floor.is_empty() and fits(control, floor.rect_cm, HAND, BODY_CM): control["solid"] = HAND.duplicate()
-	return level
+	return floors
+
+## The first of `floors` whose rect holds `entity`'s centre, else {}.
+static func _floor_under(floors: Dictionary, entity: Dictionary) -> Dictionary:
+	var at := _centre(entity)
+	for floor: Dictionary in floors.values():
+		var rect: Array = floor.get("rect_cm", [])
+		if rect.size() == 4 and at.x >= mini(rect[0], rect[2]) and at.x <= maxi(rect[0], rect[2]) and at.y >= mini(rect[1], rect[3]) and at.y <= maxi(rect[1], rect[3]): return floor
+	return {}
 
 ## Whether a footprint `solid` at `entity` leaves its floor (`rect`: [x0, z0,
 ## x1, z1] cm) whole for a pip of `body_cm`: where the pip's centre may stand

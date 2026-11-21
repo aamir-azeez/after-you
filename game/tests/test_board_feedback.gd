@@ -158,7 +158,7 @@ func _row(rank: int, entry: String, ticks: int) -> Dictionary:
 
 func _states() -> void:
 	var now := Time.get_unix_time_from_system()
-	var fresh := {"board": LIGHTHOUSE_BOARD, "entry_id": "a".repeat(32), "ticks": 1470, "assisted": false, "finished_at": _now_iso(-30)}
+	var fresh := {"board": LIGHTHOUSE_BOARD, "entry_id": "a".repeat(32), "ticks": 1473, "assisted": false, "finished_at": _now_iso(-30)}
 	var old := fresh.duplicate()
 	old.finished_at = "2026-10-20T10:00:00.000Z"
 	var assisted := fresh.duplicate()
@@ -167,8 +167,8 @@ func _states() -> void:
 	_check(BoardStatus.of_run(assisted, true, {}, now).state == BoardStatus.ASSISTED, "a run with Forgiving catches on can't rank")
 	_check(BoardStatus.of_run(fresh, true, {}, now).state == BoardStatus.CHECKING, "a run just finished counts as checking before any board read")
 	_check(BoardStatus.of_run(fresh, true, _view(LIGHTHOUSE_BOARD, [], [fresh.entry_id]), now).state == BoardStatus.CHECKING, "a run the board lists as checking is checking")
-	var ranked := BoardStatus.of_run(fresh, true, _view(LIGHTHOUSE_BOARD, [_row(1, "c".repeat(32), 900), _row(2, fresh.entry_id, 1470)], []), now)
-	_check(ranked.state == BoardStatus.RANKED and ranked.rank == 2 and ranked.ticks == 1470, "a run in the top 10 has its place: %s" % [ranked])
+	var ranked := BoardStatus.of_run(fresh, true, _view(LIGHTHOUSE_BOARD, [_row(1, "c".repeat(32), 900), _row(2, fresh.entry_id, 1473)], []), now)
+	_check(ranked.state == BoardStatus.RANKED and ranked.rank == 2 and ranked.ticks == 1473, "a run in the top 10 has its place: %s" % [ranked])
 	_check(BoardStatus.of_run(fresh, true, _view(LIGHTHOUSE_BOARD, [], []), now).state == BoardStatus.CHECKING, "a board copy from before the post does not call a new run settled")
 	_check(BoardStatus.of_run(old, true, _view(LIGHTHOUSE_BOARD, [], []), now).state == BoardStatus.NOT_LISTED, "an older run the board no longer lists is off the board")
 	var ten: Array = []
@@ -298,10 +298,10 @@ func _shown_rows() -> void:
 	_check(BoardStatus.place(eleventh, _view(LIGHTHOUSE_BOARD, ten, [eleventh.entry_id]), now, [eleventh]) == 0, "a run slower than the ten listed has no place")
 
 func _line_words() -> void:
-	_check(Line.text({"state": BoardStatus.CHECKING, "ticks": 1470}).is_empty(), "a run waiting for its check has no words on the card (2026-11-02): its place is celebrated instead")
-	_check(Line.text({"state": BoardStatus.RANKED, "ticks": 1470, "rank": 3}) == PlayerCopy.BOARD_LINE_RANKED % ["0:49.0", "3rd"], "a ranked run names its place")
+	_check(Line.text({"state": BoardStatus.CHECKING, "ticks": 1473}).is_empty(), "a run waiting for its check has no words on the card (2026-11-02): its place is celebrated instead")
+	_check(Line.text({"state": BoardStatus.RANKED, "ticks": 1473, "rank": 3}) == PlayerCopy.BOARD_LINE_RANKED % ["0:49.1", "3rd"], "a ranked run names its place")
 	_check(Line.text({"state": BoardStatus.ASSISTED, "ticks": 1}) == PlayerCopy.BOARD_LINE_ASSISTED and Line.text({"state": BoardStatus.OFF}) == PlayerCopy.BOARD_LINE_OFF, "assisted and off have their own lines")
-	_check(Line.text({"state": BoardStatus.NOT_LISTED, "ticks": 1470}) == PlayerCopy.BOARD_LINE_NOT_LISTED % "0:49.0" and Line.text({}).is_empty(), "off the board has its line; no state, no line")
+	_check(Line.text({"state": BoardStatus.NOT_LISTED, "ticks": 1473}) == PlayerCopy.BOARD_LINE_NOT_LISTED % "0:49.1" and Line.text({}).is_empty(), "off the board has its line; no state, no line")
 	var lines := [PlayerCopy.BOARD_LINE_OFF, PlayerCopy.BOARD_LINE_ASSISTED, PlayerCopy.BOARD_LINE_TURN_OFF, PlayerCopy.BOARD_LINE_TURNED_OFF, PlayerCopy.LEADERBOARD_WAITING_CHECK, PlayerCopy.BOARD_LINE_RANKED,
 		PlayerCopy.BOARD_LINE_NOT_LISTED, PlayerCopy.BOARD_HOME_CHECKING, PlayerCopy.LEADERBOARD_OWN_ASSISTED, PlayerCopy.LEADERBOARD_OWN_NOT_LISTED, PlayerCopy.LEADERBOARD_RULES,
 		PlayerCopy.SETTINGS_ASSISTANCE_CONFIRM_TITLE, PlayerCopy.SETTINGS_ASSISTANCE_CONFIRM_BODY, PlayerCopy.SETTINGS_ASSISTANCE_CONFIRM_ACCEPT]
@@ -346,7 +346,7 @@ func _end_of_run_line() -> void:
 	flow._next_check = 0
 	flow.service_home()
 	await _frames(2)
-	_check(host.toasts == [PlayerCopy.BOARD_HOME_CHECKING % "0:49.0"] and host.api.requests.size() == reads, "back on Home it says so once, with no read of its own: %s" % [host.toasts])
+	_check(host.toasts == [PlayerCopy.BOARD_HOME_CHECKING % "0:49.1"] and host.api.requests.size() == reads, "back on Home it says so once, with no read of its own: %s" % [host.toasts])
 	line.queue_free()
 	host.toasts.clear()
 	# Just finished and not listed yet: the card guesses checking; Home stays quiet.
@@ -364,12 +364,12 @@ func _end_of_run_line() -> void:
 	line.queue_free()
 	# A run already ranked by the time the card opens again shows its place.
 	var ranked_room := "R1R1R1R1R1R1R1R1R1R1R1"
-	host.api.replies["GET " + path] = {"ok": true, "data": _view(LIGHTHOUSE_BOARD, [_row(1, Runs.entry_id(ranked_room, 1), 1470)], [])}
+	host.api.replies["GET " + path] = {"ok": true, "data": _view(LIGHTHOUSE_BOARD, [_row(1, Runs.entry_id(ranked_room, 1), 1473)], [])}
 	Client.shared(host.api, OWNER)._views.clear()
 	line = flow.line_for(_snapshot(ranked_room, _lighthouse_final(), _now_iso(-5)), Registry.LIGHTHOUSE_V2)
 	root.add_child(line)
 	await _frames(4)
-	_check((line.find_child("BoardStatusText", true, false) as Label).text == PlayerCopy.BOARD_LINE_RANKED % ["0:49.0", "1st"], "a ranked run's card names its place")
+	_check((line.find_child("BoardStatusText", true, false) as Label).text == PlayerCopy.BOARD_LINE_RANKED % ["0:49.1", "1st"], "a ranked run's card names its place")
 	line.queue_free()
 	# Assisted: no request, a button that turns Forgiving catches off in place.
 	host.api.requests.clear()
@@ -432,7 +432,7 @@ func _end_of_run_celebration() -> void:
 	room.card.add_child(line)
 	await _frames(5)
 	var shown: Node = room.ui.find_child(Celebration.NODE_NAME, false, false)
-	_check(shown != null and shown.placing.rank == 3 and shown.placing.entry_id == entry and shown.placing.ticks == 1470 and shown.placing.names == null and not shown.placing.gold_leaf, "once the board is read the place the run gets is celebrated over the room: %s" % [shown.placing if shown != null else {}])
+	_check(shown != null and shown.placing.rank == 3 and shown.placing.entry_id == entry and shown.placing.ticks == 1473 and shown.placing.names == null and not shown.placing.gold_leaf, "once the board is read the place the run gets is celebrated over the room: %s" % [shown.placing if shown != null else {}])
 	_check(room.soundscape.cues == ["ui_third"], "with the place's own sound, on the room's soundscape: %s" % [room.soundscape.cues])
 	_check(Placings.shared().was_shown(OWNER, entry) and not line.visible, "marked shown, and the card says nothing about the check")
 	_check(shown != null and shown.reduced, "under Reduce motion")
@@ -445,7 +445,7 @@ func _end_of_run_celebration() -> void:
 	await _frames(5)
 	_check(not Celebration.showing(room.ui) and room.soundscape.cues.size() == 1, "a run is celebrated once")
 	# It passes: the read that ranks it queues nothing for Home.
-	host.api.replies["GET " + path] = {"ok": true, "data": _view(LIGHTHOUSE_BOARD, [three[0], three[1], _row(3, entry, 1470), _row(4, three[2].entry_id, 2000)], [])}
+	host.api.replies["GET " + path] = {"ok": true, "data": _view(LIGHTHOUSE_BOARD, [three[0], three[1], _row(3, entry, 1473), _row(4, three[2].entry_id, 2000)], [])}
 	await Client.shared(host.api, OWNER).board(LIGHTHOUSE_BOARD, true)
 	_check(not Placings.shared().has_pending(OWNER), "its confirmation later is no news")
 	line.queue_free()
@@ -491,7 +491,7 @@ func _end_of_run_celebration() -> void:
 	# A run already confirmed when the card reads its board: its row's names and Gold leaf.
 	_fresh_runs()
 	var gold_room := "C7C7C7C7C7C7C7C7C7C7C7"
-	var gold_row := _row(1, Runs.entry_id(gold_room, 1), 1470)
+	var gold_row := _row(1, Runs.entry_id(gold_room, 1), 1473)
 	gold_row.names = ["Ada", "Bo"]
 	gold_row.gold_leaf = true
 	host.api.replies["GET " + path] = {"ok": true, "data": _view(LIGHTHOUSE_BOARD, [gold_row], [])}
@@ -599,7 +599,7 @@ func _home_watch() -> void:
 	flow._next_check = 0
 	flow.service_home()
 	await _frames(4)
-	_check(host.api.requests.size() == 1 and host.toasts == [PlayerCopy.BOARD_HOME_CHECKING % "0:49.0"], "Home reads the board once and says the time is being checked: %s %s" % [host.api.requests, host.toasts])
+	_check(host.api.requests.size() == 1 and host.toasts == [PlayerCopy.BOARD_HOME_CHECKING % "0:49.1"], "Home reads the board once and says the time is being checked: %s %s" % [host.api.requests, host.toasts])
 	for step in range(3):
 		flow.service_home()
 		await _frames(2)
@@ -612,7 +612,7 @@ func _home_watch() -> void:
 	flow._next_check = 0
 	flow._read_at[LIGHTHOUSE_BOARD] = Time.get_ticks_msec() - Flow.READ_MS - 1
 	Client.shared(host.api, OWNER)._views.clear()
-	host.api.replies["GET " + path] = {"ok": true, "data": _view(LIGHTHOUSE_BOARD, [_row(4, entry, 1470)], [])}
+	host.api.replies["GET " + path] = {"ok": true, "data": _view(LIGHTHOUSE_BOARD, [_row(4, entry, 1473)], [])}
 	flow.service_home()
 	await _frames(4)
 	_check(host.api.requests.size() == 2 and host.toasts.size() == 1, "one more read, no second note")
@@ -649,10 +649,10 @@ func _refused_run(me: String) -> void:
 	var flow := Flow.new(host)
 	var path := "/v1/leaderboards/" + LIGHTHOUSE_BOARD
 	var tag := me.left(1)
-	# The pair's earlier run, ranked second with the same time (1470 ticks).
+	# The pair's earlier run, ranked second with the same time (1473 ticks).
 	var earlier_room := tag + "E" + "1".repeat(20)
 	Runs.note(me, _snapshot(earlier_room, _lighthouse_final(), "2026-10-20T10:00:00.000Z"), Registry.LIGHTHOUSE_V2)
-	var top := [_row(1, "01".repeat(16), 900), _row(2, Runs.entry_id(earlier_room, 1), 1470), _row(3, "03".repeat(16), 2000)]
+	var top := [_row(1, "01".repeat(16), 900), _row(2, Runs.entry_id(earlier_room, 1), 1473), _row(3, "03".repeat(16), 2000)]
 	var refused_room := tag + "N" + "1".repeat(20)
 	var refused := Runs.entry_id(refused_room, 1)
 	var board := _view(LIGHTHOUSE_BOARD, top, [])
@@ -703,7 +703,7 @@ func _refused_run(me: String) -> void:
 	flow._next_check = 0
 	flow.service_home()
 	await _frames(3)
-	_check(host.toasts == [PlayerCopy.BOARD_HOME_CHECKING % "0:49.0"], "%s: and Home says it is being checked: %s" % [tag, host.toasts])
+	_check(host.toasts == [PlayerCopy.BOARD_HOME_CHECKING % "0:49.1"], "%s: and Home says it is being checked: %s" % [tag, host.toasts])
 	room.queue_free()
 	host.relay_child = null
 	_drop(host)
@@ -894,7 +894,7 @@ func _shared_player() -> void:
 	Runs.note(OWNER, other, Registry.LIGHTHOUSE_V2)
 	var first := Runs.entry_id(with_partner, 1)
 	var second := Runs.entry_id(with_other, 1)
-	var top := [_row(1, "01".repeat(16), 900), _row(2, second, 1470), _row(3, "03".repeat(16), 1470), _row(4, first, 1470), _row(5, "05".repeat(16), 2000)]
+	var top := [_row(1, "01".repeat(16), 900), _row(2, second, 1473), _row(3, "03".repeat(16), 1473), _row(4, first, 1473), _row(5, "05".repeat(16), 2000)]
 	var view := _view(LIGHTHOUSE_BOARD, top, [])
 	api.replies["GET /v1/leaderboards/" + LIGHTHOUSE_BOARD] = {"ok": true, "data": view}
 	var screen := Screen.new()

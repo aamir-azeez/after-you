@@ -1,5 +1,6 @@
 import { adapter } from "./protocol-cooperative";
 import { journeyAdapter } from "./protocol-journey";
+import { lighthouseAdapter } from "./protocol-lighthouse";
 import type { ChapterAdapter } from "./chapter-types";
 import highDefinition from "./legacy/high-and-low.json";
 import highInitial from "./legacy/high-and-low-initial.json";
@@ -19,6 +20,8 @@ import tideDefinition from "./legacy/turn-of-the-tide.json";
 import tideInitial from "./legacy/turn-of-the-tide-initial.json";
 import tideV2Definition from "./legacy/turn-of-the-tide-v2.json";
 import tideV2Initial from "./legacy/turn-of-the-tide-v2-initial.json";
+import lighthouseDefinition from "./legacy/sleeping-lighthouse-v2.json";
+import lighthouseInitial from "./legacy/sleeping-lighthouse-v2-initial.json";
 
 /** Published chapters as older apps hold them, from before every lever, switch,
  * selector and mirror became solid with a longer reach (owner, 2026-11-20; the game's
@@ -40,4 +43,6 @@ export const LEGACY_CHAPTERS: readonly ChapterAdapter[] = Object.freeze([
   journeyAdapter(homeV2Definition as Journey[0], homeV2Initial as Journey[1], "4541bd920062e244f202fbe6ee95363a1f53ae5afc490ad600112af9f01a8c77"),
   journeyAdapter(tideDefinition as Journey[0], tideInitial as Journey[1], "3a6d111455aa69e60c440cc6f04a0656292ed9c40b31c66a7f999c85cd2a911a", 7),
   journeyAdapter(tideV2Definition as Journey[0], tideV2Initial as Journey[1], "1f88aabb592fbf14640b50dd0644755d6afe522cae39d844524ac68b491f0a43", 7),
+  // Sleeping Lighthouse @2 before its mirrors and selector went solid (origin/main d1c90b6c).
+  lighthouseAdapter(lighthouseDefinition, lighthouseInitial, "0f5a41aa23b53d9f97d47851740a1bdd484371bc128f8b319bed9f509a9e8149"),
 ]);

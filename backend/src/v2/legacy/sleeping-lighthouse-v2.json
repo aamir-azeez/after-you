@@ -1,0 +1,1765 @@
+{
+	"id": "sleeping-lighthouse",
+	"premium": true,
+	"schema_version": 8,
+	"simulation_version": 11,
+	"stages": [
+		{
+			"first_player_slot": "p0",
+			"id": "borrowed-light",
+			"native": {
+				"bridges": [
+					{
+						"from_surface": "harbour",
+						"id": "harbour-court",
+						"receiver_id": "harbour-receiver",
+						"rect_cm": [
+							-450,
+							-50,
+							-250,
+							50
+						],
+						"to_surface": "court"
+					}
+				],
+				"first_player_slot": "p0",
+				"goal": {
+					"id": "court-bell",
+					"position_cm": [
+						-160,
+						0
+					],
+					"radius_cm": 30,
+					"surface_id": "court"
+				},
+				"hint_a": "Stand on the light pad. Keep it shining, then finish your recording.",
+				"hint_b": "Turn the mirror toward the receiver. Cross the lit bridge and ring the Court bell.",
+				"id": "sleeping-lighthouse",
+				"islands": [
+					{
+						"height_cm": 0,
+						"id": "harbour",
+						"rect_cm": [
+							-850,
+							-180,
+							-450,
+							180
+						]
+					},
+					{
+						"height_cm": 0,
+						"id": "court",
+						"rect_cm": [
+							-250,
+							-130,
+							150,
+							130
+						]
+					}
+				],
+				"mirror_control": {
+					"id": "harbour-mirror",
+					"owner_slot": "p1",
+					"position_cm": [
+						-560,
+						-100
+					],
+					"radius_cm": 36
+				},
+				"optics": {
+					"blockers": [],
+					"bounds_cm": [
+						-900,
+						-240,
+						250,
+						240
+					],
+					"emitters": [
+						{
+							"direction": "east",
+							"enabled": false,
+							"id": "harbour-light",
+							"position_cm": [
+								-690,
+								-100
+							]
+						}
+					],
+					"mirrors": [
+						{
+							"enabled": true,
+							"id": "harbour-mirror",
+							"orientation": "backslash",
+							"position_cm": [
+								-560,
+								-100
+							]
+						}
+					],
+					"receivers": [
+						{
+							"enabled": true,
+							"id": "harbour-receiver",
+							"position_cm": [
+								-560,
+								-160
+							]
+						}
+					],
+					"schema_version": 1
+				},
+				"plate": {
+					"emitter_id": "harbour-light",
+					"id": "source-pad",
+					"owner_slot": "p0",
+					"position_cm": [
+						-700,
+						-100
+					],
+					"radius_cm": 32
+				},
+				"receiver_route_cm": [
+					[
+						-520,
+						80
+					],
+					[
+						-560,
+						80
+					],
+					[
+						-560,
+						-100
+					],
+					[
+						-560,
+						0
+					],
+					[
+						-160,
+						0
+					]
+				],
+				"schema_version": 3,
+				"simulation_version": 3,
+				"stage_id": "borrowed-light",
+				"stage_version": 1,
+				"starts": {
+					"p0": [
+						-760,
+						-100
+					],
+					"p1": [
+						-520,
+						80
+					]
+				},
+				"title": "Borrowed Light",
+				"version": 1
+			},
+			"version": 1
+		},
+		{
+			"first_player_slot": "p1",
+			"id": "missing-piece",
+			"native": {
+				"bridges": [
+					{
+						"from_surface": "harbour",
+						"id": "harbour-court",
+						"receiver_id": "",
+						"rect_cm": [
+							-450,
+							-50,
+							-250,
+							50
+						],
+						"to_surface": "court"
+					},
+					{
+						"from_surface": "court",
+						"id": "court-north",
+						"receiver_id": "north-receiver",
+						"rect_cm": [
+							-100,
+							-240,
+							0,
+							-130
+						],
+						"to_surface": "north"
+					}
+				],
+				"controls": [
+					{
+						"id": "court-mirror",
+						"kind": "mirror",
+						"optical_id": "court-mirror",
+						"owner_slot": "p1",
+						"position_cm": [
+							-80,
+							0
+						],
+						"radius_cm": 36
+					}
+				],
+				"first_player_slot": "p1",
+				"goal_policy": {
+					"kind": "fit_prop",
+					"prop_id": "portable-lens",
+					"socket_id": "court-cradle"
+				},
+				"hint_a": "Turn the Court mirror toward North. Leave the path lit for your partner.",
+				"hint_b": "Follow the lit bridge. Take the lens, then fit it into the matching Court cradle.",
+				"id": "sleeping-lighthouse",
+				"islands": [
+					{
+						"height_cm": 0,
+						"id": "harbour",
+						"rect_cm": [
+							-850,
+							-180,
+							-450,
+							180
+						]
+					},
+					{
+						"height_cm": 0,
+						"id": "court",
+						"rect_cm": [
+							-250,
+							-130,
+							150,
+							130
+						]
+					},
+					{
+						"height_cm": 0,
+						"id": "north",
+						"rect_cm": [
+							-250,
+							-500,
+							150,
+							-240
+						]
+					}
+				],
+				"optics": {
+					"blockers": [],
+					"bounds_cm": [
+						-900,
+						-560,
+						250,
+						240
+					],
+					"emitters": [
+						{
+							"direction": "east",
+							"enabled": true,
+							"id": "court-light",
+							"position_cm": [
+								-200,
+								0
+							]
+						}
+					],
+					"mirrors": [
+						{
+							"enabled": true,
+							"id": "court-mirror",
+							"orientation": "backslash",
+							"position_cm": [
+								-80,
+								0
+							]
+						}
+					],
+					"receivers": [
+						{
+							"enabled": true,
+							"id": "north-receiver",
+							"position_cm": [
+								-80,
+								-300
+							]
+						}
+					],
+					"schema_version": 1
+				},
+				"props": [
+					{
+						"id": "portable-lens",
+						"owner_slot": "p0",
+						"position_cm": [
+							40,
+							-360
+						],
+						"radius_cm": 32,
+						"socket_id": "court-cradle",
+						"surface_id": "north"
+					}
+				],
+				"receiver_route_cm": [
+					[
+						-728,
+						0
+					],
+					[
+						-48,
+						0
+					],
+					[
+						-48,
+						-360
+					],
+					[
+						40,
+						-360
+					],
+					[
+						-48,
+						-360
+					],
+					[
+						-48,
+						60
+					],
+					[
+						40,
+						60
+					]
+				],
+				"schema_version": 3,
+				"simulation_version": 3,
+				"sockets": [
+					{
+						"id": "court-cradle",
+						"owner_slot": "p0",
+						"position_cm": [
+							40,
+							60
+						],
+						"prop_id": "portable-lens",
+						"radius_cm": 32,
+						"surface_id": "court"
+					}
+				],
+				"source_policy": {
+					"kind": "steady_receiver",
+					"receiver_id": "north-receiver"
+				},
+				"stage_id": "missing-piece",
+				"stage_version": 1,
+				"title": "The Missing Piece",
+				"version": 1
+			},
+			"version": 1
+		},
+		{
+			"first_player_slot": "p0",
+			"id": "two-promises",
+			"native": {
+				"bridges": [
+					{
+						"from_surface": "harbour",
+						"id": "harbour-court",
+						"receiver_id": "",
+						"rect_cm": [
+							-450,
+							-50,
+							-250,
+							50
+						],
+						"to_surface": "court"
+					},
+					{
+						"from_surface": "court",
+						"id": "court-north",
+						"receiver_id": "",
+						"rect_cm": [
+							-100,
+							-240,
+							0,
+							-130
+						],
+						"to_surface": "north"
+					},
+					{
+						"from_surface": "court",
+						"id": "court-south",
+						"prop_gate": {
+							"prop_id": "portable-lens",
+							"socket_id": "court-cradle"
+						},
+						"receiver_id": "",
+						"rect_cm": [
+							-100,
+							130,
+							0,
+							240
+						],
+						"to_surface": "south"
+					}
+				],
+				"completion_message": "Two promises, kept together. Preview, then save this contribution.",
+				"controls": [
+					{
+						"id": "upper-mirror",
+						"kind": "mirror",
+						"optical_id": "upper-mirror",
+						"owner_slot": "p0",
+						"position_cm": [
+							-80,
+							60
+						],
+						"radius_cm": 36
+					},
+					{
+						"id": "south-mirror",
+						"kind": "mirror",
+						"optical_id": "south-mirror",
+						"owner_slot": "p1",
+						"position_cm": [
+							56,
+							350
+						],
+						"radius_cm": 36
+					}
+				],
+				"emitter_sources": [
+					{
+						"emitter_id": "lens-upper",
+						"prop_id": "portable-lens",
+						"socket_id": "court-cradle"
+					},
+					{
+						"emitter_id": "lens-lower",
+						"prop_id": "portable-lens",
+						"socket_id": "court-cradle"
+					}
+				],
+				"first_player_slot": "p0",
+				"goal_policy": {
+					"checkpoint_flag": "east-selector-powered",
+					"kind": "all_receivers",
+					"receiver_ids": [
+						"north-promise",
+						"south-promise"
+					]
+				},
+				"hint_a": "The fitted lens has two paths. Turn the upper mirror toward North and leave that promise lit.",
+				"hint_b": "Your friend's North light is kept. Cross the safe South bridge and align the other mirror so both symbols shine.",
+				"id": "sleeping-lighthouse",
+				"islands": [
+					{
+						"height_cm": 0,
+						"id": "harbour",
+						"rect_cm": [
+							-850,
+							-180,
+							-450,
+							180
+						]
+					},
+					{
+						"height_cm": 0,
+						"id": "court",
+						"rect_cm": [
+							-250,
+							-130,
+							150,
+							130
+						]
+					},
+					{
+						"height_cm": 0,
+						"id": "north",
+						"rect_cm": [
+							-250,
+							-500,
+							150,
+							-240
+						]
+					},
+					{
+						"height_cm": 0,
+						"id": "south",
+						"rect_cm": [
+							-250,
+							240,
+							150,
+							500
+						]
+					}
+				],
+				"optics": {
+					"blockers": [],
+					"bounds_cm": [
+						-900,
+						-560,
+						250,
+						560
+					],
+					"emitters": [
+						{
+							"direction": "west",
+							"enabled": false,
+							"id": "lens-upper",
+							"position_cm": [
+								24,
+								60
+							]
+						},
+						{
+							"direction": "south",
+							"enabled": false,
+							"id": "lens-lower",
+							"position_cm": [
+								56,
+								60
+							]
+						}
+					],
+					"mirrors": [
+						{
+							"enabled": true,
+							"id": "upper-mirror",
+							"orientation": "slash",
+							"position_cm": [
+								-80,
+								60
+							]
+						},
+						{
+							"enabled": true,
+							"id": "south-mirror",
+							"orientation": "slash",
+							"position_cm": [
+								56,
+								350
+							]
+						}
+					],
+					"receivers": [
+						{
+							"enabled": true,
+							"id": "north-promise",
+							"position_cm": [
+								-80,
+								-360
+							]
+						},
+						{
+							"enabled": true,
+							"id": "south-promise",
+							"position_cm": [
+								120,
+								350
+							]
+						}
+					],
+					"schema_version": 1
+				},
+				"props": [
+					{
+						"id": "portable-lens",
+						"owner_slot": "p0",
+						"position_cm": [
+							40,
+							60
+						],
+						"radius_cm": 32,
+						"socket_id": "court-cradle",
+						"surface_id": "court"
+					}
+				],
+				"receiver_action_ticks": 1,
+				"receiver_route_cm": [
+					[
+						-48,
+						350
+					],
+					[
+						56,
+						350
+					]
+				],
+				"receiver_route_entries": {
+					"court": {
+						"align_axis": "x",
+						"align_cm": -48
+					},
+					"court-north": {
+						"align_axis": "x",
+						"align_cm": -48
+					},
+					"harbour": {
+						"align_axis": "z",
+						"align_cm": 0,
+						"join_cm": [
+							-48,
+							0
+						]
+					},
+					"harbour-court": {
+						"align_axis": "z",
+						"align_cm": 0,
+						"join_cm": [
+							-48,
+							0
+						]
+					},
+					"north": {
+						"align_axis": "x",
+						"align_cm": -48
+					}
+				},
+				"required_props": [
+					{
+						"prop_id": "portable-lens",
+						"socket_id": "court-cradle"
+					}
+				],
+				"schema_version": 3,
+				"simulation_version": 3,
+				"sockets": [
+					{
+						"id": "court-cradle",
+						"owner_slot": "p0",
+						"position_cm": [
+							40,
+							60
+						],
+						"prop_id": "portable-lens",
+						"radius_cm": 32,
+						"surface_id": "court"
+					}
+				],
+				"source_policy": {
+					"broken_hint": "The North promise was interrupted. Leave the upper mirror aligned through Finish.",
+					"early_hint": "Align the upper mirror earlier so your partner can reach the South control.",
+					"kind": "steady_receiver",
+					"receiver_id": "north-promise",
+					"steady_hint": "Leave the North promise steady for a moment before finishing.",
+					"unlit_hint": "Turn the upper mirror toward the North receiver."
+				},
+				"stage_id": "two-promises",
+				"stage_version": 1,
+				"title": "Two Promises",
+				"version": 1
+			},
+			"version": 1
+		},
+		{
+			"first_player_slot": "p1",
+			"id": "after-the-first-bell",
+			"native": {
+				"bridges": [
+					{
+						"from_surface": "harbour",
+						"id": "harbour-court",
+						"receiver_id": "",
+						"rect_cm": [
+							-450,
+							-50,
+							-250,
+							50
+						],
+						"to_surface": "court"
+					},
+					{
+						"from_surface": "court",
+						"id": "court-north",
+						"receiver_id": "",
+						"rect_cm": [
+							-100,
+							-240,
+							0,
+							-130
+						],
+						"to_surface": "north"
+					},
+					{
+						"from_surface": "court",
+						"id": "court-south",
+						"receiver_id": "",
+						"rect_cm": [
+							-100,
+							130,
+							0,
+							240
+						],
+						"to_surface": "south"
+					},
+					{
+						"from_surface": "court",
+						"id": "court-rest",
+						"latch_on_enter": true,
+						"receiver_id": "first-path",
+						"rect_cm": [
+							150,
+							-50,
+							240,
+							50
+						],
+						"to_surface": "rest-rock"
+					},
+					{
+						"from_surface": "rest-rock",
+						"id": "rest-tower",
+						"latch_on_enter": true,
+						"receiver_id": "second-path",
+						"rect_cm": [
+							340,
+							-50,
+							450,
+							50
+						],
+						"to_surface": "tower"
+					}
+				],
+				"completion_message": "The tower remembers the way you came. Preview, then save this contribution.",
+				"controls": [
+					{
+						"emitter_id": "selector-light",
+						"id": "south-selector",
+						"kind": "selector",
+						"labels": [
+							"Light the first path",
+							"Light the second path",
+							"Restart the light sequence"
+						],
+						"optical_id": "south-selector",
+						"orientations": [
+							"slash",
+							"slash",
+							"backslash"
+						],
+						"owner_slot": "p1",
+						"position_cm": [
+							56,
+							350
+						],
+						"radius_cm": 36,
+						"states": [
+							"off",
+							"first",
+							"second"
+						]
+					}
+				],
+				"first_player_slot": "p1",
+				"goal": {
+					"id": "tower-bell",
+					"position_cm": [
+						552,
+						0
+					],
+					"radius_cm": 30,
+					"surface_id": "tower"
+				},
+				"goal_policy": {
+					"bridge_ids": [
+						"court-rest",
+						"rest-tower"
+					],
+					"checkpoint_flag": "tower-anchor-lit",
+					"destination_surface": "tower",
+					"kind": "ordered_crossing",
+					"rest_surface": "rest-rock"
+				},
+				"hint_a": "Light the first path long enough for your partner to reach Rest Rock, then light the second. Record both parts before finishing.",
+				"hint_b": "Follow the first light to Rest Rock, then the second to the tower bell. A path keeps your footsteps once you enter it.",
+				"id": "sleeping-lighthouse",
+				"islands": [
+					{
+						"height_cm": 0,
+						"id": "harbour",
+						"rect_cm": [
+							-850,
+							-180,
+							-450,
+							180
+						]
+					},
+					{
+						"height_cm": 0,
+						"id": "court",
+						"rect_cm": [
+							-250,
+							-130,
+							150,
+							130
+						]
+					},
+					{
+						"height_cm": 0,
+						"id": "north",
+						"rect_cm": [
+							-250,
+							-500,
+							150,
+							-240
+						]
+					},
+					{
+						"height_cm": 0,
+						"id": "south",
+						"rect_cm": [
+							-250,
+							240,
+							150,
+							500
+						]
+					},
+					{
+						"height_cm": 0,
+						"id": "rest-rock",
+						"rect_cm": [
+							240,
+							-100,
+							340,
+							100
+						]
+					},
+					{
+						"height_cm": 0,
+						"id": "tower",
+						"rect_cm": [
+							450,
+							-180,
+							850,
+							180
+						]
+					}
+				],
+				"optics": {
+					"blockers": [],
+					"bounds_cm": [
+						-900,
+						-560,
+						900,
+						560
+					],
+					"emitters": [
+						{
+							"direction": "east",
+							"enabled": false,
+							"id": "selector-light",
+							"position_cm": [
+								-120,
+								350
+							]
+						}
+					],
+					"mirrors": [
+						{
+							"enabled": true,
+							"id": "south-selector",
+							"orientation": "slash",
+							"position_cm": [
+								56,
+								350
+							]
+						}
+					],
+					"receivers": [
+						{
+							"enabled": true,
+							"id": "first-path",
+							"position_cm": [
+								56,
+								250
+							]
+						},
+						{
+							"enabled": true,
+							"id": "second-path",
+							"position_cm": [
+								56,
+								470
+							]
+						}
+					],
+					"schema_version": 1
+				},
+				"props": [
+					{
+						"id": "portable-lens",
+						"owner_slot": "p0",
+						"position_cm": [
+							40,
+							60
+						],
+						"radius_cm": 32,
+						"socket_id": "court-cradle",
+						"surface_id": "court"
+					}
+				],
+				"required_flags": [
+					"east-selector-powered"
+				],
+				"required_props": [
+					{
+						"prop_id": "portable-lens",
+						"socket_id": "court-cradle"
+					}
+				],
+				"schema_version": 3,
+				"sequence_margin_ticks": 18,
+				"sequence_route_entries": {
+					"court": {
+						"axis": "z",
+						"value": 0
+					},
+					"court-north": {
+						"axis": "x",
+						"join_cm": [
+							-48,
+							0
+						],
+						"value": -48
+					},
+					"court-south": {
+						"axis": "x",
+						"join_cm": [
+							-48,
+							0
+						],
+						"value": -48
+					},
+					"harbour": {
+						"axis": "z",
+						"value": 0
+					},
+					"harbour-court": {
+						"axis": "z",
+						"value": 0
+					},
+					"north": {
+						"axis": "x",
+						"join_cm": [
+							-48,
+							0
+						],
+						"value": -48
+					},
+					"south": {
+						"axis": "x",
+						"join_cm": [
+							-48,
+							0
+						],
+						"value": -48
+					}
+				},
+				"sequence_routes_cm": [
+					[
+						[
+							288,
+							0
+						]
+					],
+					[
+						[
+							288,
+							0
+						],
+						[
+							552,
+							0
+						]
+					]
+				],
+				"simulation_version": 3,
+				"sockets": [
+					{
+						"id": "court-cradle",
+						"owner_slot": "p0",
+						"position_cm": [
+							40,
+							60
+						],
+						"prop_id": "portable-lens",
+						"radius_cm": 32,
+						"surface_id": "court"
+					}
+				],
+				"source_policy": {
+					"kind": "ordered_windows",
+					"receiver_ids": [
+						"first-path",
+						"second-path"
+					],
+					"selector_id": "south-selector"
+				},
+				"stage_id": "after-the-first-bell",
+				"stage_version": 1,
+				"title": "After the First Bell",
+				"version": 1
+			},
+			"version": 1
+		},
+		{
+			"first_player_slot": "p0",
+			"id": "what-carried-you",
+			"native": {
+				"bridges": [
+					{
+						"from_surface": "harbour",
+						"id": "harbour-court",
+						"receiver_id": "",
+						"rect_cm": [
+							-450,
+							-50,
+							-250,
+							50
+						],
+						"to_surface": "court"
+					},
+					{
+						"from_surface": "court",
+						"id": "court-north",
+						"receiver_id": "",
+						"rect_cm": [
+							-100,
+							-240,
+							0,
+							-130
+						],
+						"to_surface": "north"
+					},
+					{
+						"from_surface": "court",
+						"id": "court-south",
+						"receiver_id": "",
+						"rect_cm": [
+							-100,
+							130,
+							0,
+							240
+						],
+						"to_surface": "south"
+					},
+					{
+						"from_surface": "court",
+						"id": "court-rest",
+						"receiver_id": "",
+						"rect_cm": [
+							150,
+							-50,
+							240,
+							50
+						],
+						"to_surface": "rest-rock"
+					},
+					{
+						"from_surface": "rest-rock",
+						"id": "rest-tower",
+						"receiver_id": "",
+						"rect_cm": [
+							340,
+							-50,
+							450,
+							50
+						],
+						"to_surface": "tower"
+					}
+				],
+				"completion_message": "What carried you has come with you. Preview, then save this contribution.",
+				"controls": [],
+				"emitter_sources": [
+					{
+						"emitter_id": "court-lens-light",
+						"prop_id": "portable-lens",
+						"socket_id": "court-cradle"
+					}
+				],
+				"first_player_slot": "p0",
+				"goal_policy": {
+					"checkpoint_flag": "projector-loaded",
+					"kind": "fit_handoff",
+					"prop_id": "portable-lens",
+					"socket_id": "tower-projector"
+				},
+				"hint_a": "The paths remember. Take the Court lens and leave it on the matching perch at Rest Rock for your partner.",
+				"hint_b": "Meet your friend's recording at Rest Rock. Take the lens they leave, then fit it into the tower projector.",
+				"id": "sleeping-lighthouse",
+				"islands": [
+					{
+						"height_cm": 0,
+						"id": "harbour",
+						"rect_cm": [
+							-850,
+							-180,
+							-450,
+							180
+						]
+					},
+					{
+						"height_cm": 0,
+						"id": "court",
+						"rect_cm": [
+							-250,
+							-130,
+							150,
+							130
+						]
+					},
+					{
+						"height_cm": 0,
+						"id": "north",
+						"rect_cm": [
+							-250,
+							-500,
+							150,
+							-240
+						]
+					},
+					{
+						"height_cm": 0,
+						"id": "south",
+						"rect_cm": [
+							-250,
+							240,
+							150,
+							500
+						]
+					},
+					{
+						"height_cm": 0,
+						"id": "rest-rock",
+						"rect_cm": [
+							240,
+							-100,
+							340,
+							100
+						]
+					},
+					{
+						"height_cm": 0,
+						"id": "tower",
+						"rect_cm": [
+							450,
+							-180,
+							850,
+							180
+						]
+					}
+				],
+				"optics": {
+					"blockers": [],
+					"bounds_cm": [
+						-900,
+						-560,
+						900,
+						560
+					],
+					"emitters": [
+						{
+							"direction": "west",
+							"enabled": false,
+							"id": "court-lens-light",
+							"position_cm": [
+								24,
+								60
+							]
+						}
+					],
+					"mirrors": [
+						{
+							"enabled": true,
+							"id": "upper-mirror",
+							"orientation": "backslash",
+							"position_cm": [
+								-80,
+								60
+							]
+						}
+					],
+					"receivers": [
+						{
+							"enabled": true,
+							"id": "remembered-north",
+							"position_cm": [
+								-80,
+								-360
+							]
+						}
+					],
+					"schema_version": 1
+				},
+				"props": [
+					{
+						"id": "portable-lens",
+						"owner_slot": "p0",
+						"position_cm": [
+							40,
+							60
+						],
+						"radius_cm": 32,
+						"socket_id": "court-cradle",
+						"surface_id": "court"
+					}
+				],
+				"receiver_action_ticks": 2,
+				"receiver_route_cm": [
+					[
+						288,
+						0
+					],
+					[
+						288,
+						64
+					],
+					[
+						288,
+						0
+					],
+					[
+						650,
+						0
+					]
+				],
+				"receiver_route_entries": {
+					"court": {
+						"align_axis": "z",
+						"align_cm": 0
+					},
+					"court-north": {
+						"align_axis": "x",
+						"align_cm": -48,
+						"join_cm": [
+							-48,
+							0
+						]
+					},
+					"court-south": {
+						"align_axis": "x",
+						"align_cm": -48,
+						"join_cm": [
+							-48,
+							0
+						]
+					},
+					"harbour": {
+						"align_axis": "z",
+						"align_cm": 0
+					},
+					"harbour-court": {
+						"align_axis": "z",
+						"align_cm": 0
+					},
+					"north": {
+						"align_axis": "x",
+						"align_cm": -48,
+						"join_cm": [
+							-48,
+							0
+						]
+					},
+					"rest-rock": {
+						"align_axis": "z",
+						"align_cm": 0
+					},
+					"south": {
+						"align_axis": "x",
+						"align_cm": -48,
+						"join_cm": [
+							-48,
+							0
+						]
+					},
+					"tower": {
+						"align_axis": "z",
+						"align_cm": 0
+					}
+				},
+				"required_bridges": [
+					"harbour-court",
+					"court-north",
+					"court-south",
+					"court-rest",
+					"rest-tower"
+				],
+				"required_flags": [
+					"tower-anchor-lit"
+				],
+				"required_props": [
+					{
+						"prop_id": "portable-lens",
+						"socket_id": "court-cradle"
+					}
+				],
+				"schema_version": 3,
+				"simulation_version": 3,
+				"sockets": [
+					{
+						"id": "court-cradle",
+						"owner_slot": "p0",
+						"position_cm": [
+							40,
+							60
+						],
+						"prop_id": "portable-lens",
+						"radius_cm": 32,
+						"surface_id": "court"
+					},
+					{
+						"id": "rest-perch",
+						"owner_slot": "p0",
+						"position_cm": [
+							288,
+							64
+						],
+						"prop_id": "portable-lens",
+						"radius_cm": 28,
+						"surface_id": "rest-rock"
+					},
+					{
+						"id": "tower-projector",
+						"owner_slot": "p1",
+						"position_cm": [
+							650,
+							0
+						],
+						"prop_id": "portable-lens",
+						"radius_cm": 30,
+						"surface_id": "tower"
+					}
+				],
+				"source_policy": {
+					"initial_socket_id": "court-cradle",
+					"kind": "offer_prop",
+					"prop_id": "portable-lens",
+					"release_socket_id": "rest-perch"
+				},
+				"stage_id": "what-carried-you",
+				"stage_version": 1,
+				"title": "What Carried You Can Come With You",
+				"version": 1
+			},
+			"version": 1
+		},
+		{
+			"first_player_slot": "p1",
+			"id": "a-welcome-left-on",
+			"native": {
+				"bridges": [
+					{
+						"from_surface": "harbour",
+						"id": "harbour-court",
+						"receiver_id": "",
+						"rect_cm": [
+							-450,
+							-50,
+							-250,
+							50
+						],
+						"to_surface": "court"
+					},
+					{
+						"from_surface": "court",
+						"id": "court-north",
+						"receiver_id": "",
+						"rect_cm": [
+							-100,
+							-240,
+							0,
+							-130
+						],
+						"to_surface": "north"
+					},
+					{
+						"from_surface": "court",
+						"id": "court-south",
+						"receiver_id": "",
+						"rect_cm": [
+							-100,
+							130,
+							0,
+							240
+						],
+						"to_surface": "south"
+					},
+					{
+						"from_surface": "court",
+						"id": "court-rest",
+						"receiver_id": "",
+						"rect_cm": [
+							150,
+							-50,
+							240,
+							50
+						],
+						"to_surface": "rest-rock"
+					},
+					{
+						"from_surface": "rest-rock",
+						"id": "rest-tower",
+						"receiver_id": "",
+						"rect_cm": [
+							340,
+							-50,
+							450,
+							50
+						],
+						"to_surface": "tower"
+					}
+				],
+				"completion_message": "A welcome, left on. The lighthouse is awake. Preview, then save this contribution.",
+				"controls": [
+					{
+						"id": "beacon-upper-mirror",
+						"kind": "mirror",
+						"optical_id": "beacon-upper-mirror",
+						"owner_slot": "p1",
+						"position_cm": [
+							632,
+							-80
+						],
+						"radius_cm": 28
+					},
+					{
+						"id": "beacon-lower-mirror",
+						"kind": "mirror",
+						"optical_id": "beacon-lower-mirror",
+						"owner_slot": "p0",
+						"position_cm": [
+							668,
+							80
+						],
+						"radius_cm": 28
+					}
+				],
+				"emitter_sources": [
+					{
+						"emitter_id": "projector-upper",
+						"prop_id": "portable-lens",
+						"socket_id": "tower-projector"
+					},
+					{
+						"emitter_id": "projector-lower",
+						"prop_id": "portable-lens",
+						"socket_id": "tower-projector"
+					}
+				],
+				"first_player_slot": "p1",
+				"goal": {
+					"id": "beacon-crest",
+					"owner_slot": "p0",
+					"position_cm": [
+						716,
+						80
+					],
+					"radius_cm": 26,
+					"surface_id": "tower"
+				},
+				"goal_policy": {
+					"checkpoint_flag": "beacon-lit",
+					"kind": "activate_receivers",
+					"receiver_ids": [
+						"beacon-upper",
+						"beacon-lower"
+					]
+				},
+				"hint_a": "The lens has reached the tower. Turn the upper mirror, then hold its light pad. Leave that half of the welcome shining.",
+				"hint_b": "Meet your friend's light at the tower. Align the lower mirror, then stand on the crest and leave the light on together.",
+				"hold_pads": [
+					{
+						"emitter_id": "projector-upper",
+						"id": "beacon-hold",
+						"owner_slot": "p1",
+						"position_cm": [
+							680,
+							-80
+						],
+						"radius_cm": 26,
+						"surface_id": "tower"
+					}
+				],
+				"id": "sleeping-lighthouse",
+				"islands": [
+					{
+						"height_cm": 0,
+						"id": "harbour",
+						"rect_cm": [
+							-850,
+							-180,
+							-450,
+							180
+						]
+					},
+					{
+						"height_cm": 0,
+						"id": "court",
+						"rect_cm": [
+							-250,
+							-130,
+							150,
+							130
+						]
+					},
+					{
+						"height_cm": 0,
+						"id": "north",
+						"rect_cm": [
+							-250,
+							-500,
+							150,
+							-240
+						]
+					},
+					{
+						"height_cm": 0,
+						"id": "south",
+						"rect_cm": [
+							-250,
+							240,
+							150,
+							500
+						]
+					},
+					{
+						"height_cm": 0,
+						"id": "rest-rock",
+						"rect_cm": [
+							240,
+							-100,
+							340,
+							100
+						]
+					},
+					{
+						"height_cm": 0,
+						"id": "tower",
+						"rect_cm": [
+							450,
+							-180,
+							850,
+							180
+						]
+					}
+				],
+				"optics": {
+					"blockers": [],
+					"bounds_cm": [
+						-900,
+						-560,
+						900,
+						560
+					],
+					"emitters": [
+						{
+							"direction": "north",
+							"enabled": false,
+							"id": "projector-upper",
+							"position_cm": [
+								632,
+								0
+							]
+						},
+						{
+							"direction": "south",
+							"enabled": false,
+							"id": "projector-lower",
+							"position_cm": [
+								668,
+								0
+							]
+						}
+					],
+					"mirrors": [
+						{
+							"enabled": true,
+							"id": "beacon-upper-mirror",
+							"orientation": "backslash",
+							"position_cm": [
+								632,
+								-80
+							]
+						},
+						{
+							"enabled": true,
+							"id": "beacon-lower-mirror",
+							"orientation": "slash",
+							"position_cm": [
+								668,
+								80
+							]
+						}
+					],
+					"receivers": [
+						{
+							"enabled": true,
+							"id": "beacon-upper",
+							"position_cm": [
+								760,
+								-80
+							]
+						},
+						{
+							"enabled": true,
+							"id": "beacon-lower",
+							"position_cm": [
+								760,
+								80
+							]
+						}
+					],
+					"schema_version": 1
+				},
+				"props": [
+					{
+						"id": "portable-lens",
+						"owner_slot": "p1",
+						"position_cm": [
+							650,
+							0
+						],
+						"radius_cm": 30,
+						"socket_id": "tower-projector",
+						"surface_id": "tower"
+					}
+				],
+				"receiver_action_ticks": 2,
+				"receiver_route_cm": [
+					[
+						668,
+						0
+					],
+					[
+						668,
+						80
+					],
+					[
+						716,
+						80
+					]
+				],
+				"receiver_route_entries": {
+					"court": {
+						"align_axis": "z",
+						"align_cm": 0
+					},
+					"court-north": {
+						"align_axis": "x",
+						"align_cm": -48,
+						"join_cm": [
+							-48,
+							0
+						]
+					},
+					"court-south": {
+						"align_axis": "x",
+						"align_cm": -48,
+						"join_cm": [
+							-48,
+							0
+						]
+					},
+					"harbour": {
+						"align_axis": "z",
+						"align_cm": 0
+					},
+					"harbour-court": {
+						"align_axis": "z",
+						"align_cm": 0
+					},
+					"north": {
+						"align_axis": "x",
+						"align_cm": -48,
+						"join_cm": [
+							-48,
+							0
+						]
+					},
+					"rest-rock": {
+						"align_axis": "z",
+						"align_cm": 0
+					},
+					"south": {
+						"align_axis": "x",
+						"align_cm": -48,
+						"join_cm": [
+							-48,
+							0
+						]
+					},
+					"tower": {
+						"align_axis": "z",
+						"align_cm": 0
+					}
+				},
+				"required_bridges": [
+					"harbour-court",
+					"court-north",
+					"court-south",
+					"court-rest",
+					"rest-tower"
+				],
+				"required_flags": [
+					"projector-loaded"
+				],
+				"required_props": [
+					{
+						"prop_id": "portable-lens",
+						"socket_id": "tower-projector"
+					}
+				],
+				"schema_version": 3,
+				"simulation_version": 3,
+				"sockets": [
+					{
+						"id": "tower-projector",
+						"owner_slot": "p1",
+						"position_cm": [
+							650,
+							0
+						],
+						"prop_id": "portable-lens",
+						"radius_cm": 30,
+						"surface_id": "tower"
+					}
+				],
+				"source_policy": {
+					"broken_hint": "The upper light was interrupted. Keep the pad held and the mirror aligned through Finish.",
+					"early_hint": "Light the upper branch earlier so your partner has time to reach the lower mirror and crest.",
+					"kind": "steady_receiver",
+					"minimum_hold_ticks": 1,
+					"receiver_id": "beacon-upper",
+					"steady_hint": "Finish while the upper light is shining.",
+					"unlit_hint": "Align the upper mirror, then stand on its matching light pad."
+				},
+				"stage_id": "a-welcome-left-on",
+				"stage_version": 1,
+				"title": "A Welcome, Left On",
+				"version": 1
+			},
+			"version": 1
+		}
+	],
+	"start": {
+		"mechanisms": {
+			"flags": {},
+			"latched_bridges": [],
+			"mirrors": {},
+			"props": {}
+		},
+		"players": {
+			"p0": {
+				"height": 0,
+				"surface_id": "harbour",
+				"x": -760,
+				"z": -100
+			},
+			"p1": {
+				"height": 0,
+				"surface_id": "harbour",
+				"x": -520,
+				"z": 80
+			}
+		}
+	},
+	"title": "Sleeping Lighthouse",
+	"version": 2
+}

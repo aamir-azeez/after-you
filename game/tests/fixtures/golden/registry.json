@@ -1166,13 +1166,13 @@
 			"world_script": "res://presentation/cooperative_world.gd"
 		},
 		"sleeping-lighthouse@2": {
-			"definition_digest": "0f5a41aa23b53d9f97d47851740a1bdd484371bc128f8b319bed9f509a9e8149",
-			"definition_typed_digest": "0f5a41aa23b53d9f97d47851740a1bdd484371bc128f8b319bed9f509a9e8149",
+			"definition_digest": "925adf59d94b970e614451ed67386e4d3dc7d5e706470764a54b9ed4c0e4703f",
+			"definition_typed_digest": "925adf59d94b970e614451ed67386e4d3dc7d5e706470764a54b9ed4c0e4703f",
 			"descriptor": {
 				"checkpoint_text": "Your friend can carry on from here.",
 				"checkpoint_title": "A path kept",
 				"completion_text": "The lighthouse is on.",
-				"definition_hash": "0f5a41aa23b53d9f97d47851740a1bdd484371bc128f8b319bed9f509a9e8149",
+				"definition_hash": "925adf59d94b970e614451ed67386e4d3dc7d5e706470764a54b9ed4c0e4703f",
 				"key": "sleeping-lighthouse@2",
 				"level_id": "sleeping-lighthouse",
 				"level_version": 2,
@@ -1184,8 +1184,8 @@
 				"summary": "The striped lighthouse over the water has been dark all year. I'm fairly sure it's haunted. You packed a picnic anyway, with the good jam. If a ghost turns up, I'm telling it the sandwiches were your idea. Save me the one with the most jam.",
 				"title": "Sleeping Lighthouse"
 			},
-			"initial_checkpoint_hash": "8d66c8218fcf51af3fc8964ec812ecdd84905a09c88f48848b35a7081e4495a7",
-			"initial_checkpoint_typed_digest": "7d88de95e729ba1b5cd40efeea37a465dc439e65bd249e807cbca2f2cc21ec66",
+			"initial_checkpoint_hash": "bcf47388dba77a54bae03fab7f33e0b5c8aa5b8deafdb8d4ecb8aaca5b2d4024",
+			"initial_checkpoint_typed_digest": "bdc8c4d02e49eab9e62a037d7bc217093bd1fd816a4aac0ecd31d611f5dafdb6",
 			"is_cooperative": false,
 			"is_journey": false,
 			"keepsake_local_path": "",
@@ -1210,21 +1210,21 @@
 				"int"
 			],
 			"previous_checkpoint": {
-				"both_fields": "7d88de95e729ba1b5cd40efeea37a465dc439e65bd249e807cbca2f2cc21ec66",
+				"both_fields": "bdc8c4d02e49eab9e62a037d7bc217093bd1fd816a4aac0ecd31d611f5dafdb6",
 				"final": {
 					"fixture": "lighthouse/v2-chain.json#6",
-					"fixture_hash": "40ad42811a4346098112f3ea1545ab94276239eac4c5d1bfbbc85051937ff86b",
-					"previous_hash": "d01cfe5ad569de831675658a0180810b68a5db2fcf50817b4993d88ef18a5080",
+					"fixture_hash": "98b985b91f52e13e96efad7190b234d82cd9aac6567c65d6741b1ab7349e60a1",
+					"previous_hash": "d135d3453f0231b60e1eb9c856fbbcaaf1cda7073c84ccd452c171b6ea332283",
 					"previous_stage_index": "f:5.000000",
-					"previous_typed_digest": "627a1249ebb42bd71e0c7f60f036e09c23874a68335c17a48bf7cd9257a35aaf"
+					"previous_typed_digest": "b92495ced23bead00673fc1a8cee8901f45d58261627b96695aca6c5d6f70d6f"
 				},
 				"initial": {},
 				"mid": {
 					"fixture": "lighthouse/v2-chain.json#3",
-					"fixture_hash": "c3e84555a8ca23fd5c00ce4d9ab6e21381fe63e1c7ec20b1ff62514cddf93f03",
-					"previous_hash": "634912b8499a73e15b5647226c02649a7ee8e3b2920c782ea3ce61726b9a6623",
+					"fixture_hash": "158aac8587a4ca7c575d45e3140c35c13e41dbc3b406eedd79bdc28f36f36dd1",
+					"previous_hash": "3bc79a21b1b89c51f2bf055227459340e2d8c2d6adc5adb5b928e82af79bf77a",
 					"previous_stage_index": "f:2.000000",
-					"previous_typed_digest": "f3e8364e019a478ccfa06e90c24658833d485009dcf923504cca12705a52c3cf"
+					"previous_typed_digest": "4aa901709289238dd91a7ee4504b0015fe7c9edaa2447ecbfcf2d23b8957fba8"
 				},
 				"no_proof": {}
 			},
@@ -1233,25 +1233,25 @@
 					"error": "",
 					"ok": true,
 					"simulation_version": 11,
-					"state_hash": "02ab86964a678c6f4e0e2f78d701b2404594c265b582eee9f10d457a1f46a7d8"
+					"state_hash": "a9cc2f16ba0b93c743552d18d1446c9d3177553c896bed3e2713649a104d7257"
 				},
 				"recording_1": {
 					"error": "",
 					"ok": true,
 					"simulation_version": 11,
-					"state_hash": "02ab86964a678c6f4e0e2f78d701b2404594c265b582eee9f10d457a1f46a7d8"
+					"state_hash": "a9cc2f16ba0b93c743552d18d1446c9d3177553c896bed3e2713649a104d7257"
 				},
 				"recording_11": {
 					"error": "",
 					"ok": true,
 					"simulation_version": 11,
-					"state_hash": "02ab86964a678c6f4e0e2f78d701b2404594c265b582eee9f10d457a1f46a7d8"
+					"state_hash": "a9cc2f16ba0b93c743552d18d1446c9d3177553c896bed3e2713649a104d7257"
 				},
 				"recording_99": {
 					"error": "",
 					"ok": true,
 					"simulation_version": 11,
-					"state_hash": "02ab86964a678c6f4e0e2f78d701b2404594c265b582eee9f10d457a1f46a7d8"
+					"state_hash": "a9cc2f16ba0b93c743552d18d1446c9d3177553c896bed3e2713649a104d7257"
 				}
 			},
 			"resolve": {
@@ -1909,7 +1909,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "The lighthouse is on.",
-						"definition_hash": "0f5a41aa23b53d9f97d47851740a1bdd484371bc128f8b319bed9f509a9e8149",
+						"definition_hash": "925adf59d94b970e614451ed67386e4d3dc7d5e706470764a54b9ed4c0e4703f",
 						"key": "sleeping-lighthouse@2",
 						"level_id": "sleeping-lighthouse",
 						"level_version": 2,
@@ -2258,7 +2258,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "The lighthouse is on.",
-						"definition_hash": "0f5a41aa23b53d9f97d47851740a1bdd484371bc128f8b319bed9f509a9e8149",
+						"definition_hash": "925adf59d94b970e614451ed67386e4d3dc7d5e706470764a54b9ed4c0e4703f",
 						"key": "sleeping-lighthouse@2",
 						"level_id": "sleeping-lighthouse",
 						"level_version": 2,
@@ -2461,7 +2461,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "The lighthouse is on.",
-						"definition_hash": "0f5a41aa23b53d9f97d47851740a1bdd484371bc128f8b319bed9f509a9e8149",
+						"definition_hash": "925adf59d94b970e614451ed67386e4d3dc7d5e706470764a54b9ed4c0e4703f",
 						"key": "sleeping-lighthouse@2",
 						"level_id": "sleeping-lighthouse",
 						"level_version": 2,
@@ -2706,7 +2706,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "The lighthouse is on.",
-						"definition_hash": "0f5a41aa23b53d9f97d47851740a1bdd484371bc128f8b319bed9f509a9e8149",
+						"definition_hash": "925adf59d94b970e614451ed67386e4d3dc7d5e706470764a54b9ed4c0e4703f",
 						"key": "sleeping-lighthouse@2",
 						"level_id": "sleeping-lighthouse",
 						"level_version": 2,
@@ -2924,7 +2924,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "The lighthouse is on.",
-						"definition_hash": "0f5a41aa23b53d9f97d47851740a1bdd484371bc128f8b319bed9f509a9e8149",
+						"definition_hash": "925adf59d94b970e614451ed67386e4d3dc7d5e706470764a54b9ed4c0e4703f",
 						"key": "sleeping-lighthouse@2",
 						"level_id": "sleeping-lighthouse",
 						"level_version": 2,

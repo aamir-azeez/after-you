@@ -26,11 +26,6 @@ var _physical_levers: Dictionary = {}
 ## Lever and selector id -> its piece (kit/pieces/lever.gd, selector.gd);
 ## _physical_levers holds its anchor.
 var _lever_pieces: Dictionary = {}
-## Every hand control of the stage by id (levers, switches, selectors,
-## mirrors) and the value it last showed, so the pip that works one turns to
-## face it (_face_hands).
-var _hand_controls: Dictionary = {}
-var _hand_values: Dictionary = {}
 var _physical_balls: Dictionary = {}
 var _ball_trails: Dictionary = {}
 var _ball_materials: Dictionary = {}
@@ -522,30 +517,6 @@ func _build_physical_pad(pad: Dictionary, heavy: bool) -> void:
 func _look_marks(control: Dictionary) -> Array:
 	return Array(control.get("values", [])).map(func(_value: Variant) -> int: return 1)
 
-## The pip that works a hand control turns to face it, so it stands beside
-## it watching the pull (the engine has it work one from beside its solid
-## footprint, core/solid_footprint.gd). Read from the snapshot alone: a
-## control whose shown value changed, and the pip within its reach (the live
-## one first; a memory works controls too). Presentation only.
-func _face_hands(state: Dictionary, immediate: bool) -> void:
-	var values: Dictionary = {}
-	values.merge(state.get("levers", {}))
-	values.merge(state.get("controls", {}))
-	var players: Dictionary = state.get("players", {})
-	var active := str(state.get("active_slot", "p0"))
-	for id: Variant in _hand_controls:
-		var now: Variant = values.get(id)
-		var was: Variant = _hand_values.get(id)
-		_hand_values[id] = now
-		if immediate or was == null or now == null or was == now: continue
-		var control: Dictionary = _hand_controls[id]
-		for slot: String in [active, "p1" if active == "p0" else "p0"]:
-			var player: Variant = players.get(slot)
-			if not actors.has(slot) or not RouteBarriers.at_control(control, player): continue
-			var toward := Vector2(float(control.position_cm[0]) - float(player.x), float(control.position_cm[1]) - float(player.z))
-			if not toward.is_zero_approx(): actors[slot].facing_target = atan2(toward.x, toward.y)
-			break
-
 ## A lever or a selector in its style (kit/pieces/lever.gd, selector.gd).
 func _build_lever(lever: Dictionary) -> void:
 	var slot := PieceStyles.control_slot(lever)
@@ -686,7 +657,6 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	visual.merge({"mirror_orientation": "slash", "emitter_powered": false, "objective_done": bool(state.get("complete", false)), "optics": {"segments": [], "signals": {}}, "bridges": {}, "mirrors": {}, "selectors": {}, "props": {}}, false)
 	super.present(visual, immediate)
 	pair_tags.present(state)
-	_face_hands(state, immediate)
 	for actor: SpiritVisual in actors.values(): actor.set_celebration(_completion_view, immediate, reduced_motion)
 	if is_instance_valid(garden): _present_garden(false, bool(state.get("complete", false)), immediate)
 	for id: String in _physical_balls:
