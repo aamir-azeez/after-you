@@ -222,20 +222,23 @@ func _dressed_prop(prop: Node3D) -> void:
 	if part != null and part.has_meta("spin"): _spinning.append(part)
 	_waterline(prop)
 
-## A dressing prop standing in the water (over a body, off every floor: a
-## pole down to the bed, a boat, a wreck) makes the water's rings where it
+## A dressing prop standing in the water (Props.stands_in_water(), over a
+## body, off every floor: a pole down to the bed, a boat, a wreck) makes the water's rings where it
 ## meets the surface, at whatever level the water stands, from its foot to its
 ## top (WaterLook.ripple_from; the foam band round it comes with the edge
 ## maps). Its "Waterline" marker sits halfway up that reach.
 func _waterline(prop: Node3D) -> void:
 	var spec: Dictionary = prop.get_meta("dressing_spec", {})
 	var at := Vector2(prop.position.x, prop.position.z)
-	if str(spec.get("kind", "")) in Props.HUNG + Props.GLOWS or waters.body_under(at * 100.0).is_empty(): return
+	if not Props.stands_in_water(str(spec.get("kind", ""))) or waters.body_under(at * 100.0).is_empty(): return
 	for island: Dictionary in current_level.get("islands", []):
 		if PropRules.rect(island.rect_cm).grow(PropRules.LIP).has_point(at): return
 	var base := prop.position.y + (prop.get_parent() as Node3D).position.y if prop.get_parent() != terrain else prop.position.y
-	var low := base - float(spec.get("wade", 0)) / 100.0
-	var high := base + float(Props.extent(spec).height)
+	# Its foot: the base less what its model reaches under it (Props.BELOW).
+	var extent := Props.extent(spec)
+	var foot := base + float(extent.base) - float(spec.get("y", 0)) / 100.0
+	var low := foot - float(spec.get("wade", 0)) / 100.0
+	var high := foot + float(extent.height)
 	var marker := Node3D.new()
 	marker.name = "Waterline"
 	prop.add_child(marker)

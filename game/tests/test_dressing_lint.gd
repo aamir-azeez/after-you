@@ -197,12 +197,13 @@ func _check_extents() -> void:
 func _check_built_worlds() -> void:
 	for key: String in Catalog.keys():
 		var world := dressed_world(root, key)
+		var views := Placement.chapter_views(key, _stage_ids(key))
 		for stage_id: String in _stage_ids(key):
 			show_dressed_stage(world, key, stage_id)
 			var dressed: Array = world.terrain.find_children("*", "Node3D", true, false).filter(func(node: Node) -> bool: return node.has_meta("dressing_kind"))
 			var expected := Props.expand(Catalog.stage_props(Catalog.for_key(key), stage_id)).size()
 			_check(dressed.size() == expected, "Every dressing prop is built: %s %s (%d of %d)" % [key, stage_id, dressed.size(), expected])
-			for line: String in dressing_faults(world, _stage_view(key, stage_id)):
+			for line: String in dressing_faults(world, views[stage_id]):
 				_check(false, "Dressing floats or cuts in %s %s: %s" % [key, stage_id, line])
 			var bodies: Array = world.terrain.find_children("*", "CollisionObject3D", true, false) + world.terrain.find_children("*", "CollisionShape3D", true, false)
 			_check(bodies.is_empty(), "Dressing adds no collision: %s %s" % [key, stage_id])
@@ -441,13 +442,15 @@ static func shadow_pairs(world: Node3D, view: Dictionary, gap: float) -> Array[S
 ##    point under a prop's foot (its lowest meshes, where it meets the ground)
 ##    lies on one, the prop's base at most REST over its top and at most PropRules.SUNK
 ##    under it. A bank itself touches a floor or a bank that does.
-##  - Over a body of water a point passes when the prop reaches the water's
+##  - Over a body of water a point passes only for a kind that may stand in
+##    open water (Props.stands_in_water()) when the prop reaches the water's
 ##    bed (its lowest mesh at most PropRules.BED_GRACE over it; a boat floats) and
 ##    makes the water's rings (WaterLook.ripple_from: its waterline, with the
 ##    foam every mesh crossing a level gets), so at every level, low tide too.
 ##  - No mesh of a prop cuts into a walking space (the floor's slab or the
-##    room a spirit walks in), a control's place, a wall that rises past its
-##    base, or another prop, by more than PropRules.CUT across, along and in height.
+##    room a spirit walks in), a control's place, any other shown mesh of the
+##    world (a floor, a deck, a wall, a piece) but the ground under it, or
+##    another prop, by more than PropRules.CUT across, along and in height.
 static func dressing_faults(world: Node3D, view: Dictionary) -> Array[String]:
 	var to_local: Transform3D = world.terrain.global_transform.affine_inverse()
 	var props: Array = world.terrain.find_children("*", "Node3D", true, false).filter(func(node: Node) -> bool: return node.has_meta("dressing_kind") and node.has_meta("dressing_spec"))
@@ -470,7 +473,7 @@ static func dressing_faults(world: Node3D, view: Dictionary) -> Array[String]:
 		var prop: Node3D = owner_of.get(mesh)
 		if prop == null:
 			grounds.append(shape)
-			if mesh.mesh is BoxMesh: walls.append(shape)
+			walls.append(shape)
 			continue
 		if str(prop.get_meta("dressing_kind")) == "bank": grounds.append(shape.merged({"bank": prop}))
 		if not parts.has(prop): parts[prop] = []
@@ -502,7 +505,7 @@ static func dressing_faults(world: Node3D, view: Dictionary) -> Array[String]:
 					continue
 				if not body.is_empty():
 					wet = true
-					if wading and (kind in Props.FLOATS or low <= float(waters.bed_at(point * 100.0)) + PropRules.BED_GRACE): continue
+					if wading and Props.stands_in_water(kind) and (kind in Props.FLOATS or low <= float(waters.bed_at(point * 100.0)) + PropRules.BED_GRACE): continue
 				off.append(point)
 		if not off.is_empty():
 			found.append("%s floats: %s (%d foot points off, first at %.2f, %.2f; foot at %.2f m)" % [label, "stands in water short of its bed or with no waterline" if wet else "rests on nothing", off.size(), off[0].x, off[0].y, low])
@@ -518,10 +521,15 @@ static func dressing_faults(world: Node3D, view: Dictionary) -> Array[String]:
 				var room := {"outline": _corners(place.rect), "low": float(place.y), "high": float(place.y) + PropRules.SPIRIT}
 				if _cuts(shape, room): cuts[str(place.name)] = true
 			for wall: Dictionary in walls:
-				# The ground it stands on or sunk in is not a wall, nor is what hangs
-				# in the air (bunting): a wall rises from about its ground.
+				# The ground it stands on or sunk in is not in its way, nor is what
+				# hangs in the air (bunting, fireflies): a wall rises from about its ground.
 				if float(wall.high) <= low + PropRules.SUNK + 0.001 or float(wall.low) > low + WALL_FOOT: continue
-				if _cuts(shape, wall): cuts["wall %s (%s, %.2f to %.2f m)" % [wall.name, _bounds(wall.outline), wall.low, wall.high]] = true
+				if _cuts(shape, wall): cuts["%s (%s, %.2f to %.2f m)" % [wall.name, _bounds(wall.outline), wall.low, wall.high]] = true
+			# Every other floor the world shows (the whole chapter's), as its slab.
+			for island: Dictionary in view.get("chapter_islands", []):
+				if str(island.id) == str(spec.get("surface", "")): continue
+				var top := float(island.get("height_cm", 0)) / 100.0
+				if _cuts(shape, {"outline": _corners(PropRules.rect(island.rect_cm)), "low": top - SLAB, "high": top}): cuts["floor " + str(island.id)] = true
 			for other: Node3D in parts:
 				if other == prop or str(other.get_meta("dressing_kind")) == "bank" or bool(Props.extent(other.get_meta("dressing_spec")).flat): continue
 				for piece: Dictionary in parts[other]:

@@ -88,6 +88,18 @@ static func stage_view(key: String, stage_id: String, level: Dictionary = {}) ->
 		view["grounds"] = view.water.get("grounds", [])
 	return view
 
+## Every stage's view (stage_view()), each also holding the floors of the
+## whole chapter as "chapter_islands": a journey world shows them all at
+## once, so scenery out in the open keeps off every one.
+static func chapter_views(key: String, stages: Array, level: Dictionary = {}) -> Dictionary:
+	var views: Dictionary = {}
+	var islands: Array = []
+	for stage_id: String in stages:
+		views[stage_id] = stage_view(key, stage_id, level)
+		islands.append_array(views[stage_id].get("islands", []))
+	for stage_id: String in stages: views[stage_id]["chapter_islands"] = islands
+	return views
+
 # --- Placing --------------------------------------------------------------------
 
 ## True when the dressing places anything by a floor's edge.
@@ -295,10 +307,11 @@ static func _prop(spec: Dictionary, floors: Dictionary, banks: Array, stage: Dic
 		out = maxf(out, _clear_of_floor(lifted, probe, str(spec.edge), across))
 	# Whole on its ground: across its bank, else on the floor's lip, squeezed
 	# smaller to fit (at least LEAST_SIZE). A pole that cannot rest stands in
-	# the water there down to its bed (Props.WADERS); a boat floats. Anything
-	# else that cannot rest is not laid; a line is laid where it is asked and
-	# settle() gives it a footing.
+	# the water there down to its bed (Props.WADERS); a boat floats. Any other
+	# single prop or line that cannot rest is laid where it is asked, just off
+	# its edge, and settle() gives it a footing; a row's prop is not laid.
 	var wade := 0
+	var footed := false
 	# A line off its edge with no bank is given a footing when it settles.
 	if str(made.kind) not in Props.FLOATS and not (line and under.is_empty()):
 		var band := _rest_band(under, bool(extent.flat))
@@ -312,8 +325,12 @@ static func _prop(spec: Dictionary, floors: Dictionary, banks: Array, stage: Dic
 				out = maxf(out, PropRules.WATER_RIM * 100.0 + half + CLEARANCE)
 				wade = _wade(stage.view, _point(edge, t, out), float(stage.heights.get(made.surface, 0.0)) + float(made.get("y", 0)) / 100.0)
 				if wade == 0: return []
+			elif single and under.is_empty():
+				# Clear of a fender or parapet on a floor's edge over water.
+				footed = true
+				out = maxf(out, _rim(stage.view, _point(edge, t, out)) + across * 0.5 + CLEARANCE)
 			else: return []
-		if wade == 0: out = clampf(out, float(band[0]) + half, float(band[1]) - half)
+		if wade == 0 and not footed: out = clampf(out, float(band[0]) + half, float(band[1]) - half)
 	var on: Array = under.filter(func(bank: Dictionary) -> bool: return out >= float(bank.near) and out <= float(bank.far))
 	if not on.is_empty() and not spec.has("y"): made["y"] = Props.bank_top(on[0].spec)
 	if str(spec.edge) == "front" and not spec.has("size"): made["size"] = minf(float(made.get("size", 1.0)), _low_size(made))
@@ -418,22 +435,27 @@ static func _on_banks(specs: Array) -> Array:
 ##   - a support post (a "post" under a floor) stands from the ground under it
 ##     to the floor's underside, else from the water's bed, else is left out;
 ##   - a pole (Props.WADERS) with water under it and no ground stands in the
-##     water down to its bed ("wade"); anything else put out in open water
-##     stands as put; a boat with no water lies on ground or is left out; a
+##     water down to its bed ("wade"); any other kind that may stand in open
+##     water (Props.stands_in_water()) stands whole in it down to its bed (a
+##     boat floats); a boat with no water lies on ground or is left out; a
 ##     kind set into what the world builds (Props.FIXTURES) stands as put;
 ##   - any other prop that floats or stands in another moves to the nearest
 ##     spot, in rings of SETTLE_STEP cm out to SETTLE_REACH, where it rests,
 ##     squeezed down to LEAST_SIZE if need be (a line slides across itself,
-##     then gives way at its ends; a line standing off its floor's edge with
-##     nothing under it gets a footing: a low bank of the stage's own look from
-##     the edge out under it); what still cannot stand is left out. A prop
-##     given no "y" whose spot is on a bank stands on its top.
+##     then gives way at its ends); one standing off its floor's edge with
+##     nothing under it gets a footing: a low bank of the stage's own look
+##     from the edge out under it; what still cannot stand is left out. A
+##     prop given no "y" whose spot is on a bank stands on its top.
 ## catalog.gd settles every dressing this way stage by stage, placed by an
 ## edge or by hand, so nothing a reader builds floats or cuts into the stage.
 static func settle(specs: Array, view: Dictionary) -> Array:
 	var stage := PropRules.scene(view)
 	stage["view"] = view
+	# Every floor the world shows (the whole chapter's, view "chapter_islands"):
+	# what stands in open water keeps off them all.
 	stage["floors"] = PropRules.grounds(view)
+	for island: Dictionary in view.get("chapter_islands", []):
+		stage.floors.append({"rect": PropRules.rect(island.rect_cm).grow(PropRules.LIP), "top": float(island.get("height_cm", 0)) / 100.0, "name": "floor " + str(island.id)})
 	var all := Props.expand(specs)
 	var banks: Dictionary = {}
 	var laid: Array = []
@@ -491,14 +513,15 @@ static func _settle_one(spec: Dictionary, stage: Dictionary, all_grounds: Array,
 	if spec.has("from") and spec.has("to"): return _settle_line(spec, stage, grounds, taken)
 	if not spec.has("at"): return spec
 	# Out in open water a pole wades to the bed (a boat floats). A boat with no
-	# water under it lies on ground or is left out.
-	var wet := not _water_at(view, _spot(spec)).is_empty() and not _centre_on_ground(spec, stage, grounds)
+	# water under it lies on ground or is left out. Only a kind that may stand
+	# in open water (Props.stands_in_water()) does; any other looks for ground.
+	var wet := Props.stands_in_water(kind) and not _water_at(view, _spot(spec)).is_empty() and not _centre_on_ground(spec, stage, grounds)
 	if wet and Props.WADERS.has(kind):
 		var waded := _clear_of_rim(spec, view)
 		var wade := _wade(view, _spot(waded), _base(waded, stage))
 		if wade > 0: return waded.merged({"wade": wade}, true)
-	# Anything else put out in open water stands whole in it, clear of every
-	# prop before it, down to its bed: where it was put, else the nearest such
+	# Any other kind that may stand in open water stands whole in it, clear of
+	# every prop before it, down to its bed: where it was put, else the nearest such
 	# spot (rings of WET_STEP cm out to WET_REACH); else it is left out.
 	if wet:
 		for offset: Vector2 in [Vector2.ZERO] + WET_OFFSETS:
@@ -519,7 +542,19 @@ static func _settle_one(spec: Dictionary, stage: Dictionary, all_grounds: Array,
 			var moved: Dictionary = sized.duplicate()
 			moved["at"] = _cm(origin + offset)
 			if _rests_clear(moved, stage, grounds, taken) and PropRules.faults(moved, stage).is_empty(): return moved
-	return {}
+	# Standing off its floor's edge with nothing under it: a footing.
+	return _footed(spec, stage, taken)
+
+## A prop or a line given a footing (_footing()) and raised onto it, clear
+## of every prop before it; {} when it gets none.
+static func _footed(spec: Dictionary, stage: Dictionary, taken: Array) -> Dictionary:
+	var footing := _footing(spec, stage)
+	if footing.is_empty(): return {}
+	var raised: Dictionary = spec.merged({"y": Props.bank_top(footing)}, true)
+	var solid := PropRules.solid(raised, stage.heights)
+	if taken.any(func(other: Dictionary) -> bool: return PropRules.meet(solid, other)) or not PropRules.faults(raised, stage).is_empty(): return {}
+	raised["footing"] = footing
+	return raised
 
 ## The rings a settling prop looks out in (cm), nearest first.
 static var OFFSETS: Array[Vector2] = FloorSpots.offsets(SETTLE_STEP, int(SETTLE_REACH / SETTLE_STEP))
@@ -542,10 +577,11 @@ const WET_STEP := 10.0
 const WET_REACH := 150.0
 static var WET_OFFSETS: Array[Vector2] = FloorSpots.offsets(WET_STEP, int(WET_REACH / WET_STEP)).slice(1)
 
-## Every foot point of the prop over water, none on a floor.
+## Every foot point of the prop over water, none on a floor nor its fender
+## or parapet (PropRules.WATER_RIM past it).
 static func _in_water(spec: Dictionary, stage: Dictionary) -> bool:
 	for point: Vector2 in PropRules.foot_points(spec):
-		if _water_at(stage.view, point * 100.0).is_empty() or stage.floors.any(func(ground: Dictionary) -> bool: return (ground.rect as Rect2).has_point(point)): return false
+		if _water_at(stage.view, point * 100.0).is_empty() or stage.floors.any(func(ground: Dictionary) -> bool: return (ground.rect as Rect2).grow(PropRules.WATER_RIM).has_point(point)): return false
 	return true
 
 ## The prop lowered until it reaches the water's bed, if it stops short.
@@ -711,22 +747,18 @@ static func _settle_line(spec: Dictionary, stage: Dictionary, grounds: Array, ta
 					if not taken.any(func(other: Dictionary) -> bool: return PropRules.meet(solid, other)): return trimmed
 				cut += 5.0
 	# Standing off its floor's edge with nothing under it: a footing.
-	var footing := _footing(spec, stage)
-	if footing.is_empty(): return {}
-	var raised: Dictionary = spec.merged({"y": Props.bank_top(footing)}, true)
-	raised["footing"] = footing
-	return raised
+	return _footed(spec, stage, taken)
 
 ## A line's footing cm past it, how high a footing stands (cm), and the
 ## farthest (cm) off its floor's edge a line is given one.
 const FOOTING_PAD := 6.0
 const FOOTING_HEIGHT := 6
-const FOOTING_REACH := 60.0
+const FOOTING_REACH := 100.0
 
-## A low bank under a line that stands off its floor's edge, parallel to it:
-## from the edge out to FOOTING_PAD past the line, along its length, in the
-## look of a bank on the same floor (else the plain bank); {} when the line
-## runs along no edge of its floor within FOOTING_REACH, or the bank would
+## A low bank under a prop or a line that stands off its floor's edge: from
+## the edge out to FOOTING_PAD past it, along its length (a prop's width),
+## in the look of a bank on the same floor (else the plain bank); {} when it
+## stands off no edge of its floor within FOOTING_REACH, or the bank would
 ## break a lint rule.
 static func _footing(spec: Dictionary, stage: Dictionary) -> Dictionary:
 	var surface := str(spec.get("surface", ""))
@@ -734,23 +766,27 @@ static func _footing(spec: Dictionary, stage: Dictionary) -> Dictionary:
 	for island: Dictionary in stage.view.get("islands", []):
 		if str(island.id) == surface: r = island.rect_cm
 	if r.is_empty(): return {}
-	var from := Vector2(float(spec.from[0]), float(spec.from[1]))
-	var to := Vector2(float(spec.to[0]), float(spec.to[1]))
 	var area: Rect2 = Props.extent(spec).rect
-	var half := minf(area.size.x, area.size.y) * 50.0
+	# A prop's foot: the share of its footprint that rests (Props.FOOT_SHARE).
+	var foot := area.size * float(Props.FOOT_SHARE.get(str(spec.get("kind", "")), 1.0))
+	var low := (area.get_center() - foot * 0.5) * 100.0
+	var high := (area.get_center() + foot * 0.5) * 100.0
+	if spec.has("from") and spec.has("to"):
+		var from := Vector2(float(spec.from[0]), float(spec.from[1]))
+		var to := Vector2(float(spec.to[0]), float(spec.to[1]))
+		var half := minf(area.size.x, area.size.y) * 50.0
+		if absf(from.y - to.y) >= 1.0 and absf(from.x - to.x) >= 1.0: return {}
+		low = Vector2(minf(from.x, to.x), minf(from.y, to.y)) - Vector2.ONE * half
+		high = Vector2(maxf(from.x, to.x), maxf(from.y, to.y)) + Vector2.ONE * half
 	var rect: Array = []
-	if absf(from.y - to.y) < 1.0:
-		var z := from.y
-		var x0 := minf(from.x, to.x) - half
-		var x1 := maxf(from.x, to.x) + half
-		if z < float(r[1]) and float(r[1]) - z <= FOOTING_REACH: rect = [x0, z - half - FOOTING_PAD, x1, float(r[1])]
-		elif z > float(r[3]) and z - float(r[3]) <= FOOTING_REACH: rect = [x0, float(r[3]), x1, z + half + FOOTING_PAD]
-	elif absf(from.x - to.x) < 1.0:
-		var x := from.x
-		var z0 := minf(from.y, to.y) - half
-		var z1 := maxf(from.y, to.y) + half
-		if x < float(r[0]) and float(r[0]) - x <= FOOTING_REACH: rect = [x - half - FOOTING_PAD, z0, float(r[0]), z1]
-		elif x > float(r[2]) and x - float(r[2]) <= FOOTING_REACH: rect = [float(r[2]), z0, x + half + FOOTING_PAD, z1]
+	var x_in := low.x >= float(r[0]) - 1.0 and high.x <= float(r[2]) + 1.0
+	var z_in := low.y >= float(r[1]) - 1.0 and high.y <= float(r[3]) + 1.0
+	# Over water it starts past the fender or parapet on the floor's edge (_rim()).
+	var mid := (low + high) * 0.5
+	if x_in and high.y <= float(r[1]) + 1.0 and float(r[1]) - low.y <= FOOTING_REACH: rect = [low.x - FOOTING_PAD, low.y - FOOTING_PAD, high.x + FOOTING_PAD, float(r[1]) - _rim(stage.view, Vector2(mid.x, float(r[1]) - PropRules.LIP * 100.0))]
+	elif x_in and low.y >= float(r[3]) - 1.0 and high.y - float(r[3]) <= FOOTING_REACH: rect = [low.x - FOOTING_PAD, float(r[3]) + _rim(stage.view, Vector2(mid.x, float(r[3]) + PropRules.LIP * 100.0)), high.x + FOOTING_PAD, high.y + FOOTING_PAD]
+	elif z_in and high.x <= float(r[0]) + 1.0 and float(r[0]) - low.x <= FOOTING_REACH: rect = [low.x - FOOTING_PAD, low.y - FOOTING_PAD, float(r[0]) - _rim(stage.view, Vector2(float(r[0]) - PropRules.LIP * 100.0, mid.y)), high.y + FOOTING_PAD]
+	elif z_in and low.x >= float(r[2]) - 1.0 and high.x - float(r[2]) <= FOOTING_REACH: rect = [float(r[2]) + _rim(stage.view, Vector2(float(r[2]) + PropRules.LIP * 100.0, mid.y)), low.y - FOOTING_PAD, high.x + FOOTING_PAD, high.y + FOOTING_PAD]
 	if rect.is_empty(): return {}
 	var bank := {"kind": "bank", "rect": rect.map(func(value: float) -> int: return roundi(value)), "surface": surface, "height": FOOTING_HEIGHT}
 	for other: Dictionary in stage.get("banks", []):

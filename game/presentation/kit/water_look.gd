@@ -482,20 +482,36 @@ func _standing_boxes(water_nodes: Array) -> Array:
 		var mesh := node as MeshInstance3D
 		if mesh.mesh == null: continue
 		var shown := true
+		var prop: Node3D = null
 		var walk: Node = mesh
 		while walk != terrain and walk != null:
 			if skip.has(walk) or (walk is Node3D and not (walk as Node3D).visible):
 				shown = false
 				break
+			if walk.has_meta("dressing_kind"): prop = walk
 			walk = walk.get_parent()
 		if not shown: continue
 		# A mesh its shader places (route barriers, pair tags) is not its box,
 		# and anything wide both ways is a floor the water already ends at.
 		if mesh.material_override is ShaderMaterial: continue
 		var box: AABB = into * (mesh.global_transform * mesh.get_aabb())
-		if box.size.x > WIDEST and box.size.z > WIDEST: continue
+		if box.size.x > WIDEST and box.size.z > WIDEST:
+			# A wide dressing prop standing in the water (a wreck, a hut on
+			# stilts) meets it round its foot (Props.FOOT_SHARE), a disc.
+			if prop == null: continue
+			found.append([_foot_box(prop, box, into), true])
+			continue
 		found.append([box, mesh.mesh is CylinderMesh or mesh.mesh is SphereMesh or mesh.mesh is CapsuleMesh])
 	return found
+
+## A dressing prop's foot (terrain space) at `box`'s heights: its kit
+## footprint cut to the share that stands on the ground, round its spot.
+static func _foot_box(prop: Node3D, box: AABB, into: Transform3D) -> AABB:
+	var spec: Dictionary = prop.get_meta("dressing_spec", {})
+	var Props = load("res://presentation/kit/props.gd")
+	var size: Vector2 = (Props.extent(spec).rect as Rect2).size * float(Props.FOOT_SHARE.get(str(spec.get("kind", "")), 1.0))
+	var at: Vector3 = into * prop.global_position
+	return AABB(Vector3(at.x - size.x * 0.5, box.position.y, at.z - size.y * 0.5), Vector3(size.x, box.size.y, size.y))
 
 ## One edge map: solid everywhere but the wet rectangles, solid again under
 ## each footprint (a disc for a round one), then averaged into EDGE_MIP's

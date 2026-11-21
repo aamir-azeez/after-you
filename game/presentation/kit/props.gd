@@ -62,8 +62,17 @@ const BELOW := {"rock": 0.07, "fishing_rod": 0.14, "reed_bed": 0.16, "dead_tree"
 const FLOATS := ["boat"]
 ## Kinds on a pole that may stand in water with no ground under them: given
 ## "wade" (cm), the pole runs that far down under the base to the water's
-## bed. Each is the pole's width at size 1 (metres).
-const WADERS := {"post": 0.11, "post_box": 0.07, "lamp_post": 0.07, "lantern": 0.05, "bollard": 0.11}
+## bed. Each is the pole's width at size 1 (metres). A mooring post only: a
+## lamp or a mailbox by the water stands on ground (a footing if need be).
+const WADERS := {"post": 0.11}
+## Kinds that may stand out in open water on purpose, down to its bed (a
+## boat floats on it, a pole wades): landmarks of a marsh or a shore. Any
+## other kind rests on ground.
+const IN_WATER := ["windmill", "stilt_hut", "sunken_boat", "dead_tree", "reed_bed", "reeds", "rock"]
+
+## Whether a kind may stand out in open water (IN_WATER, FLOATS, WADERS).
+static func stands_in_water(kind: String) -> bool:
+	return kind in IN_WATER or kind in FLOATS or WADERS.has(kind)
 ## Flat kinds that cover a patch of floor (rugs, and paths of stones or
 ## boards): small markers on the floor keep off them (island_world.floor_covers).
 const FLOOR_COVERS := ["rug", "path"]
@@ -107,7 +116,7 @@ static func extent(spec: Dictionary) -> Dictionary:
 		"pot": radius = 0.12 * s; height = 0.34 * s
 		"fern": radius = 0.28 * s; height = 0.4 * s
 		"crate": radius = 0.2 * s; height = 0.32 * s * (2.0 if spec.get("stack", false) else 1.0)
-		"signpost": radius = 0.34 * s; height = 1.05 * s
+		"signpost": radius = 0.38 * s; height = 1.05 * s
 		"cottage": half = Vector2(float(spec.get("width", 160)) * 1.225, float(spec.get("depth", 110)) * 1.42) / 200.0 * s; height = 2.0 * s
 		"tower": radius = 0.75 * s; height = 3.3 * s
 		"post": radius = 0.07 * s; height = float(spec.get("height", 100)) / 100.0

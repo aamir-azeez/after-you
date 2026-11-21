@@ -179,8 +179,9 @@ static func _settled(props: Dictionary, key: String) -> Dictionary:
 	var stages := Placement.stage_ids(key, level)
 	if stages.is_empty(): return props
 	var result: Dictionary = {}
+	var views := Placement.chapter_views(key, stages, level)
 	for stage_id: String in stages:
-		result[stage_id] = Placement.settle(stage_props({"props": props}, stage_id), Placement.stage_view(key, stage_id, level))
+		result[stage_id] = Placement.settle(stage_props({"props": props}, stage_id), views[stage_id])
 	var settled := _shared(result)
 	# A stage the level does not have stays as written (the lint names it).
 	for stage: String in props:
