@@ -23,7 +23,10 @@ const InGameModal = preload("res://presentation/in_game_modal.gd")
 const HardMode = preload("res://services/hard_mode.gd")
 const Isles = preload("res://presentation/keepsakes/home_isles.gd")
 const StaticBatch = preload("res://presentation/kit/static_batch.gd")
+const Reach = preload("res://tests/keepsake_reach.gd")
 const SPIRIT_HEIGHT := 1.15
+## The Home islands' trees along their back edges (x, at z -2.87 to -2.37).
+const TREE_XS := [2.45, 3.95, -4.15, -2.65]
 ## The water a keepsake pours or rocks (services/sound_cues.gd), heard beside its beats.
 const WATER_CUES := ["drip", "slosh"]
 ## Every beat earned: a keepsake that strikes several kit bells in a beat
@@ -216,7 +219,7 @@ func _check_layout_clearance() -> void:
 		var context := " at %s" % size
 		_check(layer.shown_ids().size() == States.entries().size(), "Everything earned shows every keepsake" + context)
 		var trees: Array[PackedVector2Array] = []
-		for tree_x: float in [2.45, 3.95, -4.15, -2.65]:
+		for tree_x: float in TREE_XS:
 			trees.append(PackedVector2Array([Vector2(tree_x - 0.25, -2.87), Vector2(tree_x + 0.25, -2.87), Vector2(tree_x + 0.25, -2.37), Vector2(tree_x - 0.25, -2.37)]))
 		var header := Rect2(size.x - 310, 0, 310, 92)
 		var box: Rect2 = stage._keepsake_box.get_global_rect()
@@ -269,6 +272,7 @@ func _check_isles() -> void:
 		_check(not layer.near_lowering_crossing(Vector3(middle.x, 0, middle.y), Stage.BRIDGE_NOTICE), "Walking the %s bridge never raises the Home bridge" % id)
 		var center: Vector2 = Isles.ISLES[id].center
 		_check(layer.walkable(Vector3(center.x, 0, center.y)) or layer.blocks(Vector3(center.x, 0, center.y), Layer.WALK_CLEARANCE), "The %s isle is ground" % id)
+	_check_real_reach(layer)
 	# The lighthouse jetty is ground past the isle's edge.
 	var jetty: Vector3 = layer.trigger_point("sleeping-lighthouse")
 	_check(not layer.island_floor("journey_left").has_point(Vector2(jetty.x, jetty.z)) and layer.walkable(jetty), "The jetty's end is past the isle's edge and still ground")
@@ -299,6 +303,77 @@ func _check_isles() -> void:
 	_check(free_isles != null and free_isles.get_node_or_null("Isle_tide") != null and free_isles.get_node_or_null("Isle_journey_left") == null and free_isles.get_node_or_null("Isle_journey_right") == null, "A build that sells nothing has the tide isle and no journey isles")
 	_check(not free.layer.island_floor("journey_left").has_area(), "and walks no journey isle")
 	await _close(free)
+
+## Built from the real meshes (Blender models included) at rest and through
+## every tap with every upgrade (tests/keepsake_reach.gd), no keepsake's
+## pieces meet another keepsake's or the Home trees': the solids the checks
+## above compare are typed by hand, and a piece reaching past them (a spout,
+## a swinging arm) would clip unseen. Two pieces meet where their outlines on
+## the ground and the heights they span both do.
+func _check_real_reach(layer: Node3D) -> void:
+	var started := Time.get_ticks_msec()
+	var pieces := {}
+	for id: String in layer.shown_ids():
+		var builder: RefCounted = layer._builders[id]
+		var placed: Transform3D = layer.slot_transform(id)
+		var shapes: Array = []
+		for shape: Dictionary in Reach.every_shape(Reach.sweep(layer, builder, builder.full_state())):
+			if shape.hull.size() < 3: continue
+			var outline := Reach.ground(placed, shape)
+			shapes.append({"outline": outline, "rect": _polygon_rect(outline), "low": shape.low, "high": shape.high})
+		pieces[id] = shapes
+	var trees: Array = []
+	for tree_x: float in TREE_XS:
+		var outline := PackedVector2Array([Vector2(tree_x - 0.25, -2.87), Vector2(tree_x + 0.25, -2.87), Vector2(tree_x + 0.25, -2.37), Vector2(tree_x - 0.25, -2.37)])
+		trees.append({"outline": outline, "rect": _polygon_rect(outline), "low": 0.0, "high": 2.0})
+	var ids: Array = pieces.keys()
+	for index in range(ids.size()):
+		var others: Array = [["the Home trees", trees]]
+		for other in range(index + 1, ids.size()): others.append([ids[other], pieces[ids[other]]])
+		for other: Array in others:
+			var where := _first_meeting(pieces[ids[index]], other[1])
+			_check(where.is_empty(), "%s's real meshes stay clear of %s at rest and through every tap: %s" % [ids[index], other[0], where])
+	print("HOME KEEPSAKE LAYER: real reach of %d keepsakes checked in %d ms" % [ids.size(), Time.get_ticks_msec() - started])
+
+## Pieces that only graze (their overlap less than this deep, a path's edge
+## under a plinth's) touch; deeper, they clip.
+const GRAZE := 0.03
+
+## Where two sets of pieces first meet ("" for nowhere).
+func _first_meeting(mine: Array, theirs: Array) -> String:
+	var bounds := _rect_of(theirs)
+	var near := mine.filter(func(piece: Dictionary) -> bool: return (piece.rect as Rect2).intersects(bounds))
+	if near.is_empty(): return ""
+	var close := _rect_of(near)
+	for b: Dictionary in theirs.filter(func(piece: Dictionary) -> bool: return (piece.rect as Rect2).intersects(close)):
+		for a: Dictionary in near:
+			if a.low >= b.high or b.low >= a.high or not (a.rect as Rect2).intersects(b.rect): continue
+			for overlap: PackedVector2Array in Geometry2D.intersect_polygons(a.outline, b.outline):
+				var depth := _depth(overlap)
+				if depth > GRAZE: return "%s (%.2f to %.2f m up) meets %s (%.2f to %.2f m up), %.3f m deep" % [a.rect, a.low, a.high, b.rect, b.low, b.high, depth]
+	return ""
+
+## How deep an overlap is: twice its area over its perimeter, which is a
+## sliver's width and half a square's side, whichever way it lies.
+func _depth(overlap: PackedVector2Array) -> float:
+	var area := 0.0
+	var perimeter := 0.0
+	for index in range(overlap.size()):
+		var a := overlap[index]
+		var b := overlap[(index + 1) % overlap.size()]
+		area += a.cross(b) * 0.5
+		perimeter += a.distance_to(b)
+	return 2.0 * absf(area) / maxf(perimeter, 0.0001)
+
+func _rect_of(pieces: Array) -> Rect2:
+	var rect: Rect2 = pieces[0].rect
+	for piece: Dictionary in pieces: rect = rect.merge(piece.rect)
+	return rect
+
+func _polygon_rect(polygon: PackedVector2Array) -> Rect2:
+	var rect := Rect2(polygon[0], Vector2.ZERO)
+	for corner: Vector2 in polygon: rect = rect.expand(corner)
+	return rect
 
 ## In Explore a step sets a keepsake off: walking into its trigger plays it
 ## once (again only after walking out), walking through the arch rings it, a

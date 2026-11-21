@@ -405,7 +405,9 @@ spirit_idle 10
 spirit_look 2
 spirit_motion 4
 stage_blocks 9
-staged_build 117
+staged_build 58
+staged_build_tide 61
+staged_build_water 60
 static_batch 20
 step_seats 6
 store_loading_feedback 9

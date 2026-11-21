@@ -152,7 +152,7 @@ home_keepsake_lifecycle 1
 home_keepsake_scan 3
 home_keepsake_states 1
 home_keepsakes 3
-home_menu 3
+home_menu 2
 home_pollen_refresh 2
 home_scene_navigation 1
 home_stage 2
@@ -235,7 +235,7 @@ old_story_replays 2
 old_story_saves 2
 online_camera_photo 3
 online_history 2
-online_history_more 3
+online_history_more 1
 online_live 2
 online_random 3
 online_random_extra 2
@@ -413,6 +413,8 @@ spirit_look 1
 spirit_motion 3
 stage_blocks 1
 staged_build 3
+staged_build_tide 3
+staged_build_water 3
 static_batch 1
 step_seats 3
 store_loading_feedback 2
