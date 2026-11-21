@@ -29,6 +29,7 @@ const Parts = preload("res://presentation/keepsakes/keepsake_parts.gd")
 const Anim = preload("res://presentation/keepsakes/keepsake_anim.gd")
 const Card = preload("res://presentation/keepsakes/keepsake_card.gd")
 const StaticBatch = preload("res://presentation/kit/static_batch.gd")
+const ContactShadows = preload("res://presentation/kit/contact_shadows.gd")
 const Primitives = preload("res://presentation/kit/primitives.gd")
 const Isles = preload("res://presentation/keepsakes/home_isles.gd")
 const Builder = preload("res://presentation/keepsakes/keepsake_builder.gd")
@@ -213,6 +214,7 @@ func _make_set(shown_now: bool) -> Dictionary:
 			parts = builder.build(holder, state)
 		else:
 			Parts.outline(holder, builder, "%s|%d" % [id, item.stages.size()], item.stages if item.look == "started" else [])
+		ContactShadows.mark(holder)
 		for part: Node in _moving(parts): _held.append(part)
 		var drawn := state if item.look == "keepsake" else {}
 		var solids: Array[Rect2] = builder.solids(drawn)

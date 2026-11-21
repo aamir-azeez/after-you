@@ -80,7 +80,7 @@ func _make(bridge: Dictionary, parent: Node3D) -> void:
 	var depth := float(rect[3] - rect[1]) / 100.0
 	_rest = float(bridge.get("height_cm", 0)) / 100.0
 	_target = _rest + SUNK
-	_root(str(bridge.id), Vector3(float(rect[0] + rect[2]) / 200.0, _rest + BUILT, float(rect[1] + rect[3]) / 200.0), parent)
+	_root(str(bridge.id), Vector3(float(rect[0] + rect[2]) / 200.0, _rest + BUILT, float(rect[1] + rect[3]) / 200.0), parent, false)
 	anchor = root
 	_y = root.position.y
 	for index in range(PLANKS):

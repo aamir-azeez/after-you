@@ -48,6 +48,8 @@ static func build(item_style: String, at: Vector3, parent: Node3D, options: Dict
 func _make(item_style: String, at: Vector3, parent: Node3D, options: Dictionary) -> void:
 	style = item_style
 	_root("CarriedItem_" + str(options.get("id", "")), at, parent)
+	# It is picked up and set down: a live shadow, never baked.
+	ContactShadows.mark(root, true)
 	anchor = root
 	_rest_at = at
 	match item_style:
@@ -95,6 +97,8 @@ func _back_from(item_turn: Vector3) -> Vector3:
 ## whichever way it faces.
 func carry(actor: Node3D) -> void:
 	_floating = false
+	# The pip's own shadow shows it now.
+	ContactShadows.set_off(root, true)
 	# A pip hangs it under its facing pivot and sways it with its stride and its
 	# stop (spirit_visual.gd hang_on_back).
 	if actor.has_method("hang_on_back"): actor.hang_on_back(root, back, turn)
@@ -111,6 +115,10 @@ func rest(at: Vector3, parent: Node3D, floating: bool) -> void:
 	_floating = floating
 	root.rotation = Vector3.ZERO
 	root.position = Vector3(at.x, Floats.keel(style, at.y), at.z) if floating else at
+	# Set down it has its shadow again, where it now rests; afloat, the water's
+	# rings show it.
+	ContactShadows.set_off(root, floating)
+	ContactShadows.touch()
 
 func moving() -> bool:
 	return _floating
