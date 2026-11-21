@@ -8,6 +8,7 @@ import { requireHostAccess } from "./v2/host-access";
 import { routeTesterAccess } from "./tester-access";
 import { PRESENCE_SESSION, roomPresence } from "./presence";
 import { routeFriends } from "./friends-routes";
+import { USERNAME_PATH, routeUsername } from "./usernames";
 import { friendNotifications, publishSocialRoom, socialInbox } from "./social-routes";
 import { ROOM_INBOX_CLOSED_HEADER, ROOM_INBOX_LEAVE_HEADER, ROOM_INBOX_OPEN_TURNS_HEADER, ROOM_INBOX_REDO_HEADER, redoInboxVersion } from "./room-inbox";
 import { endReactionsWanted } from "./v2/end-reactions";
@@ -48,6 +49,7 @@ export { LeaderboardBoard } from "./leaderboards/board";
 export { LeaderboardMember } from "./leaderboards/member";
 export { PollenClaims } from "./pollen/claims";
 export { PublicDuelDirectory } from "./duels/directory";
+export { UsernameIndex } from "./username-index";
 import { routeLeaderboardRead, routeLeaderboards } from "./leaderboards/routes";
 import { OPERATOR_PREFIX as LEADERBOARD_OPERATOR_PREFIX, routeLeaderboardOperator } from "./leaderboards/operator";
 import { forgetLeaderboardPlayer, forgetLeaderboardPlayerIfKnown } from "./leaderboards/members";
@@ -168,6 +170,7 @@ export default {
         return await maskedResponse(withNext(json({ ...page.body, ...waiting }), page.next), playerId);
       }
       if (path === DISPLAY_NAME_PATH) return json(await routeDisplayName(request, playerId, env));
+      if (path === USERNAME_PATH) return json(await routeUsername(request, playerId, env));
       if (pollenRoute(path, env)) return json(await routePollen(request, path, playerId, env, pollenView));
       const leaderboards = await routeLeaderboards(request, path, playerId, env); if (leaderboards !== null) return json(leaderboards);
       const duels = await routeDuels(request, path, playerId, env, memberLook, safetyToken); if (duels !== null) return json(duels);

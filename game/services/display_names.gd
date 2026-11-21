@@ -15,6 +15,7 @@ extends RefCounted
 const AtomicFile = preload("res://services/atomic_file.gd")
 const Typed = preload("res://services/typed_values.gd")
 const NameFilter = preload("res://services/name_filter.gd")
+const Usernames = preload("res://services/usernames.gd")
 
 const PATH := "user://display_names.json"
 const WORDS_PATH := "res://content/anonymous_names.json"
@@ -157,7 +158,7 @@ func _scope(server: String, owner: String, create: bool = false) -> Dictionary:
 	var key := scope_key(server, owner)
 	if not _scopes.has(key):
 		if not create: return {}
-		_scopes[key] = {"enabled": false, "own": _blank_own(), "names": {}}
+		_scopes[key] = {"enabled": false, "own": _blank_own(), "names": {}, "usernames": false, "username": ""}
 	return _scopes[key]
 
 ## confirmed: the name the server last confirmed ("" for none), shown while a
@@ -176,6 +177,40 @@ func set_enabled(server: String, owner: String, on: bool) -> void:
 	scope.enabled = on
 	# Names the server stops showing are not kept.
 	if not on: scope.names = {}
+	_save()
+
+# --- Usernames (services/usernames.gd) -------------------------------------
+
+## Whether the server has players pick a username (the capabilities or the
+## friends list said so last time). The username is then also the display name.
+func usernames_on(server: String, owner: String) -> bool:
+	return bool(_scope(server, owner).get("usernames", false))
+
+func set_usernames(server: String, owner: String, on: bool) -> void:
+	var scope := _scope(server, owner, on)
+	if scope.is_empty() or bool(scope.get("usernames", false)) == on: return
+	scope.usernames = on
+	_save()
+
+## This player's username as the server last confirmed it ("" for none yet).
+func username(server: String, owner: String) -> String:
+	return str(_scope(server, owner).get("username", ""))
+
+## The username the server confirmed (a claim's answer or a friends list), or
+## "" when it says there is none. It is also the display name others see.
+func set_username(server: String, owner: String, name: String) -> void:
+	if not name.is_empty() and not Usernames.valid_remote(name): return
+	var scope := _scope(server, owner, true)
+	if scope.is_empty() or str(scope.get("username", "")) == name: return
+	scope.username = name
+	if not name.is_empty():
+		var mine: Dictionary = scope.own
+		mine.choice = "typed"
+		mine.name = name
+		mine.state = SYNCED
+		mine.code = ""
+		mine.asked = true
+		mine.confirmed = name
 	_save()
 
 # --- This player's own name ---------------------------------------------
@@ -289,6 +324,9 @@ func take_friends_page(server: String, owner: String, page: Dictionary) -> void:
 	var on := page.has("display_name")
 	set_enabled(server, owner, on)
 	if not on: return
+	# A page that carries the own username key: usernames are on, and it says which one.
+	set_usernames(server, owner, page.has("username"))
+	if page.has("username"): set_username(server, owner, str(page.username) if page.username is String else "")
 	var scope := _scope(server, owner, true)
 	var names: Dictionary = scope.names
 	for player: String in names.keys():
@@ -296,6 +334,8 @@ func take_friends_page(server: String, owner: String, page: Dictionary) -> void:
 	for row: Variant in page.get("friends", []):
 		if not row is Dictionary or not row.get("player_id") is String: continue
 		var name: Variant = row.get("display_name")
+		# A username shows on every row, a request too (services/usernames.gd); it is also their display name.
+		if not (name is String and valid_remote(name)) and Usernames.valid_remote(row.get("username")): name = row.username
 		if name is String and valid_remote(name): names[row.player_id] = {"name": name, "from": "friend", "at": _now()}
 	adopt(server, owner, page.get("display_name"))
 	_save()
@@ -361,7 +401,9 @@ func _load() -> void:
 	for key: Variant in parsed.scopes:
 		var value: Variant = parsed.scopes[key]
 		if not key is String or not key.contains("|") or not value is Dictionary: continue
-		var scope := {"enabled": value.get("enabled") == true, "own": _blank_own(), "names": {}}
+		var kept_username: Variant = value.get("username", "")
+		var scope := {"enabled": value.get("enabled") == true, "own": _blank_own(), "names": {}, "usernames": value.get("usernames") == true,
+			"username": kept_username if kept_username is String and (kept_username.is_empty() or Usernames.valid_remote(kept_username)) else ""}
 		var mine: Variant = value.get("own")
 		if mine is Dictionary and mine.get("choice", "") in CHOICES + [""] and mine.get("state", "") in ["", PENDING, SYNCED, REFUSED]:
 			var name: Variant = mine.get("name", "")

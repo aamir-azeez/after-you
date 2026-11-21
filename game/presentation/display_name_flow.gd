@@ -25,6 +25,14 @@ extends Node
 ## Pollen" opens the Wardrobe's short of Pollen card (presentation/
 ## wardrobe_sheets.gd, pollen board 6), which buys its bundle in place through
 ## the Pollen store's purchase engine (pollen_store_flow, when Main has it and bundles sell).
+##
+## While the server has players pick usernames (services/usernames.gd), the
+## same prompt opens in its username mode instead: once a run for a player
+## with none (over Home at launch, Friends, or Play with your friend), and from
+## the chip's Change. A username is saved online only, with the answer on the
+## card (taken, refused, the price); the GET read fills the price and the
+## suggested name after the card opens. The Friends page then shows the new
+## friend code at once (friends_flow username_changed).
 const DisplayNames = preload("res://services/display_names.gd")
 const DisplayNameClient = preload("res://services/display_name_client.gd")
 const Prompt = preload("res://presentation/display_name_prompt.gd")
@@ -38,6 +46,7 @@ const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 const WardrobeSheets = preload("res://presentation/wardrobe_sheets.gd")
 const OfflineHold = preload("res://presentation/offline_hold.gd")
 const LeaderboardClient = preload("res://services/leaderboard_client.gd")
+const Usernames = preload("res://services/usernames.gd")
 
 ## The player's own name or where it stands changed (chips redraw).
 signal changed
@@ -52,6 +61,10 @@ var _prompt_price: Dictionary = {}
 var _short: WeakRef = null
 ## Tests: a stand-in for the PlatformGames autoload.
 var games: Node = null
+## The username prompt opened by itself once this run.
+var _asked_username := false
+## Tests: transport(method, path, body) -> response in place of the API's queue.
+var username_transport: Callable = Callable()
 
 func _init(main: Node = null) -> void:
 	host = main
@@ -73,6 +86,7 @@ func enabled() -> bool:
 ## The first-run prompt over `parent`, once per player, when names are on and
 ## the player has not chosen yet. True when it opened.
 func maybe_ask(parent: Control, hint_later: bool = false) -> bool:
+	if usernames_on(): return maybe_ask_username(parent, hint_later)
 	if not enabled() or prompt_open() or not is_instance_valid(parent) or not parent.is_inside_tree(): return false
 	var current := scope()
 	var own: Dictionary = DisplayNames.shared().own(current.server, current.owner)
@@ -86,7 +100,120 @@ func maybe_ask(parent: Control, hint_later: bool = false) -> bool:
 func edit(parent: Control, opener: Control = null) -> void:
 	if not enabled() or prompt_open() or not is_instance_valid(parent): return
 	if OfflineHold.refuse(): return
-	_open(parent, true, opener)
+	if usernames_on(): _open_username(parent, true, opener)
+	else: _open(parent, true, opener)
+
+# --- Usernames ----------------------------------------------------------------
+
+## Whether the server has this player pick a username (what it last said).
+func usernames_on() -> bool:
+	var current := scope()
+	return not current.is_empty() and DisplayNames.shared().usernames_on(current.server, current.owner)
+
+## This player's username as the server last confirmed it, or "".
+func username() -> String:
+	var current := scope()
+	return DisplayNames.shared().username(current.server, current.owner) if not current.is_empty() else ""
+
+## The username prompt over `parent`, once a run, while usernames are on and
+## this player has none. True when it opened.
+func maybe_ask_username(parent: Control, hint_later: bool = false) -> bool:
+	if not usernames_on() or _asked_username or not username().is_empty() or prompt_open() or not is_instance_valid(parent) or not parent.is_inside_tree(): return false
+	_asked_username = true
+	_open_username(parent, false, null, hint_later)
+	return true
+
+func _open_username(parent: Control, editing: bool, opener: Control, hint_later: bool = false) -> void:
+	_prompt_price = {}
+	var context := {
+		"username": true,
+		"edit": editing,
+		"own": _own_username(),
+		"alias": _own_alias(),
+		"save": _save_username,
+		"reduced_motion": bool(host.saves.data.settings.get("reduced_motion", false)) if host.saves != null else false,
+		"haptic": func() -> void: if is_instance_valid(host.get("soundscape")): host.soundscape.tap_haptic(),
+		"dismissed": func() -> void: if hint_later and host.has_method("_toast"): host._toast(PlayerCopy.USERNAME_LATER_HINT),
+		"price": {},
+		"get_pollen": func(link: Control) -> void: _open_short(parent, link),
+	}
+	var modal: Control = Prompt.open(parent, context, opener)
+	_prompt = weakref(modal)
+	_read_username(modal, editing)
+
+## The own username as the prompt prices it: a change of capitals alone is no change.
+func _own_username() -> Dictionary:
+	return {"choice": "typed", "name": username(), "fold": true}
+
+## The player's short name from the friends page ("" for none), which they may take as a username.
+func _own_alias() -> String:
+	var friends: Variant = host._friends_client(false) if host != null and host.has_method("_friends_client") else null
+	return str(friends.friend_alias()) if friends is Object and friends.has_method("friend_alias") else ""
+
+## GET /v1/profile/username once the card is open: the username the server
+## holds, the change price while the shop is on, and a suggested name. A card
+## that opened by itself closes when the player turns out to have one already
+## (a phone that never heard it, such as a new install).
+func _read_username(modal: Control, editing: bool) -> void:
+	var current := scope()
+	var response: Dictionary = await _username_request(HTTPClient.METHOD_GET, {})
+	var data: Variant = response.get("data")
+	if scope() != current or not response.get("ok", false) or not data is Dictionary: return
+	var held: Variant = data.get("username")
+	if held is String and Usernames.valid_remote(held): _keep_username(current, held)
+	var prompt: Node = modal.find_child("DisplayNamePrompt", true, false) if is_instance_valid(modal) and not modal.is_queued_for_deletion() else null
+	if prompt == null: return
+	if held is String and not editing and not prompt.busy():
+		prompt.close_quietly()
+		return
+	var priced: Variant = data.get("pollen_price")
+	var wallet: Dictionary = PollenWallet.shared().wallet(str(current.server), str(current.owner))
+	if (priced is int or priced is float) and not wallet.is_empty():
+		_prompt_price = {"price": int(priced), "balance": int(wallet.balance), "shown": PollenSurfaces.shared().shop_visible(),
+			"next": int(data.get("pollen_price_next", -1)), "offer": Wardrobe.shared().view(str(current.server), str(current.owner)).get("bundles", {})}
+		prompt.set_price(_prompt_price)
+	var suggestion: Variant = data.get("suggestion")
+	if suggestion is String and Usernames.problem(suggestion, _own_alias()).is_empty(): prompt.set_suggestion(suggestion)
+
+## The prompt's Save in username mode: PUT /v1/profile/username, waiting for
+## the answer, which the card shows when it is a no.
+func _save_username(_choice: String, name: String) -> Dictionary:
+	var current := scope()
+	if current.is_empty(): return {"closed": true}
+	var body := {"schema_version": 1, "username": name}
+	# While the shop is on, the price shown beside Save goes too, so the server never charges one the player did not see.
+	if Wardrobe.shared().shop(str(current.server), str(current.owner)): body["pollen_price"] = Prompt.choice_cost(_prompt_price, _own_username(), "typed", name)
+	var response: Dictionary = await _username_request(HTTPClient.METHOD_PUT, body)
+	if scope() != current: return {"closed": true}
+	var data: Variant = response.get("data")
+	if response.get("ok", false) and data is Dictionary and Usernames.valid_remote(data.get("username")):
+		_keep_username(current, str(data.username))
+		_refresh_wardrobe(true)
+		return {"closed": true}
+	var code := str(response.get("code", ""))
+	if not PlayerCopy.USERNAME_ERRORS.has(code): code = "network"
+	_refresh_wardrobe(code in ["pollen_short", "name_change_price"])
+	# The price shown was out of date (or never read): the open card reads it again.
+	var open: Variant = _prompt.get_ref() if _prompt != null else null
+	if code == "name_change_price" and open is Control and is_instance_valid(open): _read_username(open, true)
+	return {"closed": false, "code": refusal_code(code)}
+
+## A username the server confirmed: kept, the chips redraw and Friends shows the new code.
+func _keep_username(current: Dictionary, name: String) -> void:
+	if DisplayNames.shared().username(current.server, current.owner) == name: return
+	DisplayNames.shared().set_username(current.server, current.owner, name)
+	_refresh_chips()
+	var friends: Variant = host.get("friends_flow") if host != null else null
+	if friends is Object and is_instance_valid(friends) and friends.has_method("username_changed"): friends.username_changed(name)
+
+func _refresh_wardrobe(read: bool) -> void:
+	var wardrobe: Variant = host.get("wardrobe_flow") if host != null else null
+	if read and wardrobe is Object and is_instance_valid(wardrobe) and wardrobe.has_method("refresh"): wardrobe.refresh()
+
+func _username_request(method: int, body: Dictionary) -> Dictionary:
+	if username_transport.is_valid(): return await username_transport.call(method, Usernames.PATH, body)
+	if host == null or not is_instance_valid(host.get("api")): return {"ok": false, "code": "network"}
+	return await host.api.request_json(method, Usernames.PATH, body)
 
 func prompt_open() -> bool:
 	return _prompt != null and _prompt.get_ref() != null
@@ -200,7 +327,9 @@ func _show_chip(made: Control) -> void:
 	var current := scope()
 	if current.is_empty() or not is_instance_valid(made): return
 	var names: RefCounted = DisplayNames.shared()
-	made.show_name(names.own_shown(current.server, current.owner), names.own(current.server, current.owner))
+	var held: String = names.username(current.server, current.owner)
+	if not held.is_empty(): made.show_name(held, names.own(current.server, current.owner), true)
+	else: made.show_name(names.own_shown(current.server, current.owner), names.own(current.server, current.owner))
 
 func _refresh_chips() -> void:
 	var kept: Array[WeakRef] = []

@@ -4,6 +4,7 @@ const ClientIdentity = preload("res://services/client_identity.gd")
 const RequestQueue = preload("res://services/request_queue.gd")
 const Typed = preload("res://services/typed_values.gd")
 const DisplayNames = preload("res://services/display_names.gd")
+const Usernames = preload("res://services/usernames.gd")
 const PollenWallet = preload("res://services/pollen_wallet.gd")
 const TurnLooks = preload("res://services/turn_looks.gd")
 const BlobCodec = preload("res://services/blob_codec.gd")
@@ -326,6 +327,9 @@ static func capability_headers(method: int, path: String) -> PackedStringArray:
 	if path == "/v1/room-inbox" or (method == HTTPClient.METHOD_GET and (path == "/v2/capabilities" or (path.begins_with("/v2/rooms/") and (path.count("/") == 3 or (path.count("/") == 4 and path.ends_with("/redo")))))): headers.append("X-AfterYou-Redo-Extras: 1")
 	# The friends list may then include the player's short name (friend_alias).
 	if method == HTTPClient.METHOD_GET and path == "/v1/friends": headers.append("X-AfterYou-Friends: 2")
+	# This build picks and shows usernames (services/usernames.gd): the capability, and every
+	# friends row's username with the player's own.
+	if method == HTTPClient.METHOD_GET and (path == "/v2/capabilities" or path == "/v1/friends"): headers.append(Usernames.HEADER)
 	# A finished room whose replay moved to the phones reads as finished here.
 	if method == HTTPClient.METHOD_GET and path.begins_with("/v2/rooms/") and path.count("/") == 3: headers.append("X-AfterYou-Finished-Room: 2")
 	# Closing a room only ever ends one still in play, never one that just finished.

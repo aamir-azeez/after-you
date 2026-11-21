@@ -121,6 +121,38 @@ const DISPLAY_NAME_ERRORS := {
 	# A price refusal on a build that shows no price (display_name_flow.gd refusal_code).
 	"name_price_hidden": DISPLAY_NAME_PRICE_HIDDEN,
 }
+
+# Usernames (services/usernames.gd): the same name prompt in its username mode,
+# the Friends header and a friend request row. Drafts waiting for the owner's OK.
+const USERNAME_ASK := "Pick a username"
+const USERNAME_ASK_NOTE := "Friends add you with it, so they always know it's you."
+const USERNAME_EDIT_TITLE := "Your username"
+const USERNAME_FIELD := "Username"
+## Under the field: the friend code the name makes. %s is the name in lowercase.
+const USERNAME_CODE := "Your friend code: friend-%s"
+## After the prompt is closed without a name: where to find it later.
+const USERNAME_LATER_HINT := "You can pick your username in Friends."
+## The Friends header's label and the Change button's screen reader name.
+const USERNAME_SECTION := "Your username"
+const USERNAME_CHANGE_FOR := "Change your username, now %s"
+## A friend request row's line. %s is the username.
+const USERNAME_WANTS_FRIENDS := "%s wants to be friends"
+## Why a username can't be used: the phone's own checks, then the server's codes.
+const USERNAME_ERRORS := {
+	"length": "Use 3 to 18 letters or numbers.",
+	"characters": "Use letters, numbers, dots, underscores and hyphens only.",
+	"symbols": "Start and end with a letter or number, with one dot, underscore or hyphen at a time.",
+	"invalid_username": "Use 3 to 18 letters or numbers. Dots, underscores and hyphens can go between them.",
+	"username_refused": "That name isn't allowed. Try another.",
+	"username_reserved": "That name is kept for the game. Try another.",
+	"username_taken": "Someone already has that name. Try another.",
+	"username_locked": "You can't pick a new name right now. Try again in a few days.",
+	"username_limited": "You've changed your name a few times today. Try again tomorrow.",
+	"pollen_short": "You need more Pollen for this change.",
+	"name_change_price": "The price of a name change just changed. Check it and save again.",
+	"name_price_hidden": DISPLAY_NAME_PRICE_HIDDEN,
+	"network": "Couldn't reach the server. Try again.",
+}
 ## The name change price (POLLEN-RULES.md "Prices", pollen board 6): Save says what the change costs
 ## ("Save · [grain] 1,000"), or that this one is free, or what is still needed.
 ## SAVE_PRICED is what a screen reader hears for the priced Save.

@@ -50,12 +50,20 @@ extends Node
 ##     opens the short of Pollen card, board 5b); without it there is no link;
 ##   show_name (Callable (bool), optional): the "show my name" switch under the
 ##     choices, on a first name and on a change; called with the switch once a Save
-##     lands, never on Not now or a refused save. name_shown (bool) is its start.
+##     lands, never on Not now or a refused save. name_shown (bool) is its start;
+##   username (bool, optional): the username mode (services/usernames.gd): the
+##     same card with no anonymous or platform row, the username rules and words,
+##     and the friend code the name makes under the field. `own` then holds the
+##     current username as a typed name, a change of capitals alone is free, and
+##     `alias` (String, optional) is the player's own short name, which they may
+##     take although the game keeps it. Saving needs the server (save answers
+##     whether the name was free). set_suggestion fills an empty field later.
 const InGameModal = preload("res://presentation/in_game_modal.gd")
 const ThemeRules = preload("res://presentation/control_theme.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const PollenMoney = preload("res://services/pollen_money.gd")
 const DisplayNames = preload("res://services/display_names.gd")
+const Usernames = preload("res://services/usernames.gd")
 const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 const PipAvatar = preload("res://presentation/kit/pip_avatar.gd")
 const TouchInput = preload("res://presentation/touch_input.gd")
@@ -84,6 +92,8 @@ var platform_row: Button
 var _counter: Label
 var _error: Label
 var _platform_note: Label
+## The username mode's friend code line under the field.
+var _code_line: Label
 ## The price line under the field, the balance line under the choices, and the
 ## Get Pollen link under Save (pollen board 6).
 var _price_note: RichTextLabel
@@ -116,8 +126,9 @@ static func open(parent: Control, context: Dictionary, opener: Control = null) -
 	var prompt: Node = load("res://presentation/display_name_prompt.gd").new()
 	prompt.name = "DisplayNamePrompt"
 	prompt._context = context
-	var heading := PlayerCopy.DISPLAY_NAME_EDIT_TITLE if context.get("edit", false) else PlayerCopy.DISPLAY_NAME_ASK
-	var modal: Control = InGameModal.open(parent, "DisplayNameModal", heading, PlayerCopy.DISPLAY_NAME_ASK_NOTE, opener)
+	var named := bool(context.get("username", false))
+	var heading := (PlayerCopy.USERNAME_EDIT_TITLE if named else PlayerCopy.DISPLAY_NAME_EDIT_TITLE) if context.get("edit", false) else (PlayerCopy.USERNAME_ASK if named else PlayerCopy.DISPLAY_NAME_ASK)
+	var modal: Control = InGameModal.open(parent, "DisplayNameModal", heading, PlayerCopy.USERNAME_ASK_NOTE if named else PlayerCopy.DISPLAY_NAME_ASK_NOTE, opener)
 	modal.add_child(prompt)
 	prompt._build(modal)
 	return modal
@@ -180,13 +191,17 @@ func _build(card: Control) -> void:
 	_counter.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	# Its counter shows under it above the on screen keyboard too.
 	KeyboardLift.attach(field, modal.title_label.text, _counter)
-	anonymous_row = _row(column, "DisplayNameAnonymous", PlayerCopy.DISPLAY_NAME_ANONYMOUS, PlayerCopy.DISPLAY_NAME_ANONYMOUS_NOTE % str(_context.get("anonymous", "")))
-	anonymous_row.pressed.connect(_pick.bind("anonymous"))
-	var platform_label := _platform_now()
-	if not platform_label.is_empty(): _add_platform(platform_label)
-	var follow: Variant = _context.get("platform_changed")
-	# A method of this node, not a lambda: the connection is dropped when the card is freed.
-	if follow is Signal and not (follow as Signal).is_null(): (follow as Signal).connect(_platform_changed)
+	if _username_mode():
+		_code_line = _small("", MUTED, column)
+		_code_line.name = "UsernameCode"
+	else:
+		anonymous_row = _row(column, "DisplayNameAnonymous", PlayerCopy.DISPLAY_NAME_ANONYMOUS, PlayerCopy.DISPLAY_NAME_ANONYMOUS_NOTE % str(_context.get("anonymous", "")))
+		anonymous_row.pressed.connect(_pick.bind("anonymous"))
+		var platform_label := _platform_now()
+		if not platform_label.is_empty(): _add_platform(platform_label)
+		var follow: Variant = _context.get("platform_changed")
+		# A method of this node, not a lambda: the connection is dropped when the card is freed.
+		if follow is Signal and not (follow as Signal).is_null(): (follow as Signal).connect(_platform_changed)
 	# "[grain] You have 24,000. Keeping me anonymous is always free."
 	_have_line = HBoxContainer.new()
 	_have_line.name = "DisplayNameHave"
@@ -252,12 +267,12 @@ func _tag() -> Control:
 func _field() -> LineEdit:
 	field = LineEdit.new()
 	field.name = "DisplayNameField"
-	field.placeholder_text = PlayerCopy.DISPLAY_NAME_FIELD
-	field.max_length = DisplayNames.MAX_LENGTH + 4
+	field.placeholder_text = PlayerCopy.USERNAME_FIELD if _username_mode() else PlayerCopy.DISPLAY_NAME_FIELD
+	field.max_length = _max_length() + 4
 	field.custom_minimum_size.y = 54
 	field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	field.caret_blink = true
-	field.accessibility_name = PlayerCopy.DISPLAY_NAME_FIELD
+	field.accessibility_name = field.placeholder_text
 	for state: String in ["normal", "focus", "read_only"]:
 		var style := ThemeRules.rounded(Color("123533"), 12, ThemeRules.CREAM if state == "focus" else Color("4f776d"))
 		if state == "focus": style.set_border_width_all(2)
@@ -465,9 +480,15 @@ func _pick_platform() -> void:
 
 ## The tag, the rows, the counter and the field's look for the choice now.
 func _show() -> void:
-	var typed := DisplayNames.clean(field.text)
-	_counter.text = PlayerCopy.DISPLAY_NAME_COUNTER % [typed.length(), DisplayNames.MAX_LENGTH]
-	_counter.add_theme_color_override("font_color", ERROR if typed.length() > DisplayNames.MAX_LENGTH else MUTED)
+	var typed := _typed_name()
+	_counter.text = PlayerCopy.DISPLAY_NAME_COUNTER % [typed.length(), _max_length()]
+	_counter.add_theme_color_override("font_color", ERROR if typed.length() > _max_length() else MUTED)
+	if _code_line != null:
+		_code_line.text = PlayerCopy.USERNAME_CODE % Usernames.key(typed) if Usernames.shaped(typed) else ""
+		tag.text = typed if not typed.is_empty() else str((_context.get("own", {}) as Dictionary).get("name", ""))
+		tag.modulate.a = 0.6 if typed.is_empty() else 1.0
+		_show_price()
+		return
 	field.modulate.a = 1.0 if _choice == "typed" else 0.55
 	_counter.modulate.a = field.modulate.a
 	var anonymous := str(_context.get("anonymous", ""))
@@ -476,7 +497,7 @@ func _show() -> void:
 		"platform": tag.text = _platform_name
 		_: tag.text = DisplayNames.short(typed) if not typed.is_empty() else anonymous
 	tag.modulate.a = 0.6 if _choice == "typed" and typed.is_empty() else 1.0
-	_mark(anonymous_row, _choice == "anonymous")
+	if anonymous_row != null: _mark(anonymous_row, _choice == "anonymous")
 	if platform_row != null:
 		_mark(platform_row, _choice == "platform")
 		if not _platform_name.is_empty() and not _busy: _platform_note.text = _platform_name
@@ -493,11 +514,46 @@ func cost() -> int:
 	return choice_cost(_context.get("price", {}), _context.get("own", {}), _choice, _chosen_name())
 
 func _chosen_name() -> String:
-	return _platform_name if _choice == "platform" else DisplayNames.clean(field.text)
+	return _platform_name if _choice == "platform" else _typed_name()
+
+func _username_mode() -> bool:
+	return bool(_context.get("username", false))
+
+func _max_length() -> int:
+	return Usernames.MAX_LENGTH if _username_mode() else DisplayNames.MAX_LENGTH
+
+## The field's text as the rules read it: a username only loses its outer spaces.
+func _typed_name() -> String:
+	return field.text.strip_edges() if _username_mode() else DisplayNames.clean(field.text)
+
+## The words for a refusal code in this mode.
+func _error_words(code: String) -> String:
+	if _username_mode(): return str(PlayerCopy.USERNAME_ERRORS.get(code, PlayerCopy.USERNAME_ERRORS.invalid_username))
+	return str(PlayerCopy.DISPLAY_NAME_ERRORS.get(code, PlayerCopy.DISPLAY_NAME_ERRORS.characters))
+
+## Whether a save is out.
+func busy() -> bool:
+	return _busy
+
+## Closes the card with nothing said, as a save does (the player turned out to
+## have a username already).
+func close_quietly() -> void:
+	_saved = true
+	if is_instance_valid(modal): modal.close()
+
+## A name the server suggested (the display name, when it passes as a username
+## and nobody has it): it fills the field only while the player has typed nothing.
+func set_suggestion(name: String) -> void:
+	if _busy or not field.text.strip_edges().is_empty() or name.is_empty(): return
+	field.text = name
+	field.caret_column = name.length()
+	_show()
 
 ## Whether `choice` with `name` changes the name: not anonymous, not empty, not the name already set.
+## A username (`own` with fold) changes only when more than its capitals change.
 static func is_change(own: Dictionary, choice: String, name: String) -> bool:
 	if choice == "anonymous" or name.is_empty(): return false
+	if own.get("fold", false): return name.to_lower() != str(own.get("name", "")).to_lower()
 	return not (name == str(own.get("name", "")) and str(own.get("choice", "")) != "anonymous")
 
 ## The same rule for a choice saved: `price` and `own` as in the context.
@@ -625,17 +681,25 @@ func _save() -> void:
 	if _busy or not is_instance_valid(modal) or _price_blocks(): return
 	var name := ""
 	# Nothing typed and nothing picked: the tag already shows the anonymous
-	# name, so Save keeps that.
-	if _choice == "typed" and DisplayNames.clean(field.text).is_empty(): _choice = "anonymous"
-	match _choice:
-		"typed":
-			name = DisplayNames.clean(field.text)
-			var wrong := DisplayNames.problem(name)
-			if not wrong.is_empty():
-				_set_error(str(PlayerCopy.DISPLAY_NAME_ERRORS.get(wrong, "")))
-				field.grab_focus()
-				return
-		"platform": name = _platform_name
+	# name, so Save keeps that. A username has no such choice.
+	if _username_mode():
+		name = _typed_name()
+		var problem := Usernames.problem(name, str(_context.get("alias", "")))
+		if not problem.is_empty():
+			_set_error(_error_words(problem))
+			field.grab_focus()
+			return
+	else:
+		if _choice == "typed" and DisplayNames.clean(field.text).is_empty(): _choice = "anonymous"
+		match _choice:
+			"typed":
+				name = DisplayNames.clean(field.text)
+				var wrong := DisplayNames.problem(name)
+				if not wrong.is_empty():
+					_set_error(str(PlayerCopy.DISPLAY_NAME_ERRORS.get(wrong, "")))
+					field.grab_focus()
+					return
+			"platform": name = _platform_name
 	var save: Variant = _context.get("save")
 	if not save is Callable or not save.is_valid():
 		modal.close()
@@ -652,7 +716,7 @@ func _save() -> void:
 	_busy = false
 	_show_price()
 	if answer is Dictionary and not answer.get("closed", true):
-		_error.text = str(PlayerCopy.DISPLAY_NAME_ERRORS.get(str(answer.get("code", "")), PlayerCopy.DISPLAY_NAME_ERRORS.characters))
+		_error.text = _error_words(str(answer.get("code", "")))
 		_show()
 		return
 	_saved = true
