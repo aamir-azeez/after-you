@@ -68,7 +68,11 @@ func _verify_raw(definition: Dictionary, record: Dictionary, checkpoint: Diction
 		if prior_a.get("role") != ("a" if chain.is_empty() else "b") or (not chain.is_empty() and not open) or record.source_recording_hash != prior_a.get("recording_hash", ""): return _invalid("The partner recording does not match.")
 		var turn := chain.size() + 2
 		var selected := stage_by_id(definition, str(record.stage_id))
-		if open and (record.player_slot != OpenTurns.slot(str(selected.first_player_slot), turn) or turn > OpenTurns.cap(selected) or int(record.duration_ticks) < int(prior_a.get("duration_ticks", 0))): return _invalid("Incorrect player identity.")
+		# A turn that ended lasts at least its memory. A saved draft is a turn
+		# still being played, so it may be shorter; it is never "ready" (below),
+		# so it cannot pass or be saved as a turn until it has played out.
+		var short: bool = int(record.duration_ticks) < int(prior_a.get("duration_ticks", 0)) and record.get("completed") != false
+		if open and (record.player_slot != OpenTurns.slot(str(selected.first_player_slot), turn) or turn > OpenTurns.cap(selected) or short): return _invalid("Incorrect player identity.")
 		# A kept result covers the memory it was checked over; the memory given must be that one.
 		var kept := MemoryTrace.check(id) if open and not simulate else {}
 		if not kept.is_empty() and recording_hash(prior_a) == prior_a.recording_hash: return kept
