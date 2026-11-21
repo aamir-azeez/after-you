@@ -176,7 +176,7 @@ func _room_before_update() -> void:
 	api.listed = [_before_update(_room(OLD)), _room(ROOM)]
 	api.lookup = {OLD:_before_update(_room(OLD)), ROOM:_room(ROOM)}
 	session = Session.new(api, identity.current, store)
-	_check(await session.load_lobby() and await session.prepare_archived_navigation(), "The list loads with the old room in it")
+	_check(await session.load_lobby() and await session.prepare_archived_navigation() and session.last_room().is_empty(), "The list loads with the old room in it, and it is no longer the room to go back to")
 	var old_row: Array = session.room_summaries().filter(func(row: Dictionary) -> bool: return row.room_id == OLD)
 	_check(old_row.size() == 1 and old_row[0].title == str(Registry.descriptor("high-and-low@1").title) and old_row[0].get("before_update", false) and session.room_before_update(OLD) and not session.room_before_update(ROOM), "The old room keeps its level's name and says it is from before the update: " + str(old_row))
 	_check(not await session.open_room(OLD) and session.last_error == PlayerCopy.ROOM_BEFORE_UPDATE, "Opening it says to host a new room")

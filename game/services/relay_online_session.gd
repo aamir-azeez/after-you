@@ -922,6 +922,9 @@ func prepare_archived_navigation() -> bool:
 	if not _ready() or busy(): return false
 	if _index.last_room.is_empty(): return true
 	var room_id: String = _index.last_room
+	# A room from before its level was updated (Registry.retired) never opens here:
+	# it stops being the room to go back to, and its kept bytes stay.
+	if room_before_update(room_id): return _forget_last_room(room_id)
 	if archived_room_kind(room_id) == "story" or standalone_room_proven(room_id):
 		var restored := _restore_previous_room()
 		if restored: last_error = ""
