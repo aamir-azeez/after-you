@@ -17,7 +17,7 @@ const BOARDS := {
 	"high-and-low-3b6576ba@1": {"game_center": "afteryou.high_and_low.v1", "play_games": "CgkIyOW9iLATEAIQBQ"},
 	"the-wishing-well-14cfffbd@1": {"game_center": "afteryou.the_wishing_well.v1", "play_games": "CgkIyOW9iLATEAIQBg"},
 	"turn-of-the-tide-8e29d35f@2": {"game_center": "afteryou.turn_of_the_tide.v2", "play_games": "CgkIyOW9iLATEAIQBw"},
-	"sleeping-lighthouse@2": {"game_center": "afteryou.sleeping_lighthouse.v2", "play_games": "CgkIyOW9iLATEAIQCA"},
+	"sleeping-lighthouse-925adf59@2": {"game_center": "afteryou.sleeping_lighthouse.v2", "play_games": "CgkIyOW9iLATEAIQCA"},
 	"rolling-home-3362e8af@1": {"game_center": "afteryou.rolling_home.v1", "play_games": "CgkIyOW9iLATEAIQCQ"},
 	"a-house-for-two-f14fb0ab@1": {"game_center": "afteryou.a_house_for_two.v1", "play_games": "CgkIyOW9iLATEAIQCg"},
 	"conservatory-5e474141@1": {"game_center": "afteryou.conservatory.v1", "play_games": "CgkIyOW9iLATEAIQCw"},

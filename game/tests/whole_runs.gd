@@ -22,6 +22,7 @@ const CURRENT := {
 	"long-way-home@2": ["journey/long-way-home-v2-final-checkpoint.json", []],
 	"turn-of-the-tide@1": ["journey/slack-water-high-punt-checkpoint.json", []],
 	"turn-of-the-tide@2": ["journey/turn-of-the-tide-v2-final-checkpoint.json", []],
+	"sleeping-lighthouse@2": ["lighthouse/v2-chain.json", ["checkpoints", -1]],
 }
 
 static func rows() -> Array:

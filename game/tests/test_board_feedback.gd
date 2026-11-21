@@ -32,7 +32,8 @@ const Rows = preload("res://presentation/leaderboard_rows.gd")
 const RUNS_PATH := "user://board-feedback-runs-test.json"
 const PLACINGS_PATH := "user://board-feedback-placings-test.json"
 const CHOICE_PATH := "user://board-feedback-name-test.json"
-const LIGHTHOUSE_BOARD := "sleeping-lighthouse@2"
+## The Lighthouse's current board (its mirrors went solid, so it opened again by definition).
+var LIGHTHOUSE_BOARD := Runs.board_key(Registry.LIGHTHOUSE_V2)
 const RELAY_BOARD := "relay-isles@2"
 
 var checks := 0

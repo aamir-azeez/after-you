@@ -37,7 +37,7 @@ export const DEVELOPER_BESTS: Readonly<Record<string, number | null>> = Object.f
   // Proxy from an assisted recording (game/tests/fixtures/journey/slack-water-high-punt-checkpoint.json), replace with an unassisted run.
   "turn-of-the-tide@1": 1756,
   // Unassisted whole run of six stages: game/tests/fixtures/lighthouse/v2-chain.json, checkpoints[6].
-  "sleeping-lighthouse@2": 1473,
+  "sleeping-lighthouse@2": 1470,
   // Proxy from an assisted recording (game/tests/fixtures/journey/turn-of-the-tide-v2-final-checkpoint.json), replace with an unassisted run.
   "turn-of-the-tide@2": 1906,
   // The boards these chapters opened again on once every hand control went solid (boards.ts boardKey), each a proxy
@@ -52,4 +52,6 @@ export const DEVELOPER_BESTS: Readonly<Record<string, number | null>> = Object.f
   "long-way-home-9d91b918@2": 977,
   "turn-of-the-tide-bddd9290@1": 1794,
   "turn-of-the-tide-8e29d35f@2": 1999,
+  // Unassisted whole run of six stages on the solid mirrors: game/tests/fixtures/lighthouse/v2-chain.json, checkpoints[6].
+  "sleeping-lighthouse-925adf59@2": 1473,
 });
