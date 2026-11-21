@@ -227,8 +227,7 @@ func _check_unseen(holder: Node3D) -> void:
 	Cutaway.fade_mesh(deck, true)
 	_check(ContactShadows.feet(under_cutaway).size() == 1, "A part the cutaway fades for now still has its shadow")
 	var source := FileAccess.get_file_as_string("res://presentation/home_keepsake_layer.gd")
-	_check(source.contains("parts = builder.build(holder, state)
-			# Only an earned keepsake") and source.contains("ContactShadows.changes(part)"), "Home marks only earned keepsakes and leaves their moving parts out")
+	_check(source.contains("parts = builder.build(holder, state)") and source.contains("# Only an earned keepsake") and source.contains("ContactShadows.changes(part)"), "Home marks only earned keepsakes and leaves their moving parts out")
 
 func _marked(holder: Node3D) -> Node3D:
 	var node := Node3D.new()
