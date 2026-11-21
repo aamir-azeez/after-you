@@ -21,9 +21,9 @@ import { initializeCampaignStorageSchema, initializeCampaignJoinSchema } from ".
 import { getReactionOperation, mutateReaction, parseReaction } from "../src/v2/reactions";
 import type { CampaignDefinition, CampaignJoin, CampaignKey } from "../src/v2/campaign-types";
 import fixture from "./fixtures/campaign-control-v2.json";
-import highA from "../../game/tests/fixtures/cooperative/upper-path-a.json";
-import highB from "../../game/tests/fixtures/cooperative/upper-path-b.json";
-import middle from "../../game/tests/fixtures/cooperative/upper-path-checkpoint.json";
+import highA from "./fixtures/published-runs/cooperative/upper-path-a.json";
+import highB from "./fixtures/published-runs/cooperative/upper-path-b.json";
+import middle from "./fixtures/published-runs/cooperative/upper-path-checkpoint.json";
 import { acceptTerms } from "./terms";
 
 const H=fixture.active_view.host_id,G=fixture.active_view.guest_id!,R=fixture.active_view.campaign_room_id,I=fixture.active_view.invite_code!;

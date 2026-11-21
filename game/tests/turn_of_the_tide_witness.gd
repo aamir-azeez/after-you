@@ -24,17 +24,20 @@ const T := ["t"]
 const MODEL_STAGE_ONE := {
 	"budget": {"low": 460, "half": 418, "high": 494},
 	"deadline": {"low": 2539, "half": 2581, "high": 2505},
-	# low: 503 since the tide wheel is solid (2026-11-20): the witness walks round
-	# it twice between presses (the model's straight lines still say 462).
-	"a_ticks": {"low": 503, "low-half-first": 618, "half": 464, "half-via-high": 454, "high": 418},
-	"b_real": {"low": 330, "half": 288, "high": 364},
+	# low: 503 and high: 427 (b_real high: 380) since the tide wheel and levers are
+	# solid (2026-11-20): the witness walks round them between presses (the
+	# model's straight lines still say 462, 418 and 364).
+	"a_ticks": {"low": 503, "low-half-first": 618, "half": 464, "half-via-high": 454, "high": 427},
+	"b_real": {"low": 330, "half": 288, "high": 380},
 }
 ## history -> way -> budget, deadline (latest hold_start), p0 presses, p0 real
-## ticks, p1 presses and p1 optimum ticks, from the same model.
+## ticks, p1 presses and p1 optimum ticks, from the same model; half sea-lock
+## and high boom p1 ticks walk round the solid levers (2026-11-20; the model
+## says 334 and 494).
 const MODEL_CELLS := {
 	"low": {"boom": [564,2435,4,425,4,410], "sea-lock": [644,2355,5,478,3,406], "punt": [528,2471,2,367,5,499]},
-	"half": {"boom": [580,2419,3,417,5,412], "sea-lock": [628,2371,4,430,8,334], "punt": [544,2455,4,381,6,411]},
-	"high": {"boom": [548,2451,2,379,8,494], "sea-lock": [660,2339,6,518,7,376], "punt": [544,2455,3,385,5,403]},
+	"half": {"boom": [580,2419,3,417,5,412], "sea-lock": [628,2371,4,430,8,346], "punt": [544,2455,4,381,6,411]},
+	"high": {"boom": [548,2451,2,379,8,496], "sea-lock": [660,2339,6,518,7,376], "punt": [544,2455,3,385,5,403]},
 }
 
 ## Stage 1, A (p0). From the beach start over sand-1 at low water, up the

@@ -180,6 +180,20 @@ static func resolve(value: Variant) -> String:
 			return key
 	return ""
 
+## True for a save, room, checkpoint or recording of a level and version this
+## build plays, made under another definition of it: an unreleased build's,
+## or a published chapter changed in place by a shared rule (the solid hand
+## controls of 2026-11-20). Its turns cannot replay here, so the one rule is to
+## put it aside and start that level again: a solo journal from its first stage
+## (relay_journey.gd), a room in a new room (relay_online_session.gd,
+## relay_room_coordinator.gd bind_room). Unlocks, keepsakes and cosmetics live
+## in other saves and stay.
+static func retired(value: Variant) -> bool:
+	if not value is Dictionary or not value.get("level_id") is String or not value.get("definition_hash") is String or not Typed.whole_number(value.get("level_version")):
+		return false
+	var key := "%s@%d" % [value.level_id, int(value.level_version)]
+	return key in keys() and value.definition_hash != descriptor(key).definition_hash
+
 static func simulation_script(key: String) -> Script:
 	return _scripts.get(_family(key).get("simulation", ""))
 

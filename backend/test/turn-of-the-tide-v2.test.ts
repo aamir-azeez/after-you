@@ -65,7 +65,7 @@ describe("Turn of the Tide version 2 (free, tide rules 10)", () => {
     expect(bundledDefinition).toEqual(definition); expect(bundledInitial).toEqual(initial);
     expect(await digest(canonicalJson(definition))).toBe(TURN_OF_THE_TIDE_V2_HASH);
     expect(TURN_OF_THE_TIDE_V2_HASH).toBe("8e29d35f0f968b3a4f056802794437787c1077883fafc316d285b5edf40edb80");
-    expect(initial.checkpoint_hash).toBe("f04821b57f741e692fa350265b24d41d27037026209f8c16f7ef70d4546712e9");
+    expect(initial.checkpoint_hash).toBe("18082bf9acb916bb4e7b0c426e34444f1e6f1007fb173014c7731d1fc0b2258e");
     expect(definition.simulation_version).toBe(10);
     expect(turnOfTheTideV2.key).toEqual({ level_id: "turn-of-the-tide", level_version: 2, definition_hash: TURN_OF_THE_TIDE_V2_HASH });
     expect(turnOfTheTideV2).toMatchObject({ premium: false, recording_version: 7, simulation_version: 10, supported_simulation_versions: [10], require_supported_simulation_on_join: true, max_branches: 7 });

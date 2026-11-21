@@ -5,7 +5,11 @@ import worker from "../src/index";
 import { canonicalJson, digest, type Outcome } from "../src/protocol";
 import { TESTER_CODE_DOMAIN } from "../src/tester-access";
 import { chapter, recordingV2, boundedValue, boundedTurnValue, MAX_V2_BODY_BYTES, MAX_CHECKPOINT_BYTES } from "../src/v2/protocol";
-import { highAndLow, rollingHome } from "../src/v2/protocol-cooperative";
+import { LEGACY_CHAPTERS } from "../src/v2/legacy-chapters";
+// The comfort8 fixtures were recorded on the published chapters before their hand controls went solid; the server
+// still plays those definitions for older apps (legacy-chapters.ts).
+const legacy = (id: string) => LEGACY_CHAPTERS.find(entry => entry.key.level_id === id && entry.key.level_version === 1)!;
+const highAndLow = legacy("high-and-low"), rollingHome = legacy("rolling-home");
 import type { ChapterCheckpoint, JsonChapterRecording } from "../src/v2/chapter-types";
 import type { RoomSnapshotV2, MutationV2 } from "../src/v2/room";
 import native from "../../game/tests/fixtures/comfort8/recordings.json";

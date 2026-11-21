@@ -1,5 +1,6 @@
 import { canonicalJson, digest, isObject } from "../protocol";
 import { chapter } from "../v2/chapters";
+import { LEGACY_CHAPTERS } from "../v2/legacy-chapters";
 import { nestedProof } from "../v2/checkpoint-chain";
 import type { ChapterKey } from "../v2/chapter-types";
 import type { CheckpointV2, RecordingV2 } from "../v2/protocol";
@@ -107,7 +108,9 @@ export async function roomRun(room: RoomSnapshotV2, handed?: unknown, encode?: (
   const host = room.host_id, guest = room.guest_id;
   if (!guest || guest === host) return null;
   let stages: number;
-  try { const selected = chapter(room); if (!!selected.open_turns !== posted || (posted && !knownBoard(boardKey(room)))) return null; stages = selected.stages.length; } catch { return null; }
+  // A board takes runs on its chapter's current definition only: a room an older app plays on a published chapter's
+  // earlier definition (v2/legacy-chapters.ts) walks another level and posts no time beside them.
+  try { const selected = chapter(room); if (LEGACY_CHAPTERS.includes(selected) || !!selected.open_turns !== posted || (posted && !knownBoard(boardKey(room)))) return null; stages = selected.stages.length; } catch { return null; }
   const timed = runTicks(room.checkpoint, stages);
   const finished_ms = Date.parse(room.updated_at);
   if (!timed || !Number.isFinite(finished_ms)) return null;

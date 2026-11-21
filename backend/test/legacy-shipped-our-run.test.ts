@@ -3,7 +3,7 @@ import { bytesDigest, decodeBlob } from "../src/blob-codec";
 import { LEGACY_SHIPPED_TICKS, LEGACY_SHIPPED_TURNS, legacyShippedGhost, legacyShippedSplits, legacyShippedTicks } from "../src/duels/legacy-shipped-our-run";
 import { boardKey, boardKeys } from "../src/leaderboards/boards";
 import { runTicks, walkRun } from "../src/leaderboards/run";
-import { CHAPTERS } from "../src/v2/chapters";
+import { chapter } from "../src/v2/chapters";
 import type { CheckpointV2 } from "../src/v2/protocol";
 import manifest from "../../game/tests/fixtures/whole_runs.json";
 
@@ -32,8 +32,10 @@ describe("the run older apps shipped as Our run", () => {
 
   it("are whole runs with Forgiving catches off at rules their chapter still takes, in the shared blob format", async () => {
     for (const row of rows) {
-      const adapter = CHAPTERS.map(entry => entry.adapter).find(entry => boardKey(entry.key) === row.board)!;
-      expect(row.chapter).toEqual(adapter.key);
+      // A run shipped on a published chapter before its hand controls went solid keeps that chapter's earlier
+      // definition (legacy-chapters.ts), which the server still plays for older apps.
+      const adapter = chapter(row.chapter);
+      expect(boardKey(adapter.key)).toBe(row.board);
       const bytes = await decodeBlob(Uint8Array.from(atob(row.body), char => char.charCodeAt(0)), row.byte_length);
       expect(bytes, row.board).not.toBeNull();
       expect(await bytesDigest(bytes!)).toBe(row.proof_hash);

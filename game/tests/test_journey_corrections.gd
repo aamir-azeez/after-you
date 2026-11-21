@@ -32,13 +32,15 @@ func _run() -> void:
 	source = Witness.source(light,"the-way-light-returns",middle)
 	receiver = Simulation.new()
 	_check(receiver.reset(light,"the-way-light-returns",middle,source.export_recording(),"b"),"Corrected shutter receiver starts from native carried proof")
+	# The shutter lever and the final mirror are solid: the receiver works each
+	# from beside it (journey_witness.gd the-way-light-returns).
 	Witness._route(receiver,[[-304,208],[384,208],[352,64]])
 	Walk.tap(receiver)
-	Witness._route(receiver,[[0,64],[0,0]])
+	Witness._route(receiver,[[400,96],[400,28],[0,28],[0,0]])
 	Walk.tap(receiver)
-	Witness._route(receiver,[[0,64],[352,64]])
+	Witness._route(receiver,[[0,40],[0,28],[352,28]])
 	Walk.tap(receiver)
-	Witness._route(receiver,[[384,64],[384,16],[752,16],[752,64]])
+	Witness._route(receiver,[[384,28],[384,16],[752,16],[752,64]])
 	Walk.tap(receiver)
 	_accept("closed-return-shutter",light,middle,source,receiver)
 	_check(receiver.snapshot().mechanisms.levers.get("return-shutter") == false and not receiver.snapshot().mechanisms.latched_bridges.has("room-return"),"Closing the used shutter preserves success without inventing a persistent return route")
@@ -61,7 +63,8 @@ func _accept(id: String, level: Dictionary, previous: Dictionary, source: RefCou
 		exported[id] = derived.checkpoint
 		print("Correction %s A=%d B=%d" % [id,source.tick,receiver.tick])
 		var path := "res://tests/fixtures/journey/validation/"+id+".json"
-		if FileAccess.file_exists(path): _check(Canonical.same(derived.checkpoint,JSON.parse_string(FileAccess.get_file_as_string(path))),id+" remains byte-equivalent to the backend fixture")
+		# --write-fixtures writes them again from this run instead of comparing.
+		if FileAccess.file_exists(path) and "--write-fixtures" not in OS.get_cmdline_user_args(): _check(Canonical.same(derived.checkpoint,JSON.parse_string(FileAccess.get_file_as_string(path))),id+" remains byte-equivalent to the backend fixture")
 
 func _fixture(name: String) -> Dictionary:
 	return JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/journey/"+name+".json"))

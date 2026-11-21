@@ -1006,13 +1006,12 @@ func _preserve_unreadable(candidate: String) -> bool:
 
 
 ## A journal (or archived attempt) of this chapter's level and version under
-## any definition but the current one (an unreleased build's, or a published
-## chapter changed in place by a shared rule, such as the solid hand controls
-## of 2026-11-20) cannot replay under the current definition, so load_data
-## moves it aside whole and the chapter starts fresh. The player's unlocks,
-## keepsakes and cosmetics live in other saves and stay.
+## another definition (Registry.retired) cannot replay here, so load_data
+## moves it aside whole and the chapter starts fresh from its first stage:
+## every turn names the definition it was played on, so no earlier stage of
+## it carries over.
 func _retired(value: Variant) -> bool:
-	return value is Dictionary and Typed.equal(value.get("level_id"), _level.id) and Typed.equal(value.get("level_version"), _level.version) and value.get("definition_hash") is String and str(value.definition_hash) != Canonical.digest(_level)
+	return value is Dictionary and Typed.equal(value.get("level_id"), _level.id) and Typed.equal(value.get("level_version"), _level.version) and Registry.retired(value)
 
 
 ## Renames each retired generation, and every archived attempt of a retired

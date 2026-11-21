@@ -7,6 +7,7 @@ import worker from "../src/index";
 import { routeV2 } from "../src/v2/routes";
 import { CHAPTERS, advertisedChapters } from "../src/v2/chapters";
 import { POLLEN_CLIENT, configJson, withConfig } from "./config";
+// Live's answers, with /v2/capabilities re-pinned for the solid hand controls' new chapter hashes (2026-11-20).
 import LIVE_ANSWERS from "./fixtures/live-answers-5601cb81.json";
 import { LEGACY_CHAPTERS } from "../src/v2/legacy-chapters";
 // The published chapters as older apps hold them, which room level 2 lists after the rows (legacy-chapters.ts).
