@@ -318,7 +318,7 @@
 						"OmniLight3D": 1,
 						"WorldEnvironment": 1
 					},
-					"hash": "6d07a4315e37d465374a2ec91cb59b4f9ba99cc26243856919a57391d003d6d0",
+					"hash": "136de96e15f30b5eca73efec141c40b140aec3c1d4b1fc114ac6853275bb90af",
 					"nodes": 298,
 					"story_camera": {
 						"_follow_center": [
@@ -340,7 +340,7 @@
 						"@DirectionalLight3D#2": "85731af4b0c48736",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "f6c84914374c10dd",
-						"BorrowedLightShore": "c388e4fc59008435",
+						"BorrowedLightShore": "5cfede9360ab8ad6",
 						"ContactShadows": "479b7c6b9ea4402d"
 					}
 				},
@@ -357,7 +357,7 @@
 						"OmniLight3D": 1,
 						"WorldEnvironment": 1
 					},
-					"hash": "35426ef6226d819901ddedc8343161eec0da3f3f70e89299b0ac7290f12af04b",
+					"hash": "8ba5e7ce6c3286be1e37a146cf58040fed41926142f5cf3bf3c6e9dd34cf4210",
 					"nodes": 298,
 					"story_camera": {
 						"_view_center": [
@@ -373,7 +373,7 @@
 						"@DirectionalLight3D#2": "85731af4b0c48736",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "6204a73c4762e4be",
-						"BorrowedLightShore": "c8f3ce886f896de1",
+						"BorrowedLightShore": "716fa8e5ba18053c",
 						"ContactShadows": "479b7c6b9ea4402d"
 					}
 				},
@@ -953,7 +953,7 @@
 						"OmniLight3D": 1,
 						"WorldEnvironment": 1
 					},
-					"hash": "23eeefe0b9ba760c8b60e50cf028eaba311f8310b41d78f3bd135a6a2cec0c2b",
+					"hash": "4b0ae63b4e1adfd40ed569fd646c9b6d4b86c8757b284111c1aad31e1eec388c",
 					"nodes": 298,
 					"story_camera": {
 						"_follow_center": [
@@ -975,7 +975,7 @@
 						"@DirectionalLight3D#2": "85731af4b0c48736",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "cd425353361e981d",
-						"BorrowedLightShore": "2338b7e6dc53d422",
+						"BorrowedLightShore": "83c5c861a1eb9fdd",
 						"ContactShadows": "479b7c6b9ea4402d"
 					}
 				},
@@ -992,7 +992,7 @@
 						"OmniLight3D": 1,
 						"WorldEnvironment": 1
 					},
-					"hash": "f1b4f352dcfb40dbf4846a6a693aa27891924e1a7075a5eb51df3fabd50b5858",
+					"hash": "c57f9184581815568728a13c6b16a0d70a86256c8b87ceb421068b1b57b8084a",
 					"nodes": 298,
 					"story_camera": {
 						"_view_center": [
@@ -1008,7 +1008,7 @@
 						"@DirectionalLight3D#2": "85731af4b0c48736",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "2d35e58bfb89a677",
-						"BorrowedLightShore": "87aa40d36b7f98b7",
+						"BorrowedLightShore": "aaf711c27925b833",
 						"ContactShadows": "479b7c6b9ea4402d"
 					}
 				},
@@ -1285,8 +1285,8 @@
 				"s2.a.end": "3c0f23c1842d839cb5122f81731df4eec163fe3045c61358c79d8bf73d33d37a",
 				"s2.b.end": "bd7c186ec25e7d1fcb52bd9fed0ebbfdb75b363a9cb5f4197a0ad30a7b52d82d",
 				"s2.start": "aedfd64ac8b738aa33965c5fd775b0265011a995fcfb15a753894cd7db81d5b4",
-				"s3.a.end": "7b287afe5ee83663d993d680caa954ce42465db621547254ba42445cac103916",
-				"s3.b.end": "5ce05ab1d6c65bf6c3e4f714d1301a2e29ad3ecca3fec6d3c2ac852201ba06f4",
+				"s3.a.end": "816edf9a44746ff0930414f041a120cb4a6e837b42e9c5c5ae54c2db137647ce",
+				"s3.b.end": "3eecf592fbaa8de0c6ecb09fd75262921a59caebd0482bd980ea5548499b7f25",
 				"s3.start": "2ea157860371842625dd3ef1a7927cb71749ab965204682682ad62a8889bb6e2",
 				"s4.a.end": "0eb638d1853e0b4b5bfbb5b1ecbe5793e5b8060f9ae1676c3e2a40f05f46327e",
 				"s4.b.end": "88ff5f7c10471f324d76c99da312c8a9dcb7f3ed09878ddb2b9b278018b6945b",
@@ -1305,8 +1305,8 @@
 				"s2.a.end": "bf53f0f3a619800381919287af756d110005936bd47ec6187bec81978e308e38",
 				"s2.b.end": "3b27f126b18f4885e9214cb766e1e27010e5b858c6175bb5e5eb3d2a86456378",
 				"s2.start": "fdc9d7e8952c31639cb7903ab07e896bccb8567cb538391b6c65e372bfb2f02d",
-				"s3.a.end": "831e5bdff8c7f35fe9734dfcfa0a6fdbb675003658648fd0b2e05711bd64c50d",
-				"s3.b.end": "f3db947b56a6f5278824fdf8b6dd33940454fc24689ff58f1dd76cca1f5dfd80",
+				"s3.a.end": "6034c034b3e249c1c13143804f3c24d08d0adb87eee6cd56e2cc7e2d8a07582b",
+				"s3.b.end": "b2773222d32963efb97bf8c399862fc5f4342d25016117e46c8b17a538e92de1",
 				"s3.start": "f5e0c490057eb5437c8aabe53d671d7b21344cc13405680c436b8ac4d2371e6d",
 				"s4.a.end": "af2b3cc4603bfb944aac7d5cf1f12a773e81a323416084b74da5af16c13bf7fc",
 				"s4.b.end": "370e83ecbd1dbd49727332419b333310c69409df22836d276efa3cc1252b130f",
