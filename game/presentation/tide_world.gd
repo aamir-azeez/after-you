@@ -822,7 +822,12 @@ func _build_foreshore() -> void:
 	var root := Node3D.new()
 	root.name = "Foreshore"
 	terrain.add_child(root)
-	box(Vector3(27.2, 0.40, 1.60), Color("b7a27a"), Vector3(3.84, -0.50, 5.60), root).name = "WetSand"
+	# The water block's "foreshore" ground, 40 cm deep under its top.
+	for ground: Dictionary in _water_block().get("grounds", []):
+		if str(ground.id) != "foreshore": continue
+		var r: Array = ground.rect_cm
+		var top := float(ground.height_cm) / 100.0
+		box(Vector3(float(r[2] - r[0]) / 100.0, 0.40, float(r[3] - r[1]) / 100.0), Color("b7a27a"), Vector3(float(r[0] + r[2]) / 200.0, top - 0.20, float(r[1] + r[3]) / 200.0), root).name = "WetSand"
 	var shallow := Primitives.mesh_node(Primitives.box_mesh(Vector3(27.2, 0.06, 0.80)), Primitives.fresh_material(Color(0.36, 0.55, 0.58, 0.55), 0.3), Vector3(3.84, -0.27, 6.00), root)
 	shallow.name = "Shallows"
 	shallow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF

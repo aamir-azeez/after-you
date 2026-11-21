@@ -44,4 +44,8 @@ const DATA := {
 	"fender": Color("6b4f37"),
 	# The aqueduct stands on piers: water runs under it, so it gets no walls.
 	"piers": ["aq-feeder", "aq-span"],
+	# Ground the world lays beside the water, which scenery may stand on
+	# (kit/prop_rules.gd grounds()): the wet sand of the foreshore south of the
+	# beaches, out to the shallows (tide_world.gd _build_foreshore()).
+	"grounds": [{"id": "foreshore", "rect_cm": [-976, 480, 1744, 640], "height_cm": -30}],
 }

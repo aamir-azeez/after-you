@@ -76,8 +76,6 @@ const PiecesWitness = preload("res://tests/pieces_witness.gd")
 ## Known failures: {failure id: why it is left}. Published worlds never change
 ## to clear one; a new chapter fixes its own.
 const KNOWN := {
-	"high-and-low@1 upper-path props hedge at (-690, -200) cm and signpost at (-700, 230) cm": "the shore's signpost stands at the hedge's front end on purpose, its post beside the leaves and its boards above them (seen in the 800x360 preview)",
-	"high-and-low@1 down-and-around props hedge at (-690, -200) cm and signpost at (-700, 230) cm": "the same signpost and hedge on the second stage",
 	"turn-of-the-tide@1 set-the-tide controls line and gangway": "published before the control overlap rule (2026-11-16); @3 moved the line lever, published worlds stay",
 	"turn-of-the-tide@1 slack-water controls basin and gate-bar": "published before the control overlap rule (2026-11-16): the basin valve stands in front of the gate bar's catwalk",
 	"turn-of-the-tide@2 set-the-tide controls line and gangway": "published before the control overlap rule (2026-11-16); @3 moved the line lever, published worlds stay",

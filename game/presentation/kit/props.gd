@@ -44,6 +44,36 @@ const STRIPE := Color("c4574a")
 
 ## Kinds lower than this (metres) never hide a spirit or a control.
 const LOW := 0.16
+## The share of a kind's footprint (extent()) that rests on the ground: a
+## tree stands on its trunk, a lamp on its foot. A kind not named rests on
+## the whole of it.
+const FOOT_SHARE := {"tree": 0.25, "pine": 0.3, "lantern": 0.6, "lamp_post": 0.45, "signpost": 0.35, "tower": 0.8, "bush": 0.8, "fern": 0.6}
+## Kinds hung on a wall or a quay face, resting on no floor.
+const HUNG := ["ivy", "shelf", "frame", "basket"]
+## Kinds that are only light lying on whatever is under them.
+const GLOWS := ["light_pool"]
+## Kinds set into what the world builds (a falls pouring through the gorge
+## wall, the wheel turning in the mill's race): they stand where they are put.
+const FIXTURES := ["waterfall", "mill_wheel"]
+## How far (metres at size 1) a kind's model reaches under its spot: it stands
+## sunk in the ground or the water's bed (extent()'s base is that deep).
+const BELOW := {"rock": 0.07, "fishing_rod": 0.14, "reed_bed": 0.16, "dead_tree": 0.26, "stilt_hut": 0.42, "sunken_boat": 0.9, "windmill": 1.67}
+## Kinds that float on water rather than stand on its bed.
+const FLOATS := ["boat"]
+## Kinds on a pole that may stand in water with no ground under them: given
+## "wade" (cm), the pole runs that far down under the base to the water's
+## bed. Each is the pole's width at size 1 (metres): a mooring post and a
+## post box on its post. A lamp by the water stands on ground (a footing if
+## need be).
+const WADERS := {"post": 0.11, "post_box": 0.07}
+## Kinds that may stand out in open water on purpose, down to its bed (a
+## boat floats on it, a pole wades): landmarks of a marsh or a shore. Any
+## other kind rests on ground.
+const IN_WATER := ["windmill", "stilt_hut", "sunken_boat", "dead_tree", "reed_bed", "reeds", "rock"]
+
+## Whether a kind may stand out in open water (IN_WATER, FLOATS, WADERS).
+static func stands_in_water(kind: String) -> bool:
+	return kind in IN_WATER or kind in FLOATS or WADERS.has(kind)
 ## Flat kinds that cover a patch of floor (rugs, and paths of stones or
 ## boards): small markers on the floor keep off them (island_world.floor_covers).
 const FLOOR_COVERS := ["rug", "path"]
@@ -72,23 +102,23 @@ static func extent(spec: Dictionary) -> Dictionary:
 	var height := 0.3 * s
 	var half := Vector2.ZERO
 	match kind:
-		"tree": radius = 0.42 * s; height = 1.55 * s
+		"tree": radius = 0.5 * s; height = 1.55 * s
 		"pine": radius = 0.42 * s; height = 1.7 * s
-		"bush": radius = 0.32 * s; height = 0.45 * s
+		"bush": radius = 0.35 * s; height = 0.45 * s
 		"flowers": radius = 0.32 * s; height = 0.14 * s
 		"tuft": radius = 0.08 * s; height = 0.012
 		"bank":
 			var r: Array = spec.rect
 			return {"rect": Rect2(Vector2(float(r[0]), float(r[1])) / 100.0, Vector2(float(r[2] - r[0]), float(r[3] - r[1])) / 100.0), "height": float(spec.get("height", 12)) / 100.0 + 0.3, "base": float(spec.get("y", 0)) / 100.0 - 0.3, "flat": false}
-		"rock": radius = 0.28 * s; height = 0.2 * s
-		"lantern": radius = 0.14 * s; height = 0.9 * s
+		"rock": radius = 0.3 * s; height = 0.2 * s
+		"lantern": radius = 0.2 * s; height = 0.9 * s
 		"lamp_post": radius = 0.16 * s; height = 1.45 * s
 		"bench": half = Vector2(0.42, 0.16) * s; height = 0.45 * s
 		"pot": radius = 0.12 * s; height = 0.34 * s
 		"fern": radius = 0.28 * s; height = 0.4 * s
 		"crate": radius = 0.2 * s; height = 0.32 * s * (2.0 if spec.get("stack", false) else 1.0)
-		"signpost": radius = 0.3 * s; height = 1.05 * s
-		"cottage": half = Vector2(float(spec.get("width", 160)), float(spec.get("depth", 110))) / 200.0 * s; height = 2.0 * s
+		"signpost": radius = 0.38 * s; height = 1.05 * s
+		"cottage": half = Vector2(float(spec.get("width", 160)) * 1.225, float(spec.get("depth", 110)) * 1.42) / 200.0 * s; height = 2.0 * s
 		"tower": radius = 0.75 * s; height = 3.3 * s
 		"post": radius = 0.07 * s; height = float(spec.get("height", 100)) / 100.0
 		"rug", "path": half = Vector2(float(spec.get("width", 100)), float(spec.get("depth", 60))) / 200.0; height = 0.018
@@ -96,7 +126,7 @@ static func extent(spec: Dictionary) -> Dictionary:
 		"basket": radius = 0.16 * s; height = 0.34 * s
 		"ivy": radius = 0.07 * s; height = 0.0
 		"boat": half = Vector2(0.62, 0.26) * s; height = 0.4 * s
-		"bollard": radius = 0.08 * s; height = 0.15 * s
+		"bollard": radius = 0.09 * s; height = 0.15 * s
 		"barrel": radius = 0.15 * s; height = 0.32 * s
 		"lobster_pot": half = Vector2(0.20, 0.14) * s; height = 0.18 * s
 		"shelf": half = Vector2(0.45, 0.1) * s; height = 0.5 * s
@@ -104,11 +134,11 @@ static func extent(spec: Dictionary) -> Dictionary:
 		"shells": radius = 0.15 * s; height = 0.02
 		"waterfall": return _falls_extent(spec, s)
 		"mill_wheel": half = Vector2(MILL_WHEEL_RADIUS + 0.12, 0.25) * s; height = (MILL_WHEEL_RADIUS * 2.0 + 0.2) * s
-		"windmill": radius = 1.3 * s; height = 5.45 * s
-		"stilt_hut": half = Vector2(1.15, 1.3) * s; height = 3.65 * s
-		"sunken_boat": half = Vector2(1.25, 0.5) * s; height = 0.62 * s
-		"dead_tree": radius = 0.85 * s; height = 3.5 * s
-		"reed_bed": radius = 0.7 * s; height = 1.47 * s
+		"windmill": radius = 2.0 * s; height = 5.45 * s
+		"stilt_hut": half = Vector2(1.21, 1.46) * s; height = 3.65 * s
+		"sunken_boat": half = Vector2(1.41, 1.21) * s; height = 0.62 * s
+		"dead_tree": radius = 0.89 * s; height = 3.5 * s
+		"reed_bed": radius = 0.75 * s; height = 1.47 * s
 		"post_box": radius = 0.2 * s; height = 1.19 * s
 		"reeds": radius = 0.16 * s; height = 0.78 * s
 		"stamp_desk": half = Vector2(0.38, 0.24) * s; height = 0.74 * s
@@ -128,9 +158,9 @@ static func extent(spec: Dictionary) -> Dictionary:
 	var footprint := Rect2(at - half, half * 2.0) if half != Vector2.ZERO else Rect2(at - Vector2.ONE * radius, Vector2.ONE * radius * 2.0)
 	if half != Vector2.ZERO and absf(fmod(float(spec.get("rot", 0)), 180.0)) > 45.0 and absf(fmod(float(spec.get("rot", 0)), 180.0)) < 135.0:
 		footprint = Rect2(at - Vector2(half.y, half.x), Vector2(half.y, half.x) * 2.0)
-	var base := float(spec.get("y", 0)) / 100.0
+	var base := float(spec.get("y", 0)) / 100.0 - float(BELOW.get(kind, 0.0)) * s
 	if kind == "ivy": base -= float(spec.get("length", 60)) / 100.0
-	return {"rect": footprint, "height": height, "base": base, "flat": height <= 0.02 or kind in ["ivy"], "wall": bool(spec.get("wall", false))}
+	return {"rect": footprint, "height": height + float(BELOW.get(kind, 0.0)) * s, "base": base, "flat": height <= 0.02 or kind in ["ivy"], "wall": bool(spec.get("wall", false))}
 
 ## Expands rows into single props; every other spec passes through.
 static func expand(specs: Array) -> Array:
@@ -148,15 +178,39 @@ static func expand(specs: Array) -> Array:
 			item["at"] = [at.x, at.y]
 			for key: String in ["surface", "y"]:
 				if spec.has(key) and not item.has(key): item[key] = spec[key]
-			if spec.get("vary", false): vary(item, index, at.x)
+			if spec.get("vary", false):
+				vary(item, index, at.x, (to - from) / float(maxi(count - 1, 1)))
+				_keep_within(item, from, to)
 			result.append(item)
 	return result
 
 ## The `index`th prop of a varied row at `x` cm: a little smaller or larger
 ## and turned, the same every build.
-static func vary(item: Dictionary, index: int, x: float) -> void:
-	item["size"] = float(item.get("size", 1.0)) * (0.85 + 0.15 * absf(sin(float(index) * 2.3 + x)))
-	item["rot"] = float(item.get("rot", 0)) + float(index) * 47.0
+## With `step` (cm, the row's step from one prop to the next) it also slips
+## up to a quarter step along the row and a few cm across it, so a row never
+## reads as a grid.
+static func vary(item: Dictionary, index: int, x: float, step: Vector2 = Vector2.ZERO) -> void:
+	var seed := absi(hash("%d,%d" % [index, roundi(x)]))
+	item["size"] = float(item.get("size", 1.0)) * (0.8 + 0.2 * _seeded(seed, 1))
+	item["rot"] = float(item.get("rot", 0)) + roundf(360.0 * _seeded(seed, 2))
+	if step == Vector2.ZERO or not item.has("at"): return
+	var slip := step * (_seeded(seed, 3) - 0.5) * 0.5 + step.orthogonal().normalized() * (_seeded(seed, 4) - 0.5) * VARY_ACROSS
+	item["at"] = [roundi(float(item.at[0]) + slip.x), roundi(float(item.at[1]) + slip.y)]
+
+## Slides a varied row's prop back along the row to between its ends `from`
+## and `to` (cm), so a row never wanders past where it was set.
+static func _keep_within(item: Dictionary, from: Vector2, to: Vector2) -> void:
+	var span := from.distance_to(to)
+	if span <= 0.0: return
+	var along := (to - from) / span
+	var placed := Vector2(float(item.at[0]), float(item.at[1]))
+	var t := (placed - from).dot(along)
+	if t >= 0.0 and t <= span: return
+	var kept := placed + along * (clampf(t, 0.0, span) - t)
+	item["at"] = [roundi(kept.x), roundi(kept.y)]
+
+## How far (cm) a varied row's props wander across it, all told.
+const VARY_ACROSS := 6.0
 
 ## The height (cm above its surface) a prop stands at on this bank: the top
 ## face of its top layer. Never the bank's own height, which is under it.
@@ -173,6 +227,8 @@ static func build(spec: Dictionary, parent: Node3D, base_y: float, lit: bool) ->
 	var root := Node3D.new()
 	root.name = "Prop_" + kind
 	root.set_meta("dressing_kind", kind)
+	# The spec it stands for: the dressing lint measures where it rests.
+	root.set_meta("dressing_spec", spec)
 	parent.add_child(root)
 	var s := float(spec.get("size", 1.0))
 	if spec.has("at"):
@@ -185,7 +241,7 @@ static func build(spec: Dictionary, parent: Node3D, base_y: float, lit: bool) ->
 		"tree": _tree(root, s, int(spec.get("variant", 0)))
 		"pine": _pine(root, s)
 		"bush": _bush(root, s, spec.get("flowers", true))
-		"flowers": _flowers(root, s)
+		"flowers": _flowers(root, s, spec)
 		"tuft": _tuft(root, s)
 		"rock": _rock(root, s, bool(spec.get("moss", false)))
 		"lantern": _lantern(root, s, lit)
@@ -232,6 +288,11 @@ static func build(spec: Dictionary, parent: Node3D, base_y: float, lit: bool) ->
 		_:
 			root.free()
 			return null
+	# Standing in water: its pole runs on down to the bed.
+	var wade := float(spec.get("wade", 0)) / 100.0
+	if wade > 0.0 and WADERS.has(kind):
+		var width := float(WADERS[kind]) * s
+		_box(Vector3(width, wade + 0.02, width), TIMBER_DARK, Vector3(0, -wade * 0.5 + 0.01, 0), root).name = "WadePole"
 	return root
 
 ## A Blender model's still part (kit/models.gd), scaled from its foot.
@@ -282,8 +343,32 @@ static func _bush(root: Node3D, s: float, flowered: Variant) -> void:
 	_model(root, "bush", "bush", {"leaf_a": LEAF, "leaf_b": LEAF.darkened(0.06), "leaf_c": LEAF.darkened(0.12)}, Vector3.ONE * s)
 	if flowered: _model(root, "bush", "bush_blooms", {"bloom_a": BLOSSOMS[0], "bloom_b": BLOSSOMS[1], "bloom_c": BLOSSOMS[2]}, Vector3.ONE * s)
 
-static func _flowers(root: Node3D, s: float) -> void:
-	_model(root, "flower_patch", "flower_patch", {"leaf": LEAF, "stem": LEAF_DARK, "bloom_a": BLOSSOMS[0], "bloom_b": BLOSSOMS[1], "bloom_c": BLOSSOMS[2], "bloom_d": BLOSSOMS[3]}, Vector3.ONE * s)
+## A flower patch, each one its own by its spot, the same every build: one
+## of FLOWER_PARTS' clump shapes, a mix of two or three of the BLOSSOMS, a
+## slight lean and stretch, and now and then a small second clump beside it, all inside the
+## patch's footprint and under its height (extent()).
+static func _flowers(root: Node3D, s: float, spec: Dictionary) -> void:
+	var at: Array = spec.get("at", [0, 0])
+	var seed := absi(hash("%d,%d" % [roundi(float(at[0])), roundi(float(at[1]))]))
+	_flower_clump(root, seed, BLOSSOMS, s, Vector3.ZERO)
+	if _seeded(seed, 7) < 0.35:
+		var angle := TAU * _seeded(seed, 8)
+		_flower_clump(root, seed + 1, BLOSSOMS, s * 0.45, Vector3(cos(angle), 0, sin(angle)) * 0.13 * s)
+
+## The clump shapes of a flower patch (assets/models/flower_patch.glb).
+const FLOWER_PARTS := ["flower_patch", "flower_patch_tall", "flower_patch_spray"]
+
+static func _flower_clump(root: Node3D, seed: int, palette: Array, s: float, at: Vector3) -> void:
+	var count := palette.size()
+	var main: Color = palette[seed % count]
+	var second: Color = palette[(seed / count + 1 + seed % count) % count]
+	var third: Color = palette[(seed / (count * count) + 2) % count]
+	var mix := [main, second, main, third] if _seeded(seed, 2) < 0.5 else [main, second, second, main]
+	var colors := {"leaf": LEAF.darkened(0.05 * _seeded(seed, 3)), "stem": LEAF_DARK, "bloom_a": mix[0], "bloom_b": mix[1], "bloom_c": mix[2], "bloom_d": mix[3]}
+	var stretch := 0.9 + 0.2 * _seeded(seed, 4)
+	var clump := _model(root, "flower_patch", FLOWER_PARTS[(seed / 7) % FLOWER_PARTS.size()], colors, Vector3(stretch, 0.85 + 0.15 * _seeded(seed, 5), 2.0 - stretch) * s * 0.92)
+	clump.position = at
+	clump.rotation = Vector3((_seeded(seed, 6) - 0.5) * 0.16, TAU * _seeded(seed, 9), (_seeded(seed, 10) - 0.5) * 0.16)
 
 static func _tuft(root: Node3D, s: float) -> void:
 	_model(root, "wild_bits", "tuft", {"grass": Color("6f9a64")}, Vector3.ONE * s)
@@ -455,6 +540,15 @@ static func _wall(root: Node3D, from: Vector2, to: Vector2, height: float, thick
 	bar.rotation.y = -atan2(to.y - from.y, to.x - from.x)
 
 ## 0..1 from an index and a salt, the same every build.
+## A number in [0, 1) from a big `seed` (a hash) and a `salt`, the same on
+## every platform: integers only, where _jitter()'s sin of a big seed differs
+## in its last bits between phones and desktops.
+static func _seeded(seed: int, salt: int) -> float:
+	var h := (seed * 374761393 + salt * 668265263) & 0x7fffffff
+	h = ((h ^ (h >> 15)) * 2246822519) & 0x7fffffff
+	h = ((h ^ (h >> 13)) * 3266489917) & 0x7fffffff
+	return float((h ^ (h >> 16)) & 0xffffff) / 16777216.0
+
 static func _jitter(index: int, salt: float) -> float:
 	var value := sin(float(index) * 12.9898 + salt * 78.233) * 43758.5453
 	return value - floor(value)
