@@ -1,5 +1,5 @@
 {
-	"digest": "4cde3e1ccbdf5b8f9f30ae861042e47f4f9a3bca71149d599a02100fa791243b",
+	"digest": "d1cb313680aa4c76cb022a9eb3190efffb12c1913450ec9ded25f82d0ae4d43a",
 	"runs": [
 		{
 			"a": "island:w-terrace",
@@ -194,7 +194,7 @@
 			"base": 0.45,
 			"ends": [
 				false,
-				false
+				true
 			],
 			"from": -512.0,
 			"kind": "door",
@@ -211,8 +211,8 @@
 			"b": "island:w-terrace",
 			"base": 0.45,
 			"ends": [
-				false,
-				false
+				true,
+				true
 			],
 			"from": -368.0,
 			"kind": "door",
@@ -229,8 +229,8 @@
 			"b": "island:w-terrace",
 			"base": 0.45,
 			"ends": [
-				false,
-				false
+				true,
+				true
 			],
 			"from": -296.0,
 			"kind": "door",
@@ -247,8 +247,8 @@
 			"b": "island:w-terrace",
 			"base": 0.45,
 			"ends": [
-				false,
-				false
+				true,
+				true
 			],
 			"from": -440.0,
 			"kind": "door",
@@ -265,8 +265,8 @@
 			"b": "island:m-terrace",
 			"base": 0.45,
 			"ends": [
-				false,
-				false
+				true,
+				true
 			],
 			"from": 192.0,
 			"kind": "door",
@@ -296,8 +296,8 @@
 			"b": "crossing:boom-post",
 			"base": 0.45,
 			"ends": [
-				false,
-				false
+				true,
+				true
 			],
 			"from": -296.0,
 			"kind": "door",

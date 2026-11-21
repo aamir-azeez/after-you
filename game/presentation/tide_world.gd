@@ -8,27 +8,16 @@ extends "res://presentation/water_world.gd"
 ## The water (its bodies, the walls that hold it, its floods and its locks,
 ## from the chapter's water block, content/water/turn_of_the_tide.gd) is the
 ## water world's (presentation/water_world.gd); Tide adds its chamber, sea
-## gates, spout, foreshore, boats, ramps, gauges and lamps through its hooks.
+## gates, spout, foreshore, ramps, gauges and lamps through its hooks (its
+## moored boats and a drowning are the water world's).
 const RampRules = preload("res://presentation/kit/ramp_rules.gd")
-const Floats = preload("res://presentation/kit/floats.gd")
-const Models = preload("res://presentation/kit/models.gd")
 const PUNT := "res://assets/models/punt.glb"
 ## How far a raised ramp stands up (radians), and how fast it swings (radians a second).
 const RAMP_RAISED := 0.95
 const RAMP_RATE := 1.6
 ## Tide rules (journey simulation.gd): a closing crossing's edges flash this
-## colour, and a drowned spirit sinks this far under the water it is in.
+## colour. A drowning is the water world's (kit/drowning.gd).
 const CLOSING_COLOR := Color("f08a5d")
-const DROWN_DEPTH := 0.55
-## A drowned spirit's face (spirit_look.gd).
-const KNOCKED_OUT := &"knocked_out"
-const SpiritLook = preload("res://presentation/spirit_look.gd")
-## Bubbles rising where a spirit went under: [x offset, z offset, start phase
-## (0..1 of the rise), radius] in metres. Fixed, so live play and any replay
-## of the same drowning show the same bubbles; Reduce motion holds them still.
-const DROWN_BUBBLES := [[0.10, 0.04, 0.0, 0.045], [-0.09, -0.03, 0.35, 0.035], [0.02, -0.08, 0.7, 0.03], [-0.13, 0.06, 0.15, 0.025]]
-const BUBBLE_RISE := 0.55
-const BUBBLE_SPEED := 0.45
 ## The sea gates' leaves stand across both ends of the harbour mouth.
 const MOUTH_X := [-704, -512]
 const SEA_GATE_Z := 5.20
@@ -99,7 +88,6 @@ var _spout_streaks: Array[MeshInstance3D] = []
 var _history_tide := ""
 ## Shut crossings stay in view as faint outlines: id -> ghost node.
 var _ghosts: Dictionary = {}
-var _boats: Array[Node3D] = []
 ## Ramps built for the shown stage: crossing id -> its hinge (Node3D, meta
 ## "target"), and what lowers each: crossing id -> [selector id, value,
 ## the water selector its gate names].
@@ -107,18 +95,9 @@ var _ramps: Dictionary = {}
 var _ramp_on: Dictionary = {}
 ## Each control, lever and pad of the chapter by id -> its owner slot.
 var _owners: Dictionary = {}
-## Tide rules: the ring spreading where a spirit drowned and its bubbles,
-## built once on the first drowning and reused; the slot drowned now ("" none);
-## the water surface it went under; how long the bubbles have risen.
-var _drown_ring: MeshInstance3D
-var _drown_bubbles: Array[MeshInstance3D] = []
-var _drowned_slot := ""
-var _drown_surface := 0.0
-var _bubble_age := 0.0
 ## Kept-crossing masts, raised with the water that covers their crossing.
 const MAST_CLEARANCE := 0.25
 var _kept_masts: Array[Dictionary] = []
-var _clock := 0.0
 ## View-plane boxes of bubbles already placed this frame by _clear_scenery: the
 ## first _scenery_placed_count entries; and the scenery marks it clears, the
 ## first _scenery_mark_count entries, with the control each belongs to. The
@@ -166,14 +145,9 @@ func _forget_stage() -> void:
 	_spout_streaks.clear()
 	_history_tide = ""
 	_ghosts.clear()
-	_boats.clear()
 	_ramps.clear()
 	_ramp_on.clear()
 	_owners = _mechanism_owners()
-	# Actors outlive a stage: a drowned face goes back before the new one.
-	if not _drowned_slot.is_empty(): _clear_drowned()
-	_drown_ring = null
-	_drown_bubbles.clear()
 	_kept_masts.clear()
 	_bubbles_placed = false
 
@@ -193,7 +167,6 @@ func _build_water_scenery() -> void:
 	await _build_step()
 	_build_foreshore()
 	await _build_step()
-	_build_boats()
 	_build_ramps()
 	await _build_step()
 	_build_lamplight()
@@ -711,17 +684,9 @@ func _raise_mast(level: float, mast: Dictionary) -> void:
 	(mast.flag as Node3D).position.y = 0.38 + lift
 
 func _advance_water(delta: float) -> void:
-	_clock += maxf(delta, 0.0)
-	waters.advance(delta)
+	super._advance_water(delta)
 	_swing_ramps(delta)
-	if not _drowned_slot.is_empty() and not reduced_motion:
-		var grown := minf(_drown_ring.scale.x + delta * 1.6, 3.0)
-		_drown_ring.scale = Vector3(grown, 1.0, grown)
-		_bubble_age += maxf(delta, 0.0)
-		_rise_bubbles()
-	waters.advance_fade(delta)
 	if not reduced_motion:
-		waters.bob()
 		# Pale streaks run down the falling water.
 		if is_instance_valid(_spout) and _spout.visible:
 			for streak: MeshInstance3D in _spout_streaks:
@@ -872,26 +837,6 @@ func _build_foreshore() -> void:
 		var x := -9.2 + float(index) * 1.49
 		cylinder(0.035, 0.01, Color("f1e4d0") if index % 3 else Color("e7c0b0"), Vector3(x, -0.295, 5.05 + 0.18 * float(index % 4)), root)
 
-## Rowboats moored in the channels (the dressing's "moored_boats") ride their
-## water's level (and bob unless motion is reduced): a second cue for the tide.
-## Each sits by the float rule (kit/floats.gd "rowboat"): its keel at its
-## origin, solid up to its floorboards, which stay over the water all through
-## its bob, and open above them inside its gunwale.
-func _build_boats() -> void:
-	for spec: Dictionary in dressing.get("moored_boats", []):
-		var boat := Node3D.new()
-		boat.name = "MooredBoat"
-		boat.position = point(spec.at)
-		boat.rotation.y = float(spec.heading)
-		boat.set_meta("phase", float(spec.at[0]) * 0.013)
-		terrain.add_child(boat)
-		# The rowboat model along z, its keel at the node's origin (the float rule).
-		var hull := Models.moving(Props.ROWBOAT, "rowboat", Props.rowboat_colors(), boat)
-		hull.transform = Transform3D(Basis(Vector3.UP, -PI / 2.0).scaled(Vector3.ONE * 0.83), Vector3.ZERO)
-		cylinder(0.035, waters.wall_top() + 0.12 - waters.seabed(), PILE, Vector3(float(spec.at[0]) / 100.0 + 0.32, (waters.wall_top() + 0.12 + waters.seabed()) * 0.5, float(spec.at[1]) / 100.0 - 0.36), terrain).name = "MooringPile"
-		_boats.append(boat)
-		waters.ride(str(spec.water), _float_boat.bind(boat), true, boat)
-
 ## Each ramp crossing (kit/ramp_rules.gd) gets a timber ramp on a hinge at its
 ## west end, with a winch drum on two posts beside the hinge. It starts raised;
 ## present() sets where it heads. Its sounds come from its hinge.
@@ -966,67 +911,6 @@ func _show_closing(closing: Dictionary) -> void:
 	# Water rising past a closing crossing's deck reaches it as the crossing
 	# shuts, then goes on at its usual rate.
 	waters.pace_closing(closing)
-
-## Tide rules: a drowned spirit (snapshot "drowned": {slot, route}) heads under
-## the water over its crossing with its knocked-out face, a ring spreads and
-## bubbles rise where it went down, and the camera eases over to it (snapping
-## under Reduce motion), so a drowning off screen is seen before the card. A
-## snapshot without a drowning (a retry, a replay seeking back) puts it all
-## away again.
-func _show_drowned(drowned: Dictionary) -> void:
-	if drowned.is_empty() or not actors.has(str(drowned.get("slot", ""))):
-		if not _drowned_slot.is_empty(): _clear_drowned()
-		return
-	var slot := str(drowned.slot)
-	camera_focus = slot
-	# The water over the crossing it drowned on: the harbour's or the outer sea's.
-	var body: Node3D = waters.bodies.get(waters.body_of(_route(str(drowned.get("route", ""))).get("rect_cm", [0, 0, 0, 0])))
-	if not is_instance_valid(body): body = waters.bodies.get(waters.first_body())
-	var surface: float = float(body.get_meta("shown")) if is_instance_valid(body) else float(actor_targets[slot].y)
-	var target: Vector3 = actor_targets[slot]
-	target.y = minf(target.y, surface) - DROWN_DEPTH
-	actor_targets[slot] = target
-	if _drowned_slot == slot: return
-	_drowned_slot = slot
-	_drown_surface = surface
-	_bubble_age = 0.0
-	# A held face, so a replay seek keeps it; a doze would outrank it, so none.
-	var spirit := actors[slot] as SpiritVisual
-	if spirit.pose() == &"doze": spirit.set_pose(&"rest", {}, true)
-	spirit.set_expression(KNOCKED_OUT, reduced_motion)
-	if not is_instance_valid(_drown_ring):
-		_drown_ring = cylinder(0.32, 0.01, Color(CREAM, 0.7), Vector3.ZERO, terrain)
-		_drown_ring.name = "DrownRing"
-		for spec: Array in DROWN_BUBBLES:
-			var bubble := sphere(float(spec[3]), Color(CREAM, 0.85), Vector3.ZERO, terrain)
-			bubble.name = "DrownBubble"
-			_drown_bubbles.append(bubble)
-	_drown_ring.position = Vector3(target.x, surface + 0.02, target.z)
-	_drown_ring.scale = Vector3.ONE
-	_drown_ring.visible = true
-	for index in range(_drown_bubbles.size()):
-		var spec: Array = DROWN_BUBBLES[index]
-		_drown_bubbles[index].position = Vector3(target.x + float(spec[0]), 0.0, target.z + float(spec[1]))
-		_drown_bubbles[index].visible = true
-	_rise_bubbles()
-
-## Each bubble climbs BUBBLE_RISE above the water and starts again, from its
-## own phase; still at that phase under Reduce motion.
-func _rise_bubbles() -> void:
-	for index in range(_drown_bubbles.size()):
-		var phase := fmod(float(DROWN_BUBBLES[index][2]) + _bubble_age * BUBBLE_SPEED / BUBBLE_RISE, 1.0)
-		_drown_bubbles[index].position.y = _drown_surface + 0.03 + phase * BUBBLE_RISE
-
-func _clear_drowned() -> void:
-	if actors.has(_drowned_slot): (actors[_drowned_slot] as SpiritVisual).set_expression(SpiritLook.NORMAL, true)
-	if camera_focus == _drowned_slot: camera_focus = ""
-	_drowned_slot = ""
-	if is_instance_valid(_drown_ring): _drown_ring.visible = false
-	for bubble: MeshInstance3D in _drown_bubbles: bubble.visible = false
-
-func _float_boat(level: float, boat: Node3D) -> void:
-	if not is_instance_valid(boat): return
-	boat.position.y = Floats.keel("rowboat", level, _clock, float(boat.get_meta("phase")), reduced_motion)
 
 ## Warm pools of light under the bank lamps that name "bunting" in the
 ## dressing, and bunting strung from each to that point along its bank.
@@ -1130,7 +1014,6 @@ func _present_water(state: Dictionary, immediate: bool) -> void:
 		if is_instance_valid(_ghosts[id]) and _decks.has(id): _ghosts[id].visible = not _decks[id].visible
 	waters.show_floods(_decks)
 	_show_closing(state.get("route_progress", {}).get("closing", {}))
-	_show_drowned(state.get("drowned", {}))
 	_occupy_water(state, immediate)
 	if is_instance_valid(_bell) and bool(state.get("complete", false)): _glow(_bell, LIGHT_COLOR, 1.6)
 
@@ -1156,7 +1039,7 @@ var _bubbles_placed := false
 
 ## Everything that moves, shows, hides or glows with the tide stays whole
 ## (_static_keep): crossing decks (rebuilt and copied for their ghosts at
-## build), water, walled stubs' floods, ghosts, kept marks and masts, boats, sea gates, the
+## build), water, walled stubs' floods, ghosts, kept marks and masts, sea gates, the
 ## spout, wheels, gauges, levers and lamps, and the remembered routes (found by
 ## index). The island floors fold like every world's (cooperative_world).
 func _folds_static_scenery() -> bool:
@@ -1172,10 +1055,7 @@ func _static_keep() -> Array:
 	keep.append_array(_mouth_lamps.values())
 	keep.append_array(_chamber_lamps)
 	keep.append_array(_sea_gates)
-	keep.append_array(_boats)
 	keep.append_array(_ramps.values())
-	if is_instance_valid(_drown_ring): keep.append(_drown_ring)
-	keep.append_array(_drown_bubbles)
 	keep.append_array(_spout_streaks)
 	keep.append_array(_slack_marks)
 	for marks: Array in _dry_marks.values(): keep.append_array(marks)

@@ -329,6 +329,9 @@ func build_bodies() -> void:
 		_show(root, rest_level(str(body.id)))
 		look.show_level(str(body.id), rest_level(str(body.id)))
 		bodies[str(body.id)] = root
+		# What rode it before it stood (a current's marks) is placed on it now.
+		for rider: Array in _riders:
+			if rider[0] == str(body.id): (rider[1] as Callable).call(rest_level(str(body.id)))
 		await host._build_step()
 
 ## One body of water named `name` over `regions` ([x0, z0, x1, z1] cm), minus
@@ -612,10 +615,12 @@ func _capped_wall(run: Array, edge: float, outward: float, along_x: bool, thickn
 	holds_water(coping)
 	return [wall, coping]
 
-## Every beach and terrace edge that faces water gets a parapet to just above
-## the highest water, with a coping stone; crossing mouths stay open, so a
-## flooded crossing shows as water in the gap. Floors above every water get a
-## timber fender instead. Await it.
+## Every beach and terrace edge that faces water that can rise over it gets a
+## parapet to just above the highest water, with a coping stone; crossing
+## mouths stay open, so a flooded crossing shows as water in the gap. A floor
+## edge whose water never reaches its floor (the pool it faces tops out under
+## it) gets a timber fender instead: a wall there would hold nothing and stand
+## up through a pip at the edge. Await it.
 func _build_parapets() -> void:
 	var root := Node3D.new()
 	root.name = "Parapets"
@@ -626,9 +631,9 @@ func _build_parapets() -> void:
 		var outward: float = wall[2]
 		var along_x: bool = wall[3]
 		var height: float = wall[4]
-		# A floor over the highest water, or standing above the walls' top (a
-		# tier of a climb of pools), is a quay: a fender, no parapet.
-		if height >= highest() or height - 0.20 >= wall_top(): _edge_box(run, edge, outward, along_x, 0.10, height - 0.16, height - 0.03, water.fender, root, 0.6).name = "QuayFender"
+		# A floor over the highest its own water reaches, or standing above the
+		# walls' top (a tier of a climb of pools), is a quay: a fender, no parapet.
+		if height >= float(wall[5]) or height - 0.20 >= wall_top(): _edge_box(run, edge, outward, along_x, 0.10, height - 0.16, height - 0.03, water.fender, root, 0.6).name = "QuayFender"
 		else:
 			var pieces := _capped_wall(run, edge, outward, along_x, 0.09, height - 0.20, root, 0.6, "Parapet", "ParapetCoping")
 			var size := (pieces[0].mesh as BoxMesh).size
@@ -660,7 +665,8 @@ func _build_sea_walls() -> void:
 		await host._build_step()
 
 ## Every parapet and sea-wall run, in build order: {"parapets": [[run, edge,
-## outward, along_x, height]], "sea_walls": [[run, edge, outward, along_x]]}.
+## outward, along_x, height, top (the highest the water it faces stands)]],
+## "sea_walls": [[run, edge, outward, along_x]]}.
 ## Worked out once per definition and block, an island at a time (a staged
 ## build gives the frame back between islands). Await it.
 func _wall_layout() -> Dictionary:
@@ -689,7 +695,13 @@ func _island_parapet_runs(island: Dictionary, holes: Array, routes: Array) -> Ar
 		if r[0] >= basin[0] and r[1] >= basin[1] and r[2] <= basin[2] and r[3] <= basin[3]: return found
 	var height := float(island.get("height_cm", 0)) / 100.0
 	var waters: Array = []
-	for body: Dictionary in open_bodies(): waters.append_array(body.rects)
+	# Each open body's rects with the highest it ever stands.
+	var tops: Array = []
+	for body: Dictionary in open_bodies():
+		waters.append_array(body.rects)
+		var top := -INF
+		for level: float in body.levels.values(): top = maxf(top, level)
+		tops.append([body.rects, top])
 	var route_rects: Array = []
 	for route: Dictionary in routes: route_rects.append(route.rect_cm)
 	for side in range(4):
@@ -705,17 +717,23 @@ func _island_parapet_runs(island: Dictionary, holes: Array, routes: Array) -> Ar
 		var mouths := _spans_on_line(route_rects, along_x, line)
 		var wet := _spans_on_line(waters, along_x, line)
 		var dry := _spans_on_line(holes, along_x, line)
+		var faced: Array = tops.map(func(body: Array) -> Array: return [_spans_on_line(body[0], along_x, line), body[1]])
 		var runs: Array = []
 		var t := start + 2.0
 		while t <= finish - 2.0:
 			var kind := "dry"
+			# The highest any water beside this stretch stands.
+			var top := -INF
 			if _in_spans(t, mouths): kind = "mouth"
-			elif _in_spans(t, wet) and not _in_spans(t, dry): kind = "wall"
-			if runs.is_empty() or runs[-1][2] != kind: runs.append([t - 2.0, t + 2.0, kind])
+			elif _in_spans(t, wet) and not _in_spans(t, dry):
+				kind = "wall"
+				for body: Array in faced:
+					if _in_spans(t, body[0]): top = maxf(top, float(body[1]))
+			if runs.is_empty() or runs[-1][2] != kind or runs[-1][3] != top: runs.append([t - 2.0, t + 2.0, kind, top])
 			else: runs[-1][1] = t + 2.0
 			t += 4.0
 		for run: Array in runs:
-			if run[2] == "wall": found.append([_clear_of_mouths(run, mouths), edge, outward, along_x, height])
+			if run[2] == "wall": found.append([_clear_of_mouths(run, mouths), edge, outward, along_x, height, run[3]])
 		await host._build_step()
 	return found
 
@@ -819,7 +837,18 @@ func _build_route_walls() -> void:
 				var overlaps := float(floor[0]) < float(r[2]) and float(floor[2]) > float(r[0]) if along_x else float(floor[1]) < float(r[3]) and float(floor[3]) > float(r[1])
 				if touches and overlaps: mouth = true
 			if mouth: continue
+			# Past each end of the crossing to meet the walls beside it, but
+			# never onto a floor it lands on, where a pip walks.
 			var run: Array = [float(r[0]) - 9.0, float(r[2]) + 9.0] if along_x else [float(r[1]) - 9.0, float(r[3]) + 9.0]
+			for floor: Array in floors:
+				var across: Array = [float(floor[1]), float(floor[3])] if along_x else [float(floor[0]), float(floor[2])]
+				# The wall's own strip, outside the crossing's edge, must lie on the floor.
+				var strip: Array = [edge, edge + 9.0] if outward > 0.0 else [edge - 9.0, edge]
+				if strip[1] <= across[0] or strip[0] >= across[1]: continue
+				var low := float(floor[0] if along_x else floor[1])
+				var high := float(floor[2] if along_x else floor[3])
+				if high <= float(r[0] if along_x else r[1]) + 2.0: run[0] = maxf(run[0], high)
+				if low >= float(r[2] if along_x else r[3]) - 2.0: run[1] = minf(run[1], low)
 			var pieces := _capped_wall(run, edge, outward, along_x, 0.09, seabed(), root, 0.0, "CrossingWall_" + id, "CrossingCoping")
 			var size := (pieces[0].mesh as BoxMesh).size
 			var before := root.get_child_count()

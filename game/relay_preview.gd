@@ -1231,18 +1231,17 @@ func _add_room_status_chip(card: VBoxContainer, fixed_text: String = "") -> Pane
 ## The friend-nickname store; tests pass one with its own file. Left empty, the
 ## device's saved nicknames are read when the waiting card is drawn.
 var nickname_store: RefCounted = null
-## Open turns (core/physical/open_turns.gd): the stage's turn as the turn dots
-## draw it (kit/turn_dots.gd view()), read from the room's coordinator or the
-## Solo journal (open_turns()); {} in a replay or on a chapter without open turns.
+## Open turns (core/physical/open_turns.gd): the room's turn as the turn dots
+## draw it (kit/turn_dots.gd view()), read from the room's coordinator
+## (open_turns()); {} offline, in a replay, or on a chapter without open turns.
 func _open_turns_view() -> Dictionary:
-	if mode == "replay" or not journey.has_method("open_turns"): return {}
+	if mode == "replay" or online_session == null or not journey.has_method("open_turns"): return {}
 	var open: Dictionary = journey.open_turns()
 	var index := int(open.get("stage_index", -1))
 	if open.is_empty() or index < 0 or index >= definition.stages.size(): return {}
 	return TurnDots.view(open, str(definition.stages[index].get("first_player_slot", "")))
 
-## The player's pip colour in this room: the host's slot is peach, the guest's
-## mint. In Solo, the pip this turn steers.
+## The player's pip colour in this room: the host's slot is peach, the guest's mint.
 func _own_room_color() -> Color:
 	return SpiritLook.MINT if journey.has_method("open_turns") and str(journey.open_turns().get("player_slot", "p0")) == "p1" else SpiritLook.PEACH
 

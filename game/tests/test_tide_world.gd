@@ -72,7 +72,10 @@ func _first_stage(level: Dictionary) -> void:
 	for island: Dictionary in level.islands:
 		_check(is_equal_approx(world._surface_nodes[island.id].position.y, float(island.height_cm) / 100.0), "Island deck stands at its height: " + str(island.id))
 	for route: Dictionary in level.bridges:
-		_check(world._decks.has(route.id) and is_equal_approx(world._decks[route.id].position.y, float(route.height_cm) / 100.0), "Crossing deck stands at its height, not on the ground: " + str(route.id))
+		# A stepping stone that is down sits just under its water (water_world).
+		var stone: Dictionary = world._stones.get(route.id, {})
+		var height: float = float(route.height_cm) / 100.0 if stone.is_empty() or not stone.down else world._stone_target(stone)
+		_check(world._decks.has(route.id) and (stone.is_empty() or world._decks[route.id].visible) and is_equal_approx(world._decks[route.id].position.y, height), "Crossing deck stands at its height (a stone that is down just under its water), not on the ground: " + str(route.id))
 	for pad: Dictionary in level.stages[0].pressure_pads:
 		_check(absf(world._physical_pads[pad.id].global_position.y - 0.96 - StandSpot.RIM_LIFT) < 0.01, "A waiting-step pad sits on its raised step: " + str(pad.id))
 	for problem: String in SpotChecks.shapes(world, level.stages[0]) + SpotChecks.beacon_rings(world, level.stages[0]): _check(false, problem)
