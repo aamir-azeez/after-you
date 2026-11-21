@@ -193,6 +193,9 @@ func _save_username(_choice: String, name: String) -> Dictionary:
 	var code := str(response.get("code", ""))
 	if not PlayerCopy.USERNAME_ERRORS.has(code): code = "network"
 	_refresh_wardrobe(code in ["pollen_short", "name_change_price"])
+	# The price shown was out of date (or never read): the open card reads it again.
+	var open: Variant = _prompt.get_ref() if _prompt != null else null
+	if code == "name_change_price" and open is Control and is_instance_valid(open): _read_username(open, true)
 	return {"closed": false, "code": refusal_code(code)}
 
 ## A username the server confirmed: kept, the chips redraw and Friends shows the new code.

@@ -496,7 +496,7 @@ func _render() -> void:
 		_utility_rows[0] = own_row
 		# A player with a username (or a short name) shares friend-<name in lowercase>; the long
 		# code still works and shows below.
-		var alias: String = client.share_id() if client.share_id() != str(page.friend_code) else ""
+		var alias: String = _own_name_code(page)
 		var own_code: String = alias if not alias.is_empty() else str(page.friend_code)
 		var own := LineEdit.new()
 		own.name = "OwnFriendCode"
@@ -853,6 +853,12 @@ func show_name_chip() -> void:
 func page_root() -> Control:
 	return _root
 
+## The name part of this player's own friend code: their username in lowercase,
+## else their short name, else "" (they share their long code).
+static func _own_name_code(page: Dictionary) -> String:
+	if Usernames.valid_remote(page.get("username")): return Usernames.key(str(page.username))
+	return str(page.get("friend_alias","")) if ShareCodes.is_alias(page.get("friend_alias")) else ""
+
 func _display_name(player_id: String) -> String:
 	if _nicknames == null: return FriendNicknames.FALLBACK
 	return _nicknames.display_name(str(_context.get("base_url","")),str(_context.get("player_id","")),player_id)
@@ -1043,7 +1049,7 @@ func _offer_link() -> void:
 	if _link_id.is_empty() or not _current() or not _foreground or _busy or client.busy or is_instance_valid(_modal) or not _remove.is_empty(): return
 	var friend := _link_id
 	_link_id = ""
-	if friend == str(_context.get("player_id","")) or friend == str(client.view().get("friend_alias","")) or friend == client.share_id():
+	if friend == str(_context.get("player_id","")) or friend == str(client.view().get("friend_alias","")) or friend == _own_name_code(client.view()):
 		_say(PlayerCopy.FRIEND_CODE_OWN)
 		return
 	for peer: Dictionary in client.view().get("friends",[]):

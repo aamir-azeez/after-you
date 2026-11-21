@@ -177,7 +177,7 @@ func _flow() -> void:
 	prompt._save()
 	await _frames(4)
 	_check(sent.back() == [HTTPClient.METHOD_PUT, {"schema_version": 1, "username": "TheBlueBeanie"}], "Save sends the name (no price while the shop is off)")
-	_check(store.username(BASE, ME) == "TheBlueBeanie" and not is_instance_valid(modal) or modal.is_queued_for_deletion(), "The confirmed name is kept and the card closes")
+	_check(store.username(BASE, ME) == "TheBlueBeanie" and (not is_instance_valid(modal) or modal.is_queued_for_deletion()), "The confirmed name is kept and the card closes")
 	_check(host.toasts.is_empty(), "A saved card says nothing more")
 	_check(not flow.maybe_ask(page), "A player with a username is not asked again")
 	# A new install that never heard its name: the card it opened by itself closes once the server says.
