@@ -160,6 +160,15 @@ func _check_states_and_updates() -> void:
 	_check(next != null and next.get_node_or_null("Outline") != null and layer.parts_of("high-and-low").is_empty(), "The next keepsake is an outline with nothing to move")
 	var veil := next.get_node("Outline") as MeshInstance3D
 	_check(veil.mesh.get_surface_count() == 1 and veil.material_override.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED and veil.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "An outline is one merged mesh with the see-through veil")
+	# An unearned keepsake never darkens the ground: its veil is pale enough to
+	# only lighten Home's grass, and the bake Home draws with (the world's own
+	# contact shadow layer, kit/contact_shadows.gd) stands nothing of it.
+	var tint := (veil.material_override as StandardMaterial3D).albedo_color
+	_check((veil.material_override as StandardMaterial3D).shading_mode == BaseMaterial3D.SHADING_MODE_UNSHADED and tint.r >= Isles.GRASS.r and tint.g >= Isles.GRASS.g and tint.b >= Isles.GRASS.b, "An outline's veil only lightens the grass under it: %s" % tint)
+	for frame in range(4): await process_frame
+	var baked: Array = world.contact_shadows._still
+	var from_outline := baked.filter(func(entry: Array) -> bool: return is_instance_valid(entry[0]) and (entry[0] == next or next.is_ancestor_of(entry[0]) or (entry[0] as Node).is_ancestor_of(next)))
+	_check(not baked.is_empty() and from_outline.is_empty(), "The bake Home draws grounds the earned keepsakes and nothing of an outline")
 	_check(stage._keepsake_count.text == "Keepsakes 2 / %d · Upgrades 2 / %d · Hard 1 / 10" % [States.entries().size(), States.states(States.entries(), [], {}, true).upgrades[1]], "The count line: %s" % stage._keepsake_count.text)
 	# Unchanged marks rebuild nothing, even as fresh copies, and a burst rebuilds once.
 	var builds: int = layer.builds
