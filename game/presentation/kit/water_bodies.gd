@@ -395,21 +395,32 @@ func _surface(regions: Array, holes: Array, inset: int) -> Mesh:
 	var shape := SurfaceTool.new()
 	shape.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var faces := 0
-	# The surface, one quad per run of wet cells along each row.
-	for zi in range(wet.size()):
+	# The surface, one quad per run of wet cells along a row, carried on down
+	# the rows below while they hold the very same run: a grid line another
+	# shape brings close by never splits open water into thin strips.
+	# open_runs: [first xi, end xi] -> the row it started on.
+	var open_runs: Dictionary = {}
+	for zi in range(wet.size() + 1):
 		if zi % LINES_PER_STEP == 0: await host._build_step()
+		var runs: Dictionary = {}
 		var start := -1
-		for xi in range(xs.size()):
+		for xi in range(xs.size() if zi < wet.size() else 0):
 			var here: bool = xi < xs.size() - 1 and wet[zi][xi]
 			if here and start < 0: start = xi
 			if not here and start >= 0:
-				var x0 := float(xs[start]) / 100.0
-				var x1 := float(xs[xi]) / 100.0
-				var z0 := float(zs[zi]) / 100.0
-				var z1 := float(zs[zi + 1]) / 100.0
-				_quad(shape, [Vector3(x0, 0, z0), Vector3(x1, 0, z0), Vector3(x1, 0, z1), Vector3(x0, 0, z1)], Vector3.UP)
-				faces += 1
+				runs[Vector2i(start, xi)] = true
 				start = -1
+		for run: Vector2i in open_runs.keys():
+			if runs.has(run): continue
+			var x0 := float(xs[run.x]) / 100.0
+			var x1 := float(xs[run.y]) / 100.0
+			var z0 := float(zs[open_runs[run]]) / 100.0
+			var z1 := float(zs[zi]) / 100.0
+			_quad(shape, [Vector3(x0, 0, z0), Vector3(x1, 0, z0), Vector3(x1, 0, z1), Vector3(x0, 0, z1)], Vector3.UP)
+			faces += 1
+			open_runs.erase(run)
+		for run: Vector2i in runs:
+			if not open_runs.has(run): open_runs[run] = zi
 	# Sides only where water meets something else, merged along each grid line.
 	for along_x: bool in [true, false]:
 		var lines: Array = zs if along_x else xs

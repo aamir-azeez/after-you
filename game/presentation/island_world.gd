@@ -1844,28 +1844,36 @@ func drawn_rect(surface: Dictionary) -> Array:
 		var found: Array = shape[0].duplicate()
 		for piece: Array in shape: found = [mini(found[0], piece[0]), mini(found[1], piece[1]), maxi(found[2], piece[2]), maxi(found[3], piece[3])]
 		return found
-	return WalkReach.rect(current_level, surface, _stepping_stones())
+	return WalkReach.rect(current_level, surface, _plan_stones())
 
 ## Where a wall that holds water stands round a crossing of the shown plan
 ## (WalkReach wall_rect).
 func wall_rect(surface: Dictionary) -> Array:
-	return WalkReach.wall_rect(current_level, surface, _stepping_stones())
+	return WalkReach.wall_rect(current_level, surface, _plan_stones())
 
 ## The rectangles (cm) a floor of the shown plan is drawn as: its drawn
 ## rectangle cut round the neighbours that meet it (kit/walk_reach.gd).
 func drawn_pieces(surface: Dictionary) -> Array:
 	if surface.has("drawn_shape"): return surface.drawn_shape.duplicate(true)
-	return WalkReach.pieces(current_level, surface, _stepping_stones())
+	return WalkReach.pieces(current_level, surface, _plan_stones())
 
 ## The stretch (cm along its run) of a crossing of the shown plan that no
 ## floor reaches over: where its deck is laid (WalkReach open_span).
 func open_span(crossing: Dictionary) -> Array:
-	return WalkReach.open_span(current_level, crossing, _stepping_stones())
+	return WalkReach.open_span(current_level, crossing, _plan_stones())
 
 ## The crossings of the shown plan laid as stepping stones (no floor reaches
 ## over their ends: WalkReach "open"); a world that lays stones names them.
 func _stepping_stones() -> Array:
 	return []
+
+## _stepping_stones() of the shown plan, worked out once per plan: a build
+## asks for its floors' drawn shapes thousands of times. [plan, stones].
+var _stones_memo: Array = []
+
+func _plan_stones() -> Array:
+	if _stones_memo.is_empty() or not is_same(_stones_memo[0], current_level): _stones_memo = [current_level, _stepping_stones()]
+	return _stones_memo[1]
 
 ## Where a floor is built: a root named for it at its height.
 func _floor_root(island: Dictionary) -> Node3D:

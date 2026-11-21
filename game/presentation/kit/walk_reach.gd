@@ -82,6 +82,18 @@ static func sides(level: Dictionary, surface: Dictionary) -> Array:
 ## keep their rectangle, and a floor never reaches under one (it would cover
 ## a stone): it is cut round it instead.
 static func layout(level: Dictionary, open: Array = []) -> Dictionary:
+	# The plan asked for last: a world asks about one plan's surfaces again
+	# and again while it builds, and hashing the plan each time costs more
+	# than the answer. Plans are never changed in place once drawn.
+	if not _last.is_empty() and is_same(_last[0], level) and _last[1] == open: return _last[2]
+	var found := _layout(level, open)
+	_last = [level, open.duplicate(), found]
+	return found
+
+## The last plan laid out: [level, open, layout].
+static var _last: Array = []
+
+static func _layout(level: Dictionary, open: Array) -> Dictionary:
 	var surfaces := walkable(level)
 	var moving: Array = []
 	for platform: Dictionary in level.get("platforms", []): moving.append_array(Array(platform.get("stops", [])).map(func(id: Variant) -> String: return str(id)))

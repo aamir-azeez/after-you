@@ -72,7 +72,6 @@ func _shore(island: Dictionary, _color: Color) -> void:
 		if drop.surface_id == island.id: hole = drop.rect_cm
 	var shape: Array = []
 	for drawn: Array in drawn_pieces(island): shape.append_array(WalkReach.minus(drawn, hole) if not hole.is_empty() else [drawn])
-	ContactShadows.ground_cm(room, shape, 0.0, false)
 	for piece: Array in shape:
 		var width := float(piece[2]-piece[0])/100.0
 		var depth := float(piece[3]-piece[1])/100.0
@@ -80,6 +79,8 @@ func _shore(island: Dictionary, _color: Color) -> void:
 		box(Vector3(width,0.28,depth),TIMBER,at+Vector3(0,-0.14,0),room)
 		for x in range(int(piece[0])+36,int(piece[2]),36):
 			box(Vector3(0.012,0.008,depth),FRAME,Vector3(float(x)/100.0,0.004,at.z),room)
+	# The room's floor stays its first child, the mesh its cutaway fades first.
+	ContactShadows.ground_cm(room, shape, 0.0, false)
 	# The front stays entirely open. Low side skirting outlines the rooms
 	# without suggesting a solid wall across a traversable threshold.
 	var width := float(r[2]-r[0])/100.0
