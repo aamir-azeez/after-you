@@ -65,6 +65,10 @@ static func parse(text: Variant, expected: String) -> Dictionary:
 		var linked := parse_link(value)
 		if not linked.ok: return linked
 		return linked if linked.type == expected else _fail(WRONG_TYPE, linked.type)
+	# "@thebluebeanie" is the friend name thebluebeanie (only a name, never an ID).
+	if expected == FRIEND and value.begins_with("@"):
+		var named := value.substr(1).to_lower()
+		return _ok(FRIEND, named) if is_alias(named) else _fail(INVALID, "")
 	var lower := value.to_lower()
 	var prefixed := ""
 	for type: String in TYPES:
