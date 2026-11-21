@@ -40,4 +40,16 @@ export const DEVELOPER_BESTS: Readonly<Record<string, number | null>> = Object.f
   "sleeping-lighthouse@2": 1470,
   // Proxy from an assisted recording (game/tests/fixtures/journey/turn-of-the-tide-v2-final-checkpoint.json), replace with an unassisted run.
   "turn-of-the-tide@2": 1906,
+  // The boards these chapters opened again on once every hand control went solid (boards.ts boardKey), each a proxy
+  // from the same assisted recording as above, walked again on the chapter's current definition (rolling home: the
+  // final checkpoint of game/tests/fixtures/comfort8/recordings.json's rolling-home entry).
+  "high-and-low-3b6576ba@1": 520,
+  "rolling-home-3362e8af@1": 1197,
+  "a-house-for-two-f14fb0ab@1": 1199,
+  "conservatory-5e474141@1": 816,
+  "long-way-home-79ea6a35@1": 969,
+  "the-wishing-well-14cfffbd@1": 1670,
+  "long-way-home-9d91b918@2": 977,
+  "turn-of-the-tide-bddd9290@1": 1794,
+  "turn-of-the-tide-8e29d35f@2": 1999,
 });

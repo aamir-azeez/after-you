@@ -186,7 +186,8 @@ describe("leaderboard rules", () => {
     const legacy = LEGACY_CHAPTERS.find(entry => entry.key.level_id === "high-and-low" && entry.key.level_version === 1)!;
     const current = CHAPTERS.find(row => row.adapter.key.level_id === "high-and-low" && row.adapter.key.level_version === 1)!.adapter;
     const room = { active_role: "complete", room_id: "r".repeat(22), branch: 0, host_id: "a".repeat(22), guest_id: "b".repeat(22), level_id: "high-and-low", level_version: 1, checkpoint: fin, updated_at: "2026-11-20T00:00:00Z" };
-    expect((await roomRun({ ...room, definition_hash: current.key.definition_hash } as never))?.board).toBe("high-and-low@1");
+    // On a fresh board named by the definition (boards.ts boardKey); older apps keep reading high-and-low@1.
+    expect((await roomRun({ ...room, definition_hash: current.key.definition_hash } as never))?.board).toBe(`high-and-low-${current.key.definition_hash.slice(0, 8)}@1`);
     expect(await roomRun({ ...room, definition_hash: legacy.key.definition_hash } as never)).toBeNull();
   });
 });

@@ -4,6 +4,7 @@ import { LEGACY_SHIPPED_TICKS, LEGACY_SHIPPED_TURNS, legacyShippedGhost, legacyS
 import { boardKey, boardKeys } from "../src/leaderboards/boards";
 import { runTicks, walkRun } from "../src/leaderboards/run";
 import { chapter } from "../src/v2/chapters";
+import { LEGACY_CHAPTERS } from "../src/v2/legacy-chapters";
 import type { CheckpointV2 } from "../src/v2/protocol";
 import manifest from "../../game/tests/fixtures/whole_runs.json";
 
@@ -19,8 +20,13 @@ describe("the run older apps shipped as Our run", () => {
   it("names the shipped runs' boards, with the times those runs take, and nothing for a later board", () => {
     expect((manifest as { schema_version: number }).schema_version).toBe(1);
     const boards = new Set(boardKeys());
-    expect(Object.keys(LEGACY_SHIPPED_TICKS).sort()).toEqual(rows.map(row => row.board).sort());
-    expect(Object.keys(LEGACY_SHIPPED_TURNS).sort()).toEqual(rows.map(row => row.board).sort());
+    // The runs shipped on chapters that changed since (v2/legacy-chapters.ts) are no longer kept as fixtures; their
+    // boards, the keys older apps still read, keep the times those runs took.
+    const shipped = [...rows.map(row => row.board), ...LEGACY_CHAPTERS.map(entry => boardKey(entry.key))].sort();
+    expect(Object.keys(LEGACY_SHIPPED_TICKS).sort()).toEqual(shipped);
+    expect(Object.keys(LEGACY_SHIPPED_TURNS).sort()).toEqual(shipped);
+    for (const board of shipped) expect(boards.has(board), board).toBe(true);
+    for (const entry of LEGACY_CHAPTERS) expect(legacyShippedSplits(boardKey(entry.key))!.length, boardKey(entry.key)).toBe(entry.stages.length * 2);
     for (const row of rows) {
       expect(boards.has(row.board), row.board).toBe(true);
       expect(legacyShippedTicks(row.board)).toBe(row.ticks);
@@ -32,8 +38,6 @@ describe("the run older apps shipped as Our run", () => {
 
   it("are whole runs with Forgiving catches off at rules their chapter still takes, in the shared blob format", async () => {
     for (const row of rows) {
-      // A run shipped on a published chapter before its hand controls went solid keeps that chapter's earlier
-      // definition (legacy-chapters.ts), which the server still plays for older apps.
       const adapter = chapter(row.chapter);
       expect(boardKey(adapter.key)).toBe(row.board);
       const bytes = await decodeBlob(Uint8Array.from(atob(row.body), char => char.charCodeAt(0)), row.byte_length);
