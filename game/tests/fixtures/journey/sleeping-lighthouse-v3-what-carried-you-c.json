@@ -1,0 +1,24 @@
+{
+	"catch_assistance": true,
+	"checkpoint_hash": "83ff6a85fda6d7abb1121ce01413cf938cfe0c819d764faab5b876077521189a",
+	"completed": true,
+	"definition_hash": "9d31b792e17b589e987d1ddfbb5138f30d3d9fc310e5554d7ee98d233c9d3492",
+	"duration_ticks": 390,
+	"final_state_hash": "af8b193f9ed90671e04ca0a9e7b1fcce6313c5cfc25c87537ddea39852d389c3",
+	"level_id": "sleeping-lighthouse",
+	"level_version": 3,
+	"outcome": {
+		"objective_complete": true,
+		"source_ready": true
+	},
+	"packed": "AQgYZAACMgAWAGQCABmUBQAADpwAAs4ANgCcSHJedwJuJ8iIaQtw0psLfDJnxTXMSzf8boDQNo7YB66Yzw2YLQx88lRSQhF0RHKgYLUwVE+9rJ0qkZuoS1j5rkLfykjLMyBK3MPEMaj78+sdtsC+Bdu7l69sS3faBL1HFB4QPIxsCx0lTcOXiK2hV9pEV6l/ZV4px6lw/FKok+F64i2L1RtueXRKqAn13PiW",
+	"player_slot": "p0",
+	"recording_hash": "9413d438f8423f0428d79753bb80c90ec9db8a927961e1b766bd645ed8880114",
+	"role": "b",
+	"schema_version": 7,
+	"simulation_version": 16,
+	"source_recording_hash": "f8065723a2437292b40fea3478cb8373c71419baf511c90506937f88d9f344b5",
+	"stage_id": "what-carried-you",
+	"stage_version": 1,
+	"tick_rate": 30
+}

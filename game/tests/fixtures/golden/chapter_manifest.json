@@ -344,6 +344,27 @@
 			],
 			"unlock_fruits": 0
 		},
+		"sleeping-lighthouse@3": {
+			"definition_fixture": "journey/sleeping-lighthouse-v3-definition.json",
+			"definition_hash": "9d31b792e17b589e987d1ddfbb5138f30d3d9fc310e5554d7ee98d233c9d3492",
+			"family": "journey",
+			"flag": "SLEEPING_LIGHTHOUSE_V3_CHAPTER_ENABLED",
+			"hard": false,
+			"initial_checkpoint_hash": "d3cdb465c95a62fb97c8c78d2e925ad1fb93177e7cce6d01b87954b7d2c90bc5",
+			"initial_fixture": "journey/sleeping-lighthouse-v3-initial-checkpoint.json",
+			"key": "sleeping-lighthouse@3",
+			"level_id": "sleeping-lighthouse",
+			"level_version": 3,
+			"max_branches": 7,
+			"premium": true,
+			"recording_version": 7,
+			"simulation_version": 16,
+			"stage_count": 6,
+			"supported_simulation_versions": [
+				16
+			],
+			"unlock_fruits": 0
+		},
 		"the-falls@1": {
 			"definition_fixture": "journey/the-falls-definition.json",
 			"definition_hash": "31c50a815a1a8c70a62c67234854ed36cbeb4044c871da0ca5bac49058cf7f8b",
@@ -493,6 +514,7 @@
 		"rolling-home@2",
 		"a-house-for-two@2",
 		"the-falls@1",
-		"fog-marsh@1"
+		"fog-marsh@1",
+		"sleeping-lighthouse@3"
 	]
 }

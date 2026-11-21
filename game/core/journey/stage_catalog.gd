@@ -12,7 +12,8 @@ const ConservatoryV2Catalog = preload("res://core/journey/conservatory_v2_catalo
 const FirstStepsV2Catalog = preload("res://core/journey/first_steps_v2_catalog.gd")
 const TheFallsCatalog = preload("res://core/journey/the_falls_catalog.gd")
 const FogMarshCatalog = preload("res://core/journey/fog_marsh_catalog.gd")
-const KEYS := ["conservatory@1","long-way-home@1","long-way-home@2","turn-of-the-tide@1","turn-of-the-tide@2","long-way-home@3","turn-of-the-tide@3","conservatory@2","first-steps@2","the-falls@1","fog-marsh@1"]
+const SleepingLighthouseV3Catalog = preload("res://core/journey/sleeping_lighthouse_v3_catalog.gd")
+const KEYS := ["conservatory@1","long-way-home@1","long-way-home@2","turn-of-the-tide@1","turn-of-the-tide@2","long-way-home@3","turn-of-the-tide@3","conservatory@2","first-steps@2","the-falls@1","fog-marsh@1","sleeping-lighthouse@3"]
 
 static func definition(key: String = "long-way-home") -> Dictionary:
 	if key in ["long-way-home", "long-way-home@1"]: return Home.definition()
@@ -26,6 +27,7 @@ static func definition(key: String = "long-way-home") -> Dictionary:
 	if key == "first-steps@2": return FirstStepsV2Catalog.definition()
 	if key in ["the-falls", "the-falls@1"]: return TheFallsCatalog.definition()
 	if key in ["fog-marsh", "fog-marsh@1"]: return FogMarshCatalog.definition()
+	if key == "sleeping-lighthouse@3": return SleepingLighthouseV3Catalog.definition()
 	return {}
 
 ## Bare ids keep naming the first version; a definition is checked against its own id@version.

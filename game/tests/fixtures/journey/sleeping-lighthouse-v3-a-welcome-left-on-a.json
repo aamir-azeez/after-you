@@ -1,0 +1,24 @@
+{
+	"catch_assistance": true,
+	"checkpoint_hash": "1fd5b10004d3ee74879d3e935881b6c5a4e937fbfd90dd2e19e7a4ab1a472b38",
+	"completed": false,
+	"definition_hash": "9d31b792e17b589e987d1ddfbb5138f30d3d9fc310e5554d7ee98d233c9d3492",
+	"duration_ticks": 60,
+	"final_state_hash": "f282b572332baa9f3d2628d6b0fbb853fab002709483796d87b84803f04c0720",
+	"level_id": "sleeping-lighthouse",
+	"level_version": 3,
+	"outcome": {
+		"objective_complete": false,
+		"source_ready": true
+	},
+	"packed": "AQMUZAA8AGQoAAC/QssImFGfqQ==",
+	"player_slot": "p1",
+	"recording_hash": "c0661a61812b6d662b19b2a80f760fadf1cb0bb33236eae707df4e4b95b85773",
+	"role": "a",
+	"schema_version": 7,
+	"simulation_version": 16,
+	"source_recording_hash": "",
+	"stage_id": "a-welcome-left-on",
+	"stage_version": 1,
+	"tick_rate": 30
+}

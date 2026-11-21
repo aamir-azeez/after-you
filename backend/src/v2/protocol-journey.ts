@@ -27,6 +27,8 @@ import theFallsDefinition from "./the-falls.json";
 import theFallsInitial from "./the-falls-initial.json";
 import fogMarshDefinition from "./fog-marsh.json";
 import fogMarshInitial from "./fog-marsh-initial.json";
+import sleepingLighthouseV3Definition from "./sleeping-lighthouse-v3.json";
+import sleepingLighthouseV3Initial from "./sleeping-lighthouse-v3-initial.json";
 
 export const CONSERVATORY_HASH = "fd9fce12c4facd5fd659eedd5a510ea6b0ad796925458ccb73b4b37a893530d5";
 export const LONG_WAY_HOME_HASH = "bce3ddd36386ebb32f011b8d6afe95316992809030ea828b473bbbc3e1c6bb7f";
@@ -39,6 +41,7 @@ export const CONSERVATORY_V2_HASH = "96499f4766718124c64380b6a9ab0452b5e7dde69f2
 export const FIRST_STEPS_V2_HASH = "12cbcd0d89a440e6d81889441382d1a86136b58579ce872ff308bbf5f1621840";
 export const THE_FALLS_HASH = "31c50a815a1a8c70a62c67234854ed36cbeb4044c871da0ca5bac49058cf7f8b";
 export const FOG_MARSH_HASH = "0cdfc1875835b016d69e446e9818f89a2bc6ab18664ad1acf6d9546e8994a5cd";
+export const SLEEPING_LIGHTHOUSE_V3_HASH = "9d31b792e17b589e987d1ddfbb5138f30d3d9fc310e5554d7ee98d233c9d3492";
 type Surface = { id: string; rect_cm: number[]; height_cm?: number; owner_slot?: string; axis?: string; from_height_cm?: number; to_height_cm?: number };
 export type Marker = { id: string; position_cm: number[]; surface_id: string; height_cm: number; radius_cm: number; owner_slot?: string };
 export type Predicate = { all?: Predicate[]; any?: Predicate[]; not?: Predicate; control_id?: string; value?: string; lever_id?: string; pad_id?: string; signal_id?: string; item_id?: string; carried?: boolean; spot_id?: string };
@@ -216,3 +219,6 @@ export const firstStepsV2 = journeyAdapter(firstStepsV2Definition as Definition,
 export const theFalls = journeyAdapter(theFallsDefinition, theFallsInitial, THE_FALLS_HASH);
 /** The new pieces with carried items (16): three stages catching the pipsport in the marsh and carrying it home. Unreleased. */
 export const fogMarsh = journeyAdapter(fogMarshDefinition, fogMarshInitial, FOG_MARSH_HASH);
+/** Open turns with the new pieces and light pieces (16): the six Lighthouse stages on the journey rules, its bridges held by
+ * light (light-pieces.ts), its lens a carried item thrown to Rest Rock. Seven branches, as every open chapter. Unreleased. */
+export const sleepingLighthouseV3 = journeyAdapter(sleepingLighthouseV3Definition as unknown as Definition, sleepingLighthouseV3Initial, SLEEPING_LIGHTHOUSE_V3_HASH, 7);

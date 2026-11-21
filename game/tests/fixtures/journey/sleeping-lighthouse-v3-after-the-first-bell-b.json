@@ -1,0 +1,24 @@
+{
+	"catch_assistance": true,
+	"checkpoint_hash": "1a68e313c7bf7b8fb1f2359eba2761004c1b0541b0849ee336184aa899ba5fd1",
+	"completed": false,
+	"definition_hash": "9d31b792e17b589e987d1ddfbb5138f30d3d9fc310e5554d7ee98d233c9d3492",
+	"duration_ticks": 283,
+	"final_state_hash": "50adae0cb9cea51b4eee189a6026c2ad0d9a83ef71fa2c8150b91b35fab0692e",
+	"level_id": "sleeping-lighthouse",
+	"level_version": 3,
+	"outcome": {
+		"objective_complete": false,
+		"source_ready": true
+	},
+	"packed": "ARcYZAACMgAOAGQCADKgAQAAKGQABpwAArUAFACcAgAAAwAAFABkKAAAVGQAAjIAFJwAHgCcAgAAAwAALGQAAjIALABkAgAyFKxeLzEKq1ifjGAmEy615Xgp/NCZXeAHD9WL9hCvf6/SFEv/HkMZoQL1jJQB+ThRf6TW3qAcdFH3dxu7G7IwVK3DsGKNGuSFsqa/N6s2ZA01NjsbVzym+HysMWpwGxYx",
+	"player_slot": "p0",
+	"recording_hash": "e43595282bf3cb3f6043bde2bb91515961a51a684dc1db91fe09bd6f5cfb03d6",
+	"role": "b",
+	"schema_version": 7,
+	"simulation_version": 16,
+	"source_recording_hash": "43a675680ef26806180a9cd8b08f5acf8a72adfe2767ba48105019b9eebc44ae",
+	"stage_id": "after-the-first-bell",
+	"stage_version": 1,
+	"tick_rate": 30
+}
