@@ -129,7 +129,7 @@
 				"b": [
 					"72 seed_caught a|lens_taken",
 					"118 handoff_offered a|lens_offered",
-					"118 seed_caught b|lens_taken",
+					"119 seed_caught b|lens_taken",
 					"176 seed_landed b|lens_fitted",
 					"176 island_bloomed b|stage_complete"
 				],
