@@ -3,8 +3,9 @@ const Typed = preload("res://services/typed_values.gd")
 ## Typed share codes ("<type>-<id>") and invite links. Server IDs and API bodies are
 ## unchanged: format() adds the prefix for display/copy/share, parse() accepts prefixed,
 ## legacy unprefixed and link input and returns the bare ID for API calls.
-## A friend "ID" can also be an owner-reserved short name (friend-aamir) that the server
-## resolves to a player; parse() returns it lowercased and the API receives it as is.
+## A friend "ID" can also be a name the server resolves to a player: a username
+## (friend-thebluebeanie, services/usernames.gd) or an owner-reserved short name
+## (friend-aamir); parse() returns it lowercased and the API receives it as is.
 ## Adding a type: add its constant to TYPES, an _id() branch and a wrong_type_message().
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const FRIEND := "friend"
@@ -17,11 +18,14 @@ const LINK_BASE := "https://aamirazeez.com/after-you/link"
 ## Upper bound for any typed or linked input; also the input fields' max_length.
 const MAX_INPUT := 256
 const INVALID := "invalid"
-## Same shape as the server's FRIEND_ALIASES names. Never overlaps a 22-character ID.
-const ALIAS_PATTERN := "\\A[a-z][a-z0-9]{2,15}\\z"
+## A username in lowercase, the friend code's form (owner-reserved short names
+## have this shape too). 3 to 18 characters, so never a 22-character ID.
+const ALIAS_PATTERN := "\\A[a-z0-9](?:[._-]?[a-z0-9])*\\z"
+const ALIAS_MIN := 3
+const ALIAS_MAX := 18
 const WRONG_TYPE := "wrong_type"
 # The code sits in the fragment (or the ?c= fallback); the bare /after-you path never matches.
-const LINK_PATTERN := "\\A(?i:https)://(?i:aamirazeez\\.com)/after-you/link/?(?:#|\\?c=)(?<type>[a-z]+)-(?<id>[A-Za-z0-9_-]{1,64})\\z"
+const LINK_PATTERN := "\\A(?i:https)://(?i:aamirazeez\\.com)/after-you/link/?(?:#|\\?c=)(?<type>[a-z]+)-(?<id>[A-Za-z0-9._-]{1,64})\\z"
 
 ## Canonical bare ID for a type, or "" when raw is not a valid ID of that type.
 ## alias=false accepts only a real friend ID, not a short name.
@@ -29,9 +33,9 @@ static func _id(type: String, raw: String, alias: bool = true) -> String:
 	match type:
 		FRIEND:
 			if Typed.valid_id(raw): return raw
-			# Only a short name is lowercased; IDs stay case-sensitive.
+			# Only a name is lowercased; IDs stay case-sensitive.
 			var short := raw.to_lower()
-			return short if alias and is_alias(short) else ""
+			return short if alias and is_alias(short) and not _type_prefixed(short) else ""
 		ROOM:
 			# Legacy invitation input tolerates spaces/hyphens and lower case.
 			var code := raw.replace(" ", "").replace("-", "").to_upper()
@@ -66,10 +70,9 @@ static func parse(text: Variant, expected: String) -> Dictionary:
 	for type: String in TYPES:
 		if lower.begins_with(type + "-"):
 			prefixed = type
+			# friend- and a 15-character name is that name, not a 22-character ID
+			# that happens to start with "friend-".
 			var id := _id(type, value.substr(type.length() + 1))
-			# A whole 22-character ID that starts with "friend-" keeps its old meaning,
-			# so a 15-character short name cannot be typed with the prefix.
-			if type == FRIEND and is_alias(id) and not _id(FRIEND, value, false).is_empty(): break
 			if not id.is_empty(): return _ok(type, id) if type == expected else _fail(WRONG_TYPE, type)
 			break
 	# Legacy unprefixed input: the expected type first, then any other known type.
@@ -90,9 +93,18 @@ static func parse_link(text: Variant) -> Dictionary:
 	if id.is_empty(): return _fail(INVALID, type)
 	return _ok(type, id)
 
-## True for a lowercase owner-reserved short friend name such as "aamir".
+## True for a friend code's name part: a username in lowercase, or an
+## owner-reserved short name such as "aamir".
 static func is_alias(value: Variant) -> bool:
-	return value is String and _matches(value, ALIAS_PATTERN)
+	return value is String and value.length() >= ALIAS_MIN and value.length() <= ALIAS_MAX and _matches(value, ALIAS_PATTERN)
+
+## A name that starts like a typed code ("friend-ab"): never a username (the
+## server keeps these), so a mistyped code is never read as a name.
+static func _type_prefixed(value: String) -> bool:
+	for type: String in TYPES:
+		for symbol: String in [".", "_", "-"]:
+			if value.begins_with(type + symbol): return true
+	return false
 
 static func wrong_type_message(found: String) -> String:
 	match found:

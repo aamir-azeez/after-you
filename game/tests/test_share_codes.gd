@@ -59,8 +59,8 @@ func _friend_input() -> void:
 	# A legacy ID that happens to start like a prefix still parses as the bare ID.
 	var lookalike := "room-abcdefghijklmnopq"
 	_ok(ShareCodes.parse(lookalike, friend), friend, lookalike, "A 22-character legacy ID beginning with room- is still a friend ID")
-	var friend_lookalike := "friend-abcdefghijklmno"
-	_ok(ShareCodes.parse(friend_lookalike, friend), friend, friend_lookalike, "A 22-character legacy ID beginning with friend- is still a friend ID")
+	# friend- and 15 characters reads as that username now.
+	_ok(ShareCodes.parse("friend-abcdefghijklmno", friend), friend, "abcdefghijklmno", "friend- and a 15-character name reads as that name")
 	_fails(ShareCodes.parse("room-" + ROOM_CODE, friend), "wrong_type", ShareCodes.ROOM, "A room code in Add friend is the wrong type")
 	_fails(ShareCodes.parse(ROOM_CODE, friend), "wrong_type", ShareCodes.ROOM, "A legacy room code in Add friend is the wrong type")
 	_fails(ShareCodes.parse("room-" + ROOM_CODE.to_lower(), friend), "wrong_type", ShareCodes.ROOM, "Any room code form is recognised")
@@ -116,24 +116,27 @@ func _messages() -> void:
 	copied.clear()
 	_check(not InviteShare.share("b!d", sheet_ok, copy) and sent.is_empty() and copied.is_empty(), "An invalid ID shares and copies nothing")
 
-## Owner-reserved short names (friend-aamir) that the server resolves to a player.
+## Usernames (friend-thebluebeanie) and owner-reserved short names (friend-aamir)
+## that the server resolves to a player.
 func _short_names() -> void:
 	var friend := ShareCodes.FRIEND
-	_check(ShareCodes.is_alias("aamir") and ShareCodes.is_alias("b0b") and ShareCodes.is_alias("a" + "b".repeat(15)), "Short names are 3 to 16 lowercase letters and digits")
-	for bad: Variant in ["Aamir", "ab", "1aamir", "a-mir", "a_mir", "a" + "b".repeat(16), "", null, 7, FRIEND_ID]:
-		_check(not ShareCodes.is_alias(bad), "Not a short name: " + str(bad))
+	for good: String in ["aamir", "b0b", "1aamir", "a-mir", "blue.bean_99", "a" + "b".repeat(17)]:
+		_check(ShareCodes.is_alias(good), "A name is 3 to 18 lowercase letters, digits and single . _ -: " + good)
+	for bad: Variant in ["Aamir", "ab", "-ab", "ab_", "a..b", "a!b", "a" + "b".repeat(18), "", null, 7, FRIEND_ID]:
+		_check(not ShareCodes.is_alias(bad), "Not a name: " + str(bad))
+	_ok(ShareCodes.parse("friend-Blue.Bean_99", friend), friend, "blue.bean_99", "A username parses lowercased")
+	_ok(ShareCodes.parse_link("https://aamirazeez.com/after-you/link#friend-blue.bean"), friend, "blue.bean", "A username link may hold a dot")
 	_check(ShareCodes.format(friend, "aamir") == "friend-aamir" and ShareCodes.display(friend, "aamir") == "friend-aamir", "A short name formats like a friend code")
 	_check(ShareCodes.format(friend, "Aamir").is_empty() and ShareCodes.format(ShareCodes.ROOM, "aamir").is_empty(), "Only the lowercase short name is canonical, and only for friends")
 	_check(ShareCodes.link(friend, "aamir") == "https://aamirazeez.com/after-you/link#friend-aamir", "A short name has an invite link")
 	for typed: String in ["friend-aamir", "Friend-Aamir", "FRIEND-AAMIR", " aamir ", "Aamir", "https://aamirazeez.com/after-you/link#friend-aamir", "https://aamirazeez.com/after-you/link/?c=friend-Aamir"]:
 		_ok(ShareCodes.parse(typed, friend), friend, "aamir", "A short name parses lowercased: " + typed)
 	_ok(ShareCodes.parse_link("https://aamirazeez.com/after-you/link#friend-AAMIR"), friend, "aamir", "A short-name link is lowercased")
-	for bad: String in ["friend-ab", "friend-1aamir", "friend-a!mir", "a!mir", "https://aamirazeez.com/after-you/link#friend-ab", "https://aamirazeez.com/after-you/link#friend-a" + "b".repeat(16), "https://aamirazeez.com/after-you/link#room-aamir"]:
-		_check(not ShareCodes.parse(bad, friend).ok, "Malformed short name rejected: " + bad)
-	# IDs are never lowercased, and a whole 22-character ID keeps its old meaning.
+	for bad: String in ["friend-ab", "friend-a!mir", "a!mir", "friend-a..b", "https://aamirazeez.com/after-you/link#friend-ab", "https://aamirazeez.com/after-you/link#friend-a" + "b".repeat(18), "https://aamirazeez.com/after-you/link#room-aamir"]:
+		_check(not ShareCodes.parse(bad, friend).ok, "Malformed name rejected: " + bad)
+	# IDs are never lowercased.
 	_ok(ShareCodes.parse("friend-" + FRIEND_ID, friend), friend, FRIEND_ID, "IDs keep their case")
-	var fifteen := "friend-abcdefghijklmno"
-	_ok(ShareCodes.parse(fifteen, friend), friend, fifteen, "friend- plus 15 letters stays a legacy 22-character ID")
+	_ok(ShareCodes.parse("friend-ABCdefghijklmno", friend), friend, "abcdefghijklmno", "friend- plus a 15-character username is that name")
 	# In Join a bare word is just invalid; the typed friend- prefix still names the wrong type.
 	_fails(ShareCodes.parse("aamir", ShareCodes.ROOM), "invalid", "", "A bare short name in Join is not called a friend code")
 	_fails(ShareCodes.parse("friend-aamir", ShareCodes.ROOM), "wrong_type", friend, "A typed friend-<name> in Join is the wrong type")

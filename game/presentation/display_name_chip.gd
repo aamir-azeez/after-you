@@ -16,6 +16,8 @@ signal change_requested(source: Control)
 
 var preview: Control
 var name_label: Label
+## "YOUR NAME", or "YOUR USERNAME" once the player has one (services/usernames.gd).
+var section_label: Label
 var status_label: Label
 var change_button: Button
 
@@ -36,11 +38,11 @@ func _init(reduced_motion: bool = false) -> void:
 	words.custom_minimum_size.x = 96
 	words.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(words)
-	var small := Label.new()
-	small.text = PlayerCopy.DISPLAY_NAME_SECTION.to_upper()
-	small.add_theme_font_size_override("font_size", 13)
-	small.add_theme_color_override("font_color", MUTED)
-	words.add_child(small)
+	section_label = Label.new()
+	section_label.text = PlayerCopy.DISPLAY_NAME_SECTION.to_upper()
+	section_label.add_theme_font_size_override("font_size", 13)
+	section_label.add_theme_color_override("font_color", MUTED)
+	words.add_child(section_label)
 	name_label = Label.new()
 	name_label.name = "DisplayNameChipName"
 	name_label.add_theme_font_size_override("font_size", 21)
@@ -67,9 +69,11 @@ func _init(reduced_motion: bool = false) -> void:
 
 ## The name others see now, and where the player's own choice stands
 ## (DisplayNames.own()): pending shows a quiet line, refused a warning one.
-func show_name(shown: String, own: Dictionary) -> void:
+## `username`: the name shown is the player's username.
+func show_name(shown: String, own: Dictionary, username: bool = false) -> void:
 	name_label.text = DisplayNames.short(shown)
-	change_button.accessibility_name = PlayerCopy.DISPLAY_NAME_CHANGE_FOR % shown
+	section_label.text = (PlayerCopy.USERNAME_SECTION if username else PlayerCopy.DISPLAY_NAME_SECTION).to_upper()
+	change_button.accessibility_name = (PlayerCopy.USERNAME_CHANGE_FOR if username else PlayerCopy.DISPLAY_NAME_CHANGE_FOR) % shown
 	var state := str(own.get("state", ""))
 	status_label.visible = state in [DisplayNames.PENDING, DisplayNames.REFUSED]
 	status_label.text = PlayerCopy.DISPLAY_NAME_NOT_SAVED if state == DisplayNames.REFUSED else PlayerCopy.DISPLAY_NAME_PENDING

@@ -49,7 +49,8 @@ import { claimBundlesFor, claimFor } from "./pollen/claims";
 import { bundleCheckDue, bundlesView, dropBundles, pacedClaim, settleBundles, type BundleReply, type BundlesView } from "./pollen/bundle-settle";
 import { lookupBundles, readBundles, type BundleAsk } from "./pollen/bundle-provider";
 import { RATES } from "./pollen/rates";
-import { countNameSet, namePrice, nextNamePrice, nextNamePriceAfter } from "./pollen/name-price";
+import { countNameSet, namePrice, nextNamePrice, nextNamePriceAfter, nextUsernamePrice, nextUsernamePriceAfter } from "./pollen/name-price";
+import { applyUsername, claimIndex, claimedKeys, clearUsernameFields, holdsUsername, planUsername, usernameIndex, usernameKey, usernamesOn, type UsernameFields, type UsernameOutcome } from "./usernames";
 import { catalogFor, type Look } from "./pollen/catalog";
 import type { SpendRequest } from "./pollen/spend";
 import { LIVE_FRIENDS_REFRESH_SECONDS, acceptLiveSocket, liveUnauthorized, closeLiveSockets, liveClosed, liveMessage, liveMessageReceived, liveSockets, sendLive, setLiveAutoResponse, validLiveHint, type LiveHint } from "./live";
@@ -57,7 +58,7 @@ import { LIVE_FRIENDS_REFRESH_SECONDS, acceptLiveSocket, liveUnauthorized, close
 type RecoveryReceipt = { previous_recovery_hash: string; request_hash: string };
 /** `full_journey_off`: a tester's own switch (test-codes.ts): treated as without Full Journey until switched back. Absent otherwise. */
 /** `platform_linked`: a Play Games or Game Center account opens this player (platform-gate.ts); absent reads as not linked. */
-type Identity = { player_id: string; device_hash: string; recovery_hash: string; state: "active" | "deleting"; created_at: string; tester_grant?: TesterGrant; full_journey_off?: true; recovery_receipt?: RecoveryReceipt; social?: SocialState; platform_linked?: true } & DisplayNameFields;
+type Identity = { player_id: string; device_hash: string; recovery_hash: string; state: "active" | "deleting"; created_at: string; tester_grant?: TesterGrant; full_journey_off?: true; recovery_receipt?: RecoveryReceipt; social?: SocialState; platform_linked?: true } & DisplayNameFields & UsernameFields;
 type FriendPublicationState = { schema_version: 1; epoch_counter: number; current: FriendPublication | null };
 function isPublicationState(value: unknown): value is FriendPublicationState {
   return isObject(value) && Object.keys(value).length === 3 && value.schema_version === 1 && Number.isSafeInteger(value.epoch_counter) && Number(value.epoch_counter) >= 0 &&
@@ -551,12 +552,12 @@ export class Player extends DurableObject<Env> {
     identity.social = social;
     this.ctx.storage.sql.exec("UPDATE identity SET data=? WHERE id=1", JSON.stringify(identity));
   }
-  /** `withName`: the answer is a copy that also carries the owner's display name (never stored with the social state). */
-  friendList(owner: string, deviceHash: string, refresh = true, withName = false): Outcome<SocialState & { display_name?: string | null }> {
+  /** `withName`: the answer is a copy that also carries the owner's display name (never stored with the social state); `withUsername` the same for the username. */
+  friendList(owner: string, deviceHash: string, refresh = true, withName = false, withUsername = false): Outcome<SocialState & { display_name?: string | null; username?: string | null }> {
     const identity = this.identity();
     if (!identity || identity.state !== "active" || !equalHash(identity.device_hash, deviceHash) || identity.player_id !== owner) return fail(401, "invalid_auth");
     const social = this.social(identity), now = Date.now();
-    if (!refresh) return ok(withName ? { ...social, display_name: identity.display_name ?? null } : social);
+    if (!refresh) return ok(withName || withUsername ? { ...social, ...(withName ? { display_name: identity.display_name ?? null } : {}), ...(withUsername ? { username: identity.username ?? null } : {}) } : social);
     if (social.next_refresh_at > now) return fail(429, "friends_refresh_limited");
     social.links = social.links.filter(link => link.accepted || link.created_at + FRIEND_REQUEST_TTL_MS > now);
     social.next_refresh_at = now + FRIEND_REFRESH_SECONDS * 1000;
@@ -564,14 +565,14 @@ export class Player extends DurableObject<Env> {
     return ok(social);
   }
   /** Binding only; list callers must also check the opposite edge and blocks. */
-  /** `withName`: also this player's display name; the friends list shows it only on an accepted row. */
-  friendEdge(owner: string, peer: string, withName = false): FriendEdge | null {
+  /** `withName`: also this player's display name; the friends list shows it only on an accepted row. `withUsername`: their username, shown on every row. */
+  friendEdge(owner: string, peer: string, withName = false, withUsername = false): FriendEdge | null {
     const identity = this.identity();
     if (!identity || identity.player_id !== owner || identity.state !== "active") return null;
     const social = this.social(identity), link = social.links.find(x => x.player_id === peer);
     if (!link || !link.accepted && link.created_at + FRIEND_REQUEST_TTL_MS <= Date.now()) return null;
     return { link, shared_room: social.shared_room, presence_expires_at: link.accepted ? this.presenceExpiryForIdentity(identity) : 0,
-      ...(withName ? { display_name: identity.display_name ?? null } : {}) };
+      ...(withName ? { display_name: identity.display_name ?? null } : {}), ...(withUsername ? { username: identity.username ?? null } : {}) };
   }
   /**
    * PUT /v1/profile/name after the router cleaned the name (display-names.ts applyDisplayName). One row write, only on a change.
@@ -583,6 +584,9 @@ export class Player extends DurableObject<Env> {
     return this.ctx.storage.transactionSync((): DisplayNameOutcome => {
     const identity = this.authorized(deviceHash);
     if (!identity || identity.player_id !== owner) return fail(401, "invalid_auth");
+    // While usernames are on, a player with one shows it as their display name: an older app's change is refused
+    // with the code it already settles on, and the name it already shows answers the state as before.
+    if (identity.username !== undefined && usernamesOn(this.env) && name !== (identity.display_name ?? null)) return fail(403, "display_name_locked");
     const named = identity.display_name !== undefined, now = Date.now(), before = { ...identity };
     // A repeated or older revision only answers the state (applyDisplayName), so it is never charged.
     const cost = pricing && revision > (identity.display_name_rev ?? 0) ? namePrice(identity, name, now) : 0;
@@ -604,20 +608,85 @@ export class Player extends DurableObject<Env> {
     return outcome;
     });
   }
-  /** Binding only (the friend link page): the active identity's stored name, or null. Nothing else leaves. */
-  publicDisplayName(owner: string): string | null {
+  /** Binding only (the friend link page): the active identity's stored name, or null. Nothing else leaves. With `username`, only while this player holds that name. */
+  publicDisplayName(owner: string, username?: string): string | null {
     const identity = this.identity();
-    return identity && identity.player_id === owner && identity.state === "active" ? identity.display_name ?? null : null;
+    if (!identity || identity.player_id !== owner || identity.state !== "active" || (username !== undefined && !holdsUsername(identity, username, Date.now()))) return null;
+    return identity.display_name ?? null;
+  }
+  /** Binding only: whether this active player holds `key` (their username, or an old one still held for them). */
+  usernameHolds(owner: string, key: string): boolean {
+    const identity = this.identity();
+    return identity?.state === "active" && identity.player_id === owner && holdsUsername(identity, key, Date.now());
+  }
+  /**
+   * GET /v1/profile/username (usernames.ts routeUsername): the username, the display name the route may suggest,
+   * and while the shop is on the next change's price and the one after it. Reads only.
+   */
+  usernameView(owner: string, deviceHash: string, shop: boolean): Outcome<{ username: string | null; display_name: string | null; price?: number; price_next?: number }> {
+    const identity = this.authorized(deviceHash);
+    if (!identity || identity.player_id !== owner) return fail(401, "invalid_auth");
+    const now = Date.now();
+    return ok({ username: identity.username ?? null, display_name: identity.display_name ?? null, ...(shop ? { price: nextUsernamePrice(identity, now), price_next: nextUsernamePriceAfter(identity, now) } : {}) });
+  }
+  /**
+   * PUT /v1/profile/username after the route checked the name's rules (usernames.ts). The checks run, then a new
+   * name is claimed in the index (one request; claimIndex), then everything is checked again and written in one
+   * transaction: the username, the display name (the same text), the old name's hold and the price. A repeat of the
+   * name held and a change of capitals alone need no index request and are free. `shown`: the price the phone showed
+   * beside Save, which must match while the shop is on and the change costs.
+   */
+  async claimUsername(owner: string, deviceHash: string, name: string, shown: number | undefined, shop: boolean): Promise<UsernameOutcome> {
+    const key = usernameKey(name);
+    const check = (now: number): UsernameOutcome | { cost: number; same: boolean; index: boolean } => {
+      const identity = this.authorized(deviceHash);
+      if (!identity || identity.player_id !== owner) return fail(401, "invalid_auth");
+      const plan = planUsername(identity, name, now);
+      if (!plan.ok) return plan;
+      const cost = shop && plan.index ? nextUsernamePrice(identity, now) : 0;
+      if (cost > 0) {
+        if (shown !== cost) return fail(409, "name_change_price");
+        if (walletBalance(this.ctx.storage, now) < cost) return fail(402, "pollen_short");
+      }
+      return { cost, same: plan.same, index: plan.index };
+    };
+    const first = check(Date.now());
+    if ("ok" in first) return first;
+    if (first.same) return ok({ schema_version: 1, username: name });
+    // Other requests may run while the index is asked, so the transaction checks everything again.
+    if (first.index && !await claimIndex(this.env, key, owner, Date.now())) return fail(409, "username_taken");
+    const result = this.ctx.storage.transactionSync((): UsernameOutcome => {
+      const now = Date.now(), plan = check(now);
+      if ("ok" in plan) return plan;
+      if (plan.same) return ok({ schema_version: 1, username: name });
+      const identity = this.identity()!;
+      applyUsername(identity, name, plan.index, now);
+      identity.display_name = name;
+      identity.display_name_rev = Math.max(identity.display_name_rev ?? 0, now);
+      if ((identity.display_name_locked_until ?? Infinity) <= now) delete identity.display_name_locked_until;
+      if (plan.cost > 0 && payFromWallet(this.ctx.storage, plan.cost, now) === null) throw new Error("pollen_name_charge_failed");
+      this.ctx.storage.sql.exec("UPDATE identity SET data=? WHERE id=1", JSON.stringify(identity));
+      return ok({ schema_version: 1, username: name });
+    });
+    // A name claimed but then refused here is let go at once, unless this player holds it after all.
+    const current = this.identity();
+    if (!result.ok && first.index && !(current && holdsUsername(current, key, Date.now()))) await usernameIndex(this.env, key).release(key, owner).catch(() => undefined);
+    return result;
   }
   /** Binding only (leaderboards/standing.ts): account age, shown name and partners for the ranking check. Reads only. */
   leaderboardStanding(): Standing | null { return playerStanding(this.ctx.storage, this.identity()); }
-  /** Binding only (operator clear-name): clears the name, locks new ones, and returns the v2 rooms that may hold a copy. */
-  operatorClearDisplayName(owner: string): Outcome<string[]> {
+  /**
+   * Binding only (operator clear-name): clears the name and the username, locks new ones, and returns the v2 rooms
+   * that may hold a copy and the username's key for the index to retire (null for none). The key stays noted, so a
+   * repeat after a failed retire retires it again.
+   */
+  operatorClearDisplayName(owner: string): Outcome<{ rooms: string[]; username: string | null }> {
     const identity = this.identity();
     if (!identity || identity.player_id !== owner) return fail(404, "identity_absent");
     clearDisplayNameFields(identity, Date.now());
+    clearUsernameFields(identity);
     this.ctx.storage.sql.exec("UPDATE identity SET data=? WHERE id=1", JSON.stringify(identity));
-    return ok(this.listRooms().filter(link => roomLinkVersion(link) === 2).slice(0, MAX_CLEARED_ROOMS).map(link => link.room_id));
+    return ok({ rooms: this.listRooms().filter(link => roomLinkVersion(link) === 2).slice(0, MAX_CLEARED_ROOMS).map(link => link.room_id), username: identity.username_cleared ?? null });
   }
   /**
    * This player's Add. Into a full list it takes the place of the oldest pending incoming request, as a received one
@@ -1295,7 +1364,11 @@ export class Player extends DurableObject<Env> {
     return identity?.state === "deleting" && identity.player_id === owner && equalHash(identity.device_hash, deviceHash);
   }
   deletionInProgress(owner: string): boolean { const identity = this.identity(); return identity?.state === "deleting" && identity.player_id === owner; }
-  safetyIdentityActive(owner: string): boolean { const identity = this.identity(); return identity?.state === "active" && identity.player_id === owner; }
+  /** With `username`: also only while this player holds that name (a friend code that named it; friends-routes.ts). */
+  safetyIdentityActive(owner: string, username?: string): boolean {
+    const identity = this.identity();
+    return identity?.state === "active" && identity.player_id === owner && (username === undefined || holdsUsername(identity, username, Date.now()));
+  }
   async finishDelete(): Promise<Outcome<{ deleted: true }>> {
     if (this.identity()?.state !== "deleting" || this.listRooms().length !== 0) return fail(409, "deletion_not_ready");
     const identity = this.identity()!;
@@ -1318,6 +1391,8 @@ export class Player extends DurableObject<Env> {
     // Platform games links (Play Games, Game Center) for this player; a repeat deletes nothing.
     await this.env.PLATFORM_LINKS.getByName(PLATFORM_LINKS_OBJECT).eraseOwner(owner);
     await this.env.SAFETY_PROFILES.getByName(owner).eraseOwner(owner);
+    // The index forgets every name this player claimed (a retired one stays retired); a repeat deletes nothing.
+    for (const key of claimedKeys(identity)) await usernameIndex(this.env, key).release(key, owner);
     if (this.identity()?.state !== "deleting" || this.listRooms().length !== 0) return fail(409, "deletion_not_ready");
     this.ctx.storage.transactionSync(() => {
       this.ctx.storage.sql.exec("DELETE FROM identity");
@@ -1348,6 +1423,7 @@ answerWhileBlank(Player, { authorize: () => false, authorizeAccess: () => ({ aut
   authorizeRoom: () => ({ authorized: false, linked: false }), rotateSafetyToken: () => undefined,
   authorizeNamed: () => ({ authorized: false, linked: true }), authorizeWallet: async () => ({ authorized: false, linked: true }),
   creditTurn: async () => fail(404, "identity_absent"), creditTogetherClear: () => fail(404, "identity_absent"), creditSoloClear: () => fail(404, "identity_absent"), creditDuelWin: () => fail(404, "identity_absent"), creditGhostWin: () => fail(404, "identity_absent"), duelRoomPay: () => ({ turns: 0, plain: 0, blooms: 0, duel: 0, duel_percent: 0, boost: 0, boost_percent: 0, total: 0, held: 0 }), settlePublicDuel: () => ({ extra: fail(404, "identity_absent") }), spendEnergy: () => fail(404, "identity_absent"), refundEnergy: () => fail(404, "identity_absent"), setDisplayName: () => fail(401, "invalid_auth"), pollenSpend: () => fail(401, "invalid_auth"), pollenEquip: () => fail(401, "invalid_auth"), pollenBundleClaim: async () => fail(401, "invalid_auth"), noteBoardRewards: () => fail(404, "identity_absent"), operatorClearDisplayName: () => fail(404, "identity_absent"), publicDisplayName: () => null,
+  usernameHolds: () => false, usernameView: () => fail(401, "invalid_auth"), claimUsername: async () => fail(401, "invalid_auth"),
   campaignDrainInventory: () => blankPlayerInventory(), operatorCampaignAllocation: () => null,
   operatorCampaignTerminalScope: async () => fail(404, "identity_absent"), operatorFinalizeCampaignTerminalLink: async () => fail(404, "identity_absent"),
   deletingWith: () => false, noteRoomIndex: () => undefined, leaderboardStanding: () => null,

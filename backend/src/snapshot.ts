@@ -12,6 +12,7 @@ import { REDO_TABLE, redoRuntimeValid, resetRedo } from "./redo-control";
 import { ROOM_INBOX_ACTIVITY, clearRoomInboxActivity } from "./room-inbox-storage";
 import { dropRoomIndex, isRoomIndexTable } from "./room-index";
 import { DISPLAY_NAME_KEYS, hasDisplayNameFields, validDisplayNameFields } from "./display-names";
+import { USERNAME_KEYS, hasUsernameFields, validUsernameFields } from "./usernames";
 import { isPollenPlayerTable } from "./pollen/wallet";
 
 export const MAX_SNAPSHOT_BYTES = 24 * 1024 * 1024;
@@ -83,7 +84,7 @@ function link(value: Record<string, unknown>, formatVersion: SnapshotPayload["fo
   requireValue(validRoomLink(value));
 }
 function identity(value: Record<string, unknown>, formatVersion: number): void {
-  record(value, ["player_id", "device_hash", "recovery_hash", "state", "created_at", ...(Object.hasOwn(value, "recovery_receipt") ? ["recovery_receipt"] : []), ...(Object.hasOwn(value, "tester_grant") ? ["tester_grant"] : []), ...(Object.hasOwn(value, "full_journey_off") ? ["full_journey_off"] : []), ...(Object.hasOwn(value, "social") ? ["social"] : []), ...DISPLAY_NAME_KEYS.filter(key => Object.hasOwn(value, key))]);
+  record(value, ["player_id", "device_hash", "recovery_hash", "state", "created_at", ...(Object.hasOwn(value, "recovery_receipt") ? ["recovery_receipt"] : []), ...(Object.hasOwn(value, "tester_grant") ? ["tester_grant"] : []), ...(Object.hasOwn(value, "full_journey_off") ? ["full_journey_off"] : []), ...(Object.hasOwn(value, "social") ? ["social"] : []), ...DISPLAY_NAME_KEYS.filter(key => Object.hasOwn(value, key)), ...USERNAME_KEYS.filter(key => Object.hasOwn(value, key))]);
   requireValue(validText(value.player_id, ID_PATTERN) && validText(value.device_hash, HASH_PATTERN) && validText(value.recovery_hash, HASH_PATTERN));
   requireValue(value.state === "active" || value.state === "deleting"); date(value.created_at);
   if (Object.hasOwn(value, "tester_grant")) requireValue(formatVersion >= 4 && validTesterGrant(value.tester_grant), "unsupported_tester_grant");
@@ -92,6 +93,8 @@ function identity(value: Record<string, unknown>, formatVersion: number): void {
   if (Object.hasOwn(value, "social")) requireValue(formatVersion >= 6 && validSocial(value.social, String(value.player_id)), "unsupported_friend_state");
   // Display names (display-names.ts) arrived with format 8.
   if (hasDisplayNameFields(value)) requireValue(formatVersion >= 8 && validDisplayNameFields(value), "unsupported_display_name");
+  // Usernames (usernames.ts) count as display names for the format: a format 8 reader that knows them restores them.
+  if (hasUsernameFields(value)) requireValue(formatVersion >= 8 && validUsernameFields(value), "unsupported_username");
   if (value.recovery_receipt !== undefined) {
     const receipt = record(value.recovery_receipt, ["previous_recovery_hash", "request_hash"]);
     requireValue(validText(receipt.previous_recovery_hash, HASH_PATTERN) && validText(receipt.request_hash, HASH_PATTERN));
@@ -160,7 +163,7 @@ function tables(input: unknown, kind: ObjectKind, formatVersion: SnapshotPayload
       if (definition.name === "operations") requireValue(validText(row.request_key, /^[a-zA-Z0-9_-]{22}:[a-zA-Z0-9_-]{16,80}$/) && validText(row.request_hash, HASH_PATTERN) && safeInteger(row.revision, 1));
       if (row.data !== undefined) {
         const value = jsonData(row.data); data.push(value);
-        if (definition.name === "identity") { identity(value, formatVersion); testerGrant ||= Object.hasOwn(value, "tester_grant"); testerSwitch ||= Object.hasOwn(value, "full_journey_off"); social ||= Object.hasOwn(value, "social"); displayNames ||= hasDisplayNameFields(value); }
+        if (definition.name === "identity") { identity(value, formatVersion); testerGrant ||= Object.hasOwn(value, "tester_grant"); testerSwitch ||= Object.hasOwn(value, "full_journey_off"); social ||= Object.hasOwn(value, "social"); displayNames ||= hasDisplayNameFields(value) || hasUsernameFields(value); }
         else if (definition.name === "creations" && Object.hasOwn(value, "creation_schema")) {
           if (validCampaignAdmissionIntent(value)) { requireValue(formatVersion>=6,"unsupported_snapshot_format"); campaignBearing=true; admissionIntents=true; }
           else if (validCampaignCreation(value)) { requireValue(formatVersion>=5,"unsupported_snapshot_format"); campaignBearing=true; }
