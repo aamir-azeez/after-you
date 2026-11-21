@@ -1,0 +1,43 @@
+shader_type spatial;
+// A soft contact shadow under something that moves (kit/contact_shadows.gd):
+// a flat quad, darkest over the thing's footprint and fading out past its
+// edge. What stands still is baked into its floor instead
+// (ground_shade.gdshader), in the same warm dark. A world draws all of its
+// moving shadows in one MultiMesh with this look; a pip draws its own with the
+// same look (spirit_visual.gd). Unlit, it multiplies the floor under it,
+// writing no depth, so whatever stands on it draws over it.
+render_mode unshaded, blend_mul, depth_draw_never, cull_disabled, shadows_disabled, fog_disabled;
+
+// What full shade multiplies the floor by (ground_shade.gdshader's dark_tint).
+uniform vec3 tint = vec3(0.50, 0.47, 0.40);
+// A MultiMesh instance gives its shape in INSTANCE_CUSTOM: the footprint's half
+// width and depth (metres), how far the shadow fades out past it, and how round
+// it is (0 a box, 1 an ellipse); its colour's alpha scales its strength.
+// A single quad (a pip's) gives the shape here instead and is sized in metres.
+uniform bool from_instance = true;
+uniform vec4 shape = vec4(0.1, 0.1, 0.2, 1.0);
+// The world's strength (the graphics quality softens it).
+instance uniform float shadow_strength = 0.55;
+
+varying vec2 local;
+varying vec4 form;
+varying float weight;
+
+void vertex() {
+	form = from_instance ? INSTANCE_CUSTOM : shape;
+	// An instance's quad spans -1..1 scaled by its basis to the shadow's outer
+	// size; a pip's mesh is already that size in metres.
+	local = from_instance ? VERTEX.xz * (form.xy + form.z) : VERTEX.xz;
+	weight = from_instance ? COLOR.a : 1.0;
+}
+
+void fragment() {
+	// Distance (metres) outside the footprint, a rounded box whose corners are
+	// as round as its `round` share of its shorter half.
+	float corner = form.w * min(form.x, form.y);
+	vec2 inside = max(form.xy - corner, vec2(0.0));
+	float outside = length(max(abs(local) - inside, vec2(0.0))) - corner;
+	float fade = clamp(1.0 - outside / max(form.z, 0.001), 0.0, 1.0);
+	float dark = shadow_strength * weight * fade * fade * (3.0 - 2.0 * fade);
+	ALBEDO = mix(vec3(1.0), tint, dark);
+}

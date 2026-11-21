@@ -25,9 +25,10 @@ const MODEL_STAGE_ONE := {
 	"budget": {"low": 460, "half": 418, "high": 494},
 	"deadline": {"low": 2539, "half": 2581, "high": 2505},
 	# low: 503 and high: 427 (b_real high: 380) since the tide wheel and levers are
-	# solid (2026-11-20): the witness walks round them between presses (the
-	# model's straight lines still say 462, 418 and 364).
-	"a_ticks": {"low": 503, "low-half-first": 618, "half": 464, "half-via-high": 454, "high": 427},
+	# solid (2026-11-20), low-half-first: 623 and half-via-high: 470 since every
+	# control is (2026-11-21): the witness walks round them between presses (the
+	# model's straight lines still say 462, 418, 364, 618 and 454).
+	"a_ticks": {"low": 503, "low-half-first": 623, "half": 464, "half-via-high": 470, "high": 427},
 	"b_real": {"low": 330, "half": 288, "high": 380},
 }
 ## history -> way -> budget, deadline (latest hold_start), p0 presses, p0 real

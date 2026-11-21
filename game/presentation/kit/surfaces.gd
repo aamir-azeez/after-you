@@ -1,18 +1,21 @@
 extends RefCounted
 ## World kit: warm ground styles for a walkable island. The visible top is
 ## exactly the authored rectangle at the parent's height; trims and the rock
-## below stay outside or under it, so nothing new looks walkable.
+## below stay outside or under it, so nothing new looks walkable. Each floor
+## registers its top as a ground (kit/contact_shadows.gd), so what stands on
+## it is baked into it; a "worn" style (grass) wears round a base.
 ## Every piece but the rock is one of the kit's cached boxes (nothing resizes
 ## a floor), so a chapter opened again makes none of them again (while the
 ## kit keeps them, Primitives.KEPT_SHAPES).
 
 const Primitives = preload("res://presentation/kit/primitives.gd")
+const ContactShadows = preload("res://presentation/kit/contact_shadows.gd")
 
 const STYLES := {
 	# Meadow grass over a soil band and warm sandstone. A floating shell under
 	# it (island_world.gd _island_shell) runs the band down into deeper soil, a
 	# darker underside and roots.
-	"grass": {"top": Color("7fa564"), "trim": Color("94b878"), "skirt": Color("62894f"), "band": Color("8a6b4e"), "rock": Color("b49a76"), "lines": "",
+	"grass": {"top": Color("7fa564"), "trim": Color("94b878"), "skirt": Color("62894f"), "band": Color("8a6b4e"), "rock": Color("b49a76"), "lines": "", "worn": true,
 		"soil": Color("6f5440"), "underside": Color("533e2d"), "root": Color("4a3729")},
 	# A raised plank deck on beams, with no rock below: supports come from posts.
 	"deck": {"top": Color("a07a55"), "trim": Color("8a6b4e"), "skirt": Color("7a5c40"), "band": Color("6b5038"), "rock": Color("a88f6c"), "lines": "x", "line": Color("8f6d4d"), "spacing": 0.36, "rockless": true},
@@ -37,7 +40,7 @@ const STYLES := {
 	# with butt joints staggered along them ("alt", "joints"), and a reedy mud bank.
 	"boardwalk": {"top": Color("c2a77f"), "trim": Color("8c7656"), "skirt": Color("7a6548"), "band": Color("5f4f3b"), "rock": Color("8a7d63"), "lines": "x", "line": Color("7f694b"), "spacing": 0.3,
 		"alt": Color("b0956c"), "joints": 1.1},
-	"reed_bank": {"top": Color("aaa27e"), "trim": Color("8f8a64"), "skirt": Color("7f7a58"), "band": Color("6f6548"), "rock": Color("7f7660"), "lines": ""},
+	"reed_bank": {"top": Color("aaa27e"), "trim": Color("8f8a64"), "skirt": Color("7f7a58"), "band": Color("6f6548"), "rock": Color("7f7660"), "lines": "", "worn": true},
 }
 
 static func has_style(name: String) -> bool:
@@ -60,6 +63,7 @@ static func build(island: Dictionary, style_name: String, parent: Node3D, with_r
 	var center := Vector3(float(r[0] + r[2]) / 200.0, 0, float(r[1] + r[3]) / 200.0)
 	var floor := Primitives.mesh_node(Primitives.cached_box(Vector3(width, 0.20, depth)), Primitives.shared_material(style.top), center + Vector3(0, -0.10, 0), parent)
 	floor.name = str(island.id) + "Floor"
+	ContactShadows.ground(parent, Rect2(center.x - width / 2.0, center.z - depth / 2.0, width, depth), 0.0, bool(style.get("worn", false)))
 	# A soft lip just outside the rectangle, a little below the walking surface.
 	Primitives.mesh_node(Primitives.cached_box(Vector3(width + 0.10, 0.12, depth + 0.10)), Primitives.shared_material(style.skirt), center + Vector3(0, -0.085, 0), parent)
 	Primitives.mesh_node(Primitives.cached_box(Vector3(width + 0.04, 0.12, depth + 0.04)), Primitives.shared_material(style.band), center + Vector3(0, -0.24, 0), parent)

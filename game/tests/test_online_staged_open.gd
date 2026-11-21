@@ -121,7 +121,7 @@ func _room(key: String, index: int) -> void:
 	_check(staged.world.terrain.get_instance_id() == terrain_id and (shown == null or str(shown) == str(Registry.definition(key).stages[index].id)), label + ": the room's own stage is built once, staged, and kept")
 	_check(staged.world.process_mode == direct.world.process_mode, label + ": the world runs again once whole")
 	guard = 0
-	while (staged.world.scenery_folding() or direct.world.scenery_folding()) and guard < 900:
+	while (staged.world.scenery_settling() or direct.world.scenery_settling()) and guard < 900:
 		await process_frame
 		guard += 1
 	_check(_fingerprint(staged.world, key, true, "room").hash == _fingerprint(direct.world, key, true, "room").hash, label + ": the same world as a room screen built at once")

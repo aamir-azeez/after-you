@@ -25,6 +25,11 @@ const MODEL_SEA_FIRST_RATIO := {"low": {"boom": 1.35, "sea-lock": 1.02, "punt": 
 ## as a real mistake; the cells that miss it are listed, not failed.
 const BAR_RATIO := 1.15
 const BAR_PRESSES := 2
+## The least ratio the wrong order may take, by cell (1.0, never faster, where
+## unlisted). HIGH boom, measured with every control solid: the sea-first turn
+## walks 488 ticks against the natural 496 (0.98x); the owner accepted on
+## 2026-11-21 that this one cell is no longer slower.
+const WRONG_ORDER_FLOOR := {"high": {"boom": 0.98}}
 var checks := 0
 var failures := 0
 var level: Dictionary = {}
@@ -88,7 +93,7 @@ func _sea_first() -> void:
 			var presses: Array = SEA_FIRST_PRESSES[history][way]
 			_check(Witness.count_presses(natural) == presses[0] and Witness.count_presses(pair.a_sim) == presses[1], "%s: turning the sea first takes p1 %d presses instead of %d (got %d and %d)" % [label, presses[1], presses[0], Witness.count_presses(pair.a_sim), Witness.count_presses(natural)])
 			var ratio := float(pair.a.duration_ticks) / float(natural.tick)
-			_check(ratio >= 1.0, "%s: the wrong order never saves p1 time (%.2fx)" % [label, ratio])
+			_check(ratio >= float(WRONG_ORDER_FLOOR.get(history, {}).get(way, 1.0)), "%s: the wrong order never saves p1 time (%.2fx)" % [label, ratio])
 			if ratio < BAR_RATIO or presses[1] - presses[0] < BAR_PRESSES: below.append("%s %.2fx +%d" % [label, ratio, presses[1] - presses[0]])
 			print("MODEL %s sea-first p1 ratio native=%.2f model=%s presses %d->%d ticks %d->%d" % [label, ratio, str(MODEL_SEA_FIRST_RATIO.get(history, {}).get(way, "-")), presses[0], presses[1], natural.tick, pair.a.duration_ticks])
 	print("TIDE sea-first below %.2fx or +%d presses: %d of 9 %s" % [BAR_RATIO, BAR_PRESSES, below.size(), str(below)])

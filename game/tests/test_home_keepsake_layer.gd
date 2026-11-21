@@ -40,7 +40,14 @@ const WATER_HEARD := {
 	"conservatory": [["drip", 0], ["drip", 1], ["drip", 2], ["drip", 3], ["drip", 4], ["drip", 5], ["drip", 6]],
 	"turn-of-the-tide": [["drip", 0], ["drip", 1], ["drip", 2], ["drip", 3], ["slosh", 0], ["slosh", 0]],
 	"the-wishing-well": [["drip", 0], ["drip", 1], ["drip", 2], ["drip", 3], ["drip", 4]],
+	"the-falls": [["slosh", 0]],
+	"fog-marsh": [["drip", 0]],
 }
+## The keepsakes test_keepsake_props.gd lets take longer (its LONG_TAPS).
+const LONG_TAPS := ["relay-isles", "the-falls", "fog-marsh"]
+## Where the stick starts walking the pip onto each isle (on the island its
+## bridge leaves from), toward the isle along the bridge.
+const ISLE_WALKS := {"journey_left": Vector3(-3.0, 0, -2.4), "journey_right": Vector3(3.2, 0, -2.4), "tide": Vector3(5.3, 0, -0.1), "brook": Vector3(11.3, 0, -2.8)}
 var checks := 0
 var failures := 0
 var box_heights := {}
@@ -262,7 +269,9 @@ func _check_isles() -> void:
 	var world: Node3D = home.world
 	var isles: Node3D = world.terrain.get_node_or_null(Isles.NODE_NAME)
 	_check(isles != null and not layer.is_ancestor_of(isles) and isles.get_script() == null, "The keepsake isles are plain Home terrain, folded with Home")
-	for id: String in ["tide", "journey_left", "journey_right"]:
+	var built: Array = layer.island_ids().filter(func(id: String) -> bool: return Isles.is_isle(id))
+	_check(built.has("tide") and built.has("journey_left") and built.has("journey_right"), "Home stands the tide and journey isles: %s" % [built])
+	for id: String in built:
 		_check(isles.get_node_or_null("Isle_" + id) != null and layer.island_floor(id).has_area(), "Home stands the %s isle" % id)
 		var ends: Array = Isles.ISLES[id].bridge
 		var middle: Vector2 = (ends[0] as Vector2).lerp(ends[1], 0.5)
@@ -280,7 +289,10 @@ func _check_isles() -> void:
 	var stage: Control = home.stage
 	var spirit: Node3D = world.actors.a
 	stage._explore_button.pressed.emit()
-	for walk: Array in [["journey_left", Vector3(-3.0, 0, -2.4), Vector3(0, 0, -1)], ["journey_right", Vector3(3.2, 0, -2.4), Vector3(0, 0, -1)], ["tide", Vector3(5.3, 0, -0.1), Vector3(1, 0, 0)]]:
+	for id: String in built:
+		var ends: Array = Isles.ISLES[id].bridge
+		var along := ((ends[1] as Vector2) - (ends[0] as Vector2)).normalized()
+		var walk: Array = [id, ISLE_WALKS[id], Vector3(along.x, 0, along.y)]
 		var start: Vector3 = walk[1]
 		spirit.position = start
 		_frames(stage, world, 1)
@@ -656,8 +668,8 @@ func _check_play() -> void:
 				asked = true
 				_check(not stage.play_keepsake(id), "A tap halfway through %s neither stacks nor restarts it" % id)
 		_check(moved, "%s moves its parts while it plays" % id)
-		# The Relay Masts may take up to 5.65 s (test_keepsake_props.gd LONG_TAPS); the rest 4.5 s.
-		var limit := 5850 if id == "relay-isles" else 4700
+		# A long tap may take up to 5.65 s (test_keepsake_props.gd LONG_TAPS); the rest 4.5 s.
+		var limit := 5850 if id in LONG_TAPS else 4700
 		_check(not stage.keepsake_playing() and Time.get_ticks_msec() - tap_start <= limit, "%s finishes within its time: %d ms" % [id, Time.get_ticks_msec() - tap_start])
 		await process_frame
 		# The glasshouse and the lighthouse hold their end (test_keepsake_held.gd); let go here.
@@ -678,6 +690,8 @@ func _check_play() -> void:
 	await create_timer(0.9).timeout
 	_check(not stage.keepsake_playing() and _pose(layer, "the-wishing-well") == well_rest, "and after a moment everything is back at rest")
 	for id: String in WATER_HEARD:
+		# A chapter not released yet has no keepsake on Home.
+		if not layer.shown_ids().has(id): continue
 		cues.clear()
 		water.clear()
 		stage.play_keepsake(id)
@@ -840,6 +854,8 @@ const RIDES := {
 	"high-and-low": {"action": PlayerCopy.KEEPSAKE_GIANT_STEPS_ACTION, "high": 1.1, "far": Rect2(-9, -9, 18, 8.5)},
 	"rolling-home": {"action": PlayerCopy.KEEPSAKE_ROLLING_RAIL_ACTION, "high": 1.5, "far": Rect2(-9, -9, 18, 8.7)},
 	"turn-of-the-tide": {"action": PlayerCopy.KEEPSAKE_TIDE_POOL_ACTION, "high": 0.4, "far": Rect2(1.0, -9, 8, 18)},
+	"the-falls": {"action": PlayerCopy.THE_FALLS_KEEPSAKE_ACTION, "high": 1.3, "far": Rect2(-9, 0.7, 7.3, 9)},
+	"fog-marsh": {"action": PlayerCopy.FOG_MARSH_KEEPSAKE_ACTION, "high": 0.2, "far": Rect2(1.2, -9, 8, 18)},
 }
 
 ## Every spot, in a ride's own frame, where its Explore action shows but the
@@ -913,6 +929,8 @@ func _check_explore_rides() -> void:
 	var Parts: GDScript = load("res://presentation/keepsakes/keepsake_parts.gd")
 	var is_ball := func(part: Node) -> bool: return part is MeshInstance3D and (part as MeshInstance3D).mesh == Parts.low_sphere(0.12)
 	for id: String in RIDES:
+		# A chapter not released yet has no keepsake on Home.
+		if not States.entries().any(func(entry: Dictionary) -> bool: return entry.id == id): continue
 		var ride: Dictionary = RIDES[id]
 		var key := ""
 		for eligible: String in HardMode.eligible_keys():

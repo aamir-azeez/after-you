@@ -290,6 +290,7 @@ func _shore(island: Dictionary, color: Color) -> void:
 	# The visible top is exactly the authored walkable rectangle, at height 0.
 	# The tapered lower rock is decorative and remains below the floor.
 	box(Vector3(width, 0.20, depth), color, center + Vector3(0, -0.10, 0), terrain).name = str(island.id) + "Floor"
+	ContactShadows.ground(terrain, Rect2(center.x - width / 2.0, center.z - depth / 2.0, width, depth), center.y, false)
 	var corners := [Vector2(-1, -1), Vector2(1, -1), Vector2(1, 1), Vector2(-1, 1)]
 	var top: Array[Vector3] = []
 	var bottom: Array[Vector3] = []

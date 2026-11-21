@@ -8,8 +8,9 @@ import type { Ghost } from "./model";
  *
  * Those apps shipped the developers' recorded runs as Our run and play the pip from their own copy, so they must
  * keep racing exactly these times and turns. Apps that send the header race only the owner's kept run
- * (leaderboards/our-run.ts) and never read anything here. The runs themselves stay as a test corpus in
- * game/tests/fixtures/whole_runs.json; legacy-shipped-our-run.test.ts keeps these numbers equal to it.
+ * (leaderboards/our-run.ts) and never read anything here. Those apps read a changed chapter's board by the key it
+ * opened on (leaderboards/boards.ts), where these times stay. The runs on chapters that have not changed since stay as
+ * a test corpus in game/tests/fixtures/whole_runs.json; legacy-shipped-our-run.test.ts keeps these numbers equal to it.
  */
 export const LEGACY_SHIPPED_TICKS: Readonly<Record<string, number>> = Object.freeze({
   "relay-isles@2": 588,

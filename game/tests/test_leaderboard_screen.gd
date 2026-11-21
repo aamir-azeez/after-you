@@ -68,6 +68,9 @@ func _ids_and_times() -> void:
 	# backend/test/leaderboards.test.ts pins the same id for the same room and branch.
 	_check(Runs.entry_id(ROOM, 3) == "950c0a948aa0ab431b848fba650fa348", "a run's id is the server's hash of its room and branch")
 	_check(Runs.board_key(Registry.RELAY) == "relay-isles@2" and Runs.board_key(Registry.LIGHTHOUSE_V2) == "sleeping-lighthouse@2", "a board is a chapter version")
+	# backend/test/legacy-chapters.test.ts pins the same keys: a chapter changed since its board opened ranks on a fresh one.
+	var high := Registry.descriptor(Registry.HIGH_AND_LOW)
+	_check(Runs.board_key(Registry.HIGH_AND_LOW) == "high-and-low-%s@1" % str(high.definition_hash).left(8) and Runs.chapter_of(Runs.board_key(Registry.HIGH_AND_LOW)) == Registry.HIGH_AND_LOW and Runs.chapter_of(Registry.HIGH_AND_LOW).is_empty(), "a changed chapter's board names its definition, and the board it opened on is no chapter here")
 	var relay: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/v2/final-checkpoint.json"))
 	_check(Runs.run_time(Registry.RELAY, relay) == {"ticks": 588, "assisted": true}, "a run's time sums every turn, and catch assistance marks it")
 	var chain: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/lighthouse/v2-chain.json"))
