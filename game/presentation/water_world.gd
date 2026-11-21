@@ -16,10 +16,29 @@ extends "res://presentation/journey_world.gd"
 ##   _present_water(state, immediate)  the water and what reads it
 ##   _advance_water(delta)    the water each frame
 ##   _default_ground(height_cm), _wall_color(height_cm), _piers(island, raised)
+##
+## What every water world shows with no code of its own: boats riding the water
+## by the float rule (kit/floats.gd: the dressing's "moored_boats", and any
+## dressing "boat" prop standing over water), a drowning (kit/drowning.gd), and
+## stepping stones that sink just under the water while they are down (shut,
+## or pushed under) and rise again, never hidden. A world never builds its own
+## (test_shared_paths guards it).
 
 const WaterBodies = preload("res://presentation/kit/water_bodies.gd")
 const WaterLocks = preload("res://presentation/kit/water_locks.gd")
 const Gorge = preload("res://presentation/kit/gorge.gd")
+const Drowning = preload("res://presentation/kit/drowning.gd")
+const Floats = preload("res://presentation/kit/floats.gd")
+const Models = preload("res://presentation/kit/models.gd")
+## Every boat that floats is the rowboat model at this size, so one set of
+## float numbers (Floats "rowboat") holds for all of them.
+const ROWBOAT_SIZE := 0.83
+## A boat's mooring pile: from its water's bed to this far over its highest level.
+const PILE_OVER := 0.19
+## Where a stone that is down rests: its top this far under the water (m), and
+## how fast it sinks and rises (m a second).
+const STONE_UNDER := 0.10
+const STONE_RATE := 0.45
 
 ## The water kit for the shown stage.
 var waters := WaterBodies.new(self)
@@ -36,11 +55,27 @@ var _spinning: Array[Node3D] = []
 ## with Reduce motion and never moves another world's water.
 var _flow_look: ShaderMaterial
 var _flows_gathered := false
+## The water world's own clock (seconds), for every bob.
+var _clock := 0.0
+## A drowning, shown from the snapshot (kit/drowning.gd).
+var drowning := Drowning.new(self)
+## Boats riding the water (each a node, its keel at its origin).
+var _boats: Array[Node3D] = []
+## Dressing "boat" props standing over water, built as floating boats once
+## the water stands: [{"at": [x, z] cm, "heading": radians, "water": body id}].
+var _floating: Array = []
+## Stepping stones (crossings standing in the water): id -> {"deck", "rest"
+## (its open height), "water" (body id), "down", "y" (shown height)}.
+var _stones: Dictionary = {}
 
 func show_stage(stage: Dictionary) -> void:
 	if str(stage.get("id", "")) == displayed_stage_id: return
 	_spinning.clear()
 	_flows_gathered = false
+	_boats.clear()
+	_floating.clear()
+	_stones.clear()
+	drowning.forget()
 	_forget_stage()
 	waters.start(stage, _water_block(), _standing_routes(stage))
 	await super.show_stage(stage)
@@ -54,6 +89,8 @@ func show_stage(stage: Dictionary) -> void:
 	# Every wall now stands: a coil behind one goes.
 	drop_unseen_coils(waters.standing_walls())
 	await _build_water_scenery()
+	_build_boats()
+	_find_stones(stage)
 	# The dressing's gorge: rock behind the floors and rainbows in the spray.
 	Gorge.build(self, dressing.get("gorge", {}))
 
@@ -82,6 +119,115 @@ func _standing_routes(stage: Dictionary) -> Array:
 	for id: Variant in stage.get("sinking", []):
 		if str(id) not in standing: standing.append(str(id))
 	return standing
+
+# --- Boats: every one by the float rule ---
+
+## The dressing's "moored_boats", and every "boat" prop that stands over
+## water, ride their water's level (and bob unless motion is reduced). Each
+## sits by the float rule (kit/floats.gd "rowboat"): its keel at its origin,
+## solid up to its floorboards, which stay over the water all through its bob,
+## and open above them inside its gunwale. A pile it is tied to stands beside it.
+func _build_boats() -> void:
+	for spec: Dictionary in dressing.get("moored_boats", []) + _floating:
+		var at := point(spec.at)
+		var boat := Node3D.new()
+		boat.name = "MooredBoat"
+		boat.position = at
+		boat.rotation.y = float(spec.heading)
+		boat.set_meta("phase", float(spec.at[0]) * 0.013)
+		# A dressing boat prop, floated: still the dressing's (test_dressing_lint counts it).
+		if spec.has("dressing"): boat.set_meta("dressing_kind", "boat")
+		terrain.add_child(boat)
+		# The rowboat model along z, its keel at the node's origin (the float rule).
+		var hull := Models.moving(Props.ROWBOAT, "rowboat", Props.rowboat_colors(), boat)
+		hull.transform = Transform3D(Basis(Vector3.UP, -PI / 2.0).scaled(Vector3.ONE * ROWBOAT_SIZE), Vector3.ZERO)
+		var water := str(spec.water)
+		var bottom := waters.bed(water)
+		var top: float = float(Array(waters.levels_of(water).values()).max()) + PILE_OVER
+		cylinder(0.035, top - bottom, Parts.TIMBER_DARK, Vector3(at.x + 0.32, (top + bottom) * 0.5, at.z - 0.36), terrain).name = "MooringPile"
+		_boats.append(boat)
+		waters.ride(water, _float_boat.bind(boat), true, boat)
+
+func _float_boat(level: float, boat: Node3D) -> void:
+	if not is_instance_valid(boat): return
+	boat.position.y = Floats.keel("rowboat", level, _clock, float(boat.get_meta("phase")), reduced_motion)
+
+## A dressing "boat" standing over water (off every floor, inside a body) is
+## not a prop: it floats, built with the moored boats once the water stands.
+func _takes_prop(spec: Dictionary) -> bool:
+	if str(spec.get("kind", "")) != "boat" or waters.water.is_empty(): return false
+	var at: Array = spec.get("at", [])
+	if at.size() != 2: return false
+	for island: Dictionary in current_level.get("islands", []):
+		if WaterBodies._inside(at, island.rect_cm): return false
+	var water := waters.body_of([at[0], at[1], at[0], at[1]])
+	if water.is_empty(): return false
+	_floating.append({"at": at, "heading": deg_to_rad(float(spec.get("rot", 0))) + PI / 2.0, "water": water, "dressing": true})
+	return true
+
+# --- Currents: marks on the water ---
+
+## A current's mark lies on open water only: off every floor and crossing and
+## inside a body of this world's water.
+func _current_water(at: Vector3, view: Dictionary) -> bool:
+	if waters.water.is_empty(): return super._current_water(at, view)
+	var cm := [at.x * 100.0, at.z * 100.0, at.x * 100.0, at.z * 100.0]
+	return super._current_water(at, view) and not waters.body_of(cm).is_empty() and not WaterBodies.covered(cm[0], cm[1], waters.basin_rects())
+
+## Each leg rides the body under its middle, so its marks sit on the water at
+## every level.
+func _ride_current(legs: Array) -> void:
+	if waters.water.is_empty(): return
+	for index in range(legs.size()):
+		var middle: Vector3 = (legs[index].from + legs[index].to) * 50.0
+		var water := waters.body_of([middle.x, middle.z, middle.x, middle.z])
+		if not water.is_empty(): waters.ride(water, _current_piece.set_level.bind(index))
+
+# --- Stepping stones: down under the water, never hidden ---
+
+## The stage's stepping stones that have a deck: the crossings that stand in
+## the water (the dressing's "stones" decks, the stage's sinking stones) and
+## every crossing laid in the "stones" deck style.
+func _find_stones(stage: Dictionary) -> void:
+	var standing := _standing_routes(stage)
+	for id: String in _decks:
+		var deck: Node3D = _decks[id]
+		if id not in standing and (new_pieces == null or new_pieces.deck_style(id) != "stones"): continue
+		_stones[id] = {"deck": deck, "rest": deck.position.y, "water": waters.body_of(_route_rect(id)), "down": false, "y": deck.position.y}
+
+func _route_rect(id: String) -> Array:
+	for route: Dictionary in current_level.get("bridges", []):
+		if str(route.id) == id: return route.rect_cm
+	return [0, 0, 0, 0]
+
+## A stone is down while its crossing is shut, or once it is pushed under (a
+## drowning on it): it stays in view, sinking to just under its water.
+func _present_stones(state: Dictionary, immediate: bool) -> void:
+	var routes: Dictionary = state.get("bridges", {})
+	var sunk := str(state.get("drowned", {}).get("route", ""))
+	for id: String in _stones:
+		var stone: Dictionary = _stones[id]
+		if not is_instance_valid(stone.deck): continue
+		stone.down = not bool(routes.get(id, false)) or id == sunk
+		stone.deck.visible = true
+		if immediate or reduced_motion:
+			stone.y = _stone_target(stone)
+			stone.deck.position.y = stone.y
+
+## Where a stone heads: its open height, or just under its water while down.
+func _stone_target(stone: Dictionary) -> float:
+	if not stone.down: return float(stone.rest)
+	var body: Node3D = waters.bodies.get(str(stone.water))
+	var level: float = float(body.get_meta("shown")) if is_instance_valid(body) and body.has_meta("shown") else float(stone.rest)
+	return minf(float(stone.rest), level - STONE_UNDER)
+
+func _sink_stones(delta: float) -> void:
+	for stone: Dictionary in _stones.values():
+		if not is_instance_valid(stone.deck): continue
+		var target := _stone_target(stone)
+		if is_equal_approx(float(stone.y), target): continue
+		stone.y = target if reduced_motion else move_toward(float(stone.y), target, STONE_RATE * maxf(delta, 0.0))
+		stone.deck.position.y = stone.y
 
 # --- Floors: solid decks with walls down to the water ---
 
@@ -168,7 +314,10 @@ func _build_bridge(definition: Dictionary) -> void:
 
 func present(state: Dictionary, immediate: bool = false) -> void:
 	super.present(state, immediate)
-	if state.has("players"): _present_water(state, immediate)
+	if not state.has("players"): return
+	_present_stones(state, immediate)
+	_present_water(state, immediate)
+	drowning.show(state.get("drowned", {}))
 
 ## The water at the snapshot's levels, the walled stubs' floods, and the
 ## doors and wall fade round where the spirits stand.
@@ -194,9 +343,12 @@ func _advance_camera(delta: float) -> void:
 	super._advance_camera(delta)
 
 func _advance_water(delta: float) -> void:
+	_clock += maxf(delta, 0.0)
 	waters.advance(delta)
+	if not _stones.is_empty(): _sink_stones(delta)
 	waters.advance_fade(delta)
 	if not reduced_motion:
+		drowning.advance(delta)
 		waters.bob()
 		# From the world's clock, so a frame shows the same turn however it is reached.
 		for part: Node3D in _spinning:
@@ -222,4 +374,7 @@ func _dressed_prop(prop: Node3D) -> void:
 func _static_keep() -> Array:
 	var keep := super._static_keep()
 	keep.append_array(waters.moving_nodes())
+	keep.append_array(drowning.moving_nodes())
+	keep.append_array(_boats)
+	for stone: Dictionary in _stones.values(): keep.append(stone.deck)
 	return keep
