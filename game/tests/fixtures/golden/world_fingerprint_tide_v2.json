@@ -10,15 +10,15 @@
 						"Control": 1,
 						"DirectionalLight3D": 2,
 						"Label3D": 20,
-						"MeshInstance3D": 979,
+						"MeshInstance3D": 798,
 						"MultiMeshInstance3D": 1,
 						"Node": 1,
-						"Node3D": 409,
+						"Node3D": 406,
 						"OmniLight3D": 1,
 						"WorldEnvironment": 1
 					},
-					"hash": "d9bf43352505fe920012c7a8fbdfcaee4176c420333ec5b03aaecd85b26d93e0",
-					"nodes": 1417,
+					"hash": "ba1591060909b9d644f5049c91d060e6e0e67d846d2380bdf4ed5aa92531a611",
+					"nodes": 1233,
 					"story_camera": {
 						"_follow_center": [
 							1917,
@@ -39,8 +39,8 @@
 						"@DirectionalLight3D#2": "eecca1b31942336f",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "d93f98109e2e0422",
-						"ContactShadows": "cb255a225f9d6bdf",
-						"TurnOfTheTide": "d942530fe831d985"
+						"ContactShadows": "7bb8ca2406838bed",
+						"TurnOfTheTide": "52f02b27e8db3b65"
 					}
 				},
 				"s0.b.below": {
@@ -51,15 +51,15 @@
 						"Control": 1,
 						"DirectionalLight3D": 2,
 						"Label3D": 20,
-						"MeshInstance3D": 979,
+						"MeshInstance3D": 798,
 						"MultiMeshInstance3D": 1,
 						"Node": 1,
-						"Node3D": 409,
+						"Node3D": 406,
 						"OmniLight3D": 1,
 						"WorldEnvironment": 1
 					},
-					"hash": "2a855a4da77dcde2e407cfa141b9ab97ffc5bb48e492b802c2dabf9879d03997",
-					"nodes": 1417,
+					"hash": "2b28cec125cf21b6f24735f45a1e754c7ddb7fc8d3d96343a2e199a3b0971f42",
+					"nodes": 1233,
 					"story_camera": {
 						"_follow_center": [
 							-3200,
@@ -80,8 +80,8 @@
 						"@DirectionalLight3D#2": "eecca1b31942336f",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "29b2661c40b538f5",
-						"ContactShadows": "cb255a225f9d6bdf",
-						"TurnOfTheTide": "2d183d787a7a7f4a"
+						"ContactShadows": "7bb8ca2406838bed",
+						"TurnOfTheTide": "9441239960eb031f"
 					},
 					"tick": 1
 				},
@@ -93,15 +93,15 @@
 						"Control": 1,
 						"DirectionalLight3D": 2,
 						"Label3D": 20,
-						"MeshInstance3D": 979,
+						"MeshInstance3D": 798,
 						"MultiMeshInstance3D": 1,
 						"Node": 1,
-						"Node3D": 409,
+						"Node3D": 406,
 						"OmniLight3D": 1,
 						"WorldEnvironment": 1
 					},
-					"hash": "9b20bab63d3d6225b193e05e8cfcd52febb810215ce1dbbe6171e9d03d9e83bf",
-					"nodes": 1417,
+					"hash": "77e33842352ed684a47029092e230ef1b8058818b8d1b45aef5028ff28e8aff8",
+					"nodes": 1233,
 					"story_camera": {
 						"_follow_center": [
 							8160,
@@ -122,8 +122,8 @@
 						"@DirectionalLight3D#2": "eecca1b31942336f",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "1e26c9492c872527",
-						"ContactShadows": "cb255a225f9d6bdf",
-						"TurnOfTheTide": "4a5fc62417cc6671"
+						"ContactShadows": "7bb8ca2406838bed",
+						"TurnOfTheTide": "44f63a28f1ab97d4"
 					}
 				},
 				"s0.b.mid": {
@@ -134,15 +134,15 @@
 						"Control": 1,
 						"DirectionalLight3D": 2,
 						"Label3D": 20,
-						"MeshInstance3D": 979,
+						"MeshInstance3D": 798,
 						"MultiMeshInstance3D": 1,
 						"Node": 1,
-						"Node3D": 409,
+						"Node3D": 406,
 						"OmniLight3D": 1,
 						"WorldEnvironment": 1
 					},
-					"hash": "4a01f393ef761ad436016c12fe83ccd9d123b264c154b09634cdaa16caedf1cc",
-					"nodes": 1417,
+					"hash": "4f1d989aa09b0931e681ddda3c345f33c6b1e47aab7ef2563b2d97504a988003",
+					"nodes": 1233,
 					"story_camera": {
 						"_follow_center": [
 							4487,
@@ -163,10 +163,10 @@
 						"@DirectionalLight3D#2": "eecca1b31942336f",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "ed9f45e61b39f6f8",
-						"ContactShadows": "cb255a225f9d6bdf",
-						"TurnOfTheTide": "fe218206fcddccbd"
+						"ContactShadows": "7bb8ca2406838bed",
+						"TurnOfTheTide": "3edf80db54abce19"
 					},
-					"tick": 290
+					"tick": 299
 				},
 				"s0.start": {
 					"camera": "[\"Camera3D\",\"@Camera3D\",true,[[-200,13450,12880],[958,0,-287],[-224,626,-747],[180,780,600]],1,9200,75000,0,200,1,50,4000000,true]",
@@ -176,15 +176,15 @@
 						"Control": 1,
 						"DirectionalLight3D": 2,
 						"Label3D": 20,
-						"MeshInstance3D": 979,
+						"MeshInstance3D": 798,
 						"MultiMeshInstance3D": 1,
 						"Node": 1,
-						"Node3D": 409,
+						"Node3D": 406,
 						"OmniLight3D": 1,
 						"WorldEnvironment": 1
 					},
-					"hash": "868b8d303d5d361e37f0f8b7e33e01502ca9f2f7ef8b28e65f600d65634d10b6",
-					"nodes": 1417,
+					"hash": "67192d619ff9bd469355c4ddd92cfb67d194fa94b93be64a9c0ba4921c9dee0a",
+					"nodes": 1233,
 					"story_camera": {
 						"_follow_center": [
 							-3200,
@@ -205,32 +205,32 @@
 						"@DirectionalLight3D#2": "eecca1b31942336f",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "0bc7e5ec8f99ff9c",
-						"ContactShadows": "cb255a225f9d6bdf",
-						"TurnOfTheTide": "13bffef410db8104"
+						"ContactShadows": "7bb8ca2406838bed",
+						"TurnOfTheTide": "200ac5fa50918a0a"
 					}
 				},
 				"s1.a.end": {
-					"camera": "[\"Camera3D\",\"@Camera3D\",true,[[-1158,13450,11469],[958,0,-287],[-224,626,-747],[180,780,600]],1,9200,75000,0,200,1,50,4000000,true]",
+					"camera": "[\"Camera3D\",\"@Camera3D\",true,[[-1148,13450,11479],[958,0,-287],[-224,626,-747],[180,780,600]],1,9200,75000,0,200,1,50,4000000,true]",
 					"classes": {
 						"Camera3D": 1,
 						"CanvasLayer": 1,
 						"Control": 1,
 						"DirectionalLight3D": 2,
 						"Label3D": 30,
-						"MeshInstance3D": 1107,
+						"MeshInstance3D": 926,
 						"MultiMeshInstance3D": 1,
 						"Node": 1,
-						"Node3D": 439,
+						"Node3D": 436,
 						"OmniLight3D": 1,
 						"WorldEnvironment": 1
 					},
-					"hash": "bdc64d7bf418cf13fd3b6f7084981aa21beda473f1d6d74e2149331407e43d45",
-					"nodes": 1585,
+					"hash": "44a73cdd2b7694d5123a04b5b19a17b015ffffc68df4c6857d256a80a4ce99c3",
+					"nodes": 1401,
 					"story_camera": {
 						"_follow_center": [
-							-4158,
+							-4148,
 							450,
-							1469
+							1479
 						],
 						"_follow_size": 9200,
 						"_view_center": [
@@ -241,35 +241,35 @@
 						"_view_size": 11160
 					},
 					"subtrees": {
-						"@Camera3D": "d1e0a0cfcac26ff2",
+						"@Camera3D": "107819b80a1428a4",
 						"@DirectionalLight3D": "a6064f25a92c86f0",
 						"@DirectionalLight3D#2": "eecca1b31942336f",
 						"@Node": "1915fcc41e9a6ed2",
-						"@WorldEnvironment": "2aa279e91e16c39c",
-						"ContactShadows": "704b1abfc596945f",
-						"TurnOfTheTide": "0dfef67c1fefaad4"
+						"@WorldEnvironment": "cd8fbf44ff78e941",
+						"ContactShadows": "3e793c08c7ff84d5",
+						"TurnOfTheTide": "fd48a23f979e02fc"
 					}
 				},
 				"s1.b.end": {
-					"camera": "[\"Camera3D\",\"@Camera3D\",true,[[-3185,13450,10000],[958,0,-287],[-224,626,-747],[180,780,600]],1,10600,75000,0,200,1,50,4000000,true]",
+					"camera": "[\"Camera3D\",\"@Camera3D\",true,[[-3180,13450,10000],[958,0,-287],[-224,626,-747],[180,780,600]],1,10600,75000,0,200,1,50,4000000,true]",
 					"classes": {
 						"Camera3D": 1,
 						"CanvasLayer": 1,
 						"Control": 1,
 						"DirectionalLight3D": 2,
 						"Label3D": 30,
-						"MeshInstance3D": 1107,
+						"MeshInstance3D": 926,
 						"MultiMeshInstance3D": 1,
 						"Node": 1,
-						"Node3D": 439,
+						"Node3D": 436,
 						"OmniLight3D": 1,
 						"WorldEnvironment": 1
 					},
-					"hash": "4b6ccc45a551e08307c9712fa51d755463d9c55e72ae495baac4eebdc701b7ed",
-					"nodes": 1585,
+					"hash": "8c4068094b79e0a92083e6383edaeb5d41f3e6131f4f846d09f6b564321bd036",
+					"nodes": 1401,
 					"story_camera": {
 						"_follow_center": [
-							-6185,
+							-6180,
 							450,
 							0
 						],
@@ -282,37 +282,37 @@
 						"_view_size": 11160
 					},
 					"subtrees": {
-						"@Camera3D": "d37d5add1db28863",
+						"@Camera3D": "1061d6c18c42558d",
 						"@DirectionalLight3D": "a6064f25a92c86f0",
 						"@DirectionalLight3D#2": "eecca1b31942336f",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "3d0652cd7e8f7a52",
-						"ContactShadows": "704b1abfc596945f",
-						"TurnOfTheTide": "c431e3bceee3f048"
+						"ContactShadows": "3e793c08c7ff84d5",
+						"TurnOfTheTide": "30a80b5945abb3d4"
 					}
 				},
 				"s1.b.mid": {
-					"camera": "[\"Camera3D\",\"@Camera3D\",true,[[4920,13450,5020],[958,0,-287],[-224,626,-747],[180,780,600]],1,9200,75000,0,200,1,50,4000000,true]",
+					"camera": "[\"Camera3D\",\"@Camera3D\",true,[[4920,13450,5981],[958,0,-287],[-224,626,-747],[180,780,600]],1,9200,75000,0,200,1,50,4000000,true]",
 					"classes": {
 						"Camera3D": 1,
 						"CanvasLayer": 1,
 						"Control": 1,
 						"DirectionalLight3D": 2,
 						"Label3D": 30,
-						"MeshInstance3D": 1107,
+						"MeshInstance3D": 926,
 						"MultiMeshInstance3D": 1,
 						"Node": 1,
-						"Node3D": 439,
+						"Node3D": 436,
 						"OmniLight3D": 1,
 						"WorldEnvironment": 1
 					},
-					"hash": "2750132ceaabcee898dd8ff6018cb7572f248c873f7c49d879fc79dd909b4cbb",
-					"nodes": 1585,
+					"hash": "858ccb8aaeb78c6016e20db8e46a34c437458125480d669013c48f8c3567c203",
+					"nodes": 1401,
 					"story_camera": {
 						"_follow_center": [
 							1920,
 							450,
-							-4980
+							-4019
 						],
 						"_follow_size": 9200,
 						"_view_center": [
@@ -323,15 +323,15 @@
 						"_view_size": 11160
 					},
 					"subtrees": {
-						"@Camera3D": "22eb5d89afd2536e",
+						"@Camera3D": "942fc67b8e37dc48",
 						"@DirectionalLight3D": "a6064f25a92c86f0",
 						"@DirectionalLight3D#2": "eecca1b31942336f",
 						"@Node": "1915fcc41e9a6ed2",
-						"@WorldEnvironment": "bdd1167640a390ae",
-						"ContactShadows": "704b1abfc596945f",
-						"TurnOfTheTide": "a0808d20bed6590d"
+						"@WorldEnvironment": "f761e5ca36fa03be",
+						"ContactShadows": "3e793c08c7ff84d5",
+						"TurnOfTheTide": "bad790243c912b24"
 					},
-					"tick": 234
+					"tick": 248
 				},
 				"s1.start": {
 					"camera": "[\"Camera3D\",\"@Camera3D\",true,[[17400,13450,10260],[958,0,-287],[-224,626,-747],[180,780,600]],1,9200,75000,0,200,1,50,4000000,true]",
@@ -341,15 +341,15 @@
 						"Control": 1,
 						"DirectionalLight3D": 2,
 						"Label3D": 30,
-						"MeshInstance3D": 1107,
+						"MeshInstance3D": 926,
 						"MultiMeshInstance3D": 1,
 						"Node": 1,
-						"Node3D": 439,
+						"Node3D": 436,
 						"OmniLight3D": 1,
 						"WorldEnvironment": 1
 					},
-					"hash": "bf47c02f85d06dde60c54ee823de4932fdcb9652206fd90df085b6f1d4f4bee7",
-					"nodes": 1585,
+					"hash": "1445115ebc7c6cb071585a0f3468ef9017d89b9d2608836b09ac01c6da9f2b53",
+					"nodes": 1401,
 					"story_camera": {
 						"_follow_center": [
 							14400,
@@ -370,8 +370,8 @@
 						"@DirectionalLight3D#2": "eecca1b31942336f",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "3e482329a4aea3c1",
-						"ContactShadows": "704b1abfc596945f",
-						"TurnOfTheTide": "96ac68cc873bd139"
+						"ContactShadows": "3e793c08c7ff84d5",
+						"TurnOfTheTide": "42df97d25b1ceb95"
 					}
 				}
 			},
@@ -384,15 +384,15 @@
 						"Control": 1,
 						"DirectionalLight3D": 2,
 						"Label3D": 20,
-						"MeshInstance3D": 979,
+						"MeshInstance3D": 798,
 						"MultiMeshInstance3D": 1,
 						"Node": 1,
-						"Node3D": 409,
+						"Node3D": 406,
 						"OmniLight3D": 1,
 						"WorldEnvironment": 1
 					},
-					"hash": "b8a9bab133a13e4a3cf5937805817ca65af872cdfefd251b4de8a6fb01baf9f3",
-					"nodes": 1417,
+					"hash": "c3cee77ed3f4fb12ec4355a2a01bdec0ca12785ac13a3179c7ee62e961dc7c86",
+					"nodes": 1233,
 					"story_camera": {
 						"_follow_center": [
 							1920,
@@ -413,8 +413,8 @@
 						"@DirectionalLight3D#2": "eecca1b31942336f",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "dcb459600d7ded27",
-						"ContactShadows": "cb255a225f9d6bdf",
-						"TurnOfTheTide": "4b12323ac5aeaf51"
+						"ContactShadows": "7bb8ca2406838bed",
+						"TurnOfTheTide": "52745b92837862db"
 					}
 				},
 				"s0.b.below": {
@@ -425,15 +425,15 @@
 						"Control": 1,
 						"DirectionalLight3D": 2,
 						"Label3D": 20,
-						"MeshInstance3D": 979,
+						"MeshInstance3D": 798,
 						"MultiMeshInstance3D": 1,
 						"Node": 1,
-						"Node3D": 409,
+						"Node3D": 406,
 						"OmniLight3D": 1,
 						"WorldEnvironment": 1
 					},
-					"hash": "9f2427e72b68a9d3b8826d891dca590ddf36537133d523c03ec0d994b85e4f33",
-					"nodes": 1417,
+					"hash": "f3106c19bd97aeeb89a481f4133c47a388c47f13cc737bef52ae75f6d223ec3c",
+					"nodes": 1233,
 					"story_camera": {
 						"_follow_center": [
 							-3200,
@@ -454,8 +454,8 @@
 						"@DirectionalLight3D#2": "eecca1b31942336f",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "78814aab00a91078",
-						"ContactShadows": "cb255a225f9d6bdf",
-						"TurnOfTheTide": "12ebbca460b6e960"
+						"ContactShadows": "7bb8ca2406838bed",
+						"TurnOfTheTide": "09a145910bc326f6"
 					},
 					"tick": 1
 				},
@@ -467,15 +467,15 @@
 						"Control": 1,
 						"DirectionalLight3D": 2,
 						"Label3D": 20,
-						"MeshInstance3D": 979,
+						"MeshInstance3D": 798,
 						"MultiMeshInstance3D": 1,
 						"Node": 1,
-						"Node3D": 409,
+						"Node3D": 406,
 						"OmniLight3D": 1,
 						"WorldEnvironment": 1
 					},
-					"hash": "75f55a4d422a5608b6bd2542177b25b837fe67a4d9b64b687aca487d8e03ec89",
-					"nodes": 1417,
+					"hash": "52908ca5eb647fe0a131504daebd64042d9d4b3ceaade42aea8d3d66d6f80ab4",
+					"nodes": 1233,
 					"story_camera": {
 						"_follow_center": [
 							8160,
@@ -496,8 +496,8 @@
 						"@DirectionalLight3D#2": "eecca1b31942336f",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "b22bde38ab5697fd",
-						"ContactShadows": "cb255a225f9d6bdf",
-						"TurnOfTheTide": "3377c8608897effc"
+						"ContactShadows": "7bb8ca2406838bed",
+						"TurnOfTheTide": "38dedfe34dd6b230"
 					}
 				},
 				"s0.b.mid": {
@@ -508,15 +508,15 @@
 						"Control": 1,
 						"DirectionalLight3D": 2,
 						"Label3D": 20,
-						"MeshInstance3D": 979,
+						"MeshInstance3D": 798,
 						"MultiMeshInstance3D": 1,
 						"Node": 1,
-						"Node3D": 409,
+						"Node3D": 406,
 						"OmniLight3D": 1,
 						"WorldEnvironment": 1
 					},
-					"hash": "02ccfc96613c62f57be7118c5c82f337cbcdbc2aaea38796709dcf2eb4666e81",
-					"nodes": 1417,
+					"hash": "b62388a786b154455e9e6b86d7f82eec021cc9fff8bbc4425825d87fe227e679",
+					"nodes": 1233,
 					"story_camera": {
 						"_follow_center": [
 							5557,
@@ -537,10 +537,10 @@
 						"@DirectionalLight3D#2": "eecca1b31942336f",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "77c49e5016d1631a",
-						"ContactShadows": "cb255a225f9d6bdf",
-						"TurnOfTheTide": "6adeba065f37287f"
+						"ContactShadows": "7bb8ca2406838bed",
+						"TurnOfTheTide": "d7a028d961a6af4a"
 					},
-					"tick": 290
+					"tick": 299
 				},
 				"s0.start": {
 					"camera": "[\"Camera3D\",\"@Camera3D\",true,[[-200,13450,12880],[958,0,-287],[-224,626,-747],[180,780,600]],1,9200,75000,0,200,1,50,4000000,true]",
@@ -550,15 +550,15 @@
 						"Control": 1,
 						"DirectionalLight3D": 2,
 						"Label3D": 20,
-						"MeshInstance3D": 979,
+						"MeshInstance3D": 798,
 						"MultiMeshInstance3D": 1,
 						"Node": 1,
-						"Node3D": 409,
+						"Node3D": 406,
 						"OmniLight3D": 1,
 						"WorldEnvironment": 1
 					},
-					"hash": "8b43395e449cdfcf13410039e78bc9bc63bf4393cd1a495f6b345bdb3dd443ba",
-					"nodes": 1417,
+					"hash": "47bdc80c13451ba8f79ecfcfddb234859a4cba992c188ac0be404287c010938d",
+					"nodes": 1233,
 					"story_camera": {
 						"_follow_center": [
 							-3200,
@@ -579,32 +579,32 @@
 						"@DirectionalLight3D#2": "eecca1b31942336f",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "40671acc59227cb4",
-						"ContactShadows": "cb255a225f9d6bdf",
-						"TurnOfTheTide": "e5b4346bb2fb10e5"
+						"ContactShadows": "7bb8ca2406838bed",
+						"TurnOfTheTide": "daf5fddeae3ed4a0"
 					}
 				},
 				"s1.a.end": {
-					"camera": "[\"Camera3D\",\"@Camera3D\",true,[[-1170,13450,11470],[958,0,-287],[-224,626,-747],[180,780,600]],1,9200,75000,0,200,1,50,4000000,true]",
+					"camera": "[\"Camera3D\",\"@Camera3D\",true,[[-1160,13450,11480],[958,0,-287],[-224,626,-747],[180,780,600]],1,9200,75000,0,200,1,50,4000000,true]",
 					"classes": {
 						"Camera3D": 1,
 						"CanvasLayer": 1,
 						"Control": 1,
 						"DirectionalLight3D": 2,
 						"Label3D": 30,
-						"MeshInstance3D": 1107,
+						"MeshInstance3D": 926,
 						"MultiMeshInstance3D": 1,
 						"Node": 1,
-						"Node3D": 439,
+						"Node3D": 436,
 						"OmniLight3D": 1,
 						"WorldEnvironment": 1
 					},
-					"hash": "b4bd0a8de1489d480e11f6e36249d32971fa068c87442df8c70e6bf9d11aaa89",
-					"nodes": 1585,
+					"hash": "c403ec33945b12a59f31316a1401057fda074f12e41a0777cdcf4730f8ca64be",
+					"nodes": 1401,
 					"story_camera": {
 						"_follow_center": [
-							-4170,
+							-4160,
 							450,
-							1470
+							1480
 						],
 						"_follow_size": 9200,
 						"_view_center": [
@@ -615,35 +615,35 @@
 						"_view_size": 11160
 					},
 					"subtrees": {
-						"@Camera3D": "58ea03b7cf73ead1",
+						"@Camera3D": "001f38de1a1eb989",
 						"@DirectionalLight3D": "a6064f25a92c86f0",
 						"@DirectionalLight3D#2": "eecca1b31942336f",
 						"@Node": "1915fcc41e9a6ed2",
-						"@WorldEnvironment": "f0a45c67f1d27004",
-						"ContactShadows": "704b1abfc596945f",
-						"TurnOfTheTide": "4b7afdb5dd2207b7"
+						"@WorldEnvironment": "c7523bde1e36dabf",
+						"ContactShadows": "3e793c08c7ff84d5",
+						"TurnOfTheTide": "57666d607bc68144"
 					}
 				},
 				"s1.b.end": {
-					"camera": "[\"Camera3D\",\"@Camera3D\",true,[[-3185,13450,10000],[958,0,-287],[-224,626,-747],[180,780,600]],1,10600,75000,0,200,1,50,4000000,true]",
+					"camera": "[\"Camera3D\",\"@Camera3D\",true,[[-3180,13450,10000],[958,0,-287],[-224,626,-747],[180,780,600]],1,10600,75000,0,200,1,50,4000000,true]",
 					"classes": {
 						"Camera3D": 1,
 						"CanvasLayer": 1,
 						"Control": 1,
 						"DirectionalLight3D": 2,
 						"Label3D": 30,
-						"MeshInstance3D": 1107,
+						"MeshInstance3D": 926,
 						"MultiMeshInstance3D": 1,
 						"Node": 1,
-						"Node3D": 439,
+						"Node3D": 436,
 						"OmniLight3D": 1,
 						"WorldEnvironment": 1
 					},
-					"hash": "eb5ed0f78211afae1804469fe7ad26ebcb8bc90c3f794304c48524edd35d360d",
-					"nodes": 1585,
+					"hash": "57ef6a0cb81c334b2a07a5994eb615cb5548d7b721c92e1464d4b8a988c55a1b",
+					"nodes": 1401,
 					"story_camera": {
 						"_follow_center": [
-							-6185,
+							-6180,
 							450,
 							0
 						],
@@ -656,37 +656,37 @@
 						"_view_size": 11160
 					},
 					"subtrees": {
-						"@Camera3D": "d37d5add1db28863",
+						"@Camera3D": "1061d6c18c42558d",
 						"@DirectionalLight3D": "a6064f25a92c86f0",
 						"@DirectionalLight3D#2": "eecca1b31942336f",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "155af528c8e8246a",
-						"ContactShadows": "704b1abfc596945f",
-						"TurnOfTheTide": "c60701b2b6fb5ec8"
+						"ContactShadows": "3e793c08c7ff84d5",
+						"TurnOfTheTide": "d159d7c1bc2c810b"
 					}
 				},
 				"s1.b.mid": {
-					"camera": "[\"Camera3D\",\"@Camera3D\",true,[[4920,13450,5039],[958,0,-287],[-224,626,-747],[180,780,600]],1,9200,75000,0,200,1,50,4000000,true]",
+					"camera": "[\"Camera3D\",\"@Camera3D\",true,[[4920,13450,6134],[958,0,-287],[-224,626,-747],[180,780,600]],1,9200,75000,0,200,1,50,4000000,true]",
 					"classes": {
 						"Camera3D": 1,
 						"CanvasLayer": 1,
 						"Control": 1,
 						"DirectionalLight3D": 2,
 						"Label3D": 30,
-						"MeshInstance3D": 1107,
+						"MeshInstance3D": 926,
 						"MultiMeshInstance3D": 1,
 						"Node": 1,
-						"Node3D": 439,
+						"Node3D": 436,
 						"OmniLight3D": 1,
 						"WorldEnvironment": 1
 					},
-					"hash": "cfeaae5e50241efd4581007e65faed0a6eac8bf22f158242a1c686dd0aa43d5a",
-					"nodes": 1585,
+					"hash": "497a246d6d5183277bac62a6d907490f07e891ca0fa2c25efcfa02b88f425c8d",
+					"nodes": 1401,
 					"story_camera": {
 						"_follow_center": [
 							1920,
 							450,
-							-4961
+							-3866
 						],
 						"_follow_size": 9200,
 						"_view_center": [
@@ -697,15 +697,15 @@
 						"_view_size": 11160
 					},
 					"subtrees": {
-						"@Camera3D": "9b2c0e90d182cdfc",
+						"@Camera3D": "4cb6802a5d0e30f2",
 						"@DirectionalLight3D": "a6064f25a92c86f0",
 						"@DirectionalLight3D#2": "eecca1b31942336f",
 						"@Node": "1915fcc41e9a6ed2",
-						"@WorldEnvironment": "c9fb112a2ee42627",
-						"ContactShadows": "704b1abfc596945f",
-						"TurnOfTheTide": "7860f7d5f3afa0e2"
+						"@WorldEnvironment": "6f36eca8d35bd3d5",
+						"ContactShadows": "3e793c08c7ff84d5",
+						"TurnOfTheTide": "ea88e436310bf3c7"
 					},
-					"tick": 234
+					"tick": 248
 				},
 				"s1.start": {
 					"camera": "[\"Camera3D\",\"@Camera3D\",true,[[17400,13450,10260],[958,0,-287],[-224,626,-747],[180,780,600]],1,9200,75000,0,200,1,50,4000000,true]",
@@ -715,15 +715,15 @@
 						"Control": 1,
 						"DirectionalLight3D": 2,
 						"Label3D": 30,
-						"MeshInstance3D": 1107,
+						"MeshInstance3D": 926,
 						"MultiMeshInstance3D": 1,
 						"Node": 1,
-						"Node3D": 439,
+						"Node3D": 436,
 						"OmniLight3D": 1,
 						"WorldEnvironment": 1
 					},
-					"hash": "55de19b336de02b53d31218b7202c735ec2aec4347d93d2ff612e94d65044ae9",
-					"nodes": 1585,
+					"hash": "9a277f9c55c64fc03b11ccf44dd6c09e87dbd04a27a1cde1d0f8c9c654248ee0",
+					"nodes": 1401,
 					"story_camera": {
 						"_follow_center": [
 							14400,
@@ -744,8 +744,8 @@
 						"@DirectionalLight3D#2": "eecca1b31942336f",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "dac6815aade59718",
-						"ContactShadows": "704b1abfc596945f",
-						"TurnOfTheTide": "1eb5bd444051f8bb"
+						"ContactShadows": "3e793c08c7ff84d5",
+						"TurnOfTheTide": "6ca350f91a1ba381"
 					}
 				}
 			}
@@ -754,26 +754,26 @@
 	"child_order": {
 		"turn-of-the-tide@2": {
 			"normal": {
-				"s0.a.end": "4c6b8b3528dbb57d9f9d95885ee6ae8dc0ccdfe594cbc475ac4fe2e0caf6d8c9",
-				"s0.b.below": "0abee92ed9d2e15593ea151102c498a1ccb7de4aedb6b67f65e3f31c0604a5a2",
-				"s0.b.end": "615d7a71810fbdf00c0d30fc5062af0bba62b2162240c9fb599c75eeb3b9e353",
-				"s0.b.mid": "db74bc51131468e8cbb0c30ec3273841ddbbe46f9dc44b3b72c0b980c14cea24",
-				"s0.start": "327ad9d13f219a85f04bbeb29ca8926de264493a6de9eef19b04bc3a9024eda7",
-				"s1.a.end": "8a71a1ea6086a389f3bcb20193063964bcc5e6c60857825b99baaf942901cc7b",
-				"s1.b.end": "9a9e7eaea56953ae146943263b0f5767db2a51f21183bc47412d31a7d341356e",
-				"s1.b.mid": "accabcb87dea64cac45884bebb97c6bad9a2476df360acafdebcc73f9fa2ea1b",
-				"s1.start": "b67c1bbf5c5dae569129b148c3fb1bbd97cd8fc581eece2d8f6e88389168d3e8"
+				"s0.a.end": "9acc6a53a775309e8526867e42a7d31e9b182e4fec89c27f065a12a76283c597",
+				"s0.b.below": "52408f94054d822505bc54c3bbc5602a297ecab60df597c4176ede917bad1f94",
+				"s0.b.end": "f33d13f8139074197c703f0f29616d5afd6632958735ab6f62b5c98eb7f06f77",
+				"s0.b.mid": "238c1f1cdf34f8758fd06f33df93e46168bcd563947183df42b853fbc140d362",
+				"s0.start": "241efaae4a72da2b4a29035adaa45e7fa78b26e8ccfc743cd9598b25ac619062",
+				"s1.a.end": "a0307ae5fa9189ad7b80f07d745bd4b064cbadef7f4826e7ff8dcd06260c257b",
+				"s1.b.end": "2109279c7549c5f22ad602e0595ea8568e9174dd4a30aeb81384c4ca183d524a",
+				"s1.b.mid": "e0275394e2f4f7cc3c92d232df4ebc2898a1f6430845ca2831416a850a3bd3a7",
+				"s1.start": "0d1c002247daac914690c64bbbf3f7b3e525a33ae1d77ddcb92b944c91bb26f0"
 			},
 			"reduced": {
-				"s0.a.end": "8533d74e05e8c7c724bc0624b53c21dac4f0dcb99466dc115dd3c67eb16dd2c4",
-				"s0.b.below": "f41fdc946f9043cbaa153d205a0fc7b72dea5ed53a7286494ccce7de2625eefd",
-				"s0.b.end": "2c12df65b96f9711bbb2497eb6ab13b32ed5138697b90f4afa3abd9ae4fa2dd7",
-				"s0.b.mid": "03f15a26babd0703af1a9d951eb094d17296b621126583518d5f6af53b957e80",
-				"s0.start": "a9e9c02a1f7d03e215c2493fcae3a5963fdbe371d45fc897392f1e8b94229c3d",
-				"s1.a.end": "5a4384d936f9dbf92c26877b70d53b796b0b99c6adc1d21327dad3def334f09f",
-				"s1.b.end": "09449308d75c9e91f521ce9cdfaeebda644cf3a6fb672c86a5f9335575a8f665",
-				"s1.b.mid": "6724c3b4426c7efec282f84cd9c7b9263f9ade8b0a9e6a89ccc03775d701b2b3",
-				"s1.start": "7dd0f245a10b892bf4306f320c6a57697f2e73d3bd1bb17d8446c30a80637d74"
+				"s0.a.end": "73dceafd93cf54134a8350c5af6e331258ffdca8d5ed1767deeb465603d0f3ad",
+				"s0.b.below": "a85381b70fdee8b593de74af2c64e00cfd3901259f35cf25316e3651c231d09e",
+				"s0.b.end": "ca3e1650e38682501653e4f8bb03decfa775a29d516570065d730e7f29e50353",
+				"s0.b.mid": "fd0202cec4b1598c8df34ed07e4528f2bd6c7274447d063925b4799ebef550e0",
+				"s0.start": "1bd3ecec9bc703584f2c9195dc7a39cadd77609d5ad44b232d9b9e910a458325",
+				"s1.a.end": "414fb059c6eccac7742368d7d0395ce34e2fc5b142981fc915ae310b259ba7e0",
+				"s1.b.end": "258e8e1154fb5c50c62daa429e85b92cabe9127abb099102679eb8241cecae88",
+				"s1.b.mid": "b01e14218fd432d146034735a4cfc0081592b7df056c9be7feabead4f9d31fc1",
+				"s1.start": "835724e9b634e849348d4173978e5f4a74f26f9d451db0a96162a584167875ef"
 			}
 		}
 	}
