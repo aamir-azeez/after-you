@@ -32,6 +32,7 @@ const GraphicsPolicy = preload("res://services/graphics_policy.gd")
 const Look = preload("res://presentation/kit/look.gd")
 const DressingCatalog = preload("res://content/dressing/catalog.gd")
 const PropStyles = preload("res://content/dressing/prop_styles.gd")
+const Props = preload("res://presentation/kit/props.gd")
 const Primitives = preload("res://presentation/kit/primitives.gd")
 
 ## The edge map's raster (metres a cell) before it is blurred, and the mip
@@ -498,7 +499,7 @@ func _standing_boxes(water_nodes: Array) -> Array:
 		if box.size.x > WIDEST and box.size.z > WIDEST:
 			# A wide dressing prop standing in the water (a wreck, a hut on
 			# stilts) meets it round its foot (Props.FOOT_SHARE), a disc.
-			if prop == null: continue
+			if prop == null or not Props.stands_in_water(str((prop.get_meta("dressing_spec", {}) as Dictionary).get("kind", ""))): continue
 			found.append([_foot_box(prop, box, into), true])
 			continue
 		found.append([box, mesh.mesh is CylinderMesh or mesh.mesh is SphereMesh or mesh.mesh is CapsuleMesh])
@@ -508,7 +509,6 @@ func _standing_boxes(water_nodes: Array) -> Array:
 ## footprint cut to the share that stands on the ground, round its spot.
 static func _foot_box(prop: Node3D, box: AABB, into: Transform3D) -> AABB:
 	var spec: Dictionary = prop.get_meta("dressing_spec", {})
-	var Props = load("res://presentation/kit/props.gd")
 	var size: Vector2 = (Props.extent(spec).rect as Rect2).size * float(Props.FOOT_SHARE.get(str(spec.get("kind", "")), 1.0))
 	var at: Vector3 = into * prop.global_position
 	return AABB(Vector3(at.x - size.x * 0.5, box.position.y, at.z - size.y * 0.5), Vector3(size.x, box.size.y, size.y))
