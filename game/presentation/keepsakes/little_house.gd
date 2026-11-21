@@ -11,6 +11,9 @@ extends "res://presentation/keepsakes/keepsake_builder.gd"
 ## The inside is made only while the pip is there, and goes when it leaves.
 const P = preload("res://presentation/keepsakes/keepsake_parts.gd")
 const Cutaway = preload("res://presentation/kit/cutaway.gd")
+const Models = preload("res://presentation/kit/models.gd")
+## The mailbox, its flag and the gold chimney (tools/blender/models/little_house.py).
+const MODEL := "res://assets/models/little_house.glb"
 ## The house is drawn this much larger than its pieces.
 const SIZE := 1.3
 const W := 1.9
@@ -67,17 +70,16 @@ func build(root: Node3D, state: Dictionary) -> Dictionary:
 		parts["shutter_%s" % ("left" if side < 0 else "right")] = shutter
 	P.box(house, Vector3(0.55, 0.02, 0.32), P.CORAL, Vector3(-0.25, 0.01, D * 0.5 + 0.35 + (0.4 if hard else 0.0)))
 	if state.get("together", false):
-		var at := MAILBOX
-		P.box(house, Vector3(0.07, 0.85, 0.07), P.WOOD, at + Vector3(0, 0.42, 0))
-		P.box(house, Vector3(0.28, 0.24, 0.42), P.MINT, at + Vector3(0, 0.95, 0))
-		P.node(house, P.Primitives.shared_mesh("cylinder", 0.14, 0.42, 0.14), P.mat(P.MINT), at + Vector3(0, 1.07, 0), Vector3(PI / 2, 0, 0))
-		var flag := P.pivot(house, at + Vector3(0.15, 0.95, -0.1), "MailFlag")
+		Models.still(MODEL, "mailbox", {"post": P.WOOD, "box": P.MINT, "trim": P.MINT_DEEP}, house).position = MAILBOX
+		# The flag's own part, its origin on its hinge, lying down until a letter comes.
+		var flag := Models.still(MODEL, "mailbox_flag", {"flag": P.CORAL}, house)
+		flag.name = "MailFlag"
+		flag.position += MAILBOX
 		flag.rotation.z = -PI / 2
-		P.box(flag, Vector3(0.035, 0.24, 0.05), P.CORAL, Vector3(0, 0.12, 0))
 		parts.mail_flag = flag
 	if state.get("top", false):
-		P.box(house, Vector3(0.24, 0.6, 0.24), P.GOLD_DEEP, Vector3(-0.35, y0 + H + 0.45, -D * 0.5 + 0.12)).material_override = P.gold()
-		P.box(house, Vector3(0.3, 0.06, 0.3), P.GOLD, Vector3(-0.35, y0 + H + 0.78, -D * 0.5 + 0.12))
+		var gold := {"color": P.GOLD_DEEP, "roughness": 0.6, "glow": P.GOLD_DEEP, "energy": 0.45}
+		Models.still(MODEL, "chimney", {"stack": gold, "cap": P.GOLD}, house).position = Vector3(-0.35, y0 + H + 0.15, -D * 0.5 + 0.12)
 	return parts
 
 func base_time() -> float:
