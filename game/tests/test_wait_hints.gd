@@ -7,7 +7,7 @@ extends SceneTree
 ## - Stage two's boom jetty: the live spirit's part may be a wheel it turned.
 ## - Turn of the Tide, stage one: the gangway pulled at t331 before the HIGH
 ##   memory holds the bollard step names the step, and the hint is gone at
-##   t416 when jetty-3 opens. Against the LOW memory, t445 still says why;
+##   t424 when jetty-3 opens. Against the LOW memory, t470 still says why;
 ##   once that memory has ended the crossing stays shut this turn, and it
 ##   never opens.
 ## - "Stays shut" is never said while a later memory tick could still open the
@@ -34,8 +34,8 @@ const KEY := "turn-of-the-tide@1"
 ## B over the jetties in the high window to the gangway, and the pull.
 const B_GANGWAY := [["w",[-212,416]],["w",[-212,-326]],["u","route:jetty-1"],["w",[1104,-326]],["t"]]
 const PULL_TICK := 331
-const OPEN_TICK := 416
-const LOW_TICK := 445
+const OPEN_TICK := 424
+const LOW_TICK := 470
 var checks := 0
 var failures := 0
 
@@ -155,7 +155,7 @@ func _high_memory() -> void:
 	_check(world._wait_marks["jetty-3"].bubble == bubble, "Its mark is kept hidden, not freed")
 	world.free()
 
-## The LOW memory never holds the bollard step at high water. At t445 it
+## The LOW memory never holds the bollard step at high water. At t470 it
 ## still plays, so the hint says why; once it has ended, the crossing stays
 ## shut this turn, and it never opens.
 func _low_memory() -> void:

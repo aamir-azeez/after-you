@@ -1410,15 +1410,15 @@
 		"turn-of-the-tide@2": {
 			"chains": {
 				"rules10": {
-					"final_checkpoint_hash": "af4c69fd6fbe70076a8f9e137ad5062334c151a5fe4cf9749ec38f9a5baa59f3",
-					"final_typed_digest": "6f0f28e38dfdf1a7a01dacd0f2cf4e26817e1f432171e141c94a618dc29d2b2f",
-					"initial_checkpoint_hash": "f04821b57f741e692fa350265b24d41d27037026209f8c16f7ef70d4546712e9",
+					"final_checkpoint_hash": "36c9657afb8a556cbc2120624b78bc6bc8645e665500e219168bddd476636617",
+					"final_typed_digest": "26271253c02877e52577a7bf3465cac289b58b5087fde12b7ad27b63b5f8bd68",
+					"initial_checkpoint_hash": "18082bf9acb916bb4e7b0c426e34444f1e6f1007fb173014c7731d1fc0b2258e",
 					"stages": [
 						{
 							"a": {
 								"can_commit": true,
 								"completed": false,
-								"duration_ticks": 458,
+								"duration_ticks": 503,
 								"event_counts": {
 									"bridge_opened:jetty-1": 1,
 									"bridge_opened:jetty-2": 1,
@@ -1436,25 +1436,25 @@
 									"selector:tide": 3,
 									"selector:winch": 1
 								},
-								"events_digest": "756c5cd059dfa8df9441f07729149b9298a7cbe4a4f6f78c8d2e8a3f37ea4cd2",
+								"events_digest": "d2fda0071772862de1cfe1de2b25ab8b26c311c4a37886fd427e27d44a83a7ae",
 								"exact_reexport": true,
-								"final_snapshot_digest": "9bb1d4b3007c0693e69499cabfb1906614f602e94292f178a4a19ca38d4e5440",
-								"final_snapshot_typed_digest": "ced3b2897d9fbb6fb9fe4ebf03dbea96ee014ce28a5c5806c34296ce50799157",
-								"final_state_hash": "3e901c8e77585607d9ec2fb5b57350a1c0b29f730ddcefded5fd8fb5997cf76a",
+								"final_snapshot_digest": "cb150f8b3ce022bc8d72aa795e587b0150b34abb70fc86465fd02526e8719809",
+								"final_snapshot_typed_digest": "890045d736019222cfa607d7cc8044aa9879ba2e8aa920cc7442c6f5ce09a9b5",
+								"final_state_hash": "3b354e5710d51223a6560f9945f8e99c25aab5bf48a73973b432c01dec4337da",
 								"finished": false,
-								"fixture_recording_hash": "4314adeb6b99a8c8c31fec05e3fb1326aa5200d80c5e09ffa736baa4bfb19fbf",
+								"fixture_recording_hash": "a16948560e4aed085ed46cd654bce9a98b9fa1bec166993660891f366d3a3454",
 								"outcome": {
 									"objective_complete": false,
 									"source_ready": true
 								},
-								"recording_hash": "4314adeb6b99a8c8c31fec05e3fb1326aa5200d80c5e09ffa736baa4bfb19fbf",
-								"replay_checks": 16,
+								"recording_hash": "a16948560e4aed085ed46cd654bce9a98b9fa1bec166993660891f366d3a3454",
+								"replay_checks": 17,
 								"simulation_version": 10
 							},
 							"b": {
 								"can_commit": true,
 								"completed": true,
-								"duration_ticks": 580,
+								"duration_ticks": 598,
 								"event_counts": {
 									"bell": 1,
 									"bridge_opened:jetty-1": 1,
@@ -1472,22 +1472,22 @@
 									"drop": 1,
 									"stage_complete": 1
 								},
-								"events_digest": "bfdb74357fc995ddf900b1ba0eb8a7b5948c26fa69cd8b82c350dda194bc6036",
+								"events_digest": "830316e3170938dbcbcaedbeafc6c9164e520e657f143690913712ad9b0acf17",
 								"exact_reexport": true,
-								"final_snapshot_digest": "7aa0e119dcd2b9994e3009d647076740dd95ad190ee3ced5ca1fae7149330110",
-								"final_snapshot_typed_digest": "e4fe1ce606f207d9ac566db1cd841380ca20b920cbac4fc5e4a0c489c923499c",
-								"final_state_hash": "2184d3b483c18817cb7bef584121af53f60ee8c7f18ea0474288f8449ae946ef",
+								"final_snapshot_digest": "46b567104097b1079e084790b5fb299d1cbcba92031e19224ca377c69108e298",
+								"final_snapshot_typed_digest": "e5451d5f3da5151d80c4bce795d505afc04bb649140a77312baf2a5d437de304",
+								"final_state_hash": "045e84ab192d0eb82da8a86854bd857c25852ce072676d107ccfc531018219da",
 								"finished": true,
-								"fixture_recording_hash": "18235534a57ea23fd8ab81de11a7049afdf921a19e31e63f1c718ece078ab296",
+								"fixture_recording_hash": "48cccea49c784abcea425f0bcea26486a5b99e293e6db71ec047f40b7d2d9069",
 								"outcome": {
 									"objective_complete": true,
 									"source_ready": true
 								},
-								"recording_hash": "18235534a57ea23fd8ab81de11a7049afdf921a19e31e63f1c718ece078ab296",
+								"recording_hash": "48cccea49c784abcea425f0bcea26486a5b99e293e6db71ec047f40b7d2d9069",
 								"replay_checks": 20,
 								"simulation_version": 10
 							},
-							"checkpoint_hash": "ad879abc4b90c1f263fa2e02453de08e96b4987aeb83283e27186e148fee00c3",
+							"checkpoint_hash": "9e2b18217bce7ff0cdf6f56dbb8e4278b5a42c4b9e046a4f631e705352852a36",
 							"checkpoint_matches_fixture": true,
 							"checkpoint_stage_index": 1,
 							"next_stage_id": "slack-water",
@@ -1497,7 +1497,7 @@
 							"a": {
 								"can_commit": true,
 								"completed": false,
-								"duration_ticks": 399,
+								"duration_ticks": 402,
 								"event_counts": {
 									"bridge_opened:gate-catwalk": 1,
 									"bridge_opened:gate-post": 1,
@@ -1506,25 +1506,25 @@
 									"lever": 2,
 									"selector:basin": 1
 								},
-								"events_digest": "0832cef1e60025398ba2f9d42d8fe531c54995af5202b7d368d682fa8a8c9222",
+								"events_digest": "688f823f0f84025881c2952bb0fc9bc788ba403c9ae7449b266b5c91b09fe677",
 								"exact_reexport": true,
-								"final_snapshot_digest": "3ef2ddfbdc6741bbde729c8ecad3b3956c499e21c3003536946040753c0bd93f",
-								"final_snapshot_typed_digest": "53df157a873c62a9a558f49ef5795e3899e66a7d44f78baeaacd0f6316358346",
-								"final_state_hash": "59355daf65275ddb180f284e16128f8fe9dd24b162ff2624e49f8a0be7f2f829",
+								"final_snapshot_digest": "1f44338d434529b3633f62c4889b30a8fd645a634d62ef8e64f1a2564049d066",
+								"final_snapshot_typed_digest": "7c6a2bc76365f38b062066a8c77594d298ab718fd59148f15ebd4beedfb57378",
+								"final_state_hash": "eb52ab1aec3cbff6db75e9583fff225d780eaa41feffae1cacfee48786771d86",
 								"finished": false,
-								"fixture_recording_hash": "ab743ca74a2e903ddffc6e8330f4586c84a737e197bc4e693db04cab03e74309",
+								"fixture_recording_hash": "986d5dbbdbf4dd4ac0051ca4f023d2dc9ef68bedb364eab4e3c7b25dea3aff1c",
 								"outcome": {
 									"objective_complete": false,
 									"source_ready": true
 								},
-								"recording_hash": "ab743ca74a2e903ddffc6e8330f4586c84a737e197bc4e693db04cab03e74309",
+								"recording_hash": "986d5dbbdbf4dd4ac0051ca4f023d2dc9ef68bedb364eab4e3c7b25dea3aff1c",
 								"replay_checks": 14,
 								"simulation_version": 10
 							},
 							"b": {
 								"can_commit": true,
 								"completed": true,
-								"duration_ticks": 469,
+								"duration_ticks": 496,
 								"event_counts": {
 									"bell": 1,
 									"bridge_opened:bollard-step": 1,
@@ -1547,22 +1547,22 @@
 									"selector:tide": 1,
 									"stage_complete": 1
 								},
-								"events_digest": "be10244fe58656791fc940027b93c2703d308cf89d6b52142f0c2c06a22fb657",
+								"events_digest": "ed7bc04ca4412e146f7e3f61ecc704b020c3797f35ec481108c9c34e34159417",
 								"exact_reexport": true,
-								"final_snapshot_digest": "2c2dd7bee3f5646123b82c72a40d8e15645e0637fe238735a8190b68f9fa07ea",
-								"final_snapshot_typed_digest": "207c117aee888561cae8404ee4741f6b7d13a35db1a9cc3bbf725cc34ea64dae",
-								"final_state_hash": "17c25d4a13d191eff0b7907c9c0a3f19c8423dd243428e30aad863265a16f8c8",
+								"final_snapshot_digest": "06f9971f5fb7b44ab504169817d6e001a99ed40eead906705f2027791944d66c",
+								"final_snapshot_typed_digest": "fac534316dc73d05193f7122fd0a83f06fb22b1c5588efc6b6df82240f2fd175",
+								"final_state_hash": "83ba21e2cf04ca309a2c2d722374141d647599346e5f419bacf67df1d731267a",
 								"finished": true,
-								"fixture_recording_hash": "e45e4569a0267ac42ffa1480d9fe8ff29d3f6ce868ffa6f23d91823bbc6f0b65",
+								"fixture_recording_hash": "be8ed51084463598bb427be40f1881a06fdeedde65de3336eb80b8f9a4b5b1b6",
 								"outcome": {
 									"objective_complete": true,
 									"source_ready": true
 								},
-								"recording_hash": "e45e4569a0267ac42ffa1480d9fe8ff29d3f6ce868ffa6f23d91823bbc6f0b65",
-								"replay_checks": 16,
+								"recording_hash": "be8ed51084463598bb427be40f1881a06fdeedde65de3336eb80b8f9a4b5b1b6",
+								"replay_checks": 17,
 								"simulation_version": 10
 							},
-							"checkpoint_hash": "af4c69fd6fbe70076a8f9e137ad5062334c151a5fe4cf9749ec38f9a5baa59f3",
+							"checkpoint_hash": "36c9657afb8a556cbc2120624b78bc6bc8645e665500e219168bddd476636617",
 							"checkpoint_matches_fixture": true,
 							"checkpoint_stage_index": 2,
 							"next_stage_id": "",
