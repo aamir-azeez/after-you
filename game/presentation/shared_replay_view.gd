@@ -26,6 +26,7 @@ const MemoryWait = preload("res://presentation/memory_wait.gd")
 const TurnPaths = preload("res://presentation/kit/turn_paths.gd")
 const Typed = preload("res://services/typed_values.gd")
 const OpenTurns = preload("res://core/physical/open_turns.gd")
+const OpenTurnStore = preload("res://services/open_turn_store.gd")
 const COMPLETION_DURATION := 3.0
 const RunReactionPlayer = preload("res://presentation/run_reaction_player.gd")
 const RunReactionStore = preload("res://services/run_reaction_store.gd")
@@ -36,8 +37,10 @@ var run_player := RunReactionPlayer.new()
 var entry: Dictionary = {}
 var sequence: Array = []
 var _part_index := 0
-## Open turns: the turn of the part being watched, over the one before it (1: b over a).
-var _turn_index := 1
+## Open turns: the stretch of the part's stage being watched (_stretches),
+## and the tick it ends on.
+var _stretch := 0
+var _end := 0
 var _validation_worker: Thread
 var _validation_progress := LoadProgress.new()
 var _loading_bar: VBoxContainer
@@ -281,7 +284,7 @@ static func _valid_parts(values: Array, verify: Callable, progress: RefCounted) 
 
 func _start() -> void:
 	_part_index = 0
-	_turn_index = 1
+	_stretch = 0
 	_start_part()
 
 func _start_part() -> void:
@@ -292,27 +295,29 @@ func _start_part() -> void:
 	completion_remaining = 0.0
 	_paused_completion = false
 	var pair: Dictionary = entry.pair
-	# Open turns: a stage plays each later turn over the one before it, in order, so every pass shows; before open turns that is b over a.
 	var turns: Array = OpenTurns.pair_turns(pair)
-	_turn_index = clampi(_turn_index, 1, turns.size() - 1)
-	var memory: Dictionary = turns[_turn_index - 1]
-	var watched: Dictionary = turns[_turn_index]
+	var stretches := _stretches(turns)
+	_stretch = clampi(_stretch, 0, stretches.size() - 1)
+	var index := int(stretches[_stretch].turn)
+	var memory: Dictionary = turns[index - 1]
+	var watched: Dictionary = turns[index]
 	# Each turn plays in the look it was played in (presentation/slot_looks.gd).
 	if world.has_method("wear_slots"): world.wear_slots(SlotLooks.replay([memory, watched]))
 	var engine: Script = Registry.simulation_script(entry.room.chapter_key)
 	sim = engine.new()
 	var definition := Registry.definition(entry.room.chapter_key)
-	if not Registry.reset_simulation(sim, entry.room.chapter_key, definition, str(watched.stage_id), Registry.previous_checkpoint(entry.room.chapter_key, pair.checkpoint), memory, "b", watched, turns.slice(0, _turn_index - 1)):
+	if not Registry.reset_simulation(sim, entry.room.chapter_key, definition, str(watched.stage_id), Registry.previous_checkpoint(entry.room.chapter_key, pair.checkpoint), memory, "b", watched, turns.slice(0, index - 1)):
 		_show_error(sim.error); return
 	world.show_stage(definition.stages[int(pair.stage_index)])
-	if world.has_method("wants_turn_paths") and world.wants_turn_paths(): world.present_turn_paths(TurnPaths.of(sim, memory, turns.slice(0, _turn_index - 1)))
+	if world.has_method("wants_turn_paths") and world.wants_turn_paths(): world.present_turn_paths(TurnPaths.of(sim, memory, turns.slice(0, index - 1)))
 	_frames = engine.expand_recording_inputs(watched)
+	_end = _frames.size() if int(stretches[_stretch].ticks) < 0 else mini(int(stretches[_stretch].ticks), _frames.size())
 	# The same identities as the original turn, so its sounds match.
 	soundscape.begin_turn(str(entry.room.chapter_key), str(watched.stage_id))
 	_sound_seen = ChapterSoundMap.remember(sim.snapshot(), str(entry.room.chapter_key))
 	_refusals.begin(str(entry.room.chapter_key), definition, sim.snapshot(), memory)
 	sim.catch_assistance = bool(watched.get("catch_assistance", true))
-	memory_wait.begin("b", MemoryWait.prior_ticks(memory))
+	memory_wait.begin("b", OpenTurnStore.replay_ticks(memory, turns.slice(0, index - 1)), OpenTurnStore.carried(memory))
 	# Both turns' reactions made during the run, at their ticks (a chapter's recordings name their spirit).
 	run_player.begin()
 	var tracks := RunReactionStore.new()
@@ -322,6 +327,15 @@ func _start_part() -> void:
 	_tick_time = 0.0
 	memory_wait.show(sim.snapshot(), true)
 	_resume()
+
+## What a stage plays, in order: carry-over turns straight through their
+## shared timeline (OpenTurnStore.timeline); before them each later turn whole
+## over the one before, so every pass shows (b over a before open turns).
+static func _stretches(turns: Array) -> Array:
+	var stretches := OpenTurnStore.timeline(turns)
+	if stretches.is_empty():
+		for index in range(1, turns.size()): stretches.append({"turn": index, "ticks": -1})
+	return stretches
 
 ## Badges by who each spirit is, from this player's side of the room.
 func _labelled(state: Dictionary) -> Dictionary:
@@ -347,14 +361,14 @@ func _physics_process(delta: float) -> void:
 	_tick_time += delta
 	while _tick_time >= 1.0 / 30.0 and running:
 		_tick_time -= 1.0 / 30.0
-		if cursor >= _frames.size(): _finished(); break
+		if cursor >= _end: _finished(); break
 		var input: Dictionary = _frames[cursor]
 		var snapshot: Dictionary = _refusals.annotate(sim.step(input), input)
 		cursor += 1
 		memory_wait.step(snapshot, _cues(snapshot), false)
 		run_player.step(int(snapshot.get("tick", cursor)))
 		_update_hud(snapshot)
-		if cursor >= _frames.size(): _finished()
+		if cursor >= _end: _finished()
 
 ## The watched turn's cues, as its chapter screen plays them; never haptics.
 ## `snapshot` is the tick's, already marked with its pushes into barriers.
@@ -365,7 +379,7 @@ func _update_hud(snapshot: Dictionary = {}) -> void:
 	var state: Dictionary = (sim.snapshot() if snapshot.is_empty() else snapshot).duplicate()
 	state.context_action = {"label": "Replay", "enabled": false}
 	state.message = _words.message
-	controls.update_state(_words.hud + _display_title, float(_frames.size() - cursor) / 30.0, state, false)
+	controls.update_state(_words.hud + _display_title, float(_end - cursor) / 30.0, state, false)
 	controls.stick.hide()
 	controls.action_button.hide()
 	controls.finish_button.hide()
@@ -393,14 +407,14 @@ func _finished() -> void:
 		_show_finished()
 
 func _show_finished() -> void:
-	# Open turns: the stage's next turn first, then the next stage.
-	if _turn_index + 1 < OpenTurns.pair_turns(entry.pair).size():
-		_turn_index += 1
+	# Open turns: the stage's next stretch first, then the next stage.
+	if _stretch + 1 < _stretches(OpenTurns.pair_turns(entry.pair)).size():
+		_stretch += 1
 		_start_part()
 		return
 	if _part_index + 1 < sequence.size():
 		_part_index += 1
-		_turn_index = 1
+		_stretch = 0
 		_start_part()
 		return
 	running = false

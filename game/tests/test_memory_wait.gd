@@ -3,6 +3,12 @@ extends SceneTree
 ## the held ring, Hold to fast-forward and Skip to end. Presentation only:
 ## every way through the wait must leave the simulation and its recording
 ## byte-identical to a still player waiting at normal speed.
+## Carry-over turns (claude-20261011/carry-over-turns/design.md): the friend's
+## turn played before the hand-off steps through the same stepper (Fast-forward
+## and Skip reach the same tick and world as plain play, then the live turn
+## takes over at its tick 0; Pause and Resume go on watching; Retry starts at
+## the hand-off), and a pip at the goal first dozes until the friend's replay
+## arrives (the stage ends) or ends elsewhere (it wakes and plays on).
 const MemoryWait = preload("res://presentation/memory_wait.gd")
 const Soundscape = preload("res://services/soundscape.gd")
 const ChapterSoundMap = preload("res://services/chapter_sound_map.gd")
@@ -58,6 +64,8 @@ class ControlsStub extends CanvasLayer:
 	var stick := Control.new()
 	func update_state(_title: String, _remaining: float, _state: Dictionary, _live: bool) -> void: pass
 	func show_memory_wait(text: String, ratio: float, _skipping: bool = false) -> void: waits.append([text, ratio])
+	var playbacks := 0
+	func show_playback(_text: String, _ratio: float, _skipping: bool = false) -> void: playbacks += 1
 	func hide_memory_wait() -> void: pass
 	func fast_forward_held() -> bool: return held
 	func dim_stick(_dim: bool) -> void: pass
@@ -120,6 +128,31 @@ class RoomStub extends RefCounted:
 	func mutations_enabled() -> bool: return true
 	func turn_tries_supported() -> bool: return false
 
+## A journey whose next turn first plays `shown` (OpenTurnStore.playback's
+## shape) and then follows `prior`.
+class WatchJourney extends RefCounted:
+	var shown: Dictionary = {}
+	var prior: Dictionary = {}
+	var stage := ""
+	var start: Dictionary = {}
+	func playback() -> Dictionary: return shown.duplicate(true)
+	func stage_id() -> String: return stage
+	func role() -> String: return "b"
+	func checkpoint() -> Dictionary: return start.duplicate(true)
+	func prior_recording() -> Dictionary: return prior.duplicate(true)
+	func memory_chain() -> Array: return []
+	func snapshot() -> Dictionary: return {}
+
+## A simulation stand-in that keeps the inputs it was stepped with.
+class StepLog extends RefCounted:
+	var inputs: Array = []
+	var finished := false
+	var error := ""
+	func step(input: Dictionary) -> Dictionary:
+		inputs.append(input)
+		return snapshot()
+	func snapshot() -> Dictionary: return {"tick": inputs.size(), "finished": finished}
+
 class JourneyStub extends RefCounted:
 	var sends := 0
 	func snapshot() -> Dictionary: return {}
@@ -165,6 +198,10 @@ func _run() -> void:
 	_timed(_test_auto_skip_save_fails)
 	_timed(_test_lighthouse_auto_skip)
 	_timed(_test_skip_budget_per_frame)
+	_timed(_test_playback_stepper)
+	_timed(_test_carried_arrival)
+	if not to_ring.is_empty():
+		for way: String in ["play", "fast_forward", "skip", "pause"]: _timed(_test_watch_screen.bind(way))
 	for reduced: bool in [false, true]:
 		var started := Time.get_ticks_msec()
 		await _test_fast_forward_badge(reduced)
@@ -538,6 +575,146 @@ func _test_hud_strip() -> void:
 	controls.hide_memory_wait()
 	_check(not controls.fast_forward_held() and not button.held(), "The end of the wait lets go of a held Fast-forward")
 	viewport.free()
+
+## Carry-over turns: the playback before a hand-off steps its own recorded
+## inputs, tick by tick, by Fast-forward and by Skip alike, and is over at its
+## last tick; nobody dozes in it.
+func _test_playback_stepper() -> void:
+	var frames: Array = []
+	for index in range(12): frames.append({"move_x": float(index) / 12.0, "move_z": 0.0, "interact": index % 3 == 0})
+	var wait := MemoryWait.new()
+	wait.skip_budget_usec = 1 << 40
+	wait.step_budget_usec = 1 << 40
+	wait.begin_playback(10, frames)
+	_check(wait.watching() and wait.waiting() and wait.playback_input() == frames[0], "A playback waits from its first tick on its first recorded input")
+	var sim := StepLog.new()
+	var advance := func(_input: Dictionary) -> void: wait.step(sim.step(wait.playback_input()), {}, false)
+	for _tick in range(3): advance.call(MemoryWait.STILL_INPUT)
+	wait.fast_forward_tick(advance, func() -> bool: return true)
+	_check(sim.inputs == frames.slice(0, 7), "Plain ticks and Fast-forward step the recorded inputs in order (%d)" % sim.inputs.size())
+	wait.skipping = true
+	_check(wait.skip_tick(sim, func(_state: Dictionary) -> Dictionary: return {}, advance).is_empty(), "Skip to end runs to the playback's end in one go")
+	_check(sim.inputs == frames.slice(0, 10) and not wait.waiting() and wait.watching(), "Skip stops at the hand-off tick with every input recorded (%d)" % sim.inputs.size())
+	wait.begin("b", 40, true)
+	_check(not wait.watching() and wait.playback_input() == MemoryWait.STILL_INPUT, "The live turn's begin ends the playback")
+	var short := MemoryWait.new()
+	short.begin_playback(10, frames)
+	short.step({"tick": 4, "finished": true}, {}, false)
+	_check(not short.waiting(), "A playback is over when the turn shown ends")
+
+## Carry-over turns: a pip at the goal first (objective_done, its own part)
+## dozes while the friend's replay plays on; the friend's arrival ends the
+## stage with the wake; a replay ending elsewhere wakes it to play on; leaving
+## the goal lets the wait go, and arriving again waits again.
+func _test_carried_arrival() -> void:
+	var world := DozeWorld.new()
+	var wait := MemoryWait.new()
+	wait.world = world
+	wait.begin("b", 30, true)
+	var state := func(tick: int, done: bool, complete: bool = false) -> Dictionary:
+		return {"tick": tick, "role": "b", "active_slot": "p1", "objective_done": done, "complete": complete, "finished": complete, "players": {"p0": {"ghost": true}, "p1": {}}}
+	wait.step(state.call(5, false), {}, true)
+	wait.step(state.call(6, true), {}, true)
+	_check(wait.waiting() and world.dozing, "A pip at the goal first dozes while the friend's replay plays")
+	wait.step(state.call(12, true, true), {}, true)
+	_check(not wait.waiting() and world.woken == 1 and wait.ring_pending(), "The friend's arrival ends the stage before the replay is over, with the wake, and the ring follows it")
+	world = DozeWorld.new()
+	wait.world = world
+	wait.begin("b", 30, true)
+	wait.step(state.call(6, true), {}, true)
+	wait.step(state.call(29, true), {}, true)
+	wait.step(state.call(30, true), {}, true)
+	_check(not wait.waiting() and world.woken == 1 and not world.dozing and not wait.ring_pending(), "A replay that ends elsewhere wakes the pip and play goes on")
+	_check(not wait.shown_state(state.call(31, true)).has("ring_held"), "Nothing is held after the wake")
+	world = DozeWorld.new()
+	wait.world = world
+	wait.begin("b", 30, true)
+	wait.step(state.call(6, true), {}, true)
+	wait.step(state.call(7, false), {}, true)
+	_check(not wait.waiting() and not world.dozing and world.woken == 0 and not wait.shown_state(state.call(7, false)).has("ring_held"), "Leaving the goal lets the wait go")
+	wait.step(state.call(9, true), {}, true)
+	_check(wait.waiting() and world.dozing, "Arriving again waits again")
+	world = DozeWorld.new()
+	wait.world = world
+	wait.begin("b", 30)
+	wait.step(state.call(6, true), {}, true)
+	wait.step(state.call(30, true), {}, true)
+	_check(world.woken == 0 and wait.ring_pending() == false and wait.shown_state(state.call(30, true)).has("ring_held"), "Before carry-over turns a memory that ends without the stage keeps the ring held as before")
+
+class DozeWorld extends Node:
+	var dozing := false
+	var woken := 0
+	func present(_state: Dictionary, _immediate: bool = false) -> void: pass
+	func show_memory_wait(_live: String, _memory: String, _immediate: bool = false) -> void: dozing = true
+	func end_memory_wait(_live: String) -> void: dozing = false
+	func wake_from_memory_wait(_live: String, _reduced: bool) -> void:
+		woken += 1
+		dozing = false
+
+## Carry-over turns on the chapter screen: a turn's first try plays the
+## friend's turn up to the hand-off (`way`: plain ticks, held Fast-forward,
+## Skip to end, or a Pause and Resume in the middle), reaching the same tick
+## and world every way, with the stick and clock hidden; then the live turn,
+## built and waiting at its tick 0, takes over. Retry starts at the hand-off.
+func _test_watch_screen(way: String) -> void:
+	const HANDOFF := 40
+	var friend: Dictionary = _still_recording().recording
+	var reference := Simulation.new()
+	reference.reset(level, STAGE, checkpoint, first, "b")
+	for input: Dictionary in Simulation.expand_recording_inputs(friend).slice(0, HANDOFF): reference.step(input)
+	var preview := Preview.new()
+	preview.memory_wait.step_budget_usec = 1 << 40
+	preview.memory_wait.skip_budget_usec = 1 << 40
+	var controls := ControlsStub.new()
+	var sound := CueLog.new()
+	var world := WorldStub.new()
+	var journey := WatchJourney.new()
+	journey.shown = {"turns": [first, friend], "ticks": HANDOFF, "stage_id": STAGE, "checkpoint": Registry.initial_checkpoint(KEY)}
+	journey.prior = friend
+	journey.stage = STAGE
+	journey.start = Registry.initial_checkpoint(KEY)
+	preview.journey = journey
+	preview.chapter_key = KEY
+	preview.chapter = Registry.descriptor(KEY)
+	preview.definition = Registry.definition(KEY)
+	preview._simulation = Simulation
+	preview.checkpoint = Registry.initial_checkpoint(KEY).duplicate()
+	preview.checkpoint["stage_index"] = 0
+	preview.settings = {"sound": true, "haptics": false, "reduced_motion": false, "skip_waits": false}
+	preview.controls = controls
+	preview.soundscape = sound
+	preview.world = world
+	preview.overlay = Control.new()
+	preview.hud = Control.new()
+	var live := _receiver()
+	preview.sim = live
+	preview.role = "b"
+	preview._live_tries = 1
+	sound.begin_turn(KEY, STAGE)
+	preview._open_turn()
+	var watched: RefCounted = preview.sim
+	_check(preview.mode == "watch" and watched != live and preview.memory_wait.watching(), way + ": the first try opens on the friend's turn")
+	preview._physics_process(1.0 / 30.0)
+	_check(controls.playbacks > 0, way + ": the playback shows its Fast-forward and Skip row, with no clock or stick")
+	var ticks := 1
+	if way == "skip": preview._skip_memory_wait()
+	controls.held = way == "fast_forward"
+	while preview.mode != "play" and ticks < 400:
+		if way == "pause" and ticks == 10:
+			preview._pause()
+			_check(preview.mode == "paused" and preview.drafts.is_empty(), way + ": a pause over the playback saves no draft")
+			preview.actions.resume.call()
+			_check(preview.mode == "watch" and int(watched.snapshot().tick) == 10, way + ": Resume goes on watching where it was")
+		preview._physics_process(1.0 / 30.0)
+		ticks += 1
+	_check(preview.mode == "play" and preview.sim == live and int(live.snapshot().tick) == 0 and not preview.memory_wait.watching(), way + ": the live turn takes over at its tick 0 (%s after %d ticks)" % [preview.mode, ticks])
+	_check(int(watched.snapshot().tick) == HANDOFF and watched.state_hash() == reference.state_hash(), way + ": the friend's turn reached the hand-off tick, same as played straight")
+	if way == "fast_forward": _check(ticks <= HANDOFF / MemoryWait.FAST_FORWARD_TICKS + 2, way + ": Fast-forward plays it faster (%d ticks)" % ticks)
+	if way == "skip": _check(ticks <= 3, way + ": Skip goes straight to the hand-off (%d ticks)" % ticks)
+	preview._live_tries = 2
+	preview._open_turn()
+	_check(preview.mode == "play" and preview.sim == live, way + ": a later try starts at the hand-off")
+	_free_preview({"preview": preview, "controls": controls, "sound": sound, "world": world})
 
 static func _count(played: Array, key: String) -> int:
 	var total := 0
