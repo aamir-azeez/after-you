@@ -115,6 +115,8 @@ const BAKE_STAMPS := 16
 const SNAP := 4096.0
 ## On a ground: its overlay, made with it (overlay_of()).
 const OVERLAY_META := &"contact_ground_overlay"
+## The render layers an overlay draws on once it holds shade (none before).
+const SHADE_LAYERS := 1
 ## A root lifted this far over where it rested has no shadow left.
 const LIFT_FADE := 0.35
 ## Roots looked at per frame for moves, frames a moved one stays watched,
@@ -176,7 +178,8 @@ static func ground(parent: Node3D, rect: Rect2, top: float, worn: bool) -> Node3
 	node.set_meta(GROUND_WORN_META, worn)
 	node.add_to_group(GROUND_GROUP)
 	parent.add_child(node)
-	# Its overlay comes with it, empty until the layer bakes it.
+	# Its overlay comes with it, whole from the start: the floor's quad in the
+	# floor's look, drawn on no layer until the layer bakes shade into it.
 	var overlay := MeshInstance3D.new()
 	overlay.name = "Shade"
 	overlay.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -185,6 +188,7 @@ static func ground(parent: Node3D, rect: Rect2, top: float, worn: bool) -> Node3
 	look.shader = SHADE_SHADER
 	look.set_shader_parameter("dark_tint", Vector3(TINT.r, TINT.g, TINT.b))
 	overlay.material_override = look
+	_empty_overlay(overlay, rect)
 	node.add_child(overlay)
 	node.set_meta(OVERLAY_META, overlay)
 	return node
@@ -193,6 +197,13 @@ static func ground(parent: Node3D, rect: Rect2, top: float, worn: bool) -> Node3
 static func overlay_of(ground: Node3D) -> MeshInstance3D:
 	var overlay: Variant = ground.get_meta(OVERLAY_META, null)
 	return overlay if is_instance_valid(overlay) else null
+
+## An overlay holding no shade: the floor's quad (rect), on no render layer,
+## so it is a whole mesh that costs no draw.
+static func _empty_overlay(overlay: MeshInstance3D, rect: Rect2) -> void:
+	var whole: Array[Rect2] = [rect]
+	overlay.mesh = overlay_mesh(rect, whole)
+	overlay.layers = 0
 
 ## Whether root has its shadow switched off (or its kind none).
 static func set_off(root: Node3D, off: bool) -> void:
@@ -755,13 +766,14 @@ func _bake_ground(ground: Node3D, feet_list: Array, casts: Array, signature: int
 	if overlay == null: return
 	overlay.mesh = overlay_mesh(rect, baked.tiles)
 	(overlay.material_override as ShaderMaterial).set_shader_parameter("shade", ImageTexture.create_from_image(baked.image))
+	overlay.layers = SHADE_LAYERS
 	_baked[ground].image = baked.image
 
 ## Empties a floor's overlay: it draws nothing until it bakes again.
 func _clear(ground: Node3D) -> void:
 	var overlay := overlay_of(ground)
-	if overlay == null: return
-	overlay.mesh = null
+	if overlay == null or overlay.layers == 0: return
+	_empty_overlay(overlay, ground.get_meta(GROUND_RECT_META))
 	(overlay.material_override as ShaderMaterial).set_shader_parameter("shade", null)
 
 ## Draws the live shadows: the biggest first, equal ones by where they stand

@@ -194,7 +194,7 @@ func _check_layer() -> void:
 	world.add_child(layer)
 	var lawn := ContactShadows.ground(world, Rect2(-3, -3, 6, 6), 0.0, true)
 	var lawn_nodes := lawn.find_children("*", "", true, false).size()
-	_check(ContactShadows.overlay_of(lawn) != null and ContactShadows.overlay_of(lawn).get_parent() == lawn and ContactShadows.overlay_of(lawn).mesh == null, "A floor comes with its overlay, empty until it bakes")
+	_check(ContactShadows.overlay_of(lawn) != null and ContactShadows.overlay_of(lawn).get_parent() == lawn and ContactShadows.overlay_of(lawn).mesh != null and ContactShadows.overlay_of(lawn).layers == 0, "A floor comes with its overlay, a whole mesh that draws nothing until it bakes")
 	var lamp := Props.build({"kind": "lantern", "at": [100, 0]}, world, 0.0, false)
 	var crate := Props.build({"kind": "crate", "at": [-100, 0]}, world, 0.0, false)
 	var lever: RefCounted = Lever.build("plain", Vector3(0, 0, 1), world)
@@ -214,7 +214,7 @@ func _check_layer() -> void:
 	_check(overlays.size() == 1 and overlays[0].ground == lawn and (overlays[0].overlay as Node).get_parent() == lawn, "One overlay for the floor, under its ground (so it moves and hides with it)")
 	_check(lawn.find_children("*", "", true, false).size() == lawn_nodes and overlays[0].overlay == ContactShadows.overlay_of(lawn), "Baking fills the floor's own overlay and adds no node")
 	var overlay: MeshInstance3D = overlays[0].overlay
-	_check((overlay.material_override as ShaderMaterial).shader == ContactShadows.SHADE_SHADER and is_equal_approx(overlay.mesh.get_aabb().position.y, ContactShadows.SHADE_TOP), "The overlay lies at the shadows' height in the floor's look")
+	_check((overlay.material_override as ShaderMaterial).shader == ContactShadows.SHADE_SHADER and is_equal_approx(overlay.mesh.get_aabb().position.y, ContactShadows.SHADE_TOP) and overlay.layers != 0, "The overlay lies at the shadows' height in the floor's look, drawn")
 	var image: Image = overlays[0].image
 	var texel := func(of: Image, x: float, z: float) -> Color: return of.get_pixel(int((x + 3.0) / ContactShadows.TEXEL), int((z + 3.0) / ContactShadows.TEXEL))
 	_check(texel.call(image, -1.0, 0.0).r > 0.9 and texel.call(image, 1.0, 0.0).r > 0.9, "The crate and the lamp shade the floor where they stand")
@@ -263,7 +263,7 @@ func _check_layer() -> void:
 	_check(overlay.visible, "A floor shown again shows it")
 	lawn.visible = false
 	await _settle(layer)
-	_check(layer.overlays().is_empty() and layer.baked_roots().is_empty(), "A hidden floor bakes nothing")
+	_check(layer.overlays().is_empty() and layer.baked_roots().is_empty() and overlay.mesh != null and overlay.layers == 0, "A hidden floor bakes nothing and its overlay stays whole, drawing nothing")
 	world.free()
 
 ## Frames until the layer has baked everything waiting.
