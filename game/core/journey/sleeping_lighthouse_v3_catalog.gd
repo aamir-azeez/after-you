@@ -58,7 +58,7 @@ static func definition() -> Dictionary:
 
 static func source() -> Dictionary:
 	return {"schema_version": 7, "simulation_version": 9, "id": "sleeping-lighthouse", "version": 3, "premium": true, "closing_ticks": 30,
-		"turn_limits": {"a_ticks": 2730, "b_ticks": 2730},
+		"turn_limits": {"a_ticks":1800,"b_ticks":1800},
 		"starts": {"p0": {"position_cm": [-760, 0], "height_cm": 0, "surface_id": "harbour"}, "p1": {"position_cm": [-520, 80], "height_cm": 0, "surface_id": "harbour"}},
 		"props": [], "drops": [], "stairs": [],
 		# Away until the lens appears on the north isle.

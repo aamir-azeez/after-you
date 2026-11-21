@@ -1394,8 +1394,8 @@
 		}
 	},
 	"turn_limits": {
-		"a_ticks": 2730,
-		"b_ticks": 2730
+		"a_ticks": 1800,
+		"b_ticks": 1800
 	},
 	"version": 3
 }
