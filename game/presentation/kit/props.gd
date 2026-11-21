@@ -189,10 +189,10 @@ static func expand(specs: Array) -> Array:
 ## reads as a grid.
 static func vary(item: Dictionary, index: int, x: float, step: Vector2 = Vector2.ZERO) -> void:
 	var seed := absi(hash("%d,%d" % [index, roundi(x)]))
-	item["size"] = float(item.get("size", 1.0)) * (0.8 + 0.2 * _jitter(seed, 1.0))
-	item["rot"] = float(item.get("rot", 0)) + roundf(360.0 * _jitter(seed, 2.0))
+	item["size"] = float(item.get("size", 1.0)) * (0.8 + 0.2 * _seeded(seed, 1))
+	item["rot"] = float(item.get("rot", 0)) + roundf(360.0 * _seeded(seed, 2))
 	if step == Vector2.ZERO or not item.has("at"): return
-	var slip := step * (_jitter(seed, 3.0) - 0.5) * 0.5 + step.orthogonal().normalized() * (_jitter(seed, 4.0) - 0.5) * VARY_ACROSS
+	var slip := step * (_seeded(seed, 3) - 0.5) * 0.5 + step.orthogonal().normalized() * (_seeded(seed, 4) - 0.5) * VARY_ACROSS
 	item["at"] = [roundi(float(item.at[0]) + slip.x), roundi(float(item.at[1]) + slip.y)]
 
 ## How far (cm) a varied row's props wander across it, all told.
@@ -337,8 +337,8 @@ static func _flowers(root: Node3D, s: float, spec: Dictionary) -> void:
 	var at: Array = spec.get("at", [0, 0])
 	var seed := absi(hash("%d,%d" % [roundi(float(at[0])), roundi(float(at[1]))]))
 	_flower_clump(root, seed, BLOSSOMS, s, Vector3.ZERO)
-	if _jitter(seed, 7.0) < 0.35:
-		var angle := TAU * _jitter(seed, 8.0)
+	if _seeded(seed, 7) < 0.35:
+		var angle := TAU * _seeded(seed, 8)
 		_flower_clump(root, seed + 1, BLOSSOMS, s * 0.45, Vector3(cos(angle), 0, sin(angle)) * 0.13 * s)
 
 ## The clump shapes of a flower patch (assets/models/flower_patch.glb).
@@ -349,12 +349,12 @@ static func _flower_clump(root: Node3D, seed: int, palette: Array, s: float, at:
 	var main: Color = palette[seed % count]
 	var second: Color = palette[(seed / count + 1 + seed % count) % count]
 	var third: Color = palette[(seed / (count * count) + 2) % count]
-	var mix := [main, second, main, third] if _jitter(seed, 2.0) < 0.5 else [main, second, second, main]
-	var colors := {"leaf": LEAF.darkened(0.05 * _jitter(seed, 3.0)), "stem": LEAF_DARK, "bloom_a": mix[0], "bloom_b": mix[1], "bloom_c": mix[2], "bloom_d": mix[3]}
-	var stretch := 0.9 + 0.2 * _jitter(seed, 4.0)
-	var clump := _model(root, "flower_patch", FLOWER_PARTS[(seed / 7) % FLOWER_PARTS.size()], colors, Vector3(stretch, 0.85 + 0.15 * _jitter(seed, 5.0), 2.0 - stretch) * s * 0.92)
+	var mix := [main, second, main, third] if _seeded(seed, 2) < 0.5 else [main, second, second, main]
+	var colors := {"leaf": LEAF.darkened(0.05 * _seeded(seed, 3)), "stem": LEAF_DARK, "bloom_a": mix[0], "bloom_b": mix[1], "bloom_c": mix[2], "bloom_d": mix[3]}
+	var stretch := 0.9 + 0.2 * _seeded(seed, 4)
+	var clump := _model(root, "flower_patch", FLOWER_PARTS[(seed / 7) % FLOWER_PARTS.size()], colors, Vector3(stretch, 0.85 + 0.15 * _seeded(seed, 5), 2.0 - stretch) * s * 0.92)
 	clump.position = at
-	clump.rotation = Vector3((_jitter(seed, 6.0) - 0.5) * 0.16, TAU * _jitter(seed, 9.0), (_jitter(seed, 10.0) - 0.5) * 0.16)
+	clump.rotation = Vector3((_seeded(seed, 6) - 0.5) * 0.16, TAU * _seeded(seed, 9), (_seeded(seed, 10) - 0.5) * 0.16)
 
 static func _tuft(root: Node3D, s: float) -> void:
 	_model(root, "wild_bits", "tuft", {"grass": Color("6f9a64")}, Vector3.ONE * s)
@@ -526,6 +526,15 @@ static func _wall(root: Node3D, from: Vector2, to: Vector2, height: float, thick
 	bar.rotation.y = -atan2(to.y - from.y, to.x - from.x)
 
 ## 0..1 from an index and a salt, the same every build.
+## A number in [0, 1) from a big `seed` (a hash) and a `salt`, the same on
+## every platform: integers only, where _jitter()'s sin of a big seed differs
+## in its last bits between phones and desktops.
+static func _seeded(seed: int, salt: int) -> float:
+	var h := (seed * 374761393 + salt * 668265263) & 0x7fffffff
+	h = ((h ^ (h >> 15)) * 2246822519) & 0x7fffffff
+	h = ((h ^ (h >> 13)) * 3266489917) & 0x7fffffff
+	return float((h ^ (h >> 16)) & 0xffffff) / 16777216.0
+
 static func _jitter(index: int, salt: float) -> float:
 	var value := sin(float(index) * 12.9898 + salt * 78.233) * 43758.5453
 	return value - floor(value)
