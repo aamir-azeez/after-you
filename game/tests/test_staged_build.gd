@@ -23,11 +23,15 @@ extends "res://tests/test_world_fingerprint.gd"
 ##   replays its partner's turn) is the same turn, in the same state, as one
 ##   set up at once.
 ## - The chapter card waits for a building screen, never past its bound.
+## The chapters on the water run as their own suites: test_staged_build_tide
+## (the Tide's world) and test_staged_build_water (every other water world).
 const Preview = preload("res://relay_preview.gd")
 const Journey = preload("res://services/relay_journey.gd")
 const Card = preload("res://presentation/chapter_loading_card.gd")
 const World = preload("res://presentation/island_world.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const FoldPresent = preload("res://tests/test_fold_present.gd")
+const TIDE_WORLD := "res://presentation/tide_world.gd"
 
 var directory := ""
 ## The most nodes one step of a staged build may add (one frame here, where
@@ -48,31 +52,47 @@ class Builder:
 func _suite() -> String:
 	return "staged_build"
 
+## Whether this suite builds chapter `key`: every one not on the water, by
+## test_fold_present's rule (the water suites build those).
+func _runs(key: String) -> bool:
+	return not FoldPresent._on_water(key)
+
+## Whether chapter `key` builds the Tide's world (test_staged_build_tide).
+static func _tide(key: String) -> bool:
+	return Registry.world_script(key).resource_path == TIDE_WORLD
+
+## Whether this suite runs the checks no chapter owns (the slice, the card).
+func _runs_shared() -> bool:
+	return true
+
 func _run() -> void:
-	_slice()
+	if _runs_shared(): _slice()
 	# Stage at every step, so the screen builds over frames on any machine.
 	Preview.staged_build_usec = 1
 	directory = "user://staged-build-" + Crypto.new().generate_random_bytes(6).hex_encode()
 	DirAccess.make_dir_recursive_absolute(directory)
-	for key: String in Registry.keys():
+	var keys: Array = Registry.keys().filter(_runs)
+	_check(not keys.is_empty(), "There are chapters to build staged")
+	for key: String in keys:
+		var started := Time.get_ticks_msec()
 		await _same_world(key, 0)
 		await _same_world(key, 1)
 		await _revealed_bubbles(key)
 		await _revealed_in_parts(key)
-	await _screen(Registry.CONSERVATORY)
-	await _screen(Registry.WISHING_WELL)
-	await _screen(Registry.WISHING_WELL, true)
-	await _screen(Registry.TURN_OF_THE_TIDE)
-	await _screen(Registry.TURN_OF_THE_TIDE, true)
-	await _screen(Registry.FIRST_STEPS, true)
-	await _screen(Registry.RELAY)
-	await _screen(Registry.LIGHTHOUSE_V2)
-	await _finished_screen(Registry.WISHING_WELL)
-	await _replay_screen(Registry.WISHING_WELL)
-	await _back_mid_build(Registry.CONSERVATORY)
-	await _back_mid_build(Registry.TURN_OF_THE_TIDE)
-	await _back_mid_build(Registry.LIGHTHOUSE_V2)
-	await _card_waits()
+		print("%s %s: %d ms" % [_suite(), key, Time.get_ticks_msec() - started])
+	# Each screen check runs in the suite that builds its chapter.
+	var screens: Array = [
+		[_screen, Registry.CONSERVATORY], [_screen, Registry.WISHING_WELL], [_screen, Registry.WISHING_WELL, true],
+		[_screen, Registry.TURN_OF_THE_TIDE], [_screen, Registry.TURN_OF_THE_TIDE, true], [_screen, Registry.FIRST_STEPS, true],
+		[_screen, Registry.RELAY], [_screen, Registry.LIGHTHOUSE_V2],
+		[_finished_screen, Registry.WISHING_WELL], [_replay_screen, Registry.WISHING_WELL],
+		[_back_mid_build, Registry.CONSERVATORY], [_back_mid_build, Registry.TURN_OF_THE_TIDE], [_back_mid_build, Registry.LIGHTHOUSE_V2],
+	]
+	var started := Time.get_ticks_msec()
+	for entry: Array in screens:
+		if _runs(str(entry[1])): await (entry[0] as Callable).callv(entry.slice(1))
+	print("%s screens: %d ms" % [_suite(), Time.get_ticks_msec() - started])
+	if _runs_shared(): await _card_waits()
 	print("STAGED BUILD: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
