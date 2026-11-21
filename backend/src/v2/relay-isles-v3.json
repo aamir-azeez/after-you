@@ -1,0 +1,347 @@
+{
+	"bridges": [
+		{
+			"from_surface": "west",
+			"height_cm": 0,
+			"id": "west-relay",
+			"rect_cm": [
+				-260,
+				-65,
+				-140,
+				65
+			],
+			"to_surface": "relay"
+		},
+		{
+			"from_surface": "relay",
+			"hands": true,
+			"height_cm": 0,
+			"id": "relay-east",
+			"rect_cm": [
+				220,
+				-65,
+				340,
+				65
+			],
+			"to_surface": "east"
+		}
+	],
+	"closing_ticks": 30,
+	"drops": [],
+	"id": "relay-isles",
+	"islands": [
+		{
+			"height_cm": 0,
+			"id": "west",
+			"rect_cm": [
+				-720,
+				-220,
+				-260,
+				220
+			]
+		},
+		{
+			"height_cm": 0,
+			"id": "relay",
+			"rect_cm": [
+				-140,
+				-180,
+				220,
+				180
+			]
+		},
+		{
+			"height_cm": 0,
+			"id": "east",
+			"rect_cm": [
+				340,
+				-220,
+				780,
+				220
+			]
+		}
+	],
+	"item_spots": [
+		{
+			"height_cm": 0,
+			"id": "seed-pedestal",
+			"position_cm": [
+				-620,
+				40
+			],
+			"radius_cm": 36,
+			"solid": {
+				"radius_cm": 28,
+				"reach_cm": 20
+			},
+			"surface_id": "west"
+		},
+		{
+			"height_cm": 0,
+			"id": "relay-socket",
+			"position_cm": [
+				40,
+				0
+			],
+			"radius_cm": 30,
+			"solid": {
+				"radius_cm": 22,
+				"reach_cm": 20
+			},
+			"surface_id": "relay"
+		},
+		{
+			"height_cm": 0,
+			"id": "relay-landing",
+			"position_cm": [
+				-10,
+				0
+			],
+			"radius_cm": 66,
+			"surface_id": "relay"
+		},
+		{
+			"height_cm": 0,
+			"id": "garden",
+			"position_cm": [
+				620,
+				120
+			],
+			"radius_cm": 55,
+			"surface_id": "east"
+		},
+		{
+			"height_cm": 0,
+			"id": "garden-landing",
+			"position_cm": [
+				420,
+				0
+			],
+			"radius_cm": 66,
+			"surface_id": "east"
+		}
+	],
+	"items": [
+		{
+			"at": "seed-pedestal",
+			"id": "seed"
+		}
+	],
+	"premium": false,
+	"props": [],
+	"schema_version": 7,
+	"simulation_version": 16,
+	"stages": [
+		{
+			"ball_pads": [],
+			"controls": [],
+			"entry_latch_routes": [],
+			"first_player_slot": "p0",
+			"gates": [
+				{
+					"route_id": "west-relay",
+					"when": {
+						"pad_id": "west-plate"
+					}
+				},
+				{
+					"route_id": "west-relay",
+					"when": {
+						"pad_id": "relay-plate"
+					}
+				}
+			],
+			"goal": {
+				"height_cm": 0,
+				"id": "relay-bell",
+				"owner_slot": "p1",
+				"position_cm": [
+					-60,
+					110
+				],
+				"radius_cm": 40,
+				"surface_id": "relay"
+			},
+			"goal_policy": {
+				"kind": "ring",
+				"when": {
+					"item_id": "seed",
+					"spot_id": "relay-socket"
+				}
+			},
+			"id": "relay",
+			"kind": "route_endpoint",
+			"levers": [],
+			"pressure_pads": [
+				{
+					"height_cm": 0,
+					"id": "west-plate",
+					"position_cm": [
+						-500,
+						-60
+					],
+					"radius_cm": 32,
+					"surface_id": "west"
+				},
+				{
+					"height_cm": 0,
+					"id": "relay-plate",
+					"position_cm": [
+						140,
+						-60
+					],
+					"radius_cm": 32,
+					"surface_id": "relay"
+				}
+			],
+			"receiver_action_ticks": 2,
+			"receiver_route_cm": [
+				[
+					-60,
+					110
+				]
+			],
+			"source_policy": {
+				"kind": "route_endpoint",
+				"when": {}
+			},
+			"throws": [
+				{
+					"catch_cm": 100,
+					"flight_ticks": 90,
+					"id": "relay-throw",
+					"mark": {
+						"height_cm": 0,
+						"position_cm": [
+							-360,
+							110
+						],
+						"radius_cm": 30,
+						"surface_id": "west"
+					},
+					"to": "relay-landing"
+				}
+			],
+			"turn_cap": 10,
+			"version": 1
+		},
+		{
+			"ball_pads": [],
+			"controls": [],
+			"entry_latch_routes": [],
+			"first_player_slot": "p1",
+			"gates": [
+				{
+					"route_id": "relay-east",
+					"when": {
+						"any": [
+							{
+								"pad_id": "relay-crank"
+							},
+							{
+								"pad_id": "garden-crank"
+							}
+						]
+					}
+				}
+			],
+			"goal": {
+				"height_cm": 0,
+				"id": "garden-lamp",
+				"owner_slot": "p1",
+				"position_cm": [
+					720,
+					40
+				],
+				"radius_cm": 48,
+				"surface_id": "east"
+			},
+			"goal_policy": {
+				"kind": "ring",
+				"when": {
+					"item_id": "seed",
+					"spot_id": "garden"
+				}
+			},
+			"id": "garden",
+			"kind": "route_endpoint",
+			"levers": [],
+			"pressure_pads": [
+				{
+					"height_cm": 0,
+					"id": "relay-crank",
+					"position_cm": [
+						-60,
+						-100
+					],
+					"radius_cm": 32,
+					"surface_id": "relay"
+				},
+				{
+					"height_cm": 0,
+					"id": "garden-crank",
+					"position_cm": [
+						640,
+						-60
+					],
+					"radius_cm": 32,
+					"surface_id": "east"
+				}
+			],
+			"receiver_action_ticks": 2,
+			"receiver_route_cm": [
+				[
+					720,
+					40
+				]
+			],
+			"source_policy": {
+				"kind": "route_endpoint",
+				"when": {}
+			},
+			"throws": [
+				{
+					"catch_cm": 100,
+					"flight_ticks": 120,
+					"id": "garden-throw",
+					"mark": {
+						"height_cm": 0,
+						"position_cm": [
+							150,
+							100
+						],
+						"radius_cm": 30,
+						"surface_id": "relay"
+					},
+					"to": "garden-landing"
+				}
+			],
+			"turn_cap": 20,
+			"version": 1
+		}
+	],
+	"stairs": [],
+	"starts": {
+		"p0": {
+			"height_cm": 0,
+			"position_cm": [
+				-480,
+				100
+			],
+			"surface_id": "west"
+		},
+		"p1": {
+			"height_cm": 0,
+			"position_cm": [
+				-320,
+				-120
+			],
+			"surface_id": "west"
+		}
+	},
+	"turn_limits": {
+		"a_ticks": 1800,
+		"b_ticks": 1800
+	},
+	"version": 3
+}

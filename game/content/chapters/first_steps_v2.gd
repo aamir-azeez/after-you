@@ -5,7 +5,7 @@ const DATA := {
 	"key": "first-steps@2",
 	"family": "journey",
 	"definition": ["res://core/journey/first_steps_v2_catalog.gd", "definition"],
-	"world": "res://presentation/first_steps_v2_world.gd",
+	"world": "res://presentation/journey_world.gd",
 	"scene": "res://first_steps_v2.tscn",
 	"local_path": "user://first-steps-journey-v2.json",
 	"version_of": "first-steps@1",
@@ -30,7 +30,8 @@ const DATA := {
 	"thumbnail": "res://assets/chapter_thumbnails/first-steps.png",
 	"dressing": "res://content/dressing/first_steps.gd",
 	# The loft bell keeps its bell, the garden's lamp is a low crest beside the
-	# planter, and the seed is the seed every world draws.
-	"piece_styles": {"loft-bell": "bell", "garden-lamp": "crest", "seed": "seed"},
+	# planter, the seed is the seed every world draws, resting on @1's stone
+	# pedestal or in the garden planter (kit/pieces/socket.gd).
+	"piece_styles": {"loft-bell": "bell", "garden-lamp": "crest", "seed": "seed", "seed-pedestal": "pedestal", "garden": "planter"},
 	"server": {"flag": "FIRST_STEPS_V2_CHAPTER_ENABLED", "max_branches": 7},
 }
