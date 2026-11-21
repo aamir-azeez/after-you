@@ -20,6 +20,7 @@ extends RefCounted
 ## stays true, then rests exactly where a snap would put it.
 const Parts = preload("res://presentation/kit/pieces/parts.gd")
 const Motion = preload("res://presentation/kit/motion.gd")
+const ContactShadows = preload("res://presentation/kit/contact_shadows.gd")
 
 ## The style built (content/dressing/prop_styles.gd SLOTS).
 var style := ""
@@ -93,10 +94,14 @@ func _arrival_step(delta: float) -> float:
 		return 0.0
 	return Motion.arrival(_arrival_age, _arrival_size)
 
-## A fresh root named `name` at `at` under `parent`.
-func _root(name: String, at: Vector3, parent: Node3D) -> Node3D:
+## A fresh root named `name` at `at` under `parent`, with a soft contact
+## shadow where it meets the ground (kit/contact_shadows.gd) unless `shadow`
+## is false: a kit that is ground itself (a crossing, a lift's deck) or rides
+## the water says so (test_shared_paths lists them).
+func _root(name: String, at: Vector3, parent: Node3D, shadow: bool = true) -> Node3D:
 	root = Node3D.new()
 	root.name = name
 	root.position = at
 	parent.add_child(root)
+	if shadow: ContactShadows.mark(root)
 	return root

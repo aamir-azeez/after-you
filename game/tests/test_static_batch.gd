@@ -693,15 +693,22 @@ func _tide() -> void:
 	sim.simulation_version = 9
 	sim._reset_trusted(level, str(level.stages[1].id), checkpoint, {}, "a")
 	var plain := _world(Registry.TURN_OF_THE_TIDE)
-	plain.process_mode = Node.PROCESS_MODE_DISABLED
 	var folded := _world(Registry.TURN_OF_THE_TIDE)
 	for world: Node3D in [plain, folded]:
 		world.reduced_motion = true
 		world.show_stage(level.stages[1])
 		world.present_history(checkpoint)
-	for i in range(2): await process_frame
-	_check(not plain.terrain.has_meta(StaticBatch.FOLDED_META) and folded.terrain.has_meta(StaticBatch.FOLDED_META), "One world stays unfolded to compare against")
+	# The plain world is marked as folded, so it never folds (as in
+	# test_fold_present), and runs like the folded one until both have
+	# finished their scenery, its floors' grounding included.
+	plain.terrain.set_meta(StaticBatch.FOLDED_META, true)
+	var settle := 0
+	while (settle < 2 or plain.scenery_settling() or folded.scenery_settling()) and settle < 600:
+		await process_frame
+		settle += 1
+	_check(plain.terrain.find_children("StaticBatch*", "MeshInstance3D", true, false).is_empty() and folded.terrain.has_meta(StaticBatch.FOLDED_META) and not folded.terrain.find_children("StaticBatch*", "MeshInstance3D", true, false).is_empty(), "One world stays unfolded to compare against")
 	# From here both only present, frame for frame alike.
+	plain.process_mode = Node.PROCESS_MODE_DISABLED
 	folded.process_mode = Node.PROCESS_MODE_DISABLED
 	var routes: Array = []
 	for route: Dictionary in level.bridges: routes.append(str(route.id))

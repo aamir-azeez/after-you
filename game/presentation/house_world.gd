@@ -74,6 +74,7 @@ func _shore(island: Dictionary, _color: Color) -> void:
 		var depth := float(piece[3]-piece[1])/100.0
 		var at := point([(piece[0]+piece[2])*0.5,(piece[1]+piece[3])*0.5])
 		box(Vector3(width,0.28,depth),TIMBER,at+Vector3(0,-0.14,0),room)
+		ContactShadows.ground(room, Rect2(at.x-width/2.0, at.z-depth/2.0, width, depth), at.y, false)
 		for x in range(int(piece[0])+36,int(piece[2]),36):
 			box(Vector3(0.012,0.008,depth),FRAME,Vector3(float(x)/100.0,0.004,at.z),room)
 	# The front stays entirely open. Low side skirting outlines the rooms

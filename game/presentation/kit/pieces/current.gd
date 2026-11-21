@@ -44,7 +44,7 @@ var _keep: Callable
 
 func _make(current_style: String, legs: Array, parent: Node3D) -> void:
 	style = current_style
-	_root("Current", Vector3.ZERO, parent)
+	_root("Current", Vector3.ZERO, parent, false)
 	anchor = root
 	for index in range(legs.size()):
 		var leg: Dictionary = legs[index]

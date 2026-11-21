@@ -61,6 +61,7 @@ static var _material_properties: Dictionary = {}
 static var _shared_keys: Dictionary = {}
 const Primitives = preload("res://presentation/kit/primitives.gd")
 const SessionRelease = preload("res://presentation/kit/session_release.gd")
+const ContactShadows = preload("res://presentation/kit/contact_shadows.gd")
 ## Batch meshes already built this session, by everything that makes one: the
 ## group's key and, per leaf in order, its shape's stored values and its
 ## transform. A world built again from the same definition (a chapter opened
@@ -89,6 +90,9 @@ static func start(root: Node3D, owners: Array, options: Dictionary = {}) -> Dict
 	if not enabled or not is_instance_valid(root) or not root.is_inside_tree() or root.has_meta(FOLDED_META): return {}
 	root.set_meta(FOLDED_META, true)
 	var kept := _ids(options.get("keep", []))
+	# Contact shadows measure their roots' feet now, while every leaf is still
+	# under its root, past the parts kept because they move.
+	ContactShadows.measure_under(root, kept)
 	# Only what is there now can fold. A node made while the job runs over
 	# frames (a Lighthouse beam made by present(), say) was made to change.
 	var existing: Dictionary = {}
