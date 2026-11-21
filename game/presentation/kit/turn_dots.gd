@@ -81,16 +81,16 @@ func _draw() -> void:
 		var at := Vector2(left + PAD.x + step * (float(i) + 0.5), y)
 		var color: Color = Look.PEACH if OpenTurns.slot(str(_view.first_slot), number) == "p0" else Look.MINT
 		var big := r
-		if number < turn: draw_circle(at, r, color)
+		if number < turn: draw_circle(at, r, color, true, -1.0, true)
 		elif number == turn:
 			big = r + clampf(r * 0.4, 1.5, 2.5)
-			draw_circle(at, big + 1.0, SHADOW)
-			draw_circle(at, big, color)
-		else: draw_arc(at, r - 0.5, 0.0, TAU, 24, HOLLOW, maxf(1.4, r * 0.3), true)
+			draw_circle(at, big + 1.0, SHADOW, true, -1.0, true)
+			draw_circle(at, big, color, true, -1.0, true)
+		else: draw_arc(at, r - 0.5, 0.0, TAU, 48, HOLLOW, maxf(1.4, r * 0.3), true)
 		if number == int(_view.last): ring = Vector2(at.x, big)
 	# Last, so the ring sits over its neighbours on a tight row.
 	if int(_view.last) > 0:
 		var at := Vector2(ring.x, y)
 		var gap := maxf(1.5, r * 0.3)
-		draw_arc(at, ring.y + gap * 0.5 + 0.5, 0.0, TAU, 32, GAP, gap, true)
-		draw_arc(at, ring.y + gap + maxf(1.5, r * 0.25), 0.0, TAU, 32, ControlTheme.CORAL, maxf(2.0, r * 0.5), true)
+		draw_arc(at, ring.y + gap * 0.5 + 0.5, 0.0, TAU, 48, GAP, gap, true)
+		draw_arc(at, ring.y + gap + maxf(1.5, r * 0.25), 0.0, TAU, 48, ControlTheme.CORAL, maxf(2.0, r * 0.5), true)
