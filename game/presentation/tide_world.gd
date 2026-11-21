@@ -1109,7 +1109,9 @@ func _clear_scenery() -> void:
 	for bubble: LabelBubble in _bubbles:
 		if not is_instance_valid(bubble) or not bubble.visible: continue
 		var own := _bubble_owner(bubble)
-		var rect := bubble.plane_rect()
+		# Where the shared placement stood it (its lean and lift), without the bob.
+		var rect := bubble.plane_rect(true)
+		rect.position += Vector2(bubble.lean, -bubble.lift * rise)
 		var climb := 0.0
 		for _pass in range(4):
 			var moved := false
@@ -1146,7 +1148,8 @@ func _mark_scenery() -> void:
 		var reach := Vector2(VALVE_MARK_REACH, VALVE_MARK_REACH * LabelBubble.screen_up().y)
 		_add_mark(Rect2(hub - reach, reach * 2.0), id)
 	for id: String in _physical_levers:
-		var knob := LabelBubble.plane_point((_physical_levers[id] as Node3D).global_transform * Vector3(0, 0.4, 0))
+		# Where the knob rests at the shown value, not where its throw has got to.
+		var knob := LabelBubble.plane_point((_physical_levers[id] as Node3D).get_parent().global_transform * _lever_rest(id) * Vector3(0, 0.4, 0))
 		_add_mark(Rect2(knob - Vector2.ONE * 0.09, Vector2.ONE * 0.18), id)
 	for id: String in _physical_pads:
 		var pad := _physical_pads[id] as MeshInstance3D

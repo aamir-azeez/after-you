@@ -29,16 +29,6 @@ const STATE_KEYS := ["schema_version", "simulation_version", "level_id", "level_
 ## next turn plays over the latest of them, which nests the rest.
 const PASSES := "passes"
 const ENVELOPE_KEYS := ["version", "generation", "settings", "attempts", "completed", "replays", "room", "relay"]
-## Definitions a chapter's journal may still carry from an unreleased build at
-## the same level version. Such a journal cannot replay under the current
-## definition, so load_data moves it aside whole and the chapter starts fresh.
-const RETIRED_DEFINITIONS := {
-	"turn-of-the-tide@1": ["cbeb3d7753ac621ef30f99100af15149d15d8f5918df90b6996e4ce4b52d5ce7", "dfa00916f4022cbd3c5d677c5f6a61fcacb2256251ce62953404232a871d279a",
-		"338e5b4a8b156734ab1b4237dd343fa3d7e95088d62fb61810bc793bd9e28560", "ed891de13f452b91a502414864910228a6513accef53f90160013bb393193f68"],
-	# The settled-source @2 built from main on 2026-10-17 and removed the same day,
-	# and the tide-rules @2 before Slack Water's posts moved into one row (2026-10-19).
-	"turn-of-the-tide@2": ["df0c4209c74b93d547cc5cdc8ca049944f810fbce42dccc6e57e305122de390c", "e15ff1e40da4084ddf291165ea5dea86335c92b388bb3a2fa841c959d1f056a7"],
-}
 
 var last_error := ""
 var read_only := false
@@ -877,8 +867,8 @@ func _keep_replacing_draft(next: Dictionary) -> void:
 func archived_attempts() -> Array[Dictionary]:
 	_ensure_loaded()
 	if read_only: return []
-	var retired: Array = RETIRED_DEFINITIONS.get(_chapter_key, [])
-	return Archive.list_attempts(_path, "relay", MAX_SAVE_BYTES).filter(func(attempt: Dictionary) -> bool: return str(attempt.get("definition_hash", "")) not in retired)
+	var current := Canonical.digest(_level)
+	return Archive.list_attempts(_path, "relay", MAX_SAVE_BYTES).filter(func(attempt: Dictionary) -> bool: return str(attempt.get("definition_hash", "")) == current)
 
 func archived_pairs(id: String) -> Array:
 	_ensure_loaded()
@@ -1016,8 +1006,13 @@ func _preserve_unreadable(candidate: String) -> bool:
 	return DirAccess.copy_absolute(candidate, archive) == OK and FileAccess.get_sha256(archive) == digest
 
 
+## A journal (or archived attempt) of this chapter's level and version under
+## another definition (Registry.retired) cannot replay here, so load_data
+## moves it aside whole and the chapter starts fresh from its first stage:
+## every turn names the definition it was played on, so no earlier stage of
+## it carries over.
 func _retired(value: Variant) -> bool:
-	return value is Dictionary and Typed.equal(value.get("level_id"), _level.id) and Typed.equal(value.get("level_version"), _level.version) and str(value.get("definition_hash", "")) in RETIRED_DEFINITIONS.get(_chapter_key, [])
+	return value is Dictionary and Typed.equal(value.get("level_id"), _level.id) and Typed.equal(value.get("level_version"), _level.version) and Registry.retired(value)
 
 
 ## Renames each retired generation, and every archived attempt of a retired

@@ -52,6 +52,11 @@ var _selector_nodes: Dictionary = {}
 var _frame_points: Array[Vector3] = []
 var _hold_pad_nodes: Dictionary = {}
 var _beacon: Dictionary = {}
+## Every hand control of the stage (levers, switches, selectors, mirrors), by
+## the id its value goes by in the state, and the value it last showed, so the
+## pip that works one turns to face it (_face_hands).
+var _hand_controls: Dictionary = {}
+var _hand_values: Dictionary = {}
 
 func _beam_height() -> float:
 	return BEAM_HEIGHT
@@ -79,6 +84,8 @@ func load_level(definition: Dictionary) -> void:
 	terrain.name = "BorrowedLightShore"
 	add_child(terrain)
 	actors.clear()
+	_hand_controls.clear()
+	_hand_values.clear()
 	actor_targets.clear()
 	bridge_parts.clear()
 	flowers.clear()
@@ -411,6 +418,7 @@ func _build_mirror(control: Dictionary) -> void:
 	ring(float(control.radius_cm) / 100.0, Color("8caab9"), at + Vector3(0, base_height + 0.04, 0), terrain)
 	_mirror_pivot = _mirror_body(at, base_height, terrain, false)
 	_mirror_nodes[control.get("optical_id", control.id)] = _mirror_pivot
+	_hand_controls[control.get("optical_id", control.id)] = control
 	mark_sound("mirror:%s" % control.get("optical_id", control.id), _mirror_pivot)
 	_mirror_target = -PI / 4.0
 	_mirror_pivot.rotation.y = _mirror_target
@@ -477,6 +485,9 @@ func _build_selector(control: Dictionary) -> void:
 	# The mirror still follows the exact optical orientation. Three engraved
 	# positions distinguish this switch from an ordinary two-way mirror.
 	_build_mirror(control)
+	# A selector's value is its state, by its own id.
+	_hand_controls.erase(control.get("optical_id", control.id))
+	_hand_controls[control.id] = control
 	var at := point(control.position_cm) + Vector3(0, _control_base_height(control), 0)
 	var dial := Node3D.new()
 	dial.name = "PathSelector"
@@ -750,6 +761,31 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	_present_celebration(immediate)
 	if _goal_piece != null and is_instance_valid(_bell): _goal_piece.set_lit(_wake, immediate or reduced_motion)
 	_present_beams(state.optics.segments)
+	_face_hands(state, immediate)
+
+## The pip that works a hand control turns to face it, so it stands beside
+## it watching the pull (the engines have it work one from beside its solid
+## footprint, core/solid_footprint.gd). Read from the snapshot alone: a
+## control whose shown value changed (a lever, control, mirror or selector
+## value), and the pip within its reach (the live one first; a memory works
+## controls too). Presentation only.
+func _face_hands(state: Dictionary, immediate: bool) -> void:
+	var values: Dictionary = {}
+	for key: String in ["levers", "controls", "mirrors", "selectors"]: values.merge(state.get(key, {}))
+	var players: Dictionary = state.get("players", {})
+	var active := str(state.get("active_slot", "p0"))
+	for id: Variant in _hand_controls:
+		var now: Variant = values.get(id)
+		var was: Variant = _hand_values.get(id)
+		_hand_values[id] = now
+		if immediate or was == null or now == null or was == now: continue
+		var control: Dictionary = _hand_controls[id]
+		for slot: String in [active, "p1" if active == "p0" else "p0"]:
+			var player: Variant = players.get(slot)
+			if not actors.has(slot) or not RouteBarriers.at_control(control, player): continue
+			var toward := Vector2(float(control.position_cm[0]) - float(player.x), float(control.position_cm[1]) - float(player.z))
+			if not toward.is_zero_approx(): actors[slot].facing_target = atan2(toward.x, toward.y)
+			break
 
 ## A solved stage makes both spirits jump, sparkle and smile, as in the other
 ## chapters. The physical worlds celebrate a committed stage themselves.

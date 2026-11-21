@@ -2,7 +2,7 @@ extends SceneTree
 ## The Wishing Well: route witnesses with real inputs through the native rules.
 const Simulation = preload("res://core/cooperative/simulation.gd")
 const Catalog = preload("res://core/cooperative/stage_catalog.gd")
-const Well = preload("res://core/cooperative/wishing_well_catalog.gd")
+const Well = preload("res://core/cooperative/stage_catalog.gd")
 const Navigation = preload("res://core/cooperative/navigation.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
@@ -38,9 +38,9 @@ func _run() -> void:
 	quit(1 if failures else 0)
 
 func _preservation(evidence: Dictionary) -> void:
-	_check(Canonical.digest(Catalog.definition("high-and-low")) == "6aa907e802c92445745a6452c6ec0850dd8e98724e689b58a8ec82915fb08956", "Published free chapter definition remains unchanged")
-	_check(Canonical.digest(Catalog.definition("rolling-home")) == "d6aaa6006597dd5e4ce4dbc641d94c81c2ab17c55bd80b50c6a240e0e91cff87", "Published paid chapter definition remains unchanged")
-	_check(Canonical.digest(Catalog.definition("a-house-for-two")) == "b868745e7bc025bb8fe5a49b698b15dfb0d428ea9fe905ce46fa46dd27d79867", "Published house definition remains unchanged")
+	_check(Canonical.digest(Catalog.definition("high-and-low")) == "3b6576badcdd214630373a0f51040706e014845d9b8bc17483bd887f04a9ff40", "Published free chapter definition remains unchanged")
+	_check(Canonical.digest(Catalog.definition("rolling-home")) == "3362e8afd9fb3504868ab4b8b436050f62fe601e5c7ff8fea995424064f2dbff", "Published paid chapter definition remains unchanged")
+	_check(Canonical.digest(Catalog.definition("a-house-for-two")) == "f14fb0abf330fa46afdb61078a8e8e99cee4cc2ade845304508cc90b05d27995", "Published house definition remains unchanged")
 	var level: Dictionary = evidence.definition
 	_check(level.schema_version == 6 and level.simulation_version == 9 and level.stages.size() == 2 and not level.premium, "The well composes the simulation6 schema on comfort rules 9, free to host")
 	_check(Canonical.same(level, Catalog.definition("the-wishing-well@1")) and Catalog.known(level), "The catalog knows the pinned definition by key")

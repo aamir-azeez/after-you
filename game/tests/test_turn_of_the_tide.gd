@@ -245,16 +245,17 @@ func _declared_limit_cases() -> void:
 	_check(Simulation.recording_error(bad, record, initial) == "Unsupported recording version.", "A recording under a definition with bad turn_limits is refused")
 	_check(not Simulation.new().reset(bad, Witness.SET, initial, {}, "a"), "A turn cannot start under a definition with bad turn_limits")
 
-## A journal the preview052 build wrote (definition cbeb3d77, before the
-## longer turns) is moved aside whole, with its archived attempt, and the
-## chapter opens fresh and playable instead of held.
+## A journal an older build wrote mid-chapter on another definition (here the
+## published 3a6d1114, before every lever became solid) is moved aside whole,
+## with its archived attempt, and the chapter opens fresh and playable instead
+## of held. Any definition but the current one is treated so.
 func _retired_journal() -> void:
-	var old_hash := "cbeb3d7753ac621ef30f99100af15149d15d8f5918df90b6996e4ce4b52d5ce7"
-	_check(old_hash in Journey.RETIRED_DEFINITIONS.get(Registry.TURN_OF_THE_TIDE, []) and Canonical.digest(level) not in Journey.RETIRED_DEFINITIONS.get(Registry.TURN_OF_THE_TIDE, []), "The preview052 definition is retired and the current one is not")
+	var old_hash := "3a6d111455aa69e60c440cc6f04a0656292ed9c40b31c66a7f999c85cd2a911a"
+	_check(old_hash != Canonical.digest(level), "The published definition before solid levers is not the current one")
 	var directory := "user://tide-retired-" + Crypto.new().generate_random_bytes(6).hex_encode()
 	DirAccess.make_dir_recursive_absolute(directory)
 	var path := directory.path_join("turn-of-the-tide-journey-v1.json")
-	var old_a: Dictionary = _load(DIRECTORY + "set-the-tide-a.json")
+	var old_a: Dictionary = _recording("a")
 	old_a.definition_hash = old_hash
 	var state := {"schema_version": level.schema_version, "simulation_version": RULES, "level_id": level.id, "level_version": level.version, "definition_hash": old_hash, "pairs": [], "a": old_a, "draft": {}}
 	var originals: Dictionary = {}
@@ -266,7 +267,7 @@ func _retired_journal() -> void:
 		file.store_string(JSON.stringify(value))
 		file.close()
 		originals[item[0]] = FileAccess.get_sha256(path + item[0])
-	var old_b: Dictionary = _load(DIRECTORY + "set-the-tide-b.json")
+	var old_b: Dictionary = _recording("b")
 	old_b.definition_hash = old_hash
 	var attempt := state.duplicate(true)
 	attempt.pairs = [{"a": old_a, "b": old_b}]
@@ -283,7 +284,7 @@ func _retired_journal() -> void:
 		_check(not FileAccess.file_exists(path + suffix) and FileAccess.file_exists(aside) and FileAccess.get_sha256(aside) == originals[suffix], "The old generation '%s' is kept byte for byte under a recovery name" % suffix)
 	_check(not FileAccess.file_exists(attempt_file) and FileAccess.get_sha256(path + ".retired-attempt-" + attempt_sha + ".json") == attempt_sha, "The old attempt is kept byte for byte under a recovery name")
 	_check(journey.archived_attempts().is_empty() and Archive.attempt_count(path) == 0, "Replays lists no old attempt and the archive has room")
-	_check(journey.accept_recording(_load(DIRECTORY + "set-the-tide-a.json")) and journey.role() == "b", "The current first turn saves")
+	_check(journey.accept_recording(_recording("a")) and journey.role() == "b", "The current first turn saves")
 	var again := Journey.new(path, null, Registry.TURN_OF_THE_TIDE)
 	again.load_data()
 	var aside_count := Array(DirAccess.get_files_at(directory)).filter(func(name: String) -> bool: return name.contains(".retired-") or name.contains(".unreadable-")).size()
@@ -292,6 +293,13 @@ func _retired_journal() -> void:
 	_check(listed.is_empty() and Archive.save(path, "relay", attempt, Journey.MAX_SAVE_BYTES, Journey.MAX_ARCHIVED_ATTEMPTS).is_empty() and again.archived_attempts().is_empty() and Archive.list_attempts(path, "relay", Journey.MAX_SAVE_BYTES).size() == 1, "An old attempt that appears later is still left out of Replays")
 	for filename: String in DirAccess.get_files_at(directory): DirAccess.remove_absolute(directory.path_join(filename))
 	DirAccess.remove_absolute(directory)
+
+## Stage one's `role` turn as a fixture holds it: this run's own when it
+## derived one (so a run that rewrites the fixtures checks against them), else
+## the fixture file.
+func _recording(role: String) -> Dictionary:
+	if exported.has(Witness.SET): return JSON.parse_string(JSON.stringify(exported[Witness.SET][role]))
+	return _load(DIRECTORY + "set-the-tide-%s.json" % role)
 
 func _ints(value: Variant) -> Variant:
 	if value is float and value == floor(value): return int(value)

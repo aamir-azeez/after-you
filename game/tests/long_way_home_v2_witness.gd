@@ -73,14 +73,6 @@ static func play(sim: RefCounted, ops: Array, probe: Callable = Callable()) -> v
 			"n": Walk.wait_ticks(sim,int(op[1]))
 			"?": if probe.is_valid(): probe.call(str(op[1]),sim)
 
-## Same inputs as cooperative_witness.walk; reads the live pose directly.
+## cooperative_witness.walk: it stops beside a solid lever or selector.
 static func walk(sim: RefCounted, destination: Array) -> void:
-	for axis: String in ["x", "z"]:
-		var index := 0 if axis == "x" else 1
-		for _tick in range(Simulation.MAX_TICKS):
-			if sim.finished or not sim.error.is_empty(): return
-			var distance := int(destination[index]) - int(sim._players[sim.active_slot][axis])
-			if absi(distance) <= 1: break
-			var input := {"move_x": 0.0, "move_z": 0.0}
-			input["move_" + axis] = clampf(float(distance) / 8.0, -1.0, 1.0)
-			sim.step(input)
+	Walk.walk(sim, destination)

@@ -22,6 +22,10 @@ FIXTURE_WRITERS = {
     "a-house-for-two@1": ("house", "argument"),
     "relay-isles@2": ("simulation_v2", "argument"),
     "sleeping-lighthouse@2": ("lighthouse_v2_proof", "argument"),
+    "high-and-low@1": ("cooperative", "argument"),
+    "rolling-home@1": ("cooperative", "argument"),
+    "conservatory@1": ("journey_seven", "argument"),
+    "long-way-home@1": ("journey_seven", "argument"),
 }
 ## Backend copies named otherwise than backend/src/v2/<level id>[-v<N>].json and -initial.json.
 BACKEND_FILES = {

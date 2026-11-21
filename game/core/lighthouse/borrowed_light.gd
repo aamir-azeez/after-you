@@ -10,6 +10,7 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Catalog = preload("res://core/lighthouse/stage_catalog.gd")
 const Beam = preload("res://core/beam_field.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const Solid = preload("res://core/solid_footprint.gd")
 const TICK_RATE := 30
 const MAX_TICKS := 600
 const CURRENT_SIMULATION_VERSION := 5
@@ -68,6 +69,15 @@ var _sequence: Dictionary = {}
 var _attempt_latches: Dictionary = {}
 var _route_progress := 0
 var _handoff: Dictionary = {}
+## The stage to play in place of the catalog's: sleeping-lighthouse@2's room
+## engine gives its embedded stage (core/lighthouse/room_catalog.gd), whose
+## mirrors and selector are solid (core/solid_footprint.gd). {} plays the
+## catalog's plain stage, as solo @1 always does. Its ghost plays the same.
+var given_stage: Dictionary = {}
+## The stage's hand controls (Catalog.controls_of) and those that are solid,
+## set at reset: a pip walks round a solid one and works it from beside it.
+var _controls: Array = []
+var _solids: Array = []
 
 static func definition(stage_id: String = "borrowed-light") -> Dictionary:
 	return Catalog.definition(stage_id)
@@ -108,8 +118,10 @@ func reset(current_role: String = "a", prior_a: Dictionary = {}, completed_pairs
 func _reset_trusted(current_role: String, prior_a: Dictionary, checkpoint: Dictionary) -> void:
 	_checkpoint = checkpoint.duplicate(true)
 	_stage_id = Catalog.STAGE_IDS[int(checkpoint.stage_index)]
-	_level = definition(_stage_id)
+	_level = definition(_stage_id) if given_stage.is_empty() else given_stage.duplicate(true)
 	_definition_hash = Canonical.digest(_level)
+	_controls = Catalog.controls_of(_level)
+	_solids = Solid.solids(_controls)
 	_first_slot = _level.first_player_slot
 	_second_slot = "p1" if _first_slot == "p0" else "p0"
 	role = current_role
@@ -119,6 +131,7 @@ func _reset_trusted(current_role: String, prior_a: Dictionary, checkpoint: Dicti
 	_source = null
 	if role == "b":
 		_source = AfterYouBorrowedLight.new()
+		_source.given_stage = given_stage
 		_source.simulation_version = int(prior_a.simulation_version)
 		_source._reset_trusted("a", {}, checkpoint)
 	tick = 0
@@ -129,7 +142,7 @@ func _reset_trusted(current_role: String, prior_a: Dictionary, checkpoint: Dicti
 	for item: Dictionary in _level.optics.mirrors:
 		_mirrors[item.id] = checkpoint.mechanisms.mirrors.get(item.id, item.orientation)
 	_selectors = {}
-	for control: Dictionary in Catalog.controls(_stage_id):
+	for control: Dictionary in _controls:
 		if control.kind == "selector":
 			_selectors[control.id] = 0
 	_sequence = {"phase": "off", "first_tick": -1, "first_ticks": 0, "second_tick": -1, "second_ticks": 0, "broken": false}
@@ -190,7 +203,7 @@ func _advance(input: Dictionary) -> void:
 		_first_power_tick = _source._first_power_tick
 		_hold_ticks = _source._hold_ticks
 		_hold_broken = _source._hold_broken
-		for control: Dictionary in Catalog.controls(_stage_id):
+		for control: Dictionary in _controls:
 			if control.owner_slot == _first_slot:
 				_mirrors[control.optical_id] = _source._mirrors[control.optical_id]
 				if control.kind == "selector":
@@ -244,7 +257,7 @@ func _update_source_hold() -> void:
 
 func _refresh_optics() -> void:
 	var overrides: Dictionary = {}
-	for control: Dictionary in Catalog.controls(_stage_id):
+	for control: Dictionary in _controls:
 		if control.kind == "selector":
 			var selection: int = _selectors[control.id]
 			_mirrors[control.optical_id] = control.orientations[selection]
@@ -275,7 +288,7 @@ func _refresh_optics() -> void:
 			_bridges[item.id] = latched or lit or _objective
 		if was_open != _bridges[item.id]:
 			_events.append("bridge_open" if _bridges[item.id] else "bridge_closed")
-	var controls := Catalog.controls(_stage_id)
+	var controls := _controls
 	_mirror = _mirrors[controls[0].optical_id] if not controls.is_empty() else ""
 	_bridge = _bridges[_level.bridges[-1].id]
 
@@ -393,7 +406,7 @@ func _interact() -> void:
 		_events.append("mirror_rotated")
 		_message = PlayerCopy.BORROWED_LIGHT_C6F10C14E14B
 	elif action.id == "select_path":
-		for control: Dictionary in Catalog.controls(_stage_id):
+		for control: Dictionary in _controls:
 			if control.id == action.target_id:
 				_selectors[control.id] = (int(_selectors[control.id]) + 1) % control.states.size()
 				_events.append("route_selected")
@@ -461,8 +474,8 @@ func context_action() -> Dictionary:
 		return none
 	var slot := _active_slot()
 	var player: Dictionary = _players[slot]
-	for control: Dictionary in Catalog.controls(_stage_id):
-		if _near(player, control.position_cm, control.radius_cm):
+	for control: Dictionary in _controls:
+		if _reaches(player, control):
 			if control.owner_slot != slot:
 				return {"id": "reserved", "label": "Partner's selector" if control.kind == "selector" else "Partner's mirror", "enabled": false, "target_id": control.id}
 			if control.kind == "selector":
@@ -907,7 +920,13 @@ static func _route_ticks(route: Array) -> int:
 			total += ceili(float(absi(int(route[index][axis]) - int(route[index - 1][axis]))) / SPEED)
 	return total
 
+## Whether a pip may stand at (x, z): on floor, outside every solid hand
+## control's footprint (core/solid_footprint.gd). A pip a checkpoint left
+## inside one may still step out of it (_move).
 func walkable_at(x: int, z: int, exclude_timed: bool = false) -> bool:
+	return _floor_at(x, z, exclude_timed) and not Solid.blocked(_solids, Vector2i(x, z), RADIUS)
+
+func _floor_at(x: int, z: int, exclude_timed: bool = false) -> bool:
 	if not _loaded:
 		return false
 	for offset: Vector2i in [Vector2i.ZERO, Vector2i(-RADIUS, -RADIUS), Vector2i(RADIUS, -RADIUS), Vector2i(-RADIUS, RADIUS), Vector2i(RADIUS, RADIUS), Vector2i(-RADIUS, 0), Vector2i(RADIUS, 0), Vector2i(0, -RADIUS), Vector2i(0, RADIUS)]:
@@ -932,7 +951,7 @@ func _move(slot: String, frame: Dictionary) -> void:
 	var delta := Vector2i(int(frame.x) * speed, int(frame.z) * speed)
 	var destination := origin
 	for change: Vector2i in [delta, Vector2i(delta.x, 0), Vector2i(0, delta.y)]:
-		if _swept(origin, change, _ordered_windows() and slot == _first_slot):
+		if _swept(origin, change, _ordered_windows() and slot == _first_slot) and not Solid.blocks_step(_solids, origin, origin + change, RADIUS):
 			destination = origin + change
 			break
 	var previous_surface: String = _players[slot].surface_id
@@ -977,7 +996,7 @@ func _swept(origin: Vector2i, delta: Vector2i, exclude_timed: bool = false) -> b
 	var count := maxi(absi(delta.x), absi(delta.y))
 	for index in range(1, count + 1):
 		var position := origin + Vector2i(delta.x * index / count, delta.y * index / count)
-		if not walkable_at(position.x, position.y, exclude_timed):
+		if not _floor_at(position.x, position.y, exclude_timed):
 			return false
 	return true
 
@@ -1070,6 +1089,17 @@ static func _near(player: Dictionary, coords: Array, radius: int) -> bool:
 	var dx := int(player.x) - int(coords[0])
 	var dz := int(player.z) - int(coords[1])
 	return dx * dx + dz * dz <= radius * radius
+
+## Whether `player` works `control`: inside its radius_cm, as solo @1 always
+## was, or within reach beside a solid one (core/solid_footprint.gd). A pip
+## standing on the stage's goal is at the goal, not at a control it reaches.
+func _reaches(player: Dictionary, control: Dictionary) -> bool:
+	if Solid.of(control).is_empty():
+		return _near(player, control.position_cm, control.radius_cm)
+	var goal: Dictionary = _level.get("goal", {})
+	if not goal.is_empty() and player.surface_id == goal.surface_id and _near(player, goal.position_cm, goal.radius_cm):
+		return false
+	return Solid.within_reach(control, Vector2i(int(player.x), int(player.z)), RADIUS)
 
 static func _inside(point: Vector2i, rect: Array) -> bool:
 	return point.x >= rect[0] and point.y >= rect[1] and point.x <= rect[2] and point.y <= rect[3]

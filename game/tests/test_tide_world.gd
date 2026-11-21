@@ -4,7 +4,7 @@ extends SceneTree
 ## snapshot without changing it, the wheels show three and four values, the
 ## camera reaches the whole harbour, the dressing passes the scenery lint, and
 ## every mesh has its geometry and material.
-const TideCatalog = preload("res://core/journey/turn_of_the_tide_catalog.gd")
+const TideCatalog = preload("res://core/journey/stage_catalog.gd")
 const KEY := "turn-of-the-tide@1"
 const JourneyCatalog = preload("res://core/journey/stage_catalog.gd")
 const Simulation = preload("res://core/journey/simulation.gd")
@@ -40,7 +40,7 @@ func _initialize() -> void: _run.call_deferred()
 
 func _run() -> void:
 	root.size = Vector2i(1280, 720)
-	var level := TideCatalog.definition()
+	var level := TideCatalog.definition("turn-of-the-tide@1")
 	var digest := Canonical.digest(level)
 	await _first_stage(level)
 	_memory_camera(level)

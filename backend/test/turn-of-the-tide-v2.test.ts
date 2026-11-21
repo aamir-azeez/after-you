@@ -28,6 +28,9 @@ import bundledDefinition from "../src/v2/turn-of-the-tide-v2.json";
 import bundledInitial from "../src/v2/turn-of-the-tide-v2-initial.json";
 import { TIDE_CHAINS } from "./turn-of-the-tide-chains";
 import { withConfig } from "./config";
+import { LEGACY_CHAPTERS } from "../src/v2/legacy-chapters";
+// The published chapters as older apps hold them, which room level 2 lists after the rows (legacy-chapters.ts).
+const current = <T extends { definition_hash: string }>(items: T[]): T[] => items.filter(item => !LEGACY_CHAPTERS.some(entry => entry.key.definition_hash === item.definition_hash));
 
 type Account = { player_id: string; device_token: string };
 const key = () => crypto.randomUUID();
@@ -61,8 +64,8 @@ describe("Turn of the Tide version 2 (free, tide rules 10)", () => {
   it("bundles the exact native definition and initial checkpoint beside @1", async () => {
     expect(bundledDefinition).toEqual(definition); expect(bundledInitial).toEqual(initial);
     expect(await digest(canonicalJson(definition))).toBe(TURN_OF_THE_TIDE_V2_HASH);
-    expect(TURN_OF_THE_TIDE_V2_HASH).toBe("1f88aabb592fbf14640b50dd0644755d6afe522cae39d844524ac68b491f0a43");
-    expect(initial.checkpoint_hash).toBe("f04821b57f741e692fa350265b24d41d27037026209f8c16f7ef70d4546712e9");
+    expect(TURN_OF_THE_TIDE_V2_HASH).toBe("8e29d35f0f968b3a4f056802794437787c1077883fafc316d285b5edf40edb80");
+    expect(initial.checkpoint_hash).toBe("18082bf9acb916bb4e7b0c426e34444f1e6f1007fb173014c7731d1fc0b2258e");
     expect(definition.simulation_version).toBe(10);
     expect(turnOfTheTideV2.key).toEqual({ level_id: "turn-of-the-tide", level_version: 2, definition_hash: TURN_OF_THE_TIDE_V2_HASH });
     expect(turnOfTheTideV2).toMatchObject({ premium: false, recording_version: 7, simulation_version: 10, supported_simulation_versions: [10], require_supported_simulation_on_join: true, max_branches: 7 });
@@ -78,7 +81,7 @@ describe("Turn of the Tide version 2 (free, tide rules 10)", () => {
     expect(creatable(turnOfTheTideV2, on)).toBe(true);
     const entry = { ...turnOfTheTideV2.key, premium: false, recording_version: 7, simulation_version: 10, supported_simulation_versions: [10] };
     expect(advertisedChapters(on).at(-1)).toEqual(entry);
-    expect(advertisedChapters(on, 2).at(-1)).toEqual({ ...entry, stage_count: 2 });
+    expect(current(advertisedChapters(on, 2)).at(-1)).toEqual({ ...entry, stage_count: 2 });
     expect(advertisedChapters(on).filter(item => item.level_id === "turn-of-the-tide").map(item => item.level_version)).toEqual([1, 2]);
   });
   it("accepts the native chain: a stage ending on an open stub, with no route latched", async () => {

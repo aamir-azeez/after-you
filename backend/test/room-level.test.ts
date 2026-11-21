@@ -5,6 +5,7 @@ import worker from "../src/index";
 import { RELAY_KEY } from "../src/v2/protocol";
 import { campaignAdmissionRequest } from "../src/v2/campaign-admission-intent";
 import { withConfig } from "./config";
+import { LEGACY_CHAPTERS } from "../src/v2/legacy-chapters";
 
 // Clients that do not ask keep the published two-stage capability list. A
 // client asks for chapters with more stages with X-AfterYou-Room-Level: 2, and
@@ -47,9 +48,11 @@ it("names stage counts and the join limit only for level-2 clients", async () =>
   for (const row of level2.chapters) {
     expect(Number.isInteger(row.stage_count) && (row.stage_count as number) >= 1 && (row.stage_count as number) <= 8).toBe(true);
   }
-  // Rows with two stages are exactly the level-1 rows, in the same order.
+  // Rows with two stages are exactly the level-1 rows, in the same order; the published chapters as older apps
+  // hold them (legacy-chapters.ts) are listed on level 2 only.
   const { room_level: _level, max_join_versions: _join, max_stages: _stages, ...rest } = level2;
-  expect({ ...rest, chapters: level2.chapters.filter(row => row.stage_count === 2).map(({ stage_count: _count, ...row }) => row) }).toEqual(plain);
+  const current = level2.chapters.filter(row => !LEGACY_CHAPTERS.some(entry => entry.key.definition_hash === row.definition_hash));
+  expect({ ...rest, chapters: current.filter(row => row.stage_count === 2).map(({ stage_count: _count, ...row }) => row) }).toEqual(plain);
 });
 
 it("accepts up to 16 rules numbers on join and keeps the old refusal above that", async () => {

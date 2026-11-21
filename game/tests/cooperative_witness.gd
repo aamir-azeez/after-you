@@ -2,6 +2,7 @@ extends RefCounted
 ## Authored control routes, not a state injection or a general puzzle solver.
 const Simulation = preload("res://core/cooperative/simulation.gd")
 const Catalog = preload("res://core/cooperative/stage_catalog.gd")
+const Solid = preload("res://core/solid_footprint.gd")
 
 static func chapter(key: String) -> Dictionary:
 	var level := Catalog.definition(key)
@@ -72,17 +73,107 @@ static func receiver(level: Dictionary, stage_id: String, checkpoint: Dictionary
 			walk(sim, [832, -32]); walk(sim, [832, 0]); walk(sim, [1344, 0])
 	return sim
 
+## Walks along x, then z. A walk aimed into a solid hand control (levers,
+## switches, selectors, mirrors: core/solid_footprint.gd) ends at its edge on
+## the side the pip comes from, where it works it; a leg that runs into one
+## stops there rather than pushing at it.
 static func walk(sim: RefCounted, destination: Array) -> void:
+	var hands := hands_of(sim)
+	destination = beside(hands, sim.snapshot().players[sim.active_slot], destination)
 	for axis: String in ["x", "z"]:
 		var index := 0 if axis == "x" else 1
+		var line := Line.new(sim, axis)
 		for _tick in range(Simulation.MAX_TICKS):
 			if sim.finished or not sim.error.is_empty(): return
 			var player: Dictionary = sim.snapshot().players[sim.active_slot]
 			var distance := int(destination[index]) - int(player[axis])
 			if absi(distance) <= 1: break
+			if line.rejoin(sim, hands, player, signi(distance)): continue
 			var input := {"move_x": 0.0, "move_z": 0.0}
 			input["move_" + axis] = clampf(float(distance) / 8.0, -1.0, 1.0)
 			sim.step(input)
+			var now: Dictionary = sim.snapshot().players[sim.active_slot]
+			if int(now.x) == int(player.x) and int(now.z) == int(player.z) and against(hands, now, axis, signi(distance)):
+				line.detour = sidestep(sim, hands, axis, signi(distance))
+				if line.detour.is_empty(): break
+
+## A walk leg's line across its axis: after stepping round a hand (`detour`),
+## the walker comes back onto it once past the hand's centre, so the rest of
+## the leg runs where the route meant it to.
+class Line:
+	var axis := "x"
+	var other := "z"
+	var at := 0
+	var detour: Dictionary = {}
+
+	func _init(sim: RefCounted, leg_axis: String) -> void:
+		axis = leg_axis
+		other = "z" if axis == "x" else "x"
+		at = int(sim.snapshot().players[sim.active_slot][other])
+
+	## Takes one step back toward the line when it is clear to; whether it did.
+	func rejoin(sim: RefCounted, hands: Array, player: Dictionary, sign: int) -> bool:
+		if detour.is_empty() or int(player[other]) == at: return false
+		var centre := int(detour.position_cm[0 if axis == "x" else 1])
+		if (int(player[axis]) - centre) * sign < 0: return false
+		var back := signi(at - int(player[other]))
+		var next := Vector2i(int(player.x), int(player.z)) + (Vector2i(back * 8, 0) if other == "x" else Vector2i(0, back * 8))
+		for hand: Dictionary in hands:
+			if str(hand.get("surface_id", "")) == str(player.surface_id) and Solid.blocked([hand], next, Solid.BODY_CM): return false
+		var input := {"move_x": 0.0, "move_z": 0.0}
+		input["move_" + other] = clampf(float(at - int(player[other])) / 8.0, -1.0, 1.0)
+		sim.step(input)
+		var now: Dictionary = sim.snapshot().players[sim.active_slot]
+		if int(now.x) == int(player.x) and int(now.z) == int(player.z): detour = {}
+		return true
+
+## The solid hand controls of `sim`'s stage ([] for an engine without stages).
+static func hands_of(sim: RefCounted) -> Array:
+	var stage: Variant = sim.get("stage")
+	return Solid.solids(stage.get("levers", []) + stage.get("controls", [])) if stage is Dictionary else []
+
+## `destination` moved out of any of `hands`' kept-out circles, to its edge
+## on the side `player` stands.
+static func beside(hands: Array, player: Dictionary, destination: Array) -> Array:
+	var at := Vector2(float(destination[0]), float(destination[1]))
+	for hand: Dictionary in hands:
+		var centre := Vector2(float(hand.position_cm[0]), float(hand.position_cm[1]))
+		var keep := float(int(Solid.of(hand).radius_cm) + Solid.BODY_CM + 2)
+		if at.distance_to(centre) >= keep: continue
+		var away := Vector2(float(player.x), float(player.z)) - centre
+		at = centre + (away.normalized() if away.length() >= 1.0 else Vector2.RIGHT) * keep
+	return [roundi(at.x), roundi(at.y)]
+
+## Steps across `axis`, away from the hand in the way, until a step along it
+## the way of `sign` is clear (either side, the way off the hand first).
+## The hand it stepped round, or {} when it could not clear it.
+static func sidestep(sim: RefCounted, hands: Array, axis: String, sign: int) -> Dictionary:
+	var other := "z" if axis == "x" else "x"
+	var start: Dictionary = sim.snapshot().players[sim.active_slot]
+	var away := 1
+	var found: Dictionary = {}
+	for hand: Dictionary in hands:
+		var at := Vector2i(int(start.x), int(start.z))
+		if Solid.blocked([hand], at + (Vector2i(sign * 8, 0) if axis == "x" else Vector2i(0, sign * 8)), Solid.BODY_CM):
+			var centre := int(hand.position_cm[1 if other == "z" else 0])
+			away = 1 if int(start[other]) >= centre else -1
+			found = hand
+	for side: int in [away, -away]:
+		for _tick in range(16):
+			var player: Dictionary = sim.snapshot().players[sim.active_slot]
+			if not against(hands, player, axis, sign): return found
+			var input := {"move_x": 0.0, "move_z": 0.0}
+			input["move_" + other] = float(side)
+			sim.step(input)
+			var now: Dictionary = sim.snapshot().players[sim.active_slot]
+			if int(now.x) == int(player.x) and int(now.z) == int(player.z): break
+		if not against(hands, sim.snapshot().players[sim.active_slot], axis, sign): return found
+	return {}
+
+## Whether a step along `axis` the way of `sign` would enter a hand's footprint.
+static func against(hands: Array, player: Dictionary, axis: String, sign: int) -> bool:
+	var next := Vector2i(int(player.x), int(player.z)) + (Vector2i(sign * 8, 0) if axis == "x" else Vector2i(0, sign * 8))
+	return hands.any(func(hand: Dictionary) -> bool: return str(hand.get("surface_id", "")) == str(player.surface_id) and Solid.blocked([hand], next, Solid.BODY_CM))
 
 static func tap(sim: RefCounted) -> void:
 	if sim.finished: return

@@ -31,6 +31,7 @@ extends RefCounted
 ## settle() on every dressing (placed by hand too), so every reader gets plain
 ## kit specs that rest on ground.
 const ChapterIndex = preload("res://content/chapters/index.gd")
+const Solid = preload("res://core/solid_footprint.gd")
 const LevelLayout = preload("res://services/level_layout.gd")
 const Props = preload("res://presentation/kit/props.gd")
 const PropRules = preload("res://presentation/kit/prop_rules.gd")
@@ -67,7 +68,7 @@ static func layout_key(key: String) -> String:
 static func definition(key: String) -> Dictionary:
 	var source: Array = ChapterIndex.data(layout_key(key)).get("definition", [])
 	if source.is_empty(): return {}
-	return load(str(source[0])).callv(str(source[1]), source.slice(2))
+	return Solid.with_hands(load(str(source[0])).callv(str(source[1]), source.slice(2)))
 
 ## A chapter's stage ids, in order (`level`: its definition, if at hand).
 static func stage_ids(key: String, level: Dictionary = {}) -> Array:

@@ -18,9 +18,9 @@ import type { CampaignCreation } from "../src/v2/campaign-creation-intent";
 import type { CampaignDefinition, CampaignKey, CampaignJoin } from "../src/v2/campaign-types";
 import type { RoomStateV2 } from "../src/v2/room";
 import fixture from "./fixtures/campaign-control-v2.json";
-import highA from "../../game/tests/fixtures/cooperative/upper-path-a.json";
-import highB from "../../game/tests/fixtures/cooperative/upper-path-b.json";
-import middle from "../../game/tests/fixtures/cooperative/upper-path-checkpoint.json";
+import highA from "./fixtures/published-runs/cooperative/upper-path-a.json";
+import highB from "./fixtures/published-runs/cooperative/upper-path-b.json";
+import middle from "./fixtures/published-runs/cooperative/upper-path-checkpoint.json";
 
 const H = fixture.active_view.host_id, G = fixture.active_view.guest_id!, R = fixture.active_view.campaign_room_id, I = fixture.active_view.invite_code!;
 const D = "a".repeat(64), RECOVERY = "b".repeat(64), K = "saved-creation-key-0001";

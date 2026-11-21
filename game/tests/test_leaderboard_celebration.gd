@@ -23,7 +23,8 @@ const Storage = preload("res://services/local_save.gd")
 const InGameModal = preload("res://presentation/in_game_modal.gd")
 const OWNER := "OOOOOOOOOOOOOOOOOOOOOO"
 const PARTNER := "GGGGGGGGGGGGGGGGGGGGGG"
-const BOARD := "sleeping-lighthouse@2"
+## The Lighthouse's current board (its mirrors went solid, so it opened again by definition).
+static var BOARD := Runs.board_key(Registry.LIGHTHOUSE_V2)
 const RUNS_PATH := "user://celebration-runs-test.json"
 const PLACINGS_PATH := "user://celebration-placings-test.json"
 const LOOKS_PATH := "user://celebration-looks-test.json"

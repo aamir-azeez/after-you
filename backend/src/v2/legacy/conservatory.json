@@ -1,0 +1,764 @@
+{
+	"bridges": [
+		{
+			"from_surface": "lower-room",
+			"height_cm": 0,
+			"id": "garden-door",
+			"owner_slot": "",
+			"rect_cm": [
+				448,
+				-32,
+				544,
+				64
+			],
+			"to_surface": "garden"
+		},
+		{
+			"from_surface": "court",
+			"height_cm": 0,
+			"id": "lower-crossing",
+			"owner_slot": "p0",
+			"rect_cm": [
+				-160,
+				160,
+				320,
+				256
+			],
+			"to_surface": "lower-room"
+		},
+		{
+			"from_surface": "court",
+			"height_cm": 0,
+			"id": "court-return",
+			"owner_slot": "p0",
+			"rect_cm": [
+				-160,
+				16,
+				-96,
+				96
+			],
+			"to_surface": "mirror-room"
+		},
+		{
+			"from_surface": "mirror-room",
+			"height_cm": 0,
+			"id": "room-return",
+			"owner_slot": "p0",
+			"rect_cm": [
+				96,
+				16,
+				320,
+				96
+			],
+			"to_surface": "lower-room"
+		}
+	],
+	"drops": [
+		{
+			"destination_surface": "lower-room",
+			"height_cm": 0,
+			"id": "gallery-hatch",
+			"rect_cm": [
+				392,
+				-264,
+				440,
+				-216
+			],
+			"surface_id": "gallery"
+		}
+	],
+	"id": "conservatory",
+	"islands": [
+		{
+			"height_cm": 0,
+			"id": "court",
+			"rect_cm": [
+				-640,
+				-448,
+				-160,
+				320
+			]
+		},
+		{
+			"height_cm": 160,
+			"id": "gallery",
+			"rect_cm": [
+				32,
+				-448,
+				672,
+				-128
+			]
+		},
+		{
+			"height_cm": 160,
+			"id": "recovery-landing",
+			"rect_cm": [
+				32,
+				-128,
+				128,
+				64
+			]
+		},
+		{
+			"height_cm": 0,
+			"id": "lower-room",
+			"rect_cm": [
+				320,
+				-320,
+				448,
+				320
+			]
+		},
+		{
+			"height_cm": 0,
+			"id": "garden",
+			"rect_cm": [
+				544,
+				-128,
+				864,
+				320
+			]
+		},
+		{
+			"height_cm": 0,
+			"id": "mirror-room",
+			"rect_cm": [
+				-96,
+				-96,
+				96,
+				96
+			]
+		}
+	],
+	"premium": true,
+	"props": [],
+	"schema_version": 7,
+	"simulation_version": 7,
+	"stages": [
+		{
+			"ball_pads": [],
+			"controls": [
+				{
+					"height_cm": 0,
+					"id": "court-fork",
+					"initial": "backslash",
+					"kind": "mirror",
+					"owner_slot": "p0",
+					"position_cm": [
+						-416,
+						128
+					],
+					"radius_cm": 28,
+					"surface_id": "court",
+					"values": [
+						"slash",
+						"backslash"
+					]
+				},
+				{
+					"height_cm": 0,
+					"id": "high-return",
+					"initial": "backslash",
+					"kind": "mirror",
+					"owner_slot": "p0",
+					"position_cm": [
+						-416,
+						-352
+					],
+					"radius_cm": 28,
+					"surface_id": "court",
+					"values": [
+						"slash",
+						"backslash"
+					]
+				},
+				{
+					"height_cm": 0,
+					"id": "preserved-turn",
+					"initial": "backslash",
+					"kind": "mirror",
+					"owner_slot": "p0",
+					"position_cm": [
+						-224,
+						-352
+					],
+					"radius_cm": 28,
+					"surface_id": "court",
+					"values": [
+						"slash",
+						"backslash"
+					]
+				},
+				{
+					"height_cm": 160,
+					"id": "gallery-fork",
+					"initial": "backslash",
+					"kind": "mirror",
+					"owner_slot": "p1",
+					"position_cm": [
+						384,
+						-352
+					],
+					"radius_cm": 28,
+					"surface_id": "gallery",
+					"values": [
+						"slash",
+						"backslash"
+					]
+				},
+				{
+					"height_cm": 160,
+					"id": "garden-return",
+					"initial": "backslash",
+					"kind": "mirror",
+					"owner_slot": "p1",
+					"position_cm": [
+						384,
+						-192
+					],
+					"radius_cm": 28,
+					"surface_id": "gallery",
+					"values": [
+						"slash",
+						"backslash"
+					]
+				}
+			],
+			"entry_latch_routes": [
+				"high-stair",
+				"garden-door"
+			],
+			"first_player_slot": "p0",
+			"gates": [
+				{
+					"route_id": "high-stair",
+					"when": {
+						"signal_id": "high-light"
+					}
+				},
+				{
+					"route_id": "recovery-stair"
+				},
+				{
+					"route_id": "garden-door",
+					"when": {
+						"signal_id": "garden-light"
+					}
+				}
+			],
+			"goal": {
+				"height_cm": 0,
+				"id": "first-garden",
+				"owner_slot": "p1",
+				"position_cm": [
+					752,
+					160
+				],
+				"radius_cm": 28,
+				"surface_id": "garden"
+			},
+			"goal_policy": {
+				"kind": "ring",
+				"when": {
+					"all": [
+						{
+							"signal_id": "high-light"
+						},
+						{
+							"signal_id": "garden-light"
+						}
+					]
+				}
+			},
+			"hint_a": "Point the light at the top steps.",
+			"hint_b": "Reach the garden.",
+			"id": "a-light-above",
+			"kind": "signal_route",
+			"levers": [],
+			"optical_field": {
+				"blockers": [],
+				"bounds_cm": [
+					-704,
+					-512,
+					928,
+					384
+				],
+				"emitters": [
+					{
+						"direction": "east",
+						"enabled": true,
+						"id": "court-lamp",
+						"position_cm": [
+							-592,
+							128
+						]
+					},
+					{
+						"direction": "east",
+						"enabled": true,
+						"id": "gallery-lamp",
+						"position_cm": [
+							192,
+							-352
+						]
+					}
+				],
+				"mirrors": [
+					{
+						"enabled": true,
+						"id": "court-fork",
+						"orientation": "backslash",
+						"position_cm": [
+							-416,
+							128
+						]
+					},
+					{
+						"enabled": true,
+						"id": "high-return",
+						"orientation": "backslash",
+						"position_cm": [
+							-416,
+							-352
+						]
+					},
+					{
+						"enabled": true,
+						"id": "preserved-turn",
+						"orientation": "backslash",
+						"position_cm": [
+							-224,
+							-352
+						]
+					},
+					{
+						"enabled": true,
+						"id": "gallery-fork",
+						"orientation": "backslash",
+						"position_cm": [
+							384,
+							-352
+						]
+					},
+					{
+						"enabled": true,
+						"id": "garden-return",
+						"orientation": "backslash",
+						"position_cm": [
+							384,
+							-192
+						]
+					}
+				],
+				"receivers": [
+					{
+						"enabled": true,
+						"id": "high-light",
+						"position_cm": [
+							-224,
+							-128
+						]
+					},
+					{
+						"enabled": true,
+						"id": "low-warm",
+						"position_cm": [
+							-416,
+							288
+						]
+					},
+					{
+						"enabled": true,
+						"id": "garden-light",
+						"position_cm": [
+							192,
+							-192
+						]
+					},
+					{
+						"enabled": true,
+						"id": "east-warm",
+						"position_cm": [
+							576,
+							-192
+						]
+					}
+				],
+				"schema_version": 1
+			},
+			"pressure_pads": [],
+			"receiver_action_ticks": 2,
+			"receiver_route_cm": [
+				[
+					-208,
+					-256
+				],
+				[
+					384,
+					-256
+				],
+				[
+					384,
+					-192
+				],
+				[
+					416,
+					-192
+				],
+				[
+					416,
+					-240
+				],
+				[
+					416,
+					16
+				],
+				[
+					752,
+					16
+				],
+				[
+					752,
+					160
+				]
+			],
+			"source_policy": {
+				"kind": "signal_route",
+				"when": {
+					"signal_id": "high-light"
+				}
+			},
+			"title": "A Light Above",
+			"version": 1
+		},
+		{
+			"ball_pads": [],
+			"controls": [
+				{
+					"height_cm": 0,
+					"id": "lower-fork",
+					"initial": "backslash",
+					"kind": "mirror",
+					"owner_slot": "p1",
+					"position_cm": [
+						592,
+						160
+					],
+					"radius_cm": 28,
+					"surface_id": "garden",
+					"values": [
+						"slash",
+						"backslash"
+					]
+				},
+				{
+					"height_cm": 0,
+					"id": "crossing-return",
+					"initial": "backslash",
+					"kind": "mirror",
+					"owner_slot": "p1",
+					"position_cm": [
+						592,
+						-64
+					],
+					"radius_cm": 28,
+					"surface_id": "garden",
+					"values": [
+						"slash",
+						"backslash"
+					]
+				},
+				{
+					"height_cm": 0,
+					"id": "final-mirror",
+					"initial": "backslash",
+					"kind": "mirror",
+					"owner_slot": "p0",
+					"position_cm": [
+						0,
+						0
+					],
+					"radius_cm": 28,
+					"surface_id": "mirror-room",
+					"values": [
+						"slash",
+						"backslash"
+					]
+				}
+			],
+			"entry_latch_routes": [
+				"lower-crossing"
+			],
+			"first_player_slot": "p1",
+			"gates": [
+				{
+					"route_id": "lower-crossing",
+					"when": {
+						"signal_id": "crossing-light"
+					}
+				},
+				{
+					"route_id": "court-return",
+					"when": {
+						"lever_id": "return-shutter"
+					}
+				},
+				{
+					"route_id": "room-return",
+					"when": {
+						"lever_id": "return-shutter"
+					}
+				}
+			],
+			"goal": {
+				"height_cm": 0,
+				"id": "two-lights",
+				"owner_slot": "p0",
+				"position_cm": [
+					752,
+					64
+				],
+				"radius_cm": 28,
+				"surface_id": "garden"
+			},
+			"goal_policy": {
+				"kind": "ring",
+				"when": {
+					"all": [
+						{
+							"signal_id": "crossing-light"
+						},
+						{
+							"signal_id": "second-light"
+						}
+					]
+				}
+			},
+			"hint_a": "Leave the lower crossing lit and wait in the garden.",
+			"hint_b": "Open the return shutter and bring both lights to the garden.",
+			"id": "the-way-light-returns",
+			"kind": "signal_route",
+			"levers": [
+				{
+					"height_cm": 0,
+					"id": "return-shutter",
+					"owner_slot": "p0",
+					"position_cm": [
+						352,
+						64
+					],
+					"radius_cm": 28,
+					"surface_id": "lower-room"
+				}
+			],
+			"optical_field": {
+				"blockers": [],
+				"bounds_cm": [
+					-704,
+					-512,
+					928,
+					384
+				],
+				"emitters": [
+					{
+						"direction": "west",
+						"enabled": true,
+						"id": "garden-lamp",
+						"position_cm": [
+							784,
+							160
+						]
+					},
+					{
+						"direction": "east",
+						"enabled": true,
+						"id": "return-lamp",
+						"position_cm": [
+							-48,
+							0
+						]
+					}
+				],
+				"mirrors": [
+					{
+						"enabled": true,
+						"id": "lower-fork",
+						"orientation": "backslash",
+						"position_cm": [
+							592,
+							160
+						]
+					},
+					{
+						"enabled": true,
+						"id": "crossing-return",
+						"orientation": "backslash",
+						"position_cm": [
+							592,
+							-64
+						]
+					},
+					{
+						"enabled": true,
+						"id": "final-mirror",
+						"orientation": "backslash",
+						"position_cm": [
+							0,
+							0
+						]
+					}
+				],
+				"receivers": [
+					{
+						"enabled": true,
+						"id": "crossing-light",
+						"position_cm": [
+							784,
+							-64
+						]
+					},
+					{
+						"enabled": true,
+						"id": "south-warm",
+						"position_cm": [
+							592,
+							288
+						]
+					},
+					{
+						"enabled": true,
+						"id": "second-light",
+						"position_cm": [
+							0,
+							-80
+						]
+					},
+					{
+						"enabled": true,
+						"id": "room-warm",
+						"position_cm": [
+							0,
+							64
+						]
+					}
+				],
+				"schema_version": 1
+			},
+			"pressure_pads": [],
+			"receiver_action_ticks": 3,
+			"receiver_route_cm": [
+				[
+					-304,
+					208
+				],
+				[
+					384,
+					208
+				],
+				[
+					352,
+					64
+				],
+				[
+					0,
+					64
+				],
+				[
+					0,
+					0
+				],
+				[
+					0,
+					64
+				],
+				[
+					384,
+					64
+				],
+				[
+					384,
+					16
+				],
+				[
+					752,
+					16
+				],
+				[
+					752,
+					64
+				]
+			],
+			"source_policy": {
+				"endpoint": {
+					"height_cm": 0,
+					"id": "garden-wait",
+					"owner_slot": "p1",
+					"position_cm": [
+						656,
+						64
+					],
+					"radius_cm": 96,
+					"surface_id": "garden"
+				},
+				"kind": "signal_route",
+				"when": {
+					"signal_id": "crossing-light"
+				}
+			},
+			"title": "The Way Light Returns",
+			"version": 1
+		}
+	],
+	"stairs": [
+		{
+			"axis": "x",
+			"from_height_cm": 0,
+			"from_surface": "court",
+			"id": "high-stair",
+			"owner_slot": "p1",
+			"rect_cm": [
+				-160,
+				-304,
+				32,
+				-208
+			],
+			"to_height_cm": 160,
+			"to_surface": "gallery"
+		},
+		{
+			"axis": "x",
+			"from_height_cm": 160,
+			"from_surface": "recovery-landing",
+			"id": "recovery-stair",
+			"owner_slot": "p1",
+			"rect_cm": [
+				128,
+				-96,
+				320,
+				0
+			],
+			"to_height_cm": 0,
+			"to_surface": "lower-room"
+		}
+	],
+	"starts": {
+		"p0": {
+			"height_cm": 0,
+			"position_cm": [
+				-528,
+				144
+			],
+			"surface_id": "court"
+		},
+		"p1": {
+			"height_cm": 0,
+			"position_cm": [
+				-208,
+				-256
+			],
+			"surface_id": "court"
+		}
+	},
+	"title": "Conservatory",
+	"version": 1
+}

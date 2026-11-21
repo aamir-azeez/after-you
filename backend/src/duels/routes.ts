@@ -7,12 +7,12 @@ import { pooled } from "../room-inbox";
 import { interactionBlocked } from "../safety";
 import { duelPairKeys } from "../leaderboards/platform-rule";
 import { samePair, type PairKeys } from "../leaderboards/pair-accounts";
-import { boardKeys, knownBoard } from "../leaderboards/boards";
+import { boardChapter, boardsFor, knownBoard } from "../leaderboards/boards";
 import { cachedView, storeView } from "../leaderboards/view-cache";
 import { pollenEarning } from "../pollen/routes";
 import { RATES } from "../pollen/rates";
 import type { DuelRoomPay, DuelWin, DuelWinAnswer } from "../pollen/duel-pay";
-import { CHAPTERS, creatable } from "../v2/chapters";
+import { creatable } from "../v2/chapters";
 import { blankSide, giveUpCounts, isFinal, isOpen, knownKey, newFriendDuel, newGhostRace, sideOf, viewFor, type Duel, type DuelView, type Ghost, type ProgressNote, type Side, type SideRoom } from "./model";
 import type { DuelAction, FinishProof } from "./store";
 import { giveUpFreeAt, mutual, type DuelRef, type PartyOp, type PartyState } from "./party";
@@ -87,11 +87,11 @@ export function boardOf(value: unknown): string {
   if (!board) throw new ApiError(400, "invalid_duel_request");
   return board;
 }
-/** The chapter row a board key names. */
+/** The chapter a board key names: its current definition, or on an older app's board of a changed chapter the definition that app plays (leaderboards/boards.ts). */
 export function chapterRow(board: string) {
-  const row = CHAPTERS.find(item => `${item.adapter.key.level_id}@${item.adapter.key.level_version}` === board);
-  if (!row) throw new ApiError(400, "invalid_duel_request");
-  return row;
+  const adapter = boardChapter(board);
+  if (!adapter) throw new ApiError(400, "invalid_duel_request");
+  return { adapter };
 }
 export const party = (env: Env, id: string) => env.LEADERBOARD_MEMBERS.getByName(id);
 
@@ -333,8 +333,8 @@ function answeringOf(input: unknown, required: boolean): number | null {
  * Each board's times to race: its top runs from the view (cached when it can be) and Our run (`developer`, null for
  * none): for an app that plays it (`plays`), the owner's run the view names (leaderboards/our-run.ts).
  */
-async function ghosts(env: Env, plays: boolean): Promise<unknown> {
-  const boards = await pooled([...boardKeys()], BOARD_CONCURRENCY, async key => {
+async function ghosts(env: Env, plays: boolean, keys: readonly string[]): Promise<unknown> {
+  const boards = await pooled([...keys], BOARD_CONCURRENCY, async key => {
     let view = await cachedView(key);
     if (!view) { view = await board(env, key).view(key); await storeView(view); }
     // LEGACY: an app without the header gets the run it shipped (legacy-shipped-our-run.ts).
@@ -588,7 +588,7 @@ export async function routeDuels(request: Request, path: string, player: string,
   if (request.method === "PUT" && path.startsWith(PUBLIC_PREFIX) && publicDuelsOn(env)) return routePublicDuels(request, path, player, env, now, await boundedJson(request, 1024), look);
   if (request.method === "GET") {
     if (path === DUELS_PREFIX) return lobby(env, player, now, look);
-    if (path === DUELS_PREFIX + "/ghosts") return ghosts(env, playsOurRun(request));
+    if (path === DUELS_PREFIX + "/ghosts") return ghosts(env, playsOurRun(request), boardsFor(request));
     if (path.startsWith(PUBLIC_PREFIX) && publicDuelsOn(env)) { const answer = await routePublicDuels(request, path, player, env, now, null, look, safetyToken); if (answer !== null) return answer; }
     const match = DUEL_PATH.exec(path);
     if (match && !match[3]) return duelAction(env, clientReach(request), player, boardOf(match[1]), match[2], undefined, null, now);

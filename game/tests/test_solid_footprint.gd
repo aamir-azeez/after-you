@@ -26,5 +26,7 @@ func _run() -> void:
 	_check(Solid.blocked([solid], Vector2i(230 + 39, -90), BODY) and not Solid.blocked([solid], Vector2i(230 + 40, -90), BODY), "A pip's centre keeps its own body radius off the footprint's edge")
 	_check(Solid.within_reach(solid, Vector2i(230, -90 - 60), BODY) and not Solid.within_reach(solid, Vector2i(230, -90 - 61), BODY), "A solid entity is reached from within reach_cm of its edge, from any side")
 	_check(Solid.within_reach(solid, Vector2i(230 + 40, -90), BODY), "The closest a pip can stand reaches the solid entity")
+	_check(Solid.blocks_step([solid], Vector2i(230 + 50, -90), Vector2i(230 + 38, -90), BODY) and Solid.blocks_step([solid], Vector2i(230 + 20, -90), Vector2i(230 + 12, -90), BODY), "A step into a footprint, or deeper in, is blocked")
+	_check(not Solid.blocks_step([solid], Vector2i(230 + 12, -90), Vector2i(230 + 20, -90), BODY) and not Solid.blocks_step([plain], Vector2i(230, -90), Vector2i(231, -90), BODY), "A pip left inside a footprint may step out of it")
 	print("SOLID FOOTPRINT: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)

@@ -78,6 +78,8 @@ func show_stage(stage: Dictionary) -> void:
 	_floor_cables.clear()
 	_physical_levers.clear()
 	_lever_pieces.clear()
+	_hand_controls.clear()
+	_hand_values.clear()
 	_physical_balls.clear()
 	_ball_trails.clear()
 	_ball_materials.clear()
@@ -523,6 +525,7 @@ func _build_lever(lever: Dictionary) -> void:
 	var kit: Script = SelectorPiece if slot == "selector" else LeverPiece
 	var piece: RefCounted = kit.build(_piece_style(slot, str(lever.id)), _at(lever), terrain, options)
 	_lever_pieces[lever.id] = piece
+	_hand_controls[lever.id] = lever
 	_physical_levers[lever.id] = piece.anchor
 	mark_sound("control:%s" % lever.id, piece.anchor)
 

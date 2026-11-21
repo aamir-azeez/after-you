@@ -202,6 +202,11 @@ func _switching() -> void:
 	var preserved: Dictionary = boundary.disk[scope].duplicate(true)
 	boundary.disk[scope].snapshot.definition_hash = "f".repeat(64)
 	var before := Canonical.digest(boundary.disk[scope])
+	# A known level under another definition (Registry.retired) binds as never kept, so it holds no other room.
+	_check(c.bind_room(OTHER) and not c.read_only and c.chapter_key().is_empty() and c.snapshot().is_empty(), "A stored snapshot on an earlier definition binds empty without stale engine")
+	_check(Canonical.digest(boundary.disk[scope])==before, "Its bytes are not overwritten")
+	boundary.disk[scope].snapshot.level_id = "future-chapter"
+	before = Canonical.digest(boundary.disk[scope])
 	_check(not c.bind_room(OTHER) and c.read_only and c.chapter_key().is_empty(), "Unsupported stored snapshot holds without stale engine")
 	_check(Canonical.digest(boundary.disk[scope])==before, "Unsupported bytes are not overwritten")
 	boundary.disk[scope] = preserved

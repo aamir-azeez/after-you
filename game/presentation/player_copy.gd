@@ -748,6 +748,10 @@ const HARD_LOCKED_NOTE := "Finish this chapter to unlock Hard"
 const HARD_OPEN_NOTE := "Hard · No retries"
 const HARD_LOCKED_TOAST := "Finish this chapter once, solo or with a friend, to unlock Hard."
 const HARD_HOST_UNAVAILABLE := "Hard rooms aren't open yet."
+# A room made under an earlier definition of its level (ChapterRegistry.retired):
+# opening one this phone had, and joining a friend's from an older app.
+const ROOM_BEFORE_UPDATE := "This room is from before this level was updated. Host a new room to play it again."
+const JOIN_BEFORE_UPDATE := "This room is from an older version of the game. Once your friend updates, host a new room together."
 # Chapter unlocks (services/chapter_unlocks.gd): a locked chapter's card, and
 # the line a tap on it shows. %s is the chapter before it.
 const CHAPTER_LOCKED_NOTE := "Finish %s to open this chapter"

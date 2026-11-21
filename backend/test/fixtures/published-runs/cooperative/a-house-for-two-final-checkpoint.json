@@ -1,0 +1,788 @@
+{
+	"a_recording_hash": "9c2b3a7e9c3a0fc200ba783b2dc84fe9108a2156cf7d396445eac791d78b4ece",
+	"b_recording_hash": "a97816d4a4fb0960409a6ab02441e37842944e22e47cd5cbda6d7c0795457056",
+	"checkpoint_hash": "a1a2aad324bbdd0d6870a81e42ba343e811570ad85dec80e3ce370db27f60c29",
+	"completed_stage_id": "the-room-below",
+	"definition_hash": "b868745e7bc025bb8fe5a49b698b15dfb0d428ea9fe905ce46fa46dd27d79867",
+	"level_id": "a-house-for-two",
+	"level_version": 1,
+	"mechanisms": {
+		"latched_bridges": [
+			"loft-stairs",
+			"lower-hall-passage",
+			"sunroom-entry",
+			"workshop-entry",
+			"workshop-return"
+		],
+		"levers": {
+			"loft-lever": true,
+			"workshop-lever": true
+		},
+		"props": {
+			"house-ball": {
+				"height": 0,
+				"holder_slot": "p0",
+				"socket_id": "",
+				"status": "claimed",
+				"surface_id": "lower-hall",
+				"x": 592,
+				"z": 0
+			}
+		}
+	},
+	"next_stage_id": "",
+	"players": {
+		"p0": {
+			"height": 0,
+			"surface_id": "sunroom",
+			"x": 960,
+			"z": 112
+		},
+		"p1": {
+			"height": 0,
+			"surface_id": "lower-hall",
+			"x": 432,
+			"z": 64
+		}
+	},
+	"previous_checkpoint_hash": "0b90178881c0ade9f632f68f3b9c63b7836647e0993befb536f62e251527f164",
+	"proof": {
+		"a": {
+			"actions": [
+				{
+					"action": false,
+					"ticks": 2,
+					"x": -100,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 26,
+					"x": 0,
+					"z": 100
+				},
+				{
+					"action": false,
+					"ticks": 1,
+					"x": 0,
+					"z": 0
+				},
+				{
+					"action": true,
+					"ticks": 1,
+					"x": 0,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 8,
+					"x": -100,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 10,
+					"x": 0,
+					"z": -100
+				},
+				{
+					"action": false,
+					"ticks": 46,
+					"x": -100,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 14,
+					"x": 0,
+					"z": -100
+				},
+				{
+					"action": false,
+					"ticks": 48,
+					"x": -100,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 10,
+					"x": 0,
+					"z": -100
+				},
+				{
+					"action": false,
+					"ticks": 18,
+					"x": -100,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 10,
+					"x": 0,
+					"z": 100
+				},
+				{
+					"action": false,
+					"ticks": 64,
+					"x": 100,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 6,
+					"x": 0,
+					"z": -100
+				},
+				{
+					"action": false,
+					"ticks": 4,
+					"x": 100,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 16,
+					"x": 0,
+					"z": 100
+				},
+				{
+					"action": false,
+					"ticks": 4,
+					"x": -100,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 4,
+					"x": 0,
+					"z": 100
+				},
+				{
+					"action": false,
+					"ticks": 40,
+					"x": 100,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 1,
+					"x": 0,
+					"z": 0
+				},
+				{
+					"action": true,
+					"ticks": 1,
+					"x": 0,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 8,
+					"x": 0,
+					"z": 100
+				}
+			],
+			"catch_assistance": true,
+			"checkpoint_hash": "0b90178881c0ade9f632f68f3b9c63b7836647e0993befb536f62e251527f164",
+			"completed": false,
+			"definition_hash": "b868745e7bc025bb8fe5a49b698b15dfb0d428ea9fe905ce46fa46dd27d79867",
+			"duration_ticks": 342,
+			"final_state_hash": "fffdede45712ae5393e669c588dc77ec1b2695bf77f22f049d416cd7a77d3c2f",
+			"level_id": "a-house-for-two",
+			"level_version": 1,
+			"outcome": {
+				"objective_complete": false,
+				"source_ready": true
+			},
+			"player_slot": "p1",
+			"recording_hash": "9c2b3a7e9c3a0fc200ba783b2dc84fe9108a2156cf7d396445eac791d78b4ece",
+			"replay_checks": [
+				{
+					"state_hash": "8369bc2478fafd1906b74728b202ccf2c9764ed53230664734ea06622a900384",
+					"tick": 30
+				},
+				{
+					"state_hash": "dd4138c014733c99df556500510505891e8e54301647ee13417f9a396378458c",
+					"tick": 60
+				},
+				{
+					"state_hash": "e0ff00fab260b4c2f4f5067ddc6ebd35b08e949f831fadfa8814489c7f452262",
+					"tick": 90
+				},
+				{
+					"state_hash": "51d09cc21a66d2b1c229ac7d61b9589e01bb994cc159a5cd957a6ec118455c55",
+					"tick": 120
+				},
+				{
+					"state_hash": "7faf7246f16b5d87aa86c4479b89b98c9e7e6f7423297eda9d2a8e94314e5bec",
+					"tick": 150
+				},
+				{
+					"state_hash": "0f8823064577fb2ad049692f9e4ab5b7e53f39c3459610335f5534b524712153",
+					"tick": 180
+				},
+				{
+					"state_hash": "05497fcc76807bb536d664b1a7201f043653eee715e63cfbd40e5ddafd5fe005",
+					"tick": 210
+				},
+				{
+					"state_hash": "00bf4b192b94a4c710aa2cc02d3185ce17d7e0f36e16d5aa7daa32f0b79381e7",
+					"tick": 240
+				},
+				{
+					"state_hash": "58320debe2d0ad6225e198cf45e15018a4d28241131542b0a69434d4edf83950",
+					"tick": 270
+				},
+				{
+					"state_hash": "80bb3d633d57689a7981dc365562ac17158446e7942d60ca56e6d19f3215cc14",
+					"tick": 300
+				},
+				{
+					"state_hash": "32c8a2cddb23b3c65ac015020be06ce6eed625f56313ff33fe454250e846a1bd",
+					"tick": 330
+				},
+				{
+					"state_hash": "fffdede45712ae5393e669c588dc77ec1b2695bf77f22f049d416cd7a77d3c2f",
+					"tick": 342
+				}
+			],
+			"role": "a",
+			"schema_version": 6,
+			"simulation_version": 6,
+			"source_recording_hash": "",
+			"stage_id": "the-room-below",
+			"stage_version": 1,
+			"tick_rate": 30
+		},
+		"b": {
+			"actions": [
+				{
+					"action": false,
+					"ticks": 14,
+					"x": 100,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 4,
+					"x": 0,
+					"z": -100
+				},
+				{
+					"action": false,
+					"ticks": 46,
+					"x": 100,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 14,
+					"x": 0,
+					"z": 100
+				},
+				{
+					"action": false,
+					"ticks": 36,
+					"x": 100,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 221,
+					"x": 0,
+					"z": 0
+				},
+				{
+					"action": true,
+					"ticks": 1,
+					"x": 0,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 18,
+					"x": 100,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 12,
+					"x": 0,
+					"z": 100
+				},
+				{
+					"action": false,
+					"ticks": 12,
+					"x": 100,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 12,
+					"x": 0,
+					"z": -100
+				},
+				{
+					"action": false,
+					"ticks": 38,
+					"x": 100,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 14,
+					"x": 0,
+					"z": 100
+				},
+				{
+					"action": false,
+					"ticks": 1,
+					"x": 0,
+					"z": 0
+				},
+				{
+					"action": true,
+					"ticks": 1,
+					"x": 0,
+					"z": 0
+				}
+			],
+			"catch_assistance": true,
+			"checkpoint_hash": "0b90178881c0ade9f632f68f3b9c63b7836647e0993befb536f62e251527f164",
+			"completed": true,
+			"definition_hash": "b868745e7bc025bb8fe5a49b698b15dfb0d428ea9fe905ce46fa46dd27d79867",
+			"duration_ticks": 444,
+			"final_state_hash": "ed95ca4f56cafa63eca7d5e2688c19267b7852fbaf4166aa142a69959e43ee7d",
+			"level_id": "a-house-for-two",
+			"level_version": 1,
+			"outcome": {
+				"objective_complete": true,
+				"source_ready": true
+			},
+			"player_slot": "p0",
+			"recording_hash": "a97816d4a4fb0960409a6ab02441e37842944e22e47cd5cbda6d7c0795457056",
+			"replay_checks": [
+				{
+					"state_hash": "42c6976590e4f1913792fe8eb2c84400819c24c5ab385d8c39b3e759f8463419",
+					"tick": 30
+				},
+				{
+					"state_hash": "ffe2a4de7a0c9ada83daebb5e24aae852ed151c5fa65b8ee2e7c228cd061ae81",
+					"tick": 60
+				},
+				{
+					"state_hash": "7dcbde39a03929313215c6f541de9fab2fc485936be2ae7aecccabcf31762224",
+					"tick": 90
+				},
+				{
+					"state_hash": "ad9980869d4c55e200a7847aa9fa2538c0748dff393e88d5ab153e9f0a547016",
+					"tick": 120
+				},
+				{
+					"state_hash": "d2151b4313f9d770ca20a00f2ae760e2f310f6136783f20fb7c867879ea35c1b",
+					"tick": 150
+				},
+				{
+					"state_hash": "8e840ef1272904ef750e87c3bf684f86c8c05ef89b6e443588bff7c61759d723",
+					"tick": 180
+				},
+				{
+					"state_hash": "622e547f9a3498643e4b7e82812134981169b8e8495640c33abf46b759a329ff",
+					"tick": 210
+				},
+				{
+					"state_hash": "91158347372b9f78fbc7e68510c0ece6a8a7d0a6988314254351b5ee1510222a",
+					"tick": 240
+				},
+				{
+					"state_hash": "a8476bef57570f136db10fd8e3a004f08affc908f1219f21e29d12e652719ae6",
+					"tick": 270
+				},
+				{
+					"state_hash": "0e50a9ac5bd6f2added95a6b8c0982a66e5ff700d7911da686bdbebdae06d2c7",
+					"tick": 300
+				},
+				{
+					"state_hash": "fea0123204636a63399ec7843a3160214d939aeee461caf69f71b1eb50252839",
+					"tick": 330
+				},
+				{
+					"state_hash": "7cb7fc0066af77bb008ae9f03b8b9e1232c9834b8a8b1ceeec2f071616640717",
+					"tick": 360
+				},
+				{
+					"state_hash": "74bf4e03a63a6855bccbc42d7c16c4f5202608a78cc544f6abc47ec1cc8e4a15",
+					"tick": 390
+				},
+				{
+					"state_hash": "fcf0ec4db22077e66968b6f9cea54ecf88603b1b4b0c45168214942b4e485bfa",
+					"tick": 420
+				},
+				{
+					"state_hash": "ed95ca4f56cafa63eca7d5e2688c19267b7852fbaf4166aa142a69959e43ee7d",
+					"tick": 444
+				}
+			],
+			"role": "b",
+			"schema_version": 6,
+			"simulation_version": 6,
+			"source_recording_hash": "9c2b3a7e9c3a0fc200ba783b2dc84fe9108a2156cf7d396445eac791d78b4ece",
+			"stage_id": "the-room-below",
+			"stage_version": 1,
+			"tick_rate": 30
+		},
+		"checkpoint": {
+			"a_recording_hash": "4a7786a5f79e92ae9e99c9888f7cb80516f826a74122c89080bb4418a6e302c3",
+			"b_recording_hash": "394b831725decfafd90136ce7bad654682ab6544e9e0c8c16b62806091ff8771",
+			"checkpoint_hash": "0b90178881c0ade9f632f68f3b9c63b7836647e0993befb536f62e251527f164",
+			"completed_stage_id": "open-the-house",
+			"definition_hash": "b868745e7bc025bb8fe5a49b698b15dfb0d428ea9fe905ce46fa46dd27d79867",
+			"level_id": "a-house-for-two",
+			"level_version": 1,
+			"mechanisms": {
+				"latched_bridges": [
+					"loft-stairs",
+					"workshop-entry",
+					"workshop-return"
+				],
+				"levers": {
+					"workshop-lever": true
+				},
+				"props": {
+					"house-ball": {
+						"height": 0,
+						"holder_slot": "",
+						"socket_id": "",
+						"status": "free",
+						"surface_id": "foyer",
+						"x": -352,
+						"z": -112
+					}
+				}
+			},
+			"next_stage_id": "the-room-below",
+			"players": {
+				"p0": {
+					"height": 0,
+					"surface_id": "foyer",
+					"x": -352,
+					"z": -80
+				},
+				"p1": {
+					"height": 160,
+					"surface_id": "loft",
+					"x": 576,
+					"z": -128
+				}
+			},
+			"previous_checkpoint_hash": "baa0c806fcd4b10c188f77bb96ad31e6fb4b447bc99656c844ad82a5fcdb2b00",
+			"proof": {
+				"a": {
+					"actions": [
+						{
+							"action": false,
+							"ticks": 26,
+							"x": 100,
+							"z": 0
+						},
+						{
+							"action": false,
+							"ticks": 8,
+							"x": 0,
+							"z": 100
+						},
+						{
+							"action": false,
+							"ticks": 12,
+							"x": 100,
+							"z": 0
+						},
+						{
+							"action": false,
+							"ticks": 8,
+							"x": 0,
+							"z": -100
+						},
+						{
+							"action": false,
+							"ticks": 32,
+							"x": 100,
+							"z": 0
+						},
+						{
+							"action": false,
+							"ticks": 4,
+							"x": 0,
+							"z": 100
+						},
+						{
+							"action": false,
+							"ticks": 1,
+							"x": 0,
+							"z": 0
+						},
+						{
+							"action": true,
+							"ticks": 1,
+							"x": 0,
+							"z": 0
+						},
+						{
+							"action": false,
+							"ticks": 4,
+							"x": 0,
+							"z": -100
+						},
+						{
+							"action": false,
+							"ticks": 44,
+							"x": -100,
+							"z": 0
+						},
+						{
+							"action": false,
+							"ticks": 6,
+							"x": 0,
+							"z": 100
+						},
+						{
+							"action": false,
+							"ticks": 4,
+							"x": -100,
+							"z": 0
+						},
+						{
+							"action": false,
+							"ticks": 30,
+							"x": 0,
+							"z": -100
+						},
+						{
+							"action": false,
+							"ticks": 15,
+							"x": 0,
+							"z": 0
+						}
+					],
+					"catch_assistance": true,
+					"checkpoint_hash": "baa0c806fcd4b10c188f77bb96ad31e6fb4b447bc99656c844ad82a5fcdb2b00",
+					"completed": false,
+					"definition_hash": "b868745e7bc025bb8fe5a49b698b15dfb0d428ea9fe905ce46fa46dd27d79867",
+					"duration_ticks": 195,
+					"final_state_hash": "f2d396104beb3e0c338b3627a3053ac42091e940013f946c7297d2a19e865514",
+					"level_id": "a-house-for-two",
+					"level_version": 1,
+					"outcome": {
+						"objective_complete": false,
+						"source_ready": true
+					},
+					"player_slot": "p0",
+					"recording_hash": "4a7786a5f79e92ae9e99c9888f7cb80516f826a74122c89080bb4418a6e302c3",
+					"replay_checks": [
+						{
+							"state_hash": "8991a9e8ba92a6ebd5be0275cf0a17f213adc692ec4996a897607cc908841fa8",
+							"tick": 30
+						},
+						{
+							"state_hash": "76a762637fc54707653c46fe4eeed41d300b4e7f9af371bda26dc0557e79fcd1",
+							"tick": 60
+						},
+						{
+							"state_hash": "5cbcf3c020029e617a76b72e732543ef8fd65806d2dc86c74f36e828de591d5a",
+							"tick": 90
+						},
+						{
+							"state_hash": "4605b0190bbf17a50363f5cbea759a5563acb8d72e666993c0c3c3d7d17bba79",
+							"tick": 120
+						},
+						{
+							"state_hash": "cb81eb2fa64a321337292724c34717f614b378687665704b8bc8a93ac606b815",
+							"tick": 150
+						},
+						{
+							"state_hash": "9048259a9edf1fb8cf7870e97da57434359d503f7be2d31639a990062a1e88ae",
+							"tick": 180
+						},
+						{
+							"state_hash": "f2d396104beb3e0c338b3627a3053ac42091e940013f946c7297d2a19e865514",
+							"tick": 195
+						}
+					],
+					"role": "a",
+					"schema_version": 6,
+					"simulation_version": 6,
+					"source_recording_hash": "",
+					"stage_id": "open-the-house",
+					"stage_version": 1,
+					"tick_rate": 30
+				},
+				"b": {
+					"actions": [
+						{
+							"action": false,
+							"ticks": 10,
+							"x": 0,
+							"z": -100
+						},
+						{
+							"action": false,
+							"ticks": 36,
+							"x": 100,
+							"z": 0
+						},
+						{
+							"action": false,
+							"ticks": 10,
+							"x": 0,
+							"z": 100
+						},
+						{
+							"action": false,
+							"ticks": 76,
+							"x": 100,
+							"z": 0
+						},
+						{
+							"action": false,
+							"ticks": 1,
+							"x": 50,
+							"z": 0
+						},
+						{
+							"action": false,
+							"ticks": 93,
+							"x": 100,
+							"z": 0
+						},
+						{
+							"action": false,
+							"ticks": 1,
+							"x": 50,
+							"z": 0
+						},
+						{
+							"action": false,
+							"ticks": 2,
+							"x": 0,
+							"z": -100
+						},
+						{
+							"action": false,
+							"ticks": 1,
+							"x": 0,
+							"z": 0
+						},
+						{
+							"action": true,
+							"ticks": 1,
+							"x": 0,
+							"z": 0
+						}
+					],
+					"catch_assistance": true,
+					"checkpoint_hash": "baa0c806fcd4b10c188f77bb96ad31e6fb4b447bc99656c844ad82a5fcdb2b00",
+					"completed": true,
+					"definition_hash": "b868745e7bc025bb8fe5a49b698b15dfb0d428ea9fe905ce46fa46dd27d79867",
+					"duration_ticks": 231,
+					"final_state_hash": "08294660b72bb93e2bedca394a61810ee0226b5384d2135d55f4a5b8bb9f56e8",
+					"level_id": "a-house-for-two",
+					"level_version": 1,
+					"outcome": {
+						"objective_complete": true,
+						"source_ready": true
+					},
+					"player_slot": "p1",
+					"recording_hash": "394b831725decfafd90136ce7bad654682ab6544e9e0c8c16b62806091ff8771",
+					"replay_checks": [
+						{
+							"state_hash": "e0ce7acdee8e8903cea8ef573672e15df633203769cd376b3640f5a57c6b43dd",
+							"tick": 30
+						},
+						{
+							"state_hash": "fa6ba85eb2a8476c2bf17dc5303ae8dfd6f57bebdabb741604946fa8a798637b",
+							"tick": 60
+						},
+						{
+							"state_hash": "6f79ce84e2ed5aeb4232fe7c393b1f019a22844e8d475b566eddccb7b87921db",
+							"tick": 90
+						},
+						{
+							"state_hash": "17a95a48cb025bcd904e58b869dd0cbd528b306d1a770184d83682b5ee699fd1",
+							"tick": 120
+						},
+						{
+							"state_hash": "00ef64921ee6df9e939475adbc8c63b9eeb73b4eb8a8daa5c0a329af2716d33f",
+							"tick": 150
+						},
+						{
+							"state_hash": "151996569cc5a9d05a71b71de1245e66e484a30525394f2e985e94da9c116118",
+							"tick": 180
+						},
+						{
+							"state_hash": "8d71f8f678cf7ddb110dbadf3d2dd6cb57094d49093652668fc477be1b935cb8",
+							"tick": 210
+						},
+						{
+							"state_hash": "08294660b72bb93e2bedca394a61810ee0226b5384d2135d55f4a5b8bb9f56e8",
+							"tick": 231
+						}
+					],
+					"role": "b",
+					"schema_version": 6,
+					"simulation_version": 6,
+					"source_recording_hash": "4a7786a5f79e92ae9e99c9888f7cb80516f826a74122c89080bb4418a6e302c3",
+					"stage_id": "open-the-house",
+					"stage_version": 1,
+					"tick_rate": 30
+				},
+				"checkpoint": {
+					"a_recording_hash": "",
+					"b_recording_hash": "",
+					"checkpoint_hash": "baa0c806fcd4b10c188f77bb96ad31e6fb4b447bc99656c844ad82a5fcdb2b00",
+					"completed_stage_id": "",
+					"definition_hash": "b868745e7bc025bb8fe5a49b698b15dfb0d428ea9fe905ce46fa46dd27d79867",
+					"level_id": "a-house-for-two",
+					"level_version": 1,
+					"mechanisms": {
+						"latched_bridges": [],
+						"levers": {},
+						"props": {
+							"house-ball": {
+								"height": 0,
+								"holder_slot": "",
+								"socket_id": "",
+								"status": "free",
+								"surface_id": "foyer",
+								"x": -448,
+								"z": 112
+							}
+						}
+					},
+					"next_stage_id": "open-the-house",
+					"players": {
+						"p0": {
+							"height": 0,
+							"surface_id": "foyer",
+							"x": -528,
+							"z": 112
+						},
+						"p1": {
+							"height": 0,
+							"surface_id": "foyer",
+							"x": -528,
+							"z": -112
+						}
+					},
+					"previous_checkpoint_hash": "",
+					"proof": {},
+					"schema_version": 6,
+					"stage_index": 0
+				}
+			},
+			"schema_version": 6,
+			"stage_index": 1
+		}
+	},
+	"schema_version": 6,
+	"stage_index": 2
+}

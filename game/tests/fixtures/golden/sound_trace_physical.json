@@ -4,36 +4,36 @@
 			{
 				"a": [
 					"24 bridge_opened bridge_opened:workshop-entry|bridge_opened:workshop-entry",
-					"92 bridge_opened bridge_opened:workshop-return|bridge_opened:workshop-return",
-					"92 lever_pulled lever:workshop-lever|lever:workshop-lever",
-					"178 bridge_opened bridge_opened:loft-stairs|bridge_opened:loft-stairs"
+					"88 bridge_opened bridge_opened:workshop-return|bridge_opened:workshop-return",
+					"88 lever_pulled lever:workshop-lever|lever:workshop-lever",
+					"170 bridge_opened bridge_opened:loft-stairs|bridge_opened:loft-stairs"
 				],
 				"b": [
 					"24 bridge_opened bridge_opened:workshop-entry|bridge_opened:workshop-entry",
-					"92 bridge_opened bridge_opened:workshop-return|bridge_opened:workshop-return",
-					"92 lever_pulled lever:workshop-lever|lever:workshop-lever",
-					"178 bridge_opened bridge_opened:loft-stairs|bridge_opened:loft-stairs",
-					"231 bell_rung b|bell",
-					"231 island_bloomed b|stage_complete"
+					"88 bridge_opened bridge_opened:workshop-return|bridge_opened:workshop-return",
+					"88 lever_pulled lever:workshop-lever|lever:workshop-lever",
+					"170 bridge_opened bridge_opened:loft-stairs|bridge_opened:loft-stairs",
+					"223 bell_rung b|bell",
+					"223 island_bloomed b|stage_complete"
 				],
 				"stage_id": "open-the-house"
 			},
 			{
 				"a": [
-					"30 bridge_opened bridge_opened:lower-hall-passage|bridge_opened:lower-hall-passage",
-					"30 lever_pulled lever:loft-lever|lever:loft-lever",
-					"34 seed_landed a|drop",
-					"334 handoff_offered a|handoff_offer"
+					"26 bridge_opened bridge_opened:lower-hall-passage|bridge_opened:lower-hall-passage",
+					"26 lever_pulled lever:loft-lever|lever:loft-lever",
+					"37 seed_landed a|drop",
+					"335 handoff_offered a|handoff_offer"
 				],
 				"b": [
-					"30 bridge_opened bridge_opened:lower-hall-passage|bridge_opened:lower-hall-passage",
-					"30 lever_pulled lever:loft-lever|lever:loft-lever",
-					"34 seed_landed a|drop",
-					"334 handoff_offered a|handoff_offer",
-					"336 seed_caught b|handoff_claim",
-					"352 bridge_opened bridge_opened:sunroom-entry|bridge_opened:sunroom-entry",
-					"444 bell_rung b|bell",
-					"444 island_bloomed b|stage_complete"
+					"26 bridge_opened bridge_opened:lower-hall-passage|bridge_opened:lower-hall-passage",
+					"26 lever_pulled lever:loft-lever|lever:loft-lever",
+					"37 seed_landed a|drop",
+					"335 handoff_offered a|handoff_offer",
+					"337 seed_caught b|handoff_claim",
+					"353 bridge_opened bridge_opened:sunroom-entry|bridge_opened:sunroom-entry",
+					"446 bell_rung b|bell",
+					"446 island_bloomed b|stage_complete"
 				],
 				"stage_id": "the-room-below"
 			}
@@ -41,31 +41,31 @@
 		"high-and-low@1": [
 			{
 				"a": [
-					"34 lever_pulled lever:shore-lever|lever:shore-lever",
-					"72 bridge_opened bridge_opened:blue-stair|bridge_opened:blue-stair"
+					"30 lever_pulled lever:shore-lever|lever:shore-lever",
+					"64 bridge_opened bridge_opened:blue-stair|bridge_opened:blue-stair"
 				],
 				"b": [
-					"34 lever_pulled lever:shore-lever|lever:shore-lever",
-					"72 bridge_opened bridge_opened:blue-stair|bridge_opened:blue-stair",
-					"141 bell_rung b|bell",
-					"141 island_bloomed b|stage_complete"
+					"30 lever_pulled lever:shore-lever|lever:shore-lever",
+					"64 bridge_opened bridge_opened:blue-stair|bridge_opened:blue-stair",
+					"133 bell_rung b|bell",
+					"133 island_bloomed b|stage_complete"
 				],
 				"stage_id": "upper-path"
 			},
 			{
 				"a": [
-					"12 lever_pulled lever:loft-lever|lever:loft-lever",
-					"31 seed_landed a|drop",
-					"56 bridge_opened bridge_opened:lower-causeway|bridge_opened:lower-causeway",
-					"56 bridge_opened bridge_opened:red-passage|bridge_opened:red-passage"
+					"8 lever_pulled lever:loft-lever|lever:loft-lever",
+					"35 seed_landed a|drop",
+					"60 bridge_opened bridge_opened:lower-causeway|bridge_opened:lower-causeway",
+					"60 bridge_opened bridge_opened:red-passage|bridge_opened:red-passage"
 				],
 				"b": [
-					"12 lever_pulled lever:loft-lever|lever:loft-lever",
-					"31 seed_landed a|drop",
-					"56 bridge_opened bridge_opened:lower-causeway|bridge_opened:lower-causeway",
-					"56 bridge_opened bridge_opened:red-passage|bridge_opened:red-passage",
-					"224 bell_rung b|bell",
-					"224 island_bloomed b|stage_complete"
+					"8 lever_pulled lever:loft-lever|lever:loft-lever",
+					"35 seed_landed a|drop",
+					"60 bridge_opened bridge_opened:lower-causeway|bridge_opened:lower-causeway",
+					"60 bridge_opened bridge_opened:red-passage|bridge_opened:red-passage",
+					"225 bell_rung b|bell",
+					"225 island_bloomed b|stage_complete"
 				],
 				"stage_id": "down-and-around"
 			}
@@ -77,26 +77,26 @@
 				],
 				"b": [
 					"46 bridge_opened bridge_opened:shore-middle|bridge_opened:shore-middle",
-					"144 bridge_opened bridge_opened:middle-far|bridge_opened:middle-far",
-					"144 lever_pulled lever:middle-lever|lever:middle-lever",
-					"268 bell_rung b|bell",
-					"268 island_bloomed b|stage_complete"
+					"140 bridge_opened bridge_opened:middle-far|bridge_opened:middle-far",
+					"140 lever_pulled lever:middle-lever|lever:middle-lever",
+					"260 bell_rung b|bell",
+					"260 island_bloomed b|stage_complete"
 				],
 				"stage_id": "weight-of-a-friend"
 			},
 			{
 				"a": [
 					"2 lever_pulled lever:home-lever|lever:home-lever",
-					"294 handoff_offered a|handoff_offer"
+					"315 handoff_offered a|handoff_offer"
 				],
 				"b": [
 					"2 lever_pulled lever:home-lever|lever:home-lever",
-					"294 handoff_offered a|handoff_offer",
-					"296 seed_caught b|handoff_claim",
-					"318 bridge_opened bridge_opened:far-home|bridge_opened:far-home",
-					"318 lever_pulled lever:route-lever|lever:route-lever",
-					"550 island_bloomed b|stage_complete",
-					"550 ball_home b|prop_fitted"
+					"315 handoff_offered a|handoff_offer",
+					"317 seed_caught b|handoff_claim",
+					"334 bridge_opened bridge_opened:far-home|bridge_opened:far-home",
+					"334 lever_pulled lever:route-lever|lever:route-lever",
+					"561 island_bloomed b|stage_complete",
+					"561 ball_home b|prop_fitted"
 				],
 				"stage_id": "bring-it-home"
 			}
@@ -104,31 +104,31 @@
 		"the-wishing-well@1": [
 			{
 				"a": [
-					"16 bridge_opened bridge_opened:cliff-steps|bridge_opened:cliff-steps",
-					"16 winch_wound lever:garden-gate|lever:garden-gate",
-					"412 well_plunk a|drop",
-					"412 bridge_opened bridge_opened:long-stair|bridge_opened:long-stair"
+					"13 bridge_opened bridge_opened:cliff-steps|bridge_opened:cliff-steps",
+					"13 winch_wound lever:garden-gate|lever:garden-gate",
+					"406 well_plunk a|drop",
+					"406 bridge_opened bridge_opened:long-stair|bridge_opened:long-stair"
 				],
 				"b": [
-					"16 bridge_opened bridge_opened:cliff-steps|bridge_opened:cliff-steps",
-					"16 winch_wound lever:garden-gate|lever:garden-gate",
-					"412 bridge_opened bridge_opened:long-stair|bridge_opened:long-stair",
-					"412 well_plunk a|drop",
-					"470 bell_rung b|bell",
-					"470 island_bloomed b|stage_complete"
+					"13 bridge_opened bridge_opened:cliff-steps|bridge_opened:cliff-steps",
+					"13 winch_wound lever:garden-gate|lever:garden-gate",
+					"406 bridge_opened bridge_opened:long-stair|bridge_opened:long-stair",
+					"406 well_plunk a|drop",
+					"464 bell_rung b|bell",
+					"464 island_bloomed b|stage_complete"
 				],
 				"stage_id": "go-on-ahead"
 			},
 			{
 				"a": [
-					"233 bridge_opened bridge_opened:well-ladder|bridge_opened:well-ladder",
-					"233 winch_wound lever:winch-lever|lever:winch-lever"
+					"229 bridge_opened bridge_opened:well-ladder|bridge_opened:well-ladder",
+					"229 winch_wound lever:winch-lever|lever:winch-lever"
 				],
 				"b": [
-					"233 bridge_opened bridge_opened:well-ladder|bridge_opened:well-ladder",
-					"233 winch_wound lever:winch-lever|lever:winch-lever",
-					"296 bell_rung b|bell",
-					"400 island_bloomed b|stage_complete"
+					"229 bridge_opened bridge_opened:well-ladder|bridge_opened:well-ladder",
+					"229 winch_wound lever:winch-lever|lever:winch-lever",
+					"292 bell_rung b|bell",
+					"392 island_bloomed b|stage_complete"
 				],
 				"stage_id": "back-for-you"
 			}
