@@ -254,6 +254,7 @@ open_turns 2
 open_turns_long 1
 open_turns_memories 3
 open_turns_room 2
+open_turns_solo_drafts 3
 optional_photo_capture 1
 outfit 2
 owner_marks 3

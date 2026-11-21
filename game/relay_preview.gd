@@ -1231,17 +1231,18 @@ func _add_room_status_chip(card: VBoxContainer, fixed_text: String = "") -> Pane
 ## The friend-nickname store; tests pass one with its own file. Left empty, the
 ## device's saved nicknames are read when the waiting card is drawn.
 var nickname_store: RefCounted = null
-## Open turns (core/physical/open_turns.gd): the room's turn as the turn dots
-## draw it (kit/turn_dots.gd view()), read from the room's coordinator
-## (open_turns()); {} offline, in a replay, or on a chapter without open turns.
+## Open turns (core/physical/open_turns.gd): the stage's turn as the turn dots
+## draw it (kit/turn_dots.gd view()), read from the room's coordinator or the
+## Solo journal (open_turns()); {} in a replay or on a chapter without open turns.
 func _open_turns_view() -> Dictionary:
-	if mode == "replay" or online_session == null or not journey.has_method("open_turns"): return {}
+	if mode == "replay" or not journey.has_method("open_turns"): return {}
 	var open: Dictionary = journey.open_turns()
 	var index := int(open.get("stage_index", -1))
 	if open.is_empty() or index < 0 or index >= definition.stages.size(): return {}
 	return TurnDots.view(open, str(definition.stages[index].get("first_player_slot", "")))
 
-## The player's pip colour in this room: the host's slot is peach, the guest's mint.
+## The player's pip colour in this room: the host's slot is peach, the guest's
+## mint. In Solo, the pip this turn steers.
 func _own_room_color() -> Color:
 	return SpiritLook.MINT if journey.has_method("open_turns") and str(journey.open_turns().get("player_slot", "p0")) == "p1" else SpiritLook.PEACH
 
@@ -2525,11 +2526,14 @@ func _persist_draft(after_retry: String = "play", periodic: bool = false) -> boo
 	# A turn the rules keep nowhere (a drowning) leaves no draft, in a room or
 	# solo: the last autosave of it goes too.
 	if sim.has_method("keeps_draft") and not sim.keeps_draft():
-		if journey.save_draft({}): return true
+		if journey.save_draft({}) or periodic: return true
 		_show_save_problem(journey.last_error, after_retry)
 		return false
 	var saved: bool = journey.save_live_draft(sim, periodic) if journey.has_method("poll_live_draft_save") else journey.save_live_draft(sim)
-	if saved:
+	# A periodic save that fails never stops the turn: the next one, a second
+	# on, tries again, and a pause, Back or the turn's end save for real and
+	# show the problem if that fails too.
+	if saved or periodic:
 		return true
 	_show_save_problem(journey.last_error, after_retry)
 	return false
@@ -3571,9 +3575,8 @@ func _process(delta: float) -> void:
 	if mode == "loading":
 		_poll_journal_load()
 		return
-	if journey != null and journey.has_method("poll_live_draft_save") and not journey.poll_live_draft_save():
-		_show_save_problem(journey.last_error, "play")
-		return
+	# A periodic write that failed is taken here and play goes on (_persist_draft).
+	if journey != null and journey.has_method("poll_live_draft_save"): journey.poll_live_draft_save()
 	if mode == "turn_wait":
 		# The card has been drawn once; now the held work runs. A next turn
 		# still being set up on its worker finishes first, behind the card.
