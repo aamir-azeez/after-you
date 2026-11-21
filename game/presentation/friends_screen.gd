@@ -18,6 +18,7 @@ const PENCIL_ICON = preload("res://assets/ui/social/pencil-simple.svg")
 const CHECK_ICON = preload("res://assets/ui/check.svg")
 const InGameModal = preload("res://presentation/in_game_modal.gd")
 const ShareCodes = preload("res://services/share_codes.gd")
+const Usernames = preload("res://services/usernames.gd")
 const InviteShare = preload("res://services/invite_share.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const RoomActions = preload("res://presentation/room_actions.gd")
@@ -493,8 +494,9 @@ func _render() -> void:
 		own_row.add_theme_constant_override("separation",8)
 		own_column.add_child(own_row)
 		_utility_rows[0] = own_row
-		# A player with a short name shares friend-<name>; the long code still works and shows below.
-		var alias: String = str(page.get("friend_alias","")) if ShareCodes.is_alias(page.get("friend_alias")) else ""
+		# A player with a username (or a short name) shares friend-<name in lowercase>; the long
+		# code still works and shows below.
+		var alias: String = _own_name_code(page)
 		var own_code: String = alias if not alias.is_empty() else str(page.friend_code)
 		var own := LineEdit.new()
 		own.name = "OwnFriendCode"
@@ -698,8 +700,10 @@ func _room_panel(page: Dictionary, parent: Node) -> void:
 		_secondary(unshare)
 
 func _friend_row(peer: Dictionary, parent: Node) -> void:
+	# A username shows on every row, a request too, so the player always knows who it is.
+	var username: String = str(peer.username) if Usernames.valid_remote(peer.get("username")) else ""
 	var status := "Online" if peer.online else "Offline"
-	if peer.status == "incoming": status = "Friend request"
+	if peer.status == "incoming": status = PlayerCopy.USERNAME_WANTS_FRIENDS % username if not username.is_empty() else "Friend request"
 	elif peer.status == "outgoing": status = "Request sent"
 	var card := _card(parent,10 if _compact else 16)
 	card.get_parent().size_flags_vertical = Control.SIZE_FILL
@@ -761,7 +765,8 @@ func _friend_row(peer: Dictionary, parent: Node) -> void:
 	# Codes fade at a clipped end (names keep their ellipsis); a tap copies the full code.
 	var code_button := CodeButton.new()
 	code_button.name = "FriendRowCode"
-	code_button.text = ShareCodes.display(ShareCodes.FRIEND,str(peer.player_id))
+	var code_id: String = Usernames.key(username) if not username.is_empty() else str(peer.player_id)
+	code_button.text = ShareCodes.display(ShareCodes.FRIEND,code_id)
 	code_button.hit_height = CODE_HIT_HEIGHT
 	code_button.flat = true
 	code_button.clip_text = true
@@ -785,7 +790,7 @@ func _friend_row(peer: Dictionary, parent: Node) -> void:
 	for state: String in ["normal","hover","pressed","hover_pressed","focus","disabled"]:
 		code_button.add_theme_color_override("icon_"+state+"_color",Color("a6edb0"))
 	identity.add_child(code_button)
-	code_button.pressed.connect(func(): _copy_code(str(peer.player_id),code_button,null))
+	code_button.pressed.connect(func(): _copy_code(code_id,code_button,null))
 	_code_fade(code_button,CARD_FILL)
 	var state := HBoxContainer.new()
 	# Status is display only, so taps just below the code reach its copy band.
@@ -847,6 +852,12 @@ func show_name_chip() -> void:
 ## The screen's root control, which in-game pop-ups cover.
 func page_root() -> Control:
 	return _root
+
+## The name part of this player's own friend code: their username in lowercase,
+## else their short name, else "" (they share their long code).
+static func _own_name_code(page: Dictionary) -> String:
+	if Usernames.valid_remote(page.get("username")): return Usernames.key(str(page.username))
+	return str(page.get("friend_alias","")) if ShareCodes.is_alias(page.get("friend_alias")) else ""
 
 func _display_name(player_id: String) -> String:
 	if _nicknames == null: return FriendNicknames.FALLBACK
@@ -1038,11 +1049,11 @@ func _offer_link() -> void:
 	if _link_id.is_empty() or not _current() or not _foreground or _busy or client.busy or is_instance_valid(_modal) or not _remove.is_empty(): return
 	var friend := _link_id
 	_link_id = ""
-	if friend == str(_context.get("player_id","")) or friend == str(client.view().get("friend_alias","")):
+	if friend == str(_context.get("player_id","")) or friend == str(client.view().get("friend_alias","")) or friend == _own_name_code(client.view()):
 		_say(PlayerCopy.FRIEND_CODE_OWN)
 		return
 	for peer: Dictionary in client.view().get("friends",[]):
-		if peer.player_id != friend: continue
+		if peer.player_id != friend and str(peer.get("username","")).to_lower() != friend: continue
 		if peer.status in ["accepted","outgoing"]:
 			_say(PlayerCopy.FRIEND_ALREADY_ADDED if peer.status == "accepted" else "Request sent")
 			return

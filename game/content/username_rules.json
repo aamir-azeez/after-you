@@ -1,0 +1,9 @@
+{
+ "schema_version": 1,
+ "comment": "Username rules, read by the game (services/usernames.gd) and the server (backend/src/usernames.ts); both test suites check game/tests/fixtures/display_names/username_vectors.json. A username is 3 to 18 of A-Z a-z 0-9 . _ -, starts and ends with a letter or digit and never has two symbols in a row. The block list (display_name_blocklist.json) applies too. A name is reserved when its fold (lowercase, symbols removed, trailing digits removed) is one of reserved, when its symbol-free lowercase holds one of reserved_inside, or when it starts with one of type_prefixes followed by a symbol. A reserved name that is also a CONFIG friend alias may be taken by that alias's player only.",
+ "min_length": 3,
+ "max_length": 18,
+ "reserved": ["aamir", "aamirazeez", "account", "admin", "administrator", "afteryou", "anonymous", "bot", "dev", "developer", "developers", "devs", "everyone", "friend", "friends", "guest", "help", "helpdesk", "mod", "moderator", "moderators", "mods", "nobody", "null", "official", "owner", "player", "room", "rooms", "root", "safety", "security", "server", "staff", "support", "system", "team", "undefined"],
+ "reserved_inside": ["aamirazeez", "afteryou"],
+ "type_prefixes": ["friend", "room"]
+}

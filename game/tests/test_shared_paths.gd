@@ -218,6 +218,7 @@ const SAVE_EXEMPT := {
 const WRITES := {
 	"res://main.gd": [1, "unkeyed: POST /v1/identity (audit: check one lost answer never makes two identities)"],
 	"res://presentation/account_flow.gd": [2, "keyed: identity recovery; DELETE /v1/identity removes one thing"],
+	"res://presentation/display_name_flow.gd": [1, "unkeyed: PUT /v1/profile/username sets the whole name; a repeat of the name held changes nothing and is never charged"],
 	"res://presentation/room_hub_flow.gd": [5, "unkeyed: close, leave and invite lookups end in the same state when repeated"],
 	"res://services/bundle_claims.gd": [1, "unkeyed: claims every purchase the store reports; each purchase token pays once"],
 	"res://services/deleted_identity_ack.gd": [1, "unkeyed: an acknowledgement"],

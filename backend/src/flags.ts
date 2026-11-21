@@ -38,6 +38,8 @@ export const FLAG_VARS = Object.freeze({
   iosWaitlist: "IOS_WAITLIST_ENABLED",
   /** Display names: PUT /v1/profile/name, names on friends pages and room reads, writes into rooms and the capability (display-names.ts). */
   displayNames: "DISPLAY_NAMES_ENABLED",
+  /** Usernames (usernames.ts): picking a unique name, friend-<name> codes, names on every friends row and the capability. Needs DISPLAY_NAMES_ENABLED: off without it. */
+  usernames: "USERNAMES_ENABLED",
   /** Pollen earned from accepted turns and first clears, the wallet routes and the turn reply field (pollen/). */
   pollenEarn: "POLLEN_EARN",
   /** The wardrobe (pollen/wardrobe.ts, pollen/earned.ts): owned and earned items and the look on the wallet read, wearing and taking off, and the replay job delivering board rewards. Every Hard is recorded while earning is on. Needs POLLEN_EARN. */

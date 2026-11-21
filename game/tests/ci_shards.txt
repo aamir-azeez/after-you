@@ -465,6 +465,7 @@ turn_tries_replays 1
 two_promises 1
 unreadable_chapter_journal 2
 update_gate 2
+usernames 1
 wait_framing 1
 wait_hints 1
 wardrobe 3

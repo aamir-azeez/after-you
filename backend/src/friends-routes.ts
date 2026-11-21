@@ -6,6 +6,7 @@ import { FRIEND_ALIAS_HEADER, aliasShaped, friendAliasFor, resolveFriendAlias } 
 import { announceToFriends } from "./live";
 import { displayNamesShown, shownName } from "./display-names";
 import { limitCostly } from "./limits";
+import { lookupUsername, shownUsername, usernameShaped, usernamesOn, usernamesShown } from "./usernames";
 
 const exact = (v: Record<string, unknown>, keys: string[]) => {
   if (Object.keys(v).length !== keys.length || keys.some(k => !Object.hasOwn(v, k)) || v.schema_version !== 1) throw new ApiError(400, "invalid_friend_request");
@@ -13,15 +14,21 @@ const exact = (v: Record<string, unknown>, keys: string[]) => {
 async function authorized(env: Env, owner: string, hash: string): Promise<void> {
   if (!await env.PLAYERS.getByName(owner).authorize(hash)) throw new ApiError(401, "invalid_auth");
 }
-/** A 22-character id as before, or an owner-reserved alias resolved to its id. An
- * unknown alias gets the same answer as an unknown id. */
-function friendCode(env: Env, value: unknown): string {
-  if (typeof value === "string" && !ID_PATTERN.test(value) && aliasShaped(value)) {
-    const id = resolveFriendAlias(env, value);
-    if (!id) throw new ApiError(404, "friend_unavailable");
-    return id;
+/**
+ * A 22-character id as before, an owner-reserved alias resolved to its id, or while usernames are on a username
+ * resolved through the index (one read; `username` is then its key, for the holder's Player to confirm). An unknown
+ * alias or username gets the same answer as an unknown id. Older apps send a lowercase name in the alias shape, so
+ * names of letters and digits work for them too.
+ */
+async function friendCode(env: Env, value: unknown): Promise<{ id: string; username?: string }> {
+  if (typeof value === "string" && !ID_PATTERN.test(value)) {
+    const alias = aliasShaped(value) ? resolveFriendAlias(env, value) : null;
+    if (alias) return { id: alias };
+    const named = usernamesOn(env) && usernameShaped(value) ? await lookupUsername(env, value) : null;
+    if (named) return { id: named.id, username: named.key };
+    if (aliasShaped(value) || (usernamesOn(env) && usernameShaped(value))) throw new ApiError(404, "friend_unavailable");
   }
-  return text(value, ID_PATTERN, "invalid_friend_code");
+  return { id: text(value, ID_PATTERN, "invalid_friend_code") };
 }
 async function allowed(env: Env, owner: string, peer: string): Promise<void> {
   if (owner === peer) throw new ApiError(400, "invalid_friend_request");
@@ -73,13 +80,14 @@ const hiddenOutgoing = (link: { request_id: string; accepted: boolean; requested
 /**
  * A friend request from `owner` to `peer`, the one path both Add friend and a public duel's seat use: it repairs an
  * orphan, accepts a request already waiting the other way, or proposes and delivers a new one. `requestId`: the
- * new request's id (a public duel's starts with DUEL_REQUEST_PREFIX). Answers the link as the owner sees it.
+ * new request's id (a public duel's starts with DUEL_REQUEST_PREFIX). `username`: the name the code gave, which the
+ * peer must still hold. Answers the link as the owner sees it.
  */
-export async function requestFriend(env: Env, owner: string, hash: string, peer: string, requestId = randomToken(16)) {
+export async function requestFriend(env: Env, owner: string, hash: string, peer: string, requestId = randomToken(16), username?: string) {
   const player = env.PLAYERS.getByName(owner);
   await allowed(env, owner, peer);
-  // Reject nonexistent codes before reserving the caller's limited slots.
-  if (!await env.PLAYERS.getByName(peer).safetyIdentityActive(peer)) throw new ApiError(404, "friend_unavailable");
+  // Reject nonexistent codes (and names their holder let go) before reserving the caller's limited slots.
+  if (!await env.PLAYERS.getByName(peer).safetyIdentityActive(peer, username)) throw new ApiError(404, "friend_unavailable");
   // A player who declined this one lately answers as an unknown code does (friend-declines.ts); this Add clears the caller's own decline of the peer.
   const [barred] = await Promise.all([env.FRIEND_ROOM_EVENTS.getByName(peer).declined(owner), env.FRIEND_ROOM_EVENTS.getByName(owner).clearDecline(peer)]);
   if (barred) throw new ApiError(404, "friend_unavailable");
@@ -128,7 +136,7 @@ export async function routeFriends(request: Request, path: string, owner: string
   const hash = await bearerDigest(request), player = env.PLAYERS.getByName(owner);
   if (path === "/v1/friends" && request.method === "GET") {
     // Names ride on calls the list already makes: the friend's second edge read and the owner's recheck.
-    const names = displayNamesShown(request, env);
+    const names = displayNamesShown(request, env), usernames = usernamesShown(request, env);
     const social = unwrap(await player.friendList(owner, hash));
     const friends = (await Promise.all(social.links.map(async link => {
       const other = await env.PLAYERS.getByName(link.player_id).friendEdge(link.player_id, owner);
@@ -144,26 +152,29 @@ export async function routeFriends(request: Request, path: string, owner: string
       // Recorded turns can be joined while the host is away. Presence only
       // controls the online indicator; reciprocal consent and sharing grant access.
       const invite = accepted ? await sharedInvite(env, link.player_id, owner, other.shared_room) : null;
-      const latest = await env.PLAYERS.getByName(link.player_id).friendEdge(link.player_id, owner, names);
+      const latest = await env.PLAYERS.getByName(link.player_id).friendEdge(link.player_id, owner, names, usernames);
       if (!latest || !sameFriendLink(link, latest.link, owner) || await interactionBlocked(env, owner, link.player_id)) return null;
       const stillAccepted = link.accepted && latest.link.accepted;
       const remaining = stillAccepted ? Math.max(0, Math.min(90, Math.ceil((latest.presence_expires_at - Date.now()) / 1000))) : 0;
       const stillShared = invite !== null && latest.shared_room?.room_id === invite.room_id && latest.shared_room.api_version === invite.api_version;
       return { player_id: link.player_id, request_id: link.request_id, status: stillAccepted ? "accepted" : link.requested_by === owner ? "outgoing" : "incoming",
         online: remaining > 0, expires_after_seconds: remaining, join_available: stillAccepted && stillShared,
-        ...(names ? { display_name: stillAccepted ? shownName(latest.display_name) : null } : {}) };
+        ...(names ? { display_name: stillAccepted ? shownName(latest.display_name) : null } : {}),
+        // A username shows on every row, a request too, so a player always knows who asked or whom they asked.
+        ...(usernames ? { username: shownUsername(latest.username) } : {}) };
     }))).filter(x => x !== null);
     // One batched local recheck replaces twenty same-owner RPCs. It also
     // reauthorizes the device after all peer/room I/O and honors removals.
-    const current = unwrap(await player.friendList(owner, hash, false, names));
+    const current = unwrap(await player.friendList(owner, hash, false, names, usernames));
     const visible = friends.filter(row => current.links.some(link => link.player_id === row.player_id && link.request_id === row.request_id && !hiddenOutgoing(link, owner)));
     // Only clients that ask get the optional alias; older ones require exactly these five keys.
     const alias = request.headers.get(FRIEND_ALIAS_HEADER) === "2" ? friendAliasFor(env, owner) : undefined;
-    return { schema_version: 1, friend_code: owner, ...(alias ? { friend_alias: alias } : {}), ...(names ? { display_name: shownName(current.display_name) } : {}), refresh_after_seconds: FRIEND_REFRESH_SECONDS, shared_room: current.shared_room, friends: visible };
+    return { schema_version: 1, friend_code: owner, ...(alias ? { friend_alias: alias } : {}), ...(names ? { display_name: shownName(current.display_name) } : {}), ...(usernames ? { username: shownUsername(current.username) } : {}), refresh_after_seconds: FRIEND_REFRESH_SECONDS, shared_room: current.shared_room, friends: visible };
   }
   if (path === "/v1/friends/request" && request.method === "POST") {
     const input = object(await boundedJson(request, 1024)); exact(input, ["schema_version", "friend_code"]);
-    return requestFriend(env, owner, hash, friendCode(env, input.friend_code));
+    const code = await friendCode(env, input.friend_code);
+    return requestFriend(env, owner, hash, code.id, undefined, code.username);
   }
   if (path === "/v1/friends/accept" && request.method === "POST") {
     const input = object(await boundedJson(request, 1024)); exact(input, ["schema_version", "player_id", "request_id"]);

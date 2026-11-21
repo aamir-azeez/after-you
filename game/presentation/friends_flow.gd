@@ -166,6 +166,13 @@ func _page_read() -> void:
 	screen.show_name_chip()
 	host.display_name_flow.maybe_ask(screen.page_root())
 
+## A username this player just took (display_name_flow.gd): the kept friends
+## page carries it, so an open Friends shows the new friend code at once.
+func username_changed(name: String) -> void:
+	var client: RefCounted = host._friends_client(false)
+	if client != null: client.note_username(name)
+	if is_open(): screen._render_when_free()
+
 ## Whether Friends is up.
 func is_open() -> bool:
 	return is_instance_valid(screen)
