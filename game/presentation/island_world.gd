@@ -535,6 +535,9 @@ const CLASSIC_GROUND := "grass"
 ## level build sets it.
 var island_soil: Dictionary = {}
 
+## The classic island's trees: as tall (Props.extent) as the older code-built pair.
+const CLASSIC_TREE_SIZE := 1.1
+
 ## variant 0 is the classic island (Home); chapter
 ## islands pass their index so neighbouring islands are not clones.
 func _make_island(cx: float, cz: float, width: float, depth: float, grass: Color, variant: int = 0) -> void:
@@ -544,21 +547,13 @@ func _make_island(cx: float, cz: float, width: float, depth: float, grass: Color
 	if variant > 0:
 		_vary_island(cx, cz, width, depth, variant)
 		return
+	# The classic pair: two fruit trees at the back, one dark and one light.
+	var props := Node3D.new()
+	props.name = "IslandScenery"
+	terrain.add_child(props)
 	for i in range(2):
 		var tx := cx + (-0.85 if i==0 else 0.65)
-		var tz := cz-depth/2+0.28
-		# Each tree under its own root, grounded like any prop.
-		var tree := Node3D.new()
-		tree.name = "Tree"
-		terrain.add_child(tree)
-		ContactShadows.mark(tree)
-		cylinder(0.07,0.8,Color("806f59"),Vector3(tx,0.4,tz),tree)
-		var foliage := Color("659d86") if i==0 else Color("8daf83")
-		for lobe in range(3):
-			var crown := sphere(0.40,foliage.lightened(lobe*0.045),Vector3(tx+(lobe-1)*0.19,1.02+0.19*(1-abs(lobe-1)),tz),tree)
-			crown.scale=Vector3(0.82,1.28,0.82)
-			for j in range(3):
-				sphere(0.065,Color("ebc28f"),Vector3(tx+sin(j*2.1)*0.29,0.95+0.12*j,tz+cos(j*2.1)*0.25),tree)
+		Props.build({"kind": "tree", "at": [tx * 100.0, (cz - depth / 2.0 + 0.28) * 100.0], "size": CLASSIC_TREE_SIZE, "variant": i * 3}, props, 0.0, false)
 
 ## Rear-edge scenery that differs per island: tree count and placement, fruit
 ## or blossom, a flowering bush or a bench. Static props share materials.

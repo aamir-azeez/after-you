@@ -7,7 +7,6 @@ const STONE_DARK := Color("6d6656")
 const STONE_LIGHT := Color("bcae90")
 const SAND_TRIM := Color("d2c4a2")
 const MOSS := Color("6f8d5a")
-const LEAF := Color("7fa36a")
 const LAMP := Color("ffd894")
 const GRASS := Color("6f8b66")
 const SOIL := Color("6b5240")
@@ -555,9 +554,7 @@ func _dress() -> void:
 	await _build_step()
 	for index in range(24):
 		var x := -12.4 + float(index) * 1.05
-		var bush := sphere(0.17, LEAF.darkened(0.08 * float(index % 3)), Vector3(x, cliff + 0.42, -2.18), props)
-		bush.scale = Vector3(1.3, 0.8, 0.9)
-		if index % 4 == 1: _flower_dot(Vector3(x + 0.12, cliff + 0.55, -2.12), props)
+		_kit_prop({"kind": "bush", "size": 0.6, "flowers": index % 4 == 1}, Vector3(x, cliff + 0.32, -2.18), props)
 	_kit_prop({"kind": "bench"}, Vector3(-4.2, cliff + 0.32, -2.30), props)
 	for at: Vector3 in [Vector3(-8.2, cliff + 0.32, -2.20), Vector3(0.2, cliff + 0.32, -2.20), Vector3(11.0, cliff + 0.32, -2.20)]:
 		_lantern(at, 0.85, true, props)
