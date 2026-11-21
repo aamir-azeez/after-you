@@ -97,6 +97,9 @@ var _seat_last: Dictionary = {}
 ## Rules 16's carried items and floats by id, and the stage's current
 ## (kit/pieces/carried_item.gd, current.gd); none on other rules.
 var _item_pieces: Dictionary = {}
+## Item id -> [where it rests, the platform stop it rests on]: it rides that
+## stop's deck (kit/new_pieces.gd ride).
+var _item_decks: Dictionary = {}
 var _current_piece: RefCounted
 
 func show_stage(stage: Dictionary) -> void:
@@ -110,6 +113,7 @@ func show_stage(stage: Dictionary) -> void:
 	_seats.clear()
 	_seat_last.clear()
 	_item_pieces.clear()
+	_item_decks.clear()
 	_current_piece = null
 	_shown_stage = stage
 	_stage_built = false
@@ -784,6 +788,8 @@ func _item_point(state: Dictionary) -> Vector3:
 	if state.is_empty(): return Vector3.ZERO
 	# Thrown: where its arc has it.
 	if CarriedItems.in_flight(state): return Vector3(float(state.x), float(state.height), float(state.z)) / 100.0
+	# On a platform's stop: at that stop's height (its deck carries it there).
+	if new_pieces != null and not new_pieces.ride(str(state.surface_id)).is_empty(): return Vector3(float(state.x), float(state.height), float(state.z)) / 100.0
 	return _at({"position_cm": [int(state.x), int(state.z)], "surface_id": str(state.surface_id)})
 
 ## Rungs across a both-hands crossing every RUNG_CM along it, at its height
@@ -819,6 +825,7 @@ func _present_items(state: Dictionary) -> void:
 	var items: Dictionary = state.get("mechanisms", {}).get("items", {})
 	for id: String in _item_pieces:
 		var item_state: Dictionary = items.get(id, {})
+		_item_decks.erase(id)
 		if item_state.is_empty(): continue
 		var piece: RefCounted = _item_pieces[id]
 		# Away (carried_items.gd): not in the level, so nothing shows.
@@ -826,5 +833,20 @@ func _present_items(state: Dictionary) -> void:
 		if not piece.root.visible: continue
 		var holder := str(item_state.holder)
 		if not holder.is_empty() and actors.has(holder): piece.carry(actors[holder])
-		else: piece.rest(_item_point(item_state), terrain, str(item_state.surface_id).is_empty() and not CarriedItems.in_flight(item_state))
+		else:
+			piece.rest(_item_point(item_state), terrain, str(item_state.surface_id).is_empty() and not CarriedItems.in_flight(item_state))
+			if new_pieces != null and not new_pieces.ride(str(item_state.surface_id)).is_empty(): _item_decks[id] = [piece.root.position, str(item_state.surface_id)]
+	_ride_items()
 	if _current_piece != null: _current_piece.set_controls(state.get("controls", {}))
+
+## The platforms move first, then the items resting on their decks with them.
+func _advance_carriers(delta: float) -> void:
+	super._advance_carriers(delta)
+	_ride_items()
+
+## Each item resting on a platform's stop, as far from its place as the deck
+## stands from that stop (the one rider rule, kit/new_pieces.gd ride).
+func _ride_items() -> void:
+	for id: String in _item_decks:
+		var deck: Array = new_pieces.ride(str(_item_decks[id][1]))
+		if not deck.is_empty(): _item_pieces[id].root.position = (_item_decks[id][0] as Vector3) + (deck[1] as Vector3)

@@ -207,9 +207,26 @@ func _refusals() -> void:
 		var state := still.duplicate(true)
 		state.tick = tick
 		var input := {"move_x": 1.0, "move_z": 0.0, "interact": false} if tick < 45 or tick > 50 else {"move_x": 0.0, "move_z": 0.0, "interact": false}
-		finder.annotate(state, input)
-		for event: Dictionary in state.get("refused", []): events.append([tick, event.id])
+		for event: Dictionary in finder.annotate(state, input).get("refused", []): events.append([tick, event.id])
 	_check(events == [[1, "plank"], [1 + BarrierRefusals.REPEAT_TICKS, "plank"], [51, "plank"]], "A held push rattles at once, again every %d ticks, and anew after letting go: %s" % [BarrierRefusals.REPEAT_TICKS, events])
+	# Walked by hand the way the engine moves (8 cm a tick, sliding along what
+	# stops it), p0 meets p1's gate at x = -12.
+	var approach: Array = [Vector2i(-40, 0), Vector2i(-32, 0), Vector2i(-24, 0), Vector2i(-16, 0)]
+	for tick in range(37): approach.append(Vector2i(-12, 0))
+	var head_on := _bumps(approach, func(_tick: int) -> Vector2: return Vector2(1, 0))
+	_check(head_on == [4, 4 + BarrierRefusals.REPEAT_TICKS], "A pip walking into a gate bumps on the tick it meets it (half its step cut), not the tick after, then once a second: %s" % [head_on])
+	var sliding: Array = []
+	for tick in range(12): sliding.append(Vector2i(-12, -20 + 3 * tick))
+	var slanted := _bumps(sliding, func(_tick: int) -> Vector2: return Vector2(0.94, 0.34))
+	_check(slanted == [1], "A slanted push that slides along the gate bumps at once, though the pip still moves: %s" % [slanted])
+	var brushing: Array = []
+	for tick in range(16): brushing.append(Vector2i(-12, -60 + 8 * tick))
+	var brushed := _bumps(brushing, func(_tick: int) -> Vector2: return Vector2(0.34, 0.94))
+	_check(brushed.is_empty(), "A pip walking along the island's edge past the gate, brushing it, never bumps: %s" % [brushed])
+	var held: Array = []
+	for tick in range(25): held.append(Vector2i(-12, 0))
+	var flicker := _bumps(held, func(tick: int) -> Vector2: return Vector2.ZERO if tick in [8, 15, 16] else Vector2(1, 0))
+	_check(flicker == [1], "A stick that drops out for a tick or two keeps the bump's cooldown: %s" % [flicker])
 	# Standing at the other pip's lever clunks once on arrival and on a press.
 	var clunks: Array = []
 	var at_lever := still.duplicate(true)
@@ -218,9 +235,25 @@ func _refusals() -> void:
 	for tick in range(80, 90):
 		var state := at_lever.duplicate(true)
 		state.tick = tick
-		finder.annotate(state, {"move_x": 0.0, "move_z": 0.0, "interact": tick == 85})
-		for event: Dictionary in state.get("locked", []): clunks.append(tick)
+		for event: Dictionary in finder.annotate(state, {"move_x": 0.0, "move_z": 0.0, "interact": tick == 85}).get("locked", []): clunks.append(tick)
 	_check(clunks == [80, 85], "A lock clunks on arrival and on a press, not every tick: %s" % [clunks])
+
+## The ticks p0 bumps the made-up stage's barriers, walked through `at` (its
+## position each tick, cm, from tick 0) with `stick` (tick -> its stick).
+func _bumps(at: Array, stick: Callable) -> Array:
+	var finder := BarrierRefusals.new()
+	finder._definition = {"id": "made-up-level", "stages": [_view().merged({"id": "made-up", "version": 1}, true)]}
+	finder._stage("made-up")
+	var start := {"stage_id": "made-up", "tick": 0, "active_slot": "p0", "bridges": {"plank": true}, "players": {"p0": _player(at[0].x, at[0].y, "west"), "p1": _player(450, 80, "east")}}
+	finder._remember(start)
+	var ticks: Array = []
+	for tick in range(1, at.size()):
+		var state := start.duplicate(true)
+		state.tick = tick
+		state.players.p0 = _player(at[tick].x, at[tick].y, "west")
+		var push: Vector2 = stick.call(tick)
+		for event: Dictionary in finder.annotate(state, {"move_x": push.x, "move_z": push.y, "interact": false}).get("refused", []): ticks.append(tick)
+	return ticks
 
 # --- Sounds ----------------------------------------------------------------------
 
@@ -278,8 +311,7 @@ func _fixtures(key: String) -> int:
 			var before := start
 			var crossed := ""
 			for input: Dictionary in engine.expand_recording_inputs(turn[0]):
-				var state: Dictionary = sim.step(input)
-				finder.annotate(state, input)
+				var state: Dictionary = finder.annotate(sim.step(input), input)
 				for event: Dictionary in state.get("refused", []):
 					var slot := str(event.slot)
 					var mine := str(turn[0].role) == "a" or slot != str(state.first_player_slot)
