@@ -1,6 +1,8 @@
 extends SceneTree
 ## Open turns (core/physical/open_turns.gd) on Turn of the Tide@3's Set the
 ## Tide, played with the native fixture inputs:
+## - the carry-over timeline (open_turns.gd): each turn's start, hand-off and
+##   replay on the shared timeline, the pass rule and the field names;
 ## - every turn has the second turn's limit, and a level may declare equal
 ##   limits (refused on the rules before open turns); ids and pips follow turn order;
 ## - turn 2 may pass once its memory is over, and the pass replays exactly and
@@ -128,6 +130,7 @@ func _rules() -> void:
 	_check(OpenTurns.rules(14) and OpenTurns.rules(15) and not OpenTurns.rules(12) and not OpenTurns.rules(13), "Open turns are 14 and 15")
 	_check([1, 2, 3, 4].map(func(n: int) -> String: return OpenTurns.slot("p1", n)) == ["p1", "p0", "p1", "p0"], "Odd turns are the first pip's")
 	_check(OpenTurns.turn_id(3, 1, 1) == "t3-1-a" and OpenTurns.turn_id(3, 1, 3) == "t3-1-c" and OpenTurns.turn_id(0, 0, 20) == "t0-0-t", "Turn ids keep a and b and go on by letter")
+	_timeline()
 	var level := Registry.definition(TIDE)
 	var first := Simulation.new()
 	first.reset(level, STAGE, Registry.initial_checkpoint(TIDE), {}, "a")
@@ -141,6 +144,30 @@ func _rules() -> void:
 	var longer: Dictionary = closed.duplicate(true)
 	longer.turn_limits = {"a_ticks": 2700, "b_ticks": 3000}
 	_check(not Simulation.rules_allowed(closed, 13) and Simulation.rules_allowed(longer, 13), "Rules before open turns still need the longer second turn")
+
+## The shared timeline (open_turns.gd start_tick, handoff_tick, replay_ticks):
+## The Falls' stage 1 from the design (8, 40, 70 and 45 s turns), the same
+## with turn 4 ending just as Gold's replay does, and equal turns. Each row
+## is [S, H, M] for turns 1 to 5; a turn's replay is the next one's hand-off.
+func _timeline() -> void:
+	var tables := [
+		[[8, 40, 70, 45], [[0, 0, 0], [0, 0, 8], [8, 8, 32], [40, 32, 38], [78, 38, 7]]],
+		[[8, 40, 70, 38], [[0, 0, 0], [0, 0, 8], [8, 8, 32], [40, 32, 38], [78, 38, 0]]],
+		[[10, 10, 10, 10], [[0, 0, 0], [0, 0, 10], [10, 10, 0], [10, 0, 10], [20, 10, 0]]],
+	]
+	for table: Array in tables:
+		var lengths: Array = table[0]
+		var rows: Array = []
+		for turn in range(1, 6): rows.append([OpenTurns.start_tick(lengths, turn), OpenTurns.handoff_tick(lengths, turn), OpenTurns.replay_ticks(lengths, turn)])
+		_check(rows == table[1], "The timeline of %s turns is %s (got %s)" % [str(lengths), str(table[1]), str(rows)])
+		var chained := true
+		for turn in range(1, 5): chained = chained and OpenTurns.replay_ticks(lengths, turn) == OpenTurns.handoff_tick(lengths, turn + 1)
+		_check(chained, "Each turn's replay ends where the next turn takes over (%s)" % str(lengths))
+	var falls := [8, 40, 70]
+	_check(OpenTurns.long_enough(falls, 4, 38, false) and not OpenTurns.long_enough(falls, 4, 37, false) and OpenTurns.long_enough(falls, 4, 5, true) and OpenTurns.long_enough([], 1, 1, false), "A pass waits out the replay; a finished turn and turn 1 need not")
+	_check(OpenTurns.first_slot({"stage_index": 0}) == "p0" and OpenTurns.first_slot({OpenTurns.NEXT_FIRST_SLOT: "p1"}) == "p1", "The host starts a level; the checkpoint names who starts each later stage")
+	_check(OpenTurns.next_first_slot("p0", 4) == "p0" and OpenTurns.next_first_slot("p0", 3) == "p1" and OpenTurns.next_first_slot("p1", 2) == "p1", "The next stage starts with whoever did not close this one")
+	_check(OpenTurns.RECORD_FIELDS == ["handoff_tick", "start_hash", "handoff_hash"] and OpenTurns.NEXT_FIRST_SLOT == "next_first_slot", "The record and checkpoint field names")
 
 func _chain() -> void:
 	var level := Registry.definition(TIDE)

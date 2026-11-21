@@ -10,9 +10,10 @@ const LongWayHomeV3Catalog = preload("res://core/journey/long_way_home_v3_catalo
 const TurnOfTheTideV3Catalog = preload("res://core/journey/turn_of_the_tide_v3_catalog.gd")
 const ConservatoryV2Catalog = preload("res://core/journey/conservatory_v2_catalog.gd")
 const FirstStepsV2Catalog = preload("res://core/journey/first_steps_v2_catalog.gd")
+const RelayIslesV3Catalog = preload("res://core/journey/relay_isles_v3_catalog.gd")
 const TheFallsCatalog = preload("res://core/journey/the_falls_catalog.gd")
 const FogMarshCatalog = preload("res://core/journey/fog_marsh_catalog.gd")
-const KEYS := ["conservatory@1","long-way-home@1","long-way-home@2","turn-of-the-tide@1","turn-of-the-tide@2","long-way-home@3","turn-of-the-tide@3","conservatory@2","first-steps@2","the-falls@1","fog-marsh@1"]
+const KEYS := ["conservatory@1","long-way-home@1","long-way-home@2","turn-of-the-tide@1","turn-of-the-tide@2","long-way-home@3","turn-of-the-tide@3","conservatory@2","first-steps@2","the-falls@1","fog-marsh@1","relay-isles@3"]
 
 static func definition(key: String = "long-way-home") -> Dictionary:
 	if key in ["long-way-home", "long-way-home@1"]: return Home.definition()
@@ -24,6 +25,7 @@ static func definition(key: String = "long-way-home") -> Dictionary:
 	if key == "turn-of-the-tide@3": return TurnOfTheTideV3Catalog.definition()
 	if key == "conservatory@2": return ConservatoryV2Catalog.definition()
 	if key == "first-steps@2": return FirstStepsV2Catalog.definition()
+	if key == "relay-isles@3": return RelayIslesV3Catalog.definition()
 	if key in ["the-falls", "the-falls@1"]: return TheFallsCatalog.definition()
 	if key in ["fog-marsh", "fog-marsh@1"]: return FogMarshCatalog.definition()
 	return {}

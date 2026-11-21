@@ -67,6 +67,7 @@ const DATA := {
 	"current": "ripples",
 	"pulley": "lantern_hook",
 	"seabed": "sand",
+	"item_spot": "none",
 	"bridges": "timber",
 	"props": {"*": SHORE_BACK + [SHORE_HEDGE] + REST},
 }
