@@ -192,6 +192,13 @@ func _check_layer() -> void:
 	var lever: RefCounted = Lever.build("plain", Vector3(0, 0, 1), world)
 	var aloft: RefCounted = Lever.build("plain", Vector3(0, 0.6, 2), world)
 	var item: RefCounted = CarriedItem.build("parcel", Vector3(0, 0, -1), world, {"id": "p"})
+	# A jetty: one post on the lawn, one past its edge over the water.
+	var jetty := _marked(world)
+	_box(jetty, Vector3(0.1, 0.4, 0.1), Vector3(2.8, 0.2, -2.0))
+	_box(jetty, Vector3(0.1, 0.4, 0.1), Vector3(3.6, 0.2, -2.0))
+	await _settle(layer)
+	_check(_index(layer, jetty) < 0 and jetty in layer.baked_roots().map(func(entry: Array) -> Node3D: return entry[0]), "A foot past the floor's edge gets no shadow; the one on it is baked")
+	jetty.free()
 	await _settle(layer)
 	var baked: Array = layer.baked_roots().map(func(entry: Array) -> Node3D: return entry[0])
 	_check(lamp in baked and crate in baked and lever.root in baked and baked.size() == 3, "Still things on the floor are baked into it: %s" % [baked])

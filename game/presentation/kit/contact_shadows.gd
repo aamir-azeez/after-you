@@ -15,8 +15,9 @@ extends Node3D
 ##   scenery. One overlay per floor that has any, drawn only over the tiles
 ##   that hold some.
 ## - What moves (an item set down, a thing standing on no floor top) gets a
-##   soft quad instead (contact_shadow.gdshader), all of them in one
-##   MultiMesh; a pip draws its own quad in the same look.
+##   soft round quad instead (contact_shadow.gdshader), all of them in one
+##   MultiMesh; a pip draws its own quad in the same look. A foot past the
+##   edge of the floor its thing stands on (a jetty over the water) gets none.
 ##
 ## Who gets one, with no per-level code:
 ## - every piece: kit/pieces/piece.gd `_root()` marks its root (a kit that is
@@ -562,16 +563,22 @@ func _gather(members: int, grounds_count: int) -> void:
 			for foot: Array in its_feet: live.append([root, foot, (foot[1] as Vector2).x * (foot[1] as Vector2).y])
 			continue
 		var stood: Node3D = null
+		var off: Array = []
 		for foot: Array in its_feet:
 			var ground := _ground_for(root, foot, grounds)
 			if ground == null:
-				live.append([root, foot, (foot[1] as Vector2).x * (foot[1] as Vector2).y])
+				off.append([root, foot, (foot[1] as Vector2).x * (foot[1] as Vector2).y])
 				continue
 			var to_ground := ground.global_transform.affine_inverse() * root.global_transform
 			(on_ground[ground][0] as Array).append(_ground_foot(foot, to_ground))
 			(on_ground[ground][2] as Array).append([root.get_instance_id(), to_ground, foot])
 			if stood == null: stood = ground
-		if stood == null: continue
+		# Standing on no floor top at all (a ledge no builder registers), it
+		# gets quads; feet past the edge of the floor it stands on (a jetty
+		# over the water) get nothing.
+		if stood == null:
+			live.append_array(off)
+			continue
 		var to_stood := stood.global_transform.affine_inverse() * root.global_transform
 		for caster: Array in root.get_meta(CASTERS_META, []):
 			var cast := _cast(caster, to_stood, (stood.global_transform.basis.inverse() * sun))
@@ -718,7 +725,8 @@ func _place(index: int, seen: Transform3D) -> void:
 	shown_one[4] = {"transform": placed, "strength": strength, "half": half}
 	var many := _draw.multimesh
 	many.set_instance_transform(index, placed)
-	many.set_instance_custom_data(index, Color(half.x, half.y, fade, float(foot[3])))
+	# A live shadow is always round: a soft blob, never a box.
+	many.set_instance_custom_data(index, Color(half.x, half.y, fade, 1.0))
 	many.set_instance_color(index, Color(1, 1, 1, strength))
 
 ## Looks at a few roots for a move, and every frame at those that just moved:
