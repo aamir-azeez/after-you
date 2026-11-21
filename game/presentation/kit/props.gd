@@ -178,7 +178,9 @@ static func expand(specs: Array) -> Array:
 			item["at"] = [at.x, at.y]
 			for key: String in ["surface", "y"]:
 				if spec.has(key) and not item.has(key): item[key] = spec[key]
-			if spec.get("vary", false): vary(item, index, at.x, (to - from) / float(maxi(count - 1, 1)))
+			if spec.get("vary", false):
+				vary(item, index, at.x, (to - from) / float(maxi(count - 1, 1)))
+				_keep_within(item, from, to)
 			result.append(item)
 	return result
 
@@ -194,6 +196,18 @@ static func vary(item: Dictionary, index: int, x: float, step: Vector2 = Vector2
 	if step == Vector2.ZERO or not item.has("at"): return
 	var slip := step * (_seeded(seed, 3) - 0.5) * 0.5 + step.orthogonal().normalized() * (_seeded(seed, 4) - 0.5) * VARY_ACROSS
 	item["at"] = [roundi(float(item.at[0]) + slip.x), roundi(float(item.at[1]) + slip.y)]
+
+## Slides a varied row's prop back along the row to between its ends `from`
+## and `to` (cm), so a row never wanders past where it was set.
+static func _keep_within(item: Dictionary, from: Vector2, to: Vector2) -> void:
+	var span := from.distance_to(to)
+	if span <= 0.0: return
+	var along := (to - from) / span
+	var placed := Vector2(float(item.at[0]), float(item.at[1]))
+	var t := (placed - from).dot(along)
+	if t >= 0.0 and t <= span: return
+	var kept := placed + along * (clampf(t, 0.0, span) - t)
+	item["at"] = [roundi(kept.x), roundi(kept.y)]
 
 ## How far (cm) a varied row's props wander across it, all told.
 const VARY_ACROSS := 6.0
