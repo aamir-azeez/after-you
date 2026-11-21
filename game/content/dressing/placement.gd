@@ -36,6 +36,7 @@ const Props = preload("res://presentation/kit/props.gd")
 const PropRules = preload("res://presentation/kit/prop_rules.gd")
 const Styles = preload("res://content/dressing/prop_styles.gd")
 const FloorSpots = preload("res://presentation/kit/floor_spots.gd")
+const WalkReach = preload("res://presentation/kit/walk_reach.gd")
 ## The Lighthouse room's dressing key: its stages come from its own catalog.
 const LIGHTHOUSE := "sleeping-lighthouse@1"
 const LIGHTHOUSE_ROOM := "sleeping-lighthouse@2"
@@ -493,10 +494,33 @@ const BANK_REACH := 100.0
 ## A support post stops this far (m) under the walking top of the floor it holds.
 const UNDERSIDE := 0.21
 
+## A hung prop placed past its surface's walkable edge (ivy down a quay's
+## face) hangs as far past the edge as the floor is drawn there
+## (kit/walk_reach.gd), off the floor reaching over it.
+static func _hung_past_reach(spec: Dictionary, view: Dictionary) -> Dictionary:
+	if not spec.has("at") or not spec.has("surface"): return spec
+	for surface: Dictionary in WalkReach.walkable(view):
+		if str(surface.id) != str(spec.surface): continue
+		var r: Array = surface.rect_cm
+		var at := [float(spec.at[0]), float(spec.at[1])]
+		for axis in range(2):
+			var past := -1.0 if at[axis] < float(r[axis]) else 1.0 if at[axis] > float(r[axis + 2]) else 0.0
+			if past == 0.0: continue
+			# How far the pieces the floor is drawn as reach past that edge, along the prop's line.
+			var edge := float(r[axis + 2]) if past > 0.0 else float(r[axis])
+			var reach := 0.0
+			for piece: Array in WalkReach.pieces(view, surface):
+				if at[1 - axis] < float(piece[1 - axis]) or at[1 - axis] > float(piece[3 - axis]): continue
+				reach = maxf(reach, (float(piece[axis + 2]) - edge) if past > 0.0 else (edge - float(piece[axis])))
+			at[axis] += past * reach
+		return spec.merged({"at": at}, true)
+	return spec
+
 static func _settle_one(spec: Dictionary, stage: Dictionary, all_grounds: Array, taken: Array) -> Dictionary:
 	var kind := str(spec.get("kind", ""))
 	var view: Dictionary = stage.view
-	if kind in Props.HUNG or kind in Props.FIXTURES or bool(spec.get("wall", false)): return spec
+	if kind in Props.HUNG: return _hung_past_reach(spec, view)
+	if kind in Props.FIXTURES or bool(spec.get("wall", false)): return spec
 	spec = _on_bank(spec, stage)
 	# Only ground within reach of it can hold it.
 	var spot := _spot(spec) / 100.0

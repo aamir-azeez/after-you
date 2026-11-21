@@ -301,9 +301,11 @@ func _lay_deck(route: Dictionary, deck: Node3D, full_width: float, full_depth: f
 			punt.scale = Vector3(length / 1.92, 1.0, lane / 1.28)
 			if not across_x: punt.rotation.y = PI / 2.0
 		_:
-			for index in range(8):
-				var offset := -length / 2.0 + (index + 0.5) * length / 8.0
-				var size := Vector3(width / 8.0, 0.10, depth) if across_x else Vector3(width, 0.10, depth / 8.0)
+			# Planks about a quarter metre wide, as the world's own decks.
+			var count := maxi(1, roundi(length / 0.25))
+			for index in range(count):
+				var offset := -length / 2.0 + (index + 0.5) * length / float(count)
+				var size := Vector3(width / float(count), 0.10, depth) if across_x else Vector3(width, 0.10, depth / float(count))
 				box(size, Props.TIMBER_LIGHT.darkened(0.05 * float(index % 2)), Vector3(offset, -0.05, 0) if across_x else Vector3(0, -0.05, offset), deck)
 			if kind == "gangway":
 				for side in [-1, 1]:
@@ -371,7 +373,9 @@ func _kept_pennant(route: Dictionary) -> void:
 	var width := length if across_x else float(r[2] - r[0]) / 100.0
 	var depth := float(r[3] - r[1]) / 100.0 if across_x else length
 	var shift := Vector3(middle, 0, 0) if across_x else Vector3(0, 0, middle)
-	var at := Vector3(-width / 2.0 + 0.10, 0, depth / 2.0 - 0.10) + shift
+	# Ten and a half centimetres in from the deck's west end, clear of the seam
+	# by it and of a remembered route's marker.
+	var at := Vector3(-width / 2.0 + 0.105, 0, depth / 2.0 - 0.10) + shift
 	var post := box(Vector3(0.06, 0.50, 0.06), CREAM, at + Vector3(0, 0.25, 0), memories)
 	post.name = "KeptPost"
 	post.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF

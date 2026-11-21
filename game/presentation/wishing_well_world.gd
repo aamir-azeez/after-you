@@ -198,7 +198,8 @@ func _build_well() -> void:
 	var front := 0.48
 	# Low front rim and side kerbs; the east kerb leaves the ladder's gap open.
 	box(Vector3(right - left + 0.12, 0.22, 0.10), STONE_LIGHT, Vector3((left + right) * 0.5, 0.11, front + 0.05), well)
-	box(Vector3(0.10, 0.30, 0.64), STONE_LIGHT, Vector3(left - 0.05, 0.15, 0.16), well)
+	# The west kerb stops a centimetre short of the shaft, off the cliff's side there.
+	box(Vector3(0.09, 0.30, 0.64), STONE_LIGHT, Vector3(left - 0.055, 0.15, 0.16), well)
 	box(Vector3(0.10, 0.30, 0.08), STONE_LIGHT, Vector3(right + 0.05, 0.15, -0.12), well)
 	box(Vector3(0.10, 0.30, 0.08), STONE_LIGHT, Vector3(right + 0.05, 0.15, 0.44), well)
 	# A dark pool edge at the back makes the pit read as a well, not a ledge.

@@ -344,21 +344,32 @@ func _build_bridge(definition: Dictionary) -> void:
 	var memories := Node3D.new()
 	memories.name = "RememberedFootsteps"
 	_deck.add_child(memories)
-	# Clear of the span's ends, where a floor's trim runs.
+	# Clear of the span's ends, and of any floor drawn under the crossing,
+	# where a floor's trim runs.
 	for index in range(3):
 		var along := middle + ((float(index) + 0.5) / 3.0 - 0.5) * maxf(length - 0.20, 0.0)
 		for side in [-1, 1]:
 			var at := Vector3(along + side * 0.05, 0.011, side * 0.11) if across_x else Vector3(side * 0.11, 0.011, along + side * 0.05)
+			if _over_floor(Vector2(_deck.position.x + at.x, _deck.position.z + at.z) * 100.0, 6.0): continue
 			var footprint := cylinder(0.038, 0.005, Color("a68c60"), at, memories)
 			footprint.scale = Vector3(1.6, 1, 1) if across_x else Vector3(1, 1, 1.6)
 	memories.visible = false
 	_memory_markers[definition.id] = memories
 	_deck.visible = false
 
+## Whether a floor of the shown plan is drawn within `margin` cm of `at` (cm).
+func _over_floor(at: Vector2, margin: float) -> bool:
+	for island: Dictionary in current_level.get("islands", []):
+		for piece: Array in drawn_pieces(island):
+			if Rect2(float(piece[0]), float(piece[1]), float(piece[2] - piece[0]), float(piece[3] - piece[1])).grow(margin).has_point(at): return true
+	return false
+
 ## Lays a crossing's deck under `deck` (a crossing width by depth metres
-## across x and z), before its remembered-footsteps marker: eight planks with seams and a lit
-## edge each side over the open span low..high (deck-local metres along the
-## crossing). A world that lays its own decks overrides it, so no planks are
+## across x and z), before its remembered-footsteps marker: planks about a
+## quarter metre wide (eight over two metres) with seams and a lit edge each
+## side over the open span low..high (deck-local metres along the crossing).
+## A short span gets few wide planks, so no plank's end lies just past a
+## floor's lip under the deck's end. A world that lays its own decks overrides it, so no planks are
 ## made only to be freed.
 func _lay_deck(_definition: Dictionary, deck: Node3D, width: float, depth: float, across_x: bool, low: float, high: float) -> void:
 	var length := high - low
@@ -367,13 +378,14 @@ func _lay_deck(_definition: Dictionary, deck: Node3D, width: float, depth: float
 	var timber := str(dressing.get("bridges", "")) == "timber"
 	var plank := Props.TIMBER_LIGHT if timber else Color("bdc9c1")
 	var seam := Props.TIMBER_DARK if timber else Color("637886")
-	for index in range(8):
-		var offset := low + (index + 0.5) * length / 8.0
-		var board := Vector3(length / 8.0, 0.10, depth) if across_x else Vector3(width, 0.10, length / 8.0)
+	var count := maxi(1, roundi(length / 0.25))
+	for index in range(count):
+		var offset := low + (index + 0.5) * length / float(count)
+		var board := Vector3(length / float(count), 0.10, depth) if across_x else Vector3(width, 0.10, length / float(count))
 		var at := Vector3(offset, -0.05, 0) if across_x else Vector3(0, -0.05, offset)
 		box(board, plank.darkened(0.05 * float(index % 2)) if timber else plank, at, deck)
 		var seam_size := Vector3(0.016, 0.005, depth - 0.06) if across_x else Vector3(width - 0.06, 0.005, 0.016)
-		var seam_at := Vector3(offset + length / 16.0 - 0.012, 0.003, 0) if across_x else Vector3(0, 0.003, offset + length / 16.0 - 0.012)
+		var seam_at := Vector3(offset + length / float(2 * count) - 0.012, 0.003, 0) if across_x else Vector3(0, 0.003, offset + length / float(2 * count) - 0.012)
 		box(seam_size, seam, seam_at, deck)
 	for side in [-1, 1]:
 		var trim_size := Vector3(length, 0.025, 0.035) if across_x else Vector3(0.035, 0.025, length)
@@ -395,8 +407,9 @@ func _open_span(definition: Dictionary, across_x: bool) -> Array:
 	var high := float(span[1])
 	for island: Dictionary in current_level.get("islands", []):
 		if int(island.get("height_cm", 0)) != int(definition.get("height_cm", 0)): continue
-		var r: Array = island.rect_cm
-		# Only a floor spanning the route's whole width covers the deck there.
+		# As drawn (drawn_rect). Only a floor spanning the route's whole width
+		# covers the deck there.
+		var r := drawn_rect(island)
 		if float(r[1 - axis]) > float(authored[1 - axis]) or float(r[3 - axis]) < float(authored[3 - axis]): continue
 		if float(r[axis]) <= low and float(r[axis + 2]) > low: low = minf(float(r[axis + 2]), high)
 		if float(r[axis + 2]) >= high and float(r[axis]) < high: high = maxf(float(r[axis]), low)

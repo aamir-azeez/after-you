@@ -92,6 +92,7 @@ const KNOWN := {
 	"conservatory recovery-stair": "a neighbour 16 cm off (the room return): the gap between them stays readable (WalkReach KEEP_GAP_CM), so this side reaches only part of the way",
 	"conservatory room-return": "a neighbour 16 cm off (the recovery stair): the gap between them stays readable (WalkReach KEEP_GAP_CM), so this side reaches only part of the way",
 	"fog-marsh bank": "its corner by stepping stones: the open water round the stones' mouth stays open a reach either side of them (WalkReach open), walled at the floor's edge",
+	"fog-marsh jetty": "its edge by the raft's stop: a floor never reaches under a platform's stop (WalkReach), the raft moves off it",
 	"fog-marsh lift-low": "the lift runs up the stilts' face, so a pip on the car stands against that wall",
 	"fog-marsh middle": "its corner by stepping stones: the open water round the stones' mouth stays open a reach either side of them (WalkReach open), walled at the floor's edge",
 	"fog-marsh path": "its corner by stepping stones: the open water round the stones' mouth stays open a reach either side of them (WalkReach open), walled at the floor's edge",
@@ -208,7 +209,8 @@ func _keys() -> Array[String]:
 	return Registry.keys().filter(_runs)
 
 ## Whether this suite walks chapter `key`: every one not on the water here
-## (test_level_view_tide walks the Tide's, test_level_view_water the rest).
+## (test_level_view_tide walks the Tide's, test_level_view_falls The Falls',
+## test_level_view_water the rest).
 func _runs(key: String) -> bool:
 	return not FoldPresent._on_water(key)
 

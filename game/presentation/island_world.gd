@@ -1816,15 +1816,24 @@ func _dressed_ground(island: Dictionary, parent: Node3D) -> bool:
 
 ## The rectangle (cm) a walkable surface of the shown plan is drawn to: past
 ## its walkable edge by what the drawn pip reaches over it (kit/walk_reach.gd).
-## A piece of a floor cut round a hole names its own ("drawn_cm").
+## A floor cut round a hole names its own shape ("drawn_shape").
 func drawn_rect(surface: Dictionary) -> Array:
-	if surface.has("drawn_cm"): return surface.drawn_cm.duplicate()
+	if surface.has("drawn_shape"):
+		var shape: Array = surface.drawn_shape
+		var found: Array = shape[0].duplicate()
+		for piece: Array in shape: found = [mini(found[0], piece[0]), mini(found[1], piece[1]), maxi(found[2], piece[2]), maxi(found[3], piece[3])]
+		return found
 	return WalkReach.rect(current_level, surface, _stepping_stones())
+
+## Where a wall that holds water stands round a crossing of the shown plan
+## (WalkReach wall_rect).
+func wall_rect(surface: Dictionary) -> Array:
+	return WalkReach.wall_rect(current_level, surface, _stepping_stones())
 
 ## The rectangles (cm) a floor of the shown plan is drawn as: its drawn
 ## rectangle cut round the neighbours that meet it (kit/walk_reach.gd).
 func drawn_pieces(surface: Dictionary) -> Array:
-	if surface.has("drawn_cm"): return [surface.drawn_cm.duplicate()]
+	if surface.has("drawn_shape"): return surface.drawn_shape.duplicate(true)
 	return WalkReach.pieces(current_level, surface, _stepping_stones())
 
 ## The stretch (cm along its run) of a crossing of the shown plan that no

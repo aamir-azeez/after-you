@@ -306,10 +306,12 @@ func _shore(island: Dictionary, color: Color) -> void:
 	if hole.is_empty():
 		super._shore(island, color)
 	else:
-		# Four authored floor pieces leave an actual opening; no dark decal.
-		for piece: Array in drawn_pieces(island):
-			for cut: Array in WalkReach.minus(piece, hole.rect_cm):
-				super._shore({"id": island.id, "rect_cm": cut, "drawn_cm": cut}, color)
+		# The floor drawn round an actual opening, one shape, its trims along
+		# the opening's edges; its rock under the walkable pieces round it. No
+		# dark decal.
+		var shape: Array = []
+		for piece: Array in drawn_pieces(island): shape.append_array(WalkReach.minus(piece, hole.rect_cm))
+		super._shore(island.merged({"drawn_shape": shape, "rocks_cm": WalkReach.minus(island.rect_cm, hole.rect_cm)}, true), color)
 	terrain = original
 	raised.set_meta("bounds", island.rect_cm.duplicate())
 	_surface_built(island, raised)
@@ -460,13 +462,16 @@ func _build_stair(stair: Dictionary) -> void:
 	for index in range(10):
 		# The lowest tread stands just over the floor at its foot, which may
 		# reach under it (kit/walk_reach.gd): never in that floor's plane.
-		var height := maxf(from_height + rise * float(index + 1) / 10.0, minf(from_height, from_height + rise) + 0.012)
+		var height := maxf(from_height + rise * float(index + 1) / 10.0, minf(from_height, from_height + rise) + Surfaces.DECAL_TOP)
 		var at := center + Vector3((float(index) - 4.5) * width / 10.0 if along_x else 0, height - 0.06, (float(index) - 4.5) * depth / 10.0 if not along_x else 0)
 		var timber := str(dressing.get("stairs", "")) == "timber"
 		var tread := (Props.TIMBER_LIGHT if index % 2 == 0 else Props.TIMBER_LIGHT.darkened(0.06)) if timber else Color("b4c5bd")
-		box(Vector3(width / 10.0 if along_x else width, 0.12, depth if along_x else depth / 10.0), tread, at, terrain)
-		box(Vector3(0.025 if along_x else width, 0.014, depth if along_x else 0.025), Props.TIMBER_DARK if timber else TEAL, at + Vector3(0, 0.065, 0), terrain)
-	if str(dressing.get("stairs", "")) == "timber": _stair_frame(r, from_height, rise, along_x, stair.rect_cm)
+		# A centimetre and a half short of each side, so a tread's side never
+		# lies on the side of a floor reaching under its foot, a floor trim's
+		# end or a wall's coping beside it.
+		box(Vector3(width / 10.0 if along_x else width - 0.03, 0.12, depth - 0.03 if along_x else depth / 10.0), tread, at, terrain)
+		box(Vector3(0.025 if along_x else width - 0.03, 0.014, depth - 0.03 if along_x else 0.025), Props.TIMBER_DARK if timber else TEAL, at + Vector3(0, 0.065, 0), terrain)
+	if str(dressing.get("stairs", "")) == "timber" and _framed_stairs(): _stair_frame(r, from_height, rise, along_x, stair.rect_cm)
 	# A closed stair's gate (posts, bar and chain at its foot and head) is the
 	# route barriers' (kit/route_barriers.gd).
 
@@ -476,18 +481,25 @@ func _build_stair(stair: Dictionary) -> void:
 ## the rail goes on the open drop), along the sides of `r`, the treads' drawn
 ## rectangle; `authored` is the walkable one.
 func _stair_frame(r: Array, from_height: float, rise: float, along_x: bool, authored: Array) -> void:
-	for side: float in ([float(r[1]) / 100.0 - 0.03, float(r[3]) / 100.0 + 0.03] if along_x else [float(r[0]) / 100.0 - 0.03, float(r[2]) / 100.0 + 0.03]):
+	# Stringers stand half a centimetre off the whole centimetres the floors
+	# beside them end on.
+	for side: float in ([float(r[1]) / 100.0 - 0.04, float(r[3]) / 100.0 + 0.04] if along_x else [float(r[0]) / 100.0 - 0.04, float(r[2]) / 100.0 + 0.04]):
 		var start := Vector3(float(r[0]) / 100.0, from_height - 0.10, side) if along_x else Vector3(side, from_height - 0.10, float(r[1]) / 100.0)
 		var finish := Vector3(float(r[2]) / 100.0, from_height + rise - 0.10, side) if along_x else Vector3(side, from_height + rise - 0.10, float(r[3]) / 100.0)
 		Primitives.bar_between(start, finish, 0.07, Primitives.shared_material(Props.TIMBER), terrain)
 	var walled := str(dressing.get("stair_rail", "")) == "open" and _floor_against_far_side(authored, maxf(from_height, from_height + rise), along_x)
-	var rail := (float(r[3]) / 100.0 + 0.04 if walled else float(r[1]) / 100.0 - 0.04) if along_x else (float(r[2]) / 100.0 + 0.04 if walled else float(r[0]) / 100.0 - 0.04)
+	var rail := (float(r[3]) / 100.0 + 0.055 if walled else float(r[1]) / 100.0 - 0.055) if along_x else (float(r[2]) / 100.0 + 0.055 if walled else float(r[0]) / 100.0 - 0.055)
 	var foot := Vector3(float(r[0]) / 100.0, from_height + 0.62, rail) if along_x else Vector3(rail, from_height + 0.62, float(r[1]) / 100.0)
 	var head := Vector3(float(r[2]) / 100.0, from_height + rise + 0.62, rail) if along_x else Vector3(rail, from_height + rise + 0.62, float(r[3]) / 100.0)
 	Primitives.bar_between(foot, head, 0.04, Primitives.shared_material(Props.TIMBER_DARK), terrain)
 	for t: float in [0.0, 0.5, 1.0]:
 		var top := foot.lerp(head, t)
-		Primitives.mesh_node(Primitives.shared_mesh("box", 0.035, 0.62, 0.035), Primitives.shared_material(Props.TIMBER_DARK), top - Vector3(0, 0.31, 0), terrain)
+		Primitives.mesh_node(Primitives.shared_mesh("box", 0.04, 0.62, 0.04), Primitives.shared_material(Props.TIMBER_DARK), top - Vector3(0, 0.31, 0), terrain)
+
+## Whether a timber stair has a frame (stringers and a rail): a water
+## world's stairs stand between its walls, parapets and fenders instead.
+func _framed_stairs() -> bool:
+	return true
 
 ## Whether a floor at the stair's top height runs along its far side (north
 ## of an x stair, west of a z one) within 40 cm, overlapping its length.

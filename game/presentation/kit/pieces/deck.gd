@@ -66,7 +66,9 @@ static func lay(style: String, deck: Node3D, width: float, depth: float, across_
 			var count := maxi(2, roundi(length / 0.4))
 			for index in range(count):
 				var along := low + (float(index) + 0.5) * length / float(count)
-				var size := Vector3(length / float(count) - 0.03, 0.08, span - 0.06) if across_x else Vector3(span - 0.06, 0.08, length / float(count) - 0.03)
+				# A centimetre short of each side: the path is drawn as wide as
+				# the pip reaches (kit/walk_reach.gd).
+				var size := Vector3(length / float(count) - 0.03, 0.08, span - 0.02) if across_x else Vector3(span - 0.02, 0.08, length / float(count) - 0.03)
 				Parts.box(size, FLAG.darkened(0.08 * float(index % 2)), _on(across_x, along, -0.04, 0.0), deck)
 			Parts.box(_along(across_x, length, 0.05, 0.04), MOSS, _on(across_x, middle, -0.015, span * 0.5 - 0.025), deck)
 		"stones":

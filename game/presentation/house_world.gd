@@ -51,7 +51,8 @@ func present_history(checkpoint: Dictionary) -> void:
 			ring(float(pad.radius_cm)/100.0,Color("8f8a72"),at+Vector3(0,0.025,0),_house_memories)
 	for route: Dictionary in chapter_definition.bridges+chapter_definition.get("stairs",[]):
 		if route.id not in _latched_bridge_ids: continue
-		var r: Array = route.rect_cm
+		# By the crossing as drawn (drawn_rect).
+		var r := drawn_rect(route)
 		var at := point([r[0]+12,r[3]+16])
 		# A small fixed bracket replaces the idea of another live weight.
 		box(Vector3(0.24,0.06,0.18),TIMBER,at+Vector3(0,0.03,0),_house_memories)

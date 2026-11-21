@@ -15,8 +15,9 @@ extends RefCounted
 ##    over a floor someone walks; a crossing (not stepping stones) that meets
 ##    the side end-on at the side's own height or higher is the exception: the
 ##    side reaches under it (a bridge rests on its bank) and its deck is laid
-##    only past that (open_span). A crossing met
-##    along its run keeps that whole side;
+##    only past that (open_span); a floor never reaches under a platform's
+##    stop (a lift's car or a raft moves off it). A crossing met along its
+##    run keeps that whole side;
 ##  - a crossing reaches two centimetres less than a floor;
 ##  - a surface across a gap leaves the gap at least KEEP_GAP_CM wide, the two
 ##    sides sharing what is left, so a gap still reads as a gap (a floor only
@@ -49,6 +50,20 @@ static func rect(level: Dictionary, surface: Dictionary, open: Array = []) -> Ar
 	var found: Variant = layout(level, open).get(str(surface.get("id", "")))
 	return (found.rect as Array).duplicate() if found != null else surface.rect_cm.duplicate()
 
+## Where a wall that holds water stands round a crossing (cm): NOTCH_CLEAR_CM
+## past its drawn sides along its run, and past an end only where that end
+## reaches, so it meets a floor's cut round the crossing with no water between
+## them; where a side reaches all it may, that is REACH_CM past its walkable
+## edge.
+static func wall_rect(level: Dictionary, surface: Dictionary, open: Array = []) -> Array:
+	var found := rect(level, surface, open)
+	var r: Array = surface.rect_cm
+	var axis := run_axis(surface, walkable(level))
+	for side in range(4):
+		var outward := 1 if side >= 2 else -1
+		if side % 2 != axis or int(found[side]) != int(r[side]): found[side] = int(found[side]) + outward * NOTCH_CLEAR_CM
+	return found
+
 ## The rectangles (cm) `surface` is drawn as: its bounds less where a
 ## neighbour meets a side (a crossing is always one).
 static func pieces(level: Dictionary, surface: Dictionary, open: Array = []) -> Array:
@@ -68,16 +83,18 @@ static func sides(level: Dictionary, surface: Dictionary) -> Array:
 ## a stone): it is cut round it instead.
 static func layout(level: Dictionary, open: Array = []) -> Dictionary:
 	var surfaces := walkable(level)
-	var key := [&"walk_reach", surfaces, open]
+	var moving: Array = []
+	for platform: Dictionary in level.get("platforms", []): moving.append_array(Array(platform.get("stops", [])).map(func(id: Variant) -> String: return str(id)))
+	var key := [&"walk_reach", surfaces, open, moving]
 	if DefinitionGeometry.has(key): return DefinitionGeometry.kept(key)
 	var crossings: Dictionary = {}
 	for surface: Dictionary in level.get("bridges", []) + level.get("stairs", []): crossings[str(surface.id)] = true
 	# Crossings first: a floor is cut round a crossing that meets it as drawn.
 	var found: Dictionary = {}
 	for surface: Dictionary in surfaces:
-		if crossings.has(str(surface.id)): found[str(surface.id)] = _drawn(surface, surfaces, crossings, {}, open)
+		if crossings.has(str(surface.id)): found[str(surface.id)] = _drawn(surface, surfaces, crossings, {}, open, moving)
 	for surface: Dictionary in surfaces:
-		if not crossings.has(str(surface.id)): found[str(surface.id)] = _drawn(surface, surfaces, crossings, found, open)
+		if not crossings.has(str(surface.id)): found[str(surface.id)] = _drawn(surface, surfaces, crossings, found, open, moving)
 	return DefinitionGeometry.keep(key, found)
 
 ## The stretch of `crossing`'s run (cm, [low, high] along it) no floor reaches
@@ -150,8 +167,9 @@ static func _low(surface: Dictionary) -> float:
 	if surface.has("axis"): return minf(float(surface.from_height_cm), float(surface.to_height_cm))
 	return float(surface.get("height_cm", surface.get("bottom_height_cm", 0)))
 
-## `surface`'s drawn shape; `drawn_crossings` holds the crossings' shapes, for a floor.
-static func _drawn(surface: Dictionary, surfaces: Array, crossings: Dictionary, drawn_crossings: Dictionary, open: Array) -> Dictionary:
+## `surface`'s drawn shape; `drawn_crossings` holds the crossings' shapes, for
+## a floor; `moving` names the platforms' stops.
+static func _drawn(surface: Dictionary, surfaces: Array, crossings: Dictionary, drawn_crossings: Dictionary, open: Array, moving: Array) -> Dictionary:
 	var r: Array = surface.rect_cm
 	var crossing := crossings.has(str(surface.id))
 	# Stepping stones are discs in the water: their rectangle stays as it is.
@@ -195,7 +213,7 @@ static func _drawn(surface: Dictionary, surfaces: Array, crossings: Dictionary, 
 		var axis := 0 if dx >= dz else 1
 		var side := axis + (2 if int(o[axis]) >= int(r[axis + 2]) else 0)
 		var touching := gap == 0 and (dx < 0 or dz < 0)
-		if touching and crossings.has(str(other.id)) and str(other.id) not in open and _rests_under(surface, other, side, surfaces): continue
+		if touching and crossings.has(str(other.id)) and str(other.id) not in open and (crossing or str(other.id) not in moving) and _rests_under(surface, other, side, surfaces): continue
 		# What is left of the gap once it keeps KEEP_GAP_CM, shared by its sides.
 		var depth := 0 if touching else maxi(0, (gap - KEEP_GAP_CM) / 2)
 		if crossing: reach[side] = mini(reach[side], depth)

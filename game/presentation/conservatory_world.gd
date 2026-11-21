@@ -36,10 +36,12 @@ func _surface_built(island: Dictionary, surface: Node3D) -> void:
 		return
 	# Floor seams avoid the genuine open hatch; no decorative tile closes it,
 	# and each stays on the floor as drawn, clear of its trims.
+	# Laid out over the walkable rectangle, clear of the trims round a hatch.
 	var shape := drawn_pieces(island)
 	var edges := WalkReach.outline(shape)
-	for x in range(int(r[0])+64,int(r[2]),64):
-		for z in range(int(r[1])+64,int(r[3]),64):
+	var a: Array = island.rect_cm
+	for x in range(int(a[0])+64,int(a[2]),64):
+		for z in range(int(a[1])+64,int(a[3]),64):
 			var on_floor := shape.any(func(piece: Array) -> bool: return x>int(piece[0]) and x<int(piece[2]) and z>int(piece[1]) and z<int(piece[3]))
 			var by_edge := edges.any(func(edge: Array) -> bool: return absf((float(z) if edge[3] else float(x)) - float(edge[1])) < 8.0 and (float(x) if edge[3] else float(z)) > float(edge[0][0]) - 8.0 and (float(x) if edge[3] else float(z)) < float(edge[0][1]) + 8.0)
 			var in_hatch := not on_floor or by_edge
@@ -49,7 +51,8 @@ func _surface_built(island: Dictionary, surface: Node3D) -> void:
 			# Clear of the tile style's own seam lines (6 mm) where they cross.
 			if not in_hatch: box(Vector3(0.06,0.006,0.06),Color("c0cbb6"),Vector3(float(x)/100,0.0095,float(z)/100),surface)
 	if island.id not in ["court","gallery","mirror-room"]: return
-	var rear_z := float(r[1])/100.0+0.025
+	# Its posts' faces clear of the floor's trim along that edge (kit/surfaces.gd).
+	var rear_z := float(r[1])/100.0+0.036
 	var wall_height := 1.45
 	# The glass wall and its gable stop where a raised floor stands over the
 	# rear edge (the mirror room's east end under the recovery landing), so
@@ -74,8 +77,9 @@ func _surface_built(island: Dictionary, surface: Node3D) -> void:
 	_bar_between(Vector3(float(span[0])/100,wall_height,rear_z),peak,0.045,CONSERVATORY_FRAME,surface)
 	_bar_between(peak,Vector3(float(span[1])/100,wall_height,rear_z),0.045,CONSERVATORY_FRAME,surface)
 	for side: int in [-1,1]:
-		# Just inside the edge, its faces clear of the floor's trim (kit/surfaces.gd).
-		box(Vector3(0.035,0.16,depth-0.01),CONSERVATORY_FRAME,middle+Vector3(side*(width/2-0.0185),0.08,0),surface)
+		# On the floor's trim (kit/surfaces.gd), its faces clear of the trim's,
+		# and its top clear of a stair's tread over it.
+		box(Vector3(0.03,0.15,depth-0.01),CONSERVATORY_FRAME,middle+Vector3(side*(width/2-0.03),0.075,0),surface)
 
 ## A plank balcony over a lower room (a raised floor in the "deck" style): it
 ## stands on the level's solid posts (its obstacles, drawn as posts by the

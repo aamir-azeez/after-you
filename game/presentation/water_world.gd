@@ -308,6 +308,9 @@ func _deck_wall(island: Dictionary, raised: Node3D, r: Array, shape: Array) -> v
 		y -= course
 	waters.mark_bands(Vector3(wall.position.x, 0, wall.position.z) + Vector3(0, height, 0), Vector2(size.x, size.z), bed, height - 0.20, raised, height)
 
+func _framed_stairs() -> bool:
+	return false
+
 func _surface_height(id: String) -> float:
 	# Markers on a raised crossing (the waiting steps, posts and catwalks) stand
 	# at that crossing's own height, not the shared island-only lookup's zero.

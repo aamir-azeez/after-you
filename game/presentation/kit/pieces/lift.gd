@@ -116,7 +116,8 @@ func _plain(rect: Rect2, parent: Node3D) -> void:
 	for side in [-1, 1]:
 		for edge in [-1, 1]:
 			Parts.cylinder(0.045, height + 0.40, Color("809d91"), center + Vector3(edge * (width / 2.0 - 0.16), height / 2.0, side * (depth / 2.0 + 0.10)), parent)
-		Parts.box(Vector3(width, 0.05, 0.045), Parts.CREAM, Vector3(0, 0.33, side * (depth / 2.0 + 0.04)), root)
+		# Its faces half a centimetre off the whole centimetres the floors beside the shaft end on.
+		Parts.box(Vector3(width, 0.05, 0.05), Parts.CREAM, Vector3(0, 0.33, side * (depth / 2.0 + 0.04)), root)
 
 func _rope_tower(rect: Rect2, parent: Node3D, options: Dictionary) -> void:
 	var width := rect.size.x
