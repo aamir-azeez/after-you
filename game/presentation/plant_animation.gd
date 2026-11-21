@@ -291,7 +291,7 @@ func _hold_bloom() -> void:
 func _carried() -> Vector3:
 	var actor := _carrier as SpiritVisual if _carrier != null else null
 	if actor == null: return _start
-	return to_local(actor.get_parent().to_global(actor.position + actor.carry_anchor_position()))
+	return to_local(actor.get_parent().to_global(actor.carry_point()))
 
 ## The world camera's current view, eased toward the planter for the middle of the beat.
 func _follow_camera() -> void:

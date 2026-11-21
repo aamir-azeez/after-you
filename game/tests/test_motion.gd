@@ -9,14 +9,17 @@ extends SceneTree
 ##   frames a second; none of it with Reduce motion, and a reset clears it.
 ## - A quick turn leans the body into it, and the lean dies away as the facing
 ##   catches up. A drop down a step while walking squashes the body when it
-##   lands; a lift, a walk up, a gentle slope and a ride never do. A carried
-##   item on the back sways with the stride and swings on after a stop, and is
-##   left alone once put down. Each settles to exact rest, agrees at 30, 60 and
-##   120 frames a second, and does nothing with Reduce motion.
+##   lands; a lift, a walk up, a gentle slope and a ride never do. Each
+##   settles to exact rest, agrees at 30, 60 and 120 frames a second, and does
+##   nothing with Reduce motion.
+## - A carried item is held over the head the one way the seed is: its middle
+##   on the carry point through a walk, a stop and every turn, clear of the
+##   head, turned the way the pip faces, never wider than the head carry
+##   holds. Picked up and put down it eases between the ground and the head
+##   and ends exactly there; Reduce motion and an immediate call snap.
 const Motion = preload("res://presentation/kit/motion.gd")
 const Spirit = preload("res://presentation/spirit_visual.gd")
 const CarriedItemKit = preload("res://presentation/kit/pieces/carried_item.gd")
-const Look = preload("res://presentation/spirit_look.gd")
 
 var checks := 0
 var failures := 0
@@ -39,7 +42,7 @@ func _run() -> void:
 	_turns()
 	_landings()
 	_carried()
-	_carried_turns()
+	_handoffs()
 	print("MOTION: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -206,81 +209,81 @@ func _landings() -> void:
 	var still := _landing_at(60, STEP_DOWN, true)
 	_check(not still.landed and still.low == 1.0, "Reduce motion keeps a landing still")
 
-## A parcel on the back through a walk and a stop: how far it ever tipped, and
-## its up direction at marks after the stop.
-func _carry_at(rate: int, reduced: bool = false) -> Dictionary:
-	var spirit := Spirit.new()
-	root.add_child(spirit)
-	var ground := Node3D.new()
-	root.add_child(ground)
-	var piece: RefCounted = CarriedItemKit.build("parcel", Vector3.ZERO, ground)
-	piece.carry(spirit)
-	var rest: Transform3D = piece.root.transform
-	var seen := {"rest_first": rest.origin == piece.back, "most": 0.0, "moved": false, "samples": {}}
-	var dt := 1.0 / float(rate)
-	_path(rate, [{"v": Vector3(2, 0, 0), "t": 1.0}], reduced, func(pip: Node3D, _at: float) -> void:
-		var item: Node3D = piece.root
-		seen.moved = seen.moved or item.transform != rest
-		seen.most = maxf(seen.most, item.basis.y.angle_to(Vector3.UP))
-		for mark: float in [0.1, 0.3]:
-			if absf(pip.stop_age - mark) < dt * 0.5: seen.samples[mark] = item.basis.y, spirit)
-	seen["rest"] = piece.root.transform == rest and piece.root.position == piece.back
-	piece.rest(Vector3(5, 0, 0), ground, false)
-	for _frame in range(10): spirit.advance_motion(Vector3(0.04, 0, 0), 1.0 / 60.0, false)
-	seen["left"] = piece.root.position == Vector3(5, 0, 0) and piece.root.basis == Basis.IDENTITY
-	ground.free()
-	spirit.free()
-	return seen
-
+## Each item style over a pip's head through a walk each of the four ways and
+## a stop, drawn as a world draws it (the item advances after the pip's frame).
 func _carried() -> void:
-	var seen := _carry_at(60)
-	_check(seen.rest_first and seen.most > 0.04, "a carried parcel sways on the back: %.3f" % seen.most)
-	_check(seen.samples.has(0.1) and seen.samples[0.1].angle_to(Vector3.UP) > 0.02, "it swings on after the pip stops")
-	_check(seen.rest, "the parcel settles to exact rest")
-	_check(seen.left, "put down, the pip leaves it alone")
-	var at: Array = []
-	for rate: int in [30, 60, 120]: at.append(_carry_at(rate).samples)
-	for mark: float in [0.1, 0.3]:
-		var values: Array = []
-		for sample: Dictionary in at: values.append(sample.get(mark, Vector3(9, 9, 9)))
-		_check(values[0].distance_to(values[1]) < 0.005 and values[1].distance_to(values[2]) < 0.005, "the parcel %.1f s after stopping is the same at 30, 60 and 120 fps: %s" % [mark, values])
-	var still := _carry_at(60, true)
-	_check(not still.moved, "Reduce motion keeps the parcel still")
+	# The seed style asks a world for its meshes; First Steps' world tests hold it.
+	for style: String in ["parcel", "pipsport", "raft"]:
+		var spirit := Spirit.new()
+		root.add_child(spirit)
+		var ground := Node3D.new()
+		root.add_child(ground)
+		var piece: RefCounted = CarriedItemKit.build(style, Vector3(1, 0, 0), ground)
+		piece.carry(spirit)
+		var item: Node3D = piece.root
+		var size: float = item.scale.x
+		_check(spirit.carrying_seed and is_equal_approx(spirit.carried_radius, minf(piece.radius, Spirit.CARRY_RADIUS_MOST)) and is_equal_approx(piece.radius * size, spirit.carried_radius), "a %s is held at its own size, or smaller when wider than the head carry: %.3f m at %.2f" % [style, piece.radius, size])
+		var dt := 1.0 / 60.0
+		var stray := 0.0
+		var turned := 0.0
+		var clear := INF
+		for way: Vector3 in [Vector3.RIGHT, Vector3.BACK, Vector3.LEFT, Vector3.FORWARD, Vector3.ZERO]:
+			for _frame in range(60):
+				spirit.advance_motion(way * 2.0 * dt, dt, false)
+				piece.advance(dt)
+				stray = maxf(stray, (item.position + item.basis * piece.middle).distance_to(spirit.carry_point()))
+				turned = maxf(turned, absf(angle_difference(item.rotation.y, spirit.facing.rotation.y)))
+				var head: MeshInstance3D = spirit.upper_body.get_node("Head")
+				var head_top: float = (head.global_transform * head.get_aabb()).end.y
+				for node: Node in item.find_children("*", "MeshInstance3D", true, false):
+					var mesh := node as MeshInstance3D
+					clear = minf(clear, (mesh.global_transform * mesh.get_aabb()).position.y - head_top)
+		_check(stray < 0.0001 and turned < 0.0001, "a carried %s keeps its middle on the carry point and faces the pip's way: %.5f m, %.5f rad" % [style, stray, turned])
+		_check(clear > 0.0, "a carried %s stays clear over the head: %.3f m" % [style, clear])
+		ground.free()
+		spirit.free()
 
-## A pipsport carried while the pip walks each of the four ways in turn: it is
-## on the pip's back, behind it, once the pip has turned and while it walks,
-## and again once it stands and the sway has settled.
-func _carried_turns() -> void:
+## A pick-up and a set-down ease between the ground and the head for HANDOFF
+## and end exactly there; Reduce motion and an immediate call snap.
+func _handoffs() -> void:
+	for reduced: bool in [false, true]:
+		var spirit := Spirit.new()
+		root.add_child(spirit)
+		var ground := Node3D.new()
+		root.add_child(ground)
+		var spot := Vector3(0.4, 0, 0)
+		var piece: RefCounted = CarriedItemKit.build("pipsport", spot, ground)
+		piece.reduced_motion = reduced
+		piece.rest(spot, ground, false)
+		piece.carry(spirit, false)
+		var item: Node3D = piece.root
+		var start: Vector3 = item.position
+		var dt := 1.0 / 60.0
+		var rising := true
+		var last := start.y
+		for _frame in range(roundi(CarriedItemKit.HANDOFF / dt) + 2):
+			spirit.advance_motion(Vector3.ZERO, dt, reduced)
+			piece.advance(dt)
+			rising = rising and item.position.y >= last - 0.002
+			last = item.position.y
+		var held: bool = (item.position + item.basis * piece.middle).distance_to(spirit.carry_point()) < 0.0001
+		if reduced: _check(start.y > 0.5 and held, "Reduce motion snaps a pick-up onto the head")
+		else: _check(start.distance_to(spot) < 0.0001 and rising and held, "a pick-up rises from where it rested onto the head: from %s" % start)
+		piece.rest(spot, ground, false, false, false)
+		var lowered: Vector3 = item.position
+		for _frame in range(roundi(CarriedItemKit.HANDOFF / dt) + 2): piece.advance(dt)
+		var home: bool = item.position == spot and item.basis == Basis.IDENTITY and not piece.moving()
+		if reduced: _check(lowered == spot and home, "Reduce motion snaps a set-down to the ground")
+		else: _check(lowered.y > 0.5 and home, "a set-down eases from the head to exactly where it rests: from %s" % lowered)
+		ground.free()
+		spirit.free()
 	var spirit := Spirit.new()
 	root.add_child(spirit)
 	var ground := Node3D.new()
 	root.add_child(ground)
-	var piece: RefCounted = CarriedItemKit.build("pipsport", Vector3.ZERO, ground)
+	var piece: RefCounted = CarriedItemKit.build("parcel", Vector3(0.4, 0, 0), ground)
+	piece.rest(Vector3(0.4, 0, 0), ground, false)
 	piece.carry(spirit)
-	var rest: Transform3D = piece.root.transform
-	var dt := 1.0 / 60.0
-	var behind := func(way: Vector3) -> float:
-		var off: Vector3 = piece.root.global_position - spirit.global_position
-		return Vector2(off.x, off.z).normalized().dot(-Vector2(way.x, way.z))
-	for way: Vector3 in [Vector3.RIGHT, Vector3.LEFT, Vector3.BACK, Vector3.FORWARD]:
-		# Walk until the facing has caught up with the way (a fixed bound keeps it finite).
-		var frames := 0
-		spirit.advance_motion(way * 2.0 * dt, dt, false)
-		while absf(angle_difference(spirit.facing.rotation.y, spirit.facing_target)) > 0.0001 and frames < 600:
-			spirit.advance_motion(way * 2.0 * dt, dt, false)
-			frames += 1
-		var walking: float = behind.call(way)
-		for _frame in range(120): spirit.advance_motion(Vector3.ZERO, dt, false)
-		var standing: float = behind.call(way)
-		var off: Vector3 = piece.root.global_position - spirit.global_position
-		var settled: bool = piece.root.transform == rest and Vector2(off.x, off.z).length() > 0.19
-		_check(frames < 600 and walking > 0.99 and standing > 0.999 and settled, "walking %s the pipsport rides behind the pip: %.4f walking, %.4f standing, at %s" % [way, walking, standing, off])
-		# Every part of it is behind the back of the head, so it shows.
-		var nearest := -INF
-		var to_facing: Transform3D = spirit.facing.global_transform.affine_inverse()
-		for node: Node in piece.root.find_children("*", "MeshInstance3D", true, false):
-			var mesh := node as MeshInstance3D
-			nearest = maxf(nearest, (to_facing * mesh.global_transform * mesh.get_aabb()).end.z)
-		_check(nearest < -Look.HEAD_HALF.z, "walking %s the pipsport hangs outside the head: its near face at z %.3f" % [way, nearest])
+	_check((piece.root.position + piece.root.basis * piece.middle).is_equal_approx(spirit.carry_point()), "an immediate pick-up snaps onto the head")
 	ground.free()
 	spirit.free()

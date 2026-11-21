@@ -244,7 +244,9 @@ func _check_layer() -> void:
 	lamp.visible = false
 	await _settle(layer)
 	_check(lamp not in layer.baked_roots().map(func(entry: Array) -> Node3D: return entry[0]), "A hidden prop is baked out")
-	item.carry(world)
+	var carrier := SpiritVisual.new()
+	world.add_child(carrier)
+	item.carry(carrier)
 	await _frames(2)
 	_check(_index(layer, item.root) < 0, "A carried item's shadow goes (the pip shows it)")
 	item.rest(Vector3(0, 0, -1), world, true)

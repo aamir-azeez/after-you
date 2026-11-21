@@ -4,7 +4,8 @@ extends SceneTree
 ## from the real engine's snapshots:
 ## - each item in its style (a pin by id, the slot's default, a float as a raft),
 ##   every style of both slots built (kit/pieces/carried_item.gd, current.gd);
-## - picked up, the item rides on the carrier's back; put down, it rests at its
+## - picked up, the item is held over the carrier's head, its middle on the
+##   spirit's carry point as the seed and the lens are; put down, it rests at its
 ##   place; a float rests on the water by the float rule (kit/floats.gd): its
 ##   keel its draft under the surface, its deck clear of it;
 ## - the both-hands ladder wears rungs, so a carrier's stop has its cause;
@@ -66,12 +67,15 @@ func _world() -> void:
 	sim.step({})
 	sim.step({"interact": true})
 	world.present(sim.snapshot(), true)
-	_check(world.actors.has("p0") and pieces.pipsport.root.get_parent() == world.actors.p0.facing and pieces.pipsport.root.position == pieces.pipsport.back, "Picked up, it rides on the carrier's back")
+	var held: Node3D = pieces.pipsport.root
+	var p0: Node3D = world.actors.get("p0")
+	_check(p0 != null and pieces.pipsport.holder == p0 and held.get_parent() == world.terrain and (held.position + held.basis * pieces.pipsport.middle).is_equal_approx(p0.carry_point()), "Picked up, it is held over the carrier's head, on the carry point")
+	_check(p0 != null and p0.carrying_seed and is_equal_approx(p0.carried_radius, pieces.pipsport.radius) and held.scale.is_equal_approx(Vector3.ONE), "The pip carries it at its own size, as it carries the seed")
 	_walk(sim, [-250, 0])
 	sim.step({})
 	sim.step({"interact": true})
 	world.present(sim.snapshot(), true)
-	_check(pieces.pipsport.root.get_parent() == world.terrain and pieces.pipsport.root.position.is_equal_approx(world._at({"position_cm": [-250, 0], "surface_id": "dock"})), "Put down, it rests where the pip stood")
+	_check(pieces.pipsport.root.get_parent() == world.terrain and pieces.pipsport.root.position.is_equal_approx(world._at({"position_cm": [-250, 0], "surface_id": "dock"})) and pieces.pipsport.holder == null and not p0.carrying_seed, "Put down, it rests where the pip stood, and the pip's head is free")
 	await world.show_stage(level.stages[1])
 	var current: RefCounted = world._current_piece
 	_check(current != null and current.style == "ripples" and current._legs.size() == 2, "The drift stage lays its two legs in the default style")

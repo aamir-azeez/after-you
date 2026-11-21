@@ -235,14 +235,20 @@ func _label_bubble(values: Array, at: Vector3, parent: Node3D, shift: float = 0.
 func _process(delta: float) -> void:
 	super._process(delta)
 	_advance_bubbles(delta)
-	if not reduced_motion:
-		for piece: RefCounted in _item_pieces.values():
-			if piece.moving(): piece.advance(delta)
+	_advance_items(delta)
 
 ## A card holds the bob, but Reduce motion turned on still settles it.
 func _idle_card_frame() -> void:
 	super._idle_card_frame()
 	_advance_bubbles(0.0)
+	_advance_items(0.0)
+
+## After the spirits have moved: a carried item follows its carrier's head, a
+## float bobs (not with Reduce motion), a pick-up or set-down eases on.
+func _advance_items(delta: float) -> void:
+	for piece: RefCounted in _item_pieces.values():
+		piece.reduced_motion = reduced_motion
+		if piece.moving(): piece.advance(delta)
 
 func _advance_bubbles(delta: float) -> void:
 	for bubble: LabelBubble in _bubbles:
@@ -546,7 +552,7 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	# Open turns never light the spot when a turn is ready (owner, 2026-11-16).
 	if is_instance_valid(_waiting_ring): _glow(_waiting_ring,CREAM,0.6 if state.get("can_commit",false) and not OpenTurns.pinned(chapter_definition) else 0.0)
 	_present_seats(state, immediate)
-	_present_items(state)
+	_present_items(state, immediate)
 	if _wait_hints_on and _wait_hints.update(state): _show_wait_marks()
 	# What a world sets after this (its own levers and wheels) is read by the
 	# next pass, not by the one an immediate present already ran.
@@ -778,7 +784,7 @@ func _build_items(stage: Dictionary) -> void:
 		terrain.add_child(landing)
 		SocketKit.landing(landing)
 
-## The node drawing item `id` (on its carrier's back or where it rests), or
+## The node drawing item `id` (over its carrier's head or where it rests), or
 ## null: an ending scene hides it while its own stands in for it.
 func item_node(id: String) -> Node3D:
 	return _item_pieces[id].root if _item_pieces.has(id) else null
@@ -833,9 +839,11 @@ func _ladder_rungs(route: Dictionary) -> void:
 			var post := Vector3(float(end.x) / 100.0, float(end.height) / 100.0 + 0.2, middle + side * (across / 2.0 - RUNG_POST_IN)) if axis == 0 else Vector3(middle + side * (across / 2.0 - RUNG_POST_IN), float(end.height) / 100.0 + 0.2, float(end.z) / 100.0)
 			ItemParts.box(Vector3(0.04, 0.4, 0.04), ItemParts.TIMBER, post, terrain)
 
-## Each item where the snapshot has it: on its holder's back, resting at its
-## place, or bobbing on the water; the current's legs lit by their wheels.
-func _present_items(state: Dictionary) -> void:
+## Each item where the snapshot has it: held over its holder's head the way a
+## seed or a lens is, resting at its place, or bobbing on the water; the
+## current's legs lit by their wheels. A pip that lets an item go throws it
+## (into its arc) or settles its head, as it does for the seed and the lens.
+func _present_items(state: Dictionary, immediate: bool = false) -> void:
 	if _item_pieces.is_empty(): return
 	var items: Dictionary = state.get("mechanisms", {}).get("items", {})
 	for id: String in _item_pieces:
@@ -847,10 +855,15 @@ func _present_items(state: Dictionary) -> void:
 		piece.root.visible = not CarriedItems.is_away(item_state)
 		if not piece.root.visible: continue
 		var holder := str(item_state.holder)
-		if not holder.is_empty() and actors.has(holder): piece.carry(actors[holder])
+		piece.reduced_motion = reduced_motion
+		if not holder.is_empty() and actors.has(holder): piece.carry(actors[holder], immediate)
 		else:
-			piece.rest(_item_point(item_state), terrain, str(item_state.surface_id).is_empty() and not CarriedItems.in_flight(item_state))
-			if new_pieces != null and not new_pieces.ride(str(item_state.surface_id)).is_empty(): _item_decks[id] = [piece.root.position, str(item_state.surface_id)]
+			var flying := CarriedItems.in_flight(item_state)
+			if not immediate and is_instance_valid(piece.holder):
+				if flying: piece.holder.play_throw()
+				else: piece.holder.play_carry_release()
+			piece.rest(_item_point(item_state), terrain, str(item_state.surface_id).is_empty() and not flying, flying, immediate)
+			if new_pieces != null and not new_pieces.ride(str(item_state.surface_id)).is_empty(): _item_decks[id] = [_item_point(item_state), str(item_state.surface_id)]
 	_ride_items()
 	if _current_piece != null: _current_piece.set_controls(state.get("controls", {}))
 
@@ -864,4 +877,4 @@ func _advance_carriers(delta: float) -> void:
 func _ride_items() -> void:
 	for id: String in _item_decks:
 		var deck: Array = new_pieces.ride(str(_item_decks[id][1]))
-		if not deck.is_empty(): _item_pieces[id].root.position = (_item_decks[id][0] as Vector3) + (deck[1] as Vector3)
+		if not deck.is_empty(): _item_pieces[id].place((_item_decks[id][0] as Vector3) + (deck[1] as Vector3))

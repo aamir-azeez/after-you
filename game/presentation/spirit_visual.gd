@@ -67,11 +67,10 @@ const DROP_SPEED := 0.6
 const DROP_FROM := 0.1
 const LAND_SQUASH := 0.5
 const LAND_MOST := 0.12
-## An item hung on the back (hang_on_back) rolls with each stride and bobs with
-## the hop, and swings forward and back when the pip stops.
-const BACK_ROLL := 0.07
-const BACK_BOB := 0.03
-const BACK_SWING := 0.16
+## The widest thing the head carry holds at its own size (a Lighthouse
+## lens's radius, m): anything wider is drawn smaller (hold_overhead), so it
+## never hides the face or the other pip.
+const CARRY_RADIUS_MOST := 0.25
 ## The startled wake (play_wake) and the moment in it when the goal rings:
 ## just after the hop lands (presentation/memory_wait.gd reads this).
 const WAKE_DURATION := SpiritIdle.WAKE_DURATION
@@ -141,6 +140,8 @@ var facing_target := 0.0
 ## the walk (a trail) follow this, not the eased drawing, so a turn draws the
 ## same at any frame rate.
 var travel_target := Vector3.INF
+## Whether it carries something over its head, and that thing's half width
+## (hold_overhead): a seed, a lens or a carried item, all held the one way.
 var carrying_seed := false
 var carried_radius := 0.13
 var throw_age := THROW_DURATION
@@ -209,12 +210,6 @@ var _carried := false
 const BUMP_DURATION := 0.28
 const BUMP_FACE := 0.5
 var _bump_age := BUMP_DURATION
-## A carried item hung on the spirit's back (kit/pieces/carried_item.gd carry):
-## it rides under the facing pivot at _back_at, turned _back_turn, so it stays
-## on the back whichever way the pip faces, and sways.
-var _back_item: Node3D = null
-var _back_at := Vector3.ZERO
-var _back_turn := Vector3.ZERO
 
 func _init(color: Color=Look.PEACH) -> void:
 	facing.name="Facing"
@@ -584,39 +579,6 @@ func landing_squash() -> float:
 	if _reduced_motion or land_age>=MOTION_EVENT_END: return 0.0
 	return Motion.settle(land_age,_land_amount,2.8,7.5)
 
-## Hangs `item` on its back at `at`, turned `turn` (euler), both in the facing
-## pivot's space (+Z the way the pip faces): the item moves under the facing
-## pivot, so it turns with the pip, and sways with the stride and the stop from
-## now on, until it is taken off (reparented) or freed. Presentation only.
-func hang_on_back(item: Node3D, at: Vector3, turn: Vector3) -> void:
-	if item.get_parent()!=facing: item.reparent(facing,false)
-	_back_item=item
-	_back_at=at
-	_back_turn=turn
-	_apply_back_sway()
-
-func _apply_back_sway() -> void:
-	if _back_item==null: return
-	if not is_instance_valid(_back_item) or _back_item.get_parent()!=facing:
-		_back_item=null
-		return
-	var roll := 0.0
-	var swing := 0.0
-	var bob := 0.0
-	if not _reduced_motion:
-		roll=sin(stride_phase+expression_phase*0.18)*BACK_ROLL*motion_blend
-		bob=absf(sin(stride_phase))*BACK_BOB*motion_blend
-		# It swings on a little after the body stops, like the leaf.
-		if stop_age<MOTION_EVENT_END: swing=Motion.settle(stop_age-0.06,BACK_SWING,2.0,5.0)
-	if roll==0.0 and swing==0.0 and bob==0.0:
-		_back_item.position=_back_at
-		_back_item.rotation=_back_turn
-		return
-	# The sway is in the facing pivot's space, where the item hangs.
-	var sway := Basis(Vector3.BACK,roll)*Basis(Vector3.RIGHT,swing)
-	_back_item.position=_back_at+Vector3(0,bob,0)
-	_back_item.basis=sway*Basis.from_euler(_back_turn)
-
 func _advance_expression(delta: float) -> void:
 	_expression_time+=delta
 	if _pose_blend<1.0:
@@ -765,7 +727,6 @@ func _apply_pose(amount: float) -> void:
 		if rest.body_shift!=Vector3.ZERO or rest.feet_forward!=0.0: feet[index].position+=rest.body_shift+Vector3(0,0,rest.feet_forward)
 		if (ride_tuck!=0.0 or _ride_sit!=0.0) and not _reduced_motion: feet[index].position+=Vector3(0,ride_tuck+_ride_sit*0.04,_ride_sit*0.18)
 	if not _doze_zs.is_empty(): _apply_doze_zs(idle)
-	_apply_back_sway()
 
 ## The pose layer's offsets this frame, faded by `idle` (none while walking).
 ## Reduce motion gives each pose's still frame: nothing at all for rest.
@@ -888,6 +849,20 @@ func advance_carried(delta: float, reduced_motion: bool) -> void:
 	_carried_from=position
 	_carried=true
 	advance_motion(Vector3.ZERO,delta,reduced_motion)
+
+## Carries something `radius` m across (half its widest side) over the head
+## from now on: a seed, a lens or any carried item (kit/pieces/carried_item.gd),
+## until the world sets carrying_seed false. Returns the scale to draw it at:
+## 1, or less for anything wider than CARRY_RADIUS_MOST.
+func hold_overhead(radius: float) -> float:
+	carrying_seed=true
+	carried_radius=minf(radius,CARRY_RADIUS_MOST)
+	return carried_radius/radius if radius>0.0 else 1.0
+
+## Where the middle of what it carries over its head sits now, in its
+## parent's space (the one place every world holds a carried thing).
+func carry_point() -> Vector3:
+	return position+carry_anchor_position()
 
 func carry_anchor_position() -> Vector3:
 	var seed_hop := absf(sin(stride_phase))*0.08*motion_blend if not _reduced_motion else 0.0

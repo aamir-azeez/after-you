@@ -17,7 +17,7 @@ extends SceneTree
 ##   a platform's stop is drawn on its deck frame by frame while the deck eases
 ##   between stops, never at the stop the simulation already moved it to: a
 ##   memory or the live pip riding the lift up and down or the raft over the
-##   water, a carried item on a memory's back, an item put down on the lift;
+##   water, a carried item over a memory's head, an item put down on the lift;
 ##   a memory that walks off the lift before its deck is up waits on the deck,
 ##   which hurries there, and never hops.
 const Simulation = preload("res://core/journey/simulation.gd")
@@ -208,7 +208,7 @@ func _riders() -> void:
 	world.queue_free()
 	await process_frame
 
-## Items ride the one way too: on a memory's back, and put down on the lift.
+## Items ride the one way too: over a memory's head, and put down on the lift.
 func _item_riders() -> void:
 	var shown := ItemWitness.definition()
 	var world := await _world("home", shown, ItemWitness.source())
@@ -230,7 +230,7 @@ func _item_riders() -> void:
 	_idle(second, 60, world, both)
 	_check(str(second._players.p0.surface_id) == "lift-high" and str(second._mechanisms.items.pipsport.holder) == "p0", "The memory rode up holding the pipsport: %s" % [second._players.p0])
 	_riding(ride, "A memory holding the pipsport rides the lift on its deck", true)
-	_riding(held, "And the pipsport on its back rides with it", true)
+	_riding(held, "And the pipsport over its head rides with it", true)
 	# Turn 1 again: the first pip puts the pipsport down on the lift and weighs the pan.
 	var puts := _item_sim(shown, start)
 	_walk(puts, [450, 200])
@@ -247,7 +247,7 @@ func _item_riders() -> void:
 	world.queue_free()
 	await process_frame
 
-## What one ride watches: a pip (`slot`), or an item (`item`; on `slot`'s back
+## What one ride watches: a pip (`slot`), or an item (`item`; over `slot`'s head
 ## while that pip holds it), on platform `index`.
 func _ride(world: Node3D, sim: Simulation, slot: String, index: int, item: String = "") -> Dictionary:
 	return {"world": world, "sim": sim, "slot": slot, "item": item, "index": index, "frames": 0, "between": 0, "worst": 0.0, "where": "", "step": 0.0}
@@ -263,7 +263,7 @@ func _tick(world: Node3D, sim: Simulation, input: Dictionary, rides: Variant) ->
 
 ## One frame of a ride: while what it watches stands or rests on one of its
 ## platform's stops and the deck is on its way, how far it is drawn from where
-## the deck carries it. An item on a back must keep its place on the pip.
+## the deck carries it. An item held overhead must keep its place on the pip.
 func _measure(ride: Dictionary) -> void:
 	var world: Node3D = ride.world
 	var sim: Simulation = ride.sim
@@ -274,8 +274,8 @@ func _measure(ride: Dictionary) -> void:
 		ride["last"] = now
 	var item: String = ride.item
 	var state: Dictionary = sim._players[ride.slot] if item.is_empty() else sim._mechanisms.items[item]
-	var on_back: bool = not item.is_empty() and not str(ride.slot).is_empty() and str(state.get("holder", "")) == ride.slot
-	if on_back: state = sim._players[ride.slot]
+	var held: bool = not item.is_empty() and not str(ride.slot).is_empty() and str(state.get("holder", "")) == ride.slot
+	if held: state = sim._players[ride.slot]
 	var surface := str(state.get("surface_id", ""))
 	var stop: int = entry.stops.find(surface)
 	if stop < 0:
@@ -297,17 +297,16 @@ func _measure(ride: Dictionary) -> void:
 	var rect: Array = bridge.rect_cm
 	var anchor := Vector3(float(rect[0] + rect[2]) / 200.0, float(bridge.height_cm) / 100.0, float(rect[1] + rect[3]) / 200.0)
 	var expected := Vector3(float(state.x), float(state.height), float(state.z)) / 100.0 + deck.position - anchor
-	var drawn: Vector3 = world.actors[ride.slot].position if item.is_empty() or on_back else world._item_pieces[item].root.position
-	if on_back:
-		# Measured while the deck is on its way: walking sways it on the back.
+	var drawn: Vector3 = world.actors[ride.slot].position if item.is_empty() or held else world._item_pieces[item].root.position
+	if held:
+		# Measured while the deck is on its way: its middle stays on the pip's
+		# carry point, which bobs with the walk as the seed does.
 		if not _count_frame(ride, entry, deck, anchor): return
-		var piece: Node3D = world._item_pieces[item].root
-		var actor: Node3D = world.actors[ride.slot]
-		if not ride.has("hang"): ride["hang"] = piece.global_position - actor.global_position
-		var slip: float = (piece.global_position - actor.global_position - ride.hang).length()
+		var piece: RefCounted = world._item_pieces[item]
+		var slip: float = (piece.root.position + piece.root.basis * piece.middle).distance_to(world.actors[ride.slot].carry_point())
 		if slip > ride.worst:
 			ride.worst = slip
-			ride.where = "tick %d: the item slipped %.3f m off the pip's back" % [sim.tick, slip]
+			ride.where = "tick %d: the item slipped %.3f m off the pip's head" % [sim.tick, slip]
 		return
 	# Its own walk on and off the deck eases; the ride itself must not.
 	if not _count_frame(ride, entry, deck, anchor): return

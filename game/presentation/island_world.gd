@@ -988,7 +988,7 @@ func _apply_seed_pose() -> void:
 	if not is_instance_valid(seed) or _seed_status.is_empty(): return
 	if actors.has(_seed_holder):
 		var actor: SpiritVisual=actors[_seed_holder]
-		seed.position=actor.position+actor.carry_anchor_position()
+		seed.position=actor.carry_point()
 	else:
 		var launch_blend := maxf(0.0,1.0-_seed_launch_age/0.16) if _seed_status=="flying" and not reduced_motion else 0.0
 		var flight_position := _seed_previous_position.lerp(_seed_snapshot_position, clampf(_seed_snapshot_age / SEED_SNAPSHOT_INTERVAL, 0.0, 1.0)) if _seed_status=="flying" else _seed_snapshot_position
@@ -1291,7 +1291,7 @@ func advance_idle(delta: float) -> bool:
 ## (worlds add their own, such as Lighthouse lenses and settled bubbles).
 func _idle_card_frame() -> void:
 	if is_instance_valid(seed) and not _seed_status.is_empty() and actors.has(_seed_holder):
-		seed.position=actors[_seed_holder].position+actors[_seed_holder].carry_anchor_position()
+		seed.position=actors[_seed_holder].carry_point()
 
 ## Reports a mechanism's movement on change only. Under Reduce motion an
 ## animated mechanism snaps into place, so it never starts a loop; `animated`
