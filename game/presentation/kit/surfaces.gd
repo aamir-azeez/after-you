@@ -3,19 +3,22 @@ extends RefCounted
 ## the island's drawn shape at the parent's height: its rectangle reaching
 ## past the walkable edge by what the drawn pip reaches over it
 ## (kit/walk_reach.gd), cut round its neighbours; trims run along that shape's
-## outer edges and the rock stays under the walkable rectangle.
+## outer edges and the rock stays under the walkable rectangle. Each floor
+## registers its drawn top as a ground (kit/contact_shadows.gd), so what stands
+## on it is baked into it; a "worn" style (grass) wears round a base.
 ## Every piece but the rock is one of the kit's cached boxes (nothing resizes
 ## a floor), so a chapter opened again makes none of them again (while the
 ## kit keeps them, Primitives.KEPT_SHAPES).
 
 const Primitives = preload("res://presentation/kit/primitives.gd")
 const WalkReach = preload("res://presentation/kit/walk_reach.gd")
+const ContactShadows = preload("res://presentation/kit/contact_shadows.gd")
 
 const STYLES := {
 	# Meadow grass over a soil band and warm sandstone. A floating shell under
 	# it (island_world.gd _island_shell) runs the band down into deeper soil, a
 	# darker underside and roots.
-	"grass": {"top": Color("7fa564"), "trim": Color("94b878"), "skirt": Color("62894f"), "band": Color("8a6b4e"), "rock": Color("b49a76"), "lines": "",
+	"grass": {"top": Color("7fa564"), "trim": Color("94b878"), "skirt": Color("62894f"), "band": Color("8a6b4e"), "rock": Color("b49a76"), "lines": "", "worn": true,
 		"soil": Color("6f5440"), "underside": Color("533e2d"), "root": Color("4a3729")},
 	# A raised plank deck on beams, with no rock below: supports come from posts.
 	"deck": {"top": Color("a07a55"), "trim": Color("8a6b4e"), "skirt": Color("7a5c40"), "band": Color("6b5038"), "rock": Color("a88f6c"), "lines": "x", "line": Color("8f6d4d"), "spacing": 0.36, "rockless": true},
@@ -40,7 +43,7 @@ const STYLES := {
 	# with butt joints staggered along them ("alt", "joints"), and a reedy mud bank.
 	"boardwalk": {"top": Color("c2a77f"), "trim": Color("8c7656"), "skirt": Color("7a6548"), "band": Color("5f4f3b"), "rock": Color("8a7d63"), "lines": "x", "line": Color("7f694b"), "spacing": 0.3,
 		"alt": Color("b0956c"), "joints": 1.1},
-	"reed_bank": {"top": Color("aaa27e"), "trim": Color("8f8a64"), "skirt": Color("7f7a58"), "band": Color("6f6548"), "rock": Color("7f7660"), "lines": ""},
+	"reed_bank": {"top": Color("aaa27e"), "trim": Color("8f8a64"), "skirt": Color("7f7a58"), "band": Color("6f6548"), "rock": Color("7f7660"), "lines": "", "worn": true},
 }
 
 static func has_style(name: String) -> bool:
@@ -65,6 +68,8 @@ static func build(island: Dictionary, style_name: String, parent: Node3D, with_r
 	# Seams and planks line up across the pieces from the walkable
 	# rectangle's corner, where the pieces laid on the floor are placed from.
 	var origin := Vector2(float(island.rect_cm[0]), float(island.rect_cm[1])) / 100.0
+	# One ground over the whole drawn shape, its shade only over the pieces.
+	ContactShadows.ground_cm(parent, shape, 0.0, bool(style.get("worn", false)))
 	for index in range(shape.size()):
 		var r: Array = shape[index]
 		# Each side: on the whole shape's bounds (1), met by another piece (0),

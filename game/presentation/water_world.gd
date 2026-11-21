@@ -395,13 +395,15 @@ func _dressed_prop(prop: Node3D) -> void:
 ## body, off every floor: a pole down to the bed, a boat, a wreck) makes the water's rings where it
 ## meets the surface, at whatever level the water stands, from its foot to its
 ## top (WaterLook.ripple_from; the foam band round it comes with the edge
-## maps). Its "Waterline" marker sits halfway up that reach.
+## maps). Its "Waterline" marker sits halfway up that reach. It darkens no
+## ground: there is none under it, and the rings are its grounding.
 func _waterline(prop: Node3D) -> void:
 	var spec: Dictionary = prop.get_meta("dressing_spec", {})
 	var at := Vector2(prop.position.x, prop.position.z)
 	if not Props.stands_in_water(str(spec.get("kind", ""))) or waters.body_under(at * 100.0).is_empty(): return
 	for island: Dictionary in current_level.get("islands", []):
 		if PropRules.rect(island.rect_cm).grow(PropRules.LIP).has_point(at): return
+	ContactShadows.set_off(prop, true)
 	var base := prop.position.y + (prop.get_parent() as Node3D).position.y if prop.get_parent() != terrain else prop.position.y
 	# Its foot: the base less what its model reaches under it (Props.BELOW).
 	var extent := Props.extent(spec)

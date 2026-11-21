@@ -99,7 +99,7 @@ func _make(lift_style: String, rect: Rect2, bottom: float, top: float, parent: N
 	_bottom = bottom
 	_top = top
 	var center := Vector3(rect.get_center().x, bottom, rect.get_center().y)
-	_root("Lift_" + lift_style, center, parent)
+	_root("Lift_" + lift_style, center, parent, false)
 	anchor = root
 	_parts.append(root)
 	if lift_style == "rope_tower": _rope_tower(rect, parent, options)

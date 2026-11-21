@@ -65,7 +65,7 @@ func _make(raft_style: String, stops: Array[Vector3], size: Vector2, parent: Nod
 	style = raft_style
 	_stops = stops
 	_target = stops[0]
-	_root("Raft_" + raft_style, stops[0], parent)
+	_root("Raft_" + raft_style, stops[0], parent, false)
 	anchor = root
 	# The log raft model (built 1.0 by 0.8 m, logs along x), stretched to the
 	# stop with its logs along the stop's long side.

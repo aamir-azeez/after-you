@@ -167,6 +167,7 @@ func _build_rock(island: Dictionary, top_hole: Array, body_hole: Array, top_colo
 		# lines lying just over it show; its sides never lie on the slab's
 		# (coplanar faces flicker as the camera moves).
 		_slab(piece, -0.012, 0.0, top_color.lightened(0.12), raised)
+	ContactShadows.ground_cm(raised, _cut(shape, top_hole), 0.0, false)
 	for piece: Array in _cut(shape, body_hole):
 		_slab(piece, -height - 1.45, -0.20, body_color, raised)
 	var r := drawn

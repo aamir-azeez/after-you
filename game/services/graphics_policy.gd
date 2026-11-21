@@ -52,6 +52,18 @@ static func fill_light(quality: Variant) -> bool:
 static func water_detail(quality: Variant) -> bool:
 	return normalize(quality) != "low"
 
+## Grounding (kit/contact_shadows.gd): every quality keeps the soft shade
+## where things meet the floor, a little lighter on Low; Low drops the worn
+## grass's detail and the sun's baked shadows.
+static func contact_shadow_strength(quality: Variant) -> float:
+	return 0.42 if normalize(quality) == "low" else 0.55
+
+static func ground_detail(quality: Variant) -> bool:
+	return normalize(quality) != "low"
+
+static func cast_shadows(quality: Variant) -> bool:
+	return normalize(quality) != "low"
+
 ## How many spots on screen spread rings on the water at once.
 static func water_rings(quality: Variant) -> int:
 	return 4 if normalize(quality) == "low" else 8

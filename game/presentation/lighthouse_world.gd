@@ -287,6 +287,7 @@ func _shore(island: Dictionary, color: Color) -> void:
 		var piece: Array = shape[index]
 		var top := box(Vector3(float(piece[2] - piece[0]) / 100.0, 0.20, float(piece[3] - piece[1]) / 100.0), color, point([(piece[0] + piece[2]) / 2.0, (piece[1] + piece[3]) / 2.0]) + Vector3(0, -0.10, 0), terrain)
 		if index == 0: top.name = str(island.id) + "Floor"
+	ContactShadows.ground_cm(terrain, shape, center.y, false)
 	var corners := [Vector2(-1, -1), Vector2(1, -1), Vector2(1, 1), Vector2(-1, 1)]
 	var top: Array[Vector3] = []
 	var bottom: Array[Vector3] = []

@@ -72,6 +72,7 @@ func _shore(island: Dictionary, _color: Color) -> void:
 		if drop.surface_id == island.id: hole = drop.rect_cm
 	var shape: Array = []
 	for drawn: Array in drawn_pieces(island): shape.append_array(WalkReach.minus(drawn, hole) if not hole.is_empty() else [drawn])
+	ContactShadows.ground_cm(room, shape, 0.0, false)
 	for piece: Array in shape:
 		var width := float(piece[2]-piece[0])/100.0
 		var depth := float(piece[3]-piece[1])/100.0

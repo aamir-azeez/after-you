@@ -11,6 +11,7 @@ const Look = preload("res://presentation/spirit_look.gd")
 const Meshes = preload("res://presentation/spirit_meshes.gd")
 const SpiritFace = preload("res://presentation/spirit_face.gd")
 const Primitives = preload("res://presentation/kit/primitives.gd")
+const ContactShadows = preload("res://presentation/kit/contact_shadows.gd")
 const SparkleStar = preload("res://presentation/kit/sparkle_star.gd")
 const PipOutfit = preload("res://presentation/pip_outfit.gd")
 const Outfit = preload("res://services/outfit.gd")
@@ -86,15 +87,17 @@ const DOZE_Z_RISE := Vector3(0.30,0.45,-0.45)
 # How long the Happy face lasts after a reunion and the Home greeting.
 const HAPPY_REUNION_DURATION := 1.1
 const GREETING_DURATION := 1.2
-## The soft ground shadow: a thin translucent disc. It writes no depth, so an
-## opaque face at its height shows through it in stripes. Its top lies over
-## the floor's lines, trims, rugs, caps and zone strips (up to 2.1 cm) and
-## under the bridge deck trims (2.75 cm), pads and plates, 3.25 mm from the
-## nearest. The dressing lint keeps every chapter clear of it wherever a
-## spirit stands (test_dressing_lint.gd).
+## The soft ground shadow: a flat quad in the contact shadows' look
+## (kit/contact_shadows.gd), SHADOW_RADIUS across, fading out over its outer
+## SHADOW_FADE. It writes no depth, so an opaque face at its height shows
+## through it in stripes. It lies over the floor's lines, trims, rugs, caps
+## and zone strips (up to 2.1 cm) and under the bridge deck trims (2.75 cm),
+## pads and plates, 3.25 mm from the nearest. The dressing lint keeps every
+## chapter clear of it wherever a spirit stands (test_dressing_lint.gd). The
+## floors' baked shade lies at the same height (ContactShadows.SHADE_TOP).
 const SHADOW_RADIUS := 0.30
-const SHADOW_TOP := 0.02425
-const SHADOW_THICKNESS := 0.004
+const SHADOW_FADE := 0.18
+const SHADOW_TOP := ContactShadows.SHADE_TOP
 
 var facing := Node3D.new()
 var upper_body := Node3D.new()
@@ -242,13 +245,14 @@ func _init(color: Color=Look.PEACH) -> void:
 		facing.add_child(foot)
 		_part(Meshes.foot(),_body_material(color.darkened(Look.FOOT_SHADE)),Vector3.ZERO,foot)
 		feet.append(foot)
-	var shadow_mesh := CylinderMesh.new()
-	shadow_mesh.top_radius=SHADOW_RADIUS
-	shadow_mesh.bottom_radius=SHADOW_RADIUS
-	shadow_mesh.height=SHADOW_THICKNESS
-	shadow_mesh.radial_segments=24
-	ground_shadow=_mesh(shadow_mesh,Color(0.12,0.23,0.21,0.2),Vector3(0,SHADOW_TOP-SHADOW_THICKNESS*0.5,0),self)
+	# The same soft look as every contact shadow (kit/contact_shadows.gd).
+	ground_shadow=MeshInstance3D.new()
+	ground_shadow.name="GroundShadow"
+	ground_shadow.mesh=ContactShadows.pip_quad(SHADOW_RADIUS)
+	ground_shadow.material_override=ContactShadows.single_material(Vector2.ONE*(SHADOW_RADIUS-SHADOW_FADE),SHADOW_FADE,1.0)
+	ground_shadow.position=Vector3(0,SHADOW_TOP,0)
 	ground_shadow.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(ground_shadow)
 	var ring_mesh := TorusMesh.new()
 	ring_mesh.inner_radius=0.315
 	ring_mesh.outer_radius=0.365

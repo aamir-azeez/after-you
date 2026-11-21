@@ -51,6 +51,9 @@ var dressing: Dictionary = {}
 var _surface_nodes: Dictionary = {}
 var _fireflies: Array[MeshInstance3D] = []
 const StaticBatch = preload("res://presentation/kit/static_batch.gd")
+const ContactShadows = preload("res://presentation/kit/contact_shadows.gd")
+## The world's soft contact shadows (kit/contact_shadows.gd).
+var contact_shadows: Node3D
 ## Every world camera writes its size through this (tall screens keep the authored width).
 const ViewFit = preload("res://presentation/kit/view_fit.gd")
 var _motion_quality := "balanced"
@@ -185,6 +188,10 @@ func _ready() -> void:
 	camera_exploration.reduced_motion = func() -> bool: return reduced_motion
 	add_child(camera_exploration)
 	SpaceBackdrop.apply_quality(environment, _motion_quality)
+	# Soft contact shadows under everything marked in this world, one draw call.
+	contact_shadows = ContactShadows.new()
+	contact_shadows.set_quality(_motion_quality)
+	add_child(contact_shadows)
 	relight("day")
 	get_tree().process_frame.connect(_on_tree_frame)
 
@@ -203,6 +210,7 @@ func graphics_quality() -> String:
 
 func apply_graphics_quality(quality: String) -> void:
 	_motion_quality = GraphicsPolicy.normalize(quality)
+	if is_instance_valid(contact_shadows): contact_shadows.set_quality(_motion_quality)
 	for trail: Node3D in _motion_trails:
 		if is_instance_valid(trail): trail.set_quality(_motion_quality)
 	if not is_node_ready(): return
@@ -540,13 +548,18 @@ func _make_island(cx: float, cz: float, width: float, depth: float, grass: Color
 	for i in range(2):
 		var tx := cx + (-0.85 if i==0 else 0.65)
 		var tz := cz-depth/2+0.28
-		cylinder(0.07,0.8,Color("806f59"),Vector3(tx,0.4,tz),terrain)
+		# Each tree under its own root, grounded like any prop.
+		var tree := Node3D.new()
+		tree.name = "Tree"
+		terrain.add_child(tree)
+		ContactShadows.mark(tree)
+		cylinder(0.07,0.8,Color("806f59"),Vector3(tx,0.4,tz),tree)
 		var foliage := Color("659d86") if i==0 else Color("8daf83")
 		for lobe in range(3):
-			var crown := sphere(0.40,foliage.lightened(lobe*0.045),Vector3(tx+(lobe-1)*0.19,1.02+0.19*(1-abs(lobe-1)),tz),terrain)
+			var crown := sphere(0.40,foliage.lightened(lobe*0.045),Vector3(tx+(lobe-1)*0.19,1.02+0.19*(1-abs(lobe-1)),tz),tree)
 			crown.scale=Vector3(0.82,1.28,0.82)
 			for j in range(3):
-				sphere(0.065,Color("ebc28f"),Vector3(tx+sin(j*2.1)*0.29,0.95+0.12*j,tz+cos(j*2.1)*0.25),terrain)
+				sphere(0.065,Color("ebc28f"),Vector3(tx+sin(j*2.1)*0.29,0.95+0.12*j,tz+cos(j*2.1)*0.25),tree)
 
 ## Rear-edge scenery that differs per island: tree count and placement, fruit
 ## or blossom, a flowering bush or a bench. Static props share materials.
@@ -643,6 +656,8 @@ func _island_shell(cx: float, cz: float, width: float, depth: float, grass: Colo
 	shell_material.cull_mode=BaseMaterial3D.CULL_DISABLED
 	shell.material_override=shell_material
 	(parent if parent != null else terrain).add_child(shell)
+	# Its grass is a ground what stands on it is baked into (kit/contact_shadows.gd).
+	ContactShadows.ground(parent if parent != null else terrain, Rect2(cx-hx, cz-hz, width, depth), 0.0, true)
 
 func _shell_triangle(surface: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, color: Color) -> void:
 	surface.set_color(color)
@@ -1155,6 +1170,12 @@ func _fold_static_scenery_once() -> void:
 ## Whether this world's terrain still has a fold to start or finish.
 func scenery_folding() -> bool:
 	return not _fold_job.is_empty() or (is_instance_valid(terrain) and not terrain.has_meta(StaticBatch.FOLDED_META) and _folds_static_scenery())
+
+## Whether this world's scenery is still being finished behind the card: its
+## fold, or its floors' grounding (kit/contact_shadows.gd) still to bake. Two
+## worlds compared node for node wait for this.
+func scenery_settling() -> bool:
+	return scenery_folding() or (is_instance_valid(contact_shadows) and not contact_shadows.settled())
 
 ## Starts or continues folding the current terrain. Returns the fold's job
 ## ({} when there is nothing to fold); its "done" says whether it finished.
