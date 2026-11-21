@@ -68,13 +68,24 @@ extends RefCounted
 ##                            turns while "when" holds
 ##   falls_path            J  "routes" behind a waterfall, dry while "lever"
 ##                            (its water gate) is on
+##   light                 J  the stage's light (core/physical/light_pieces.gd)
+##                            inside "bounds": "lamps" [{id, at, facing, when?}]
+##                            (a lamp with a when lights only while it holds: a
+##                            light pad, a lens in its cradle), "mirrors"
+##                            (inline mirror controls with "initial"),
+##                            "fixed_mirrors" [{id, at, orientation}] that only a
+##                            selector turns, "selectors" (inline, with
+##                            "optics" {value: {id: {orientation?, enabled?}}}),
+##                            "receivers" [{id, at}] and "routes" {route:
+##                            receiver or [receivers]}: each route open while
+##                            its receiver (any of them) is lit. One a stage.
 ## An item term ("items", carried items on train/new-pieces-carry) is
 ## {"item_id", "spot_id"} with the pan's own id as its spot.
 
 const COOPERATIVE := "cooperative"
 const JOURNEY := "journey"
 ## Default reach of each placed thing, cm.
-const RADIUS := {"pad": 32, "lever": 28, "selector": 28, "bell": 28, "ball_pad": 36}
+const RADIUS := {"pad": 32, "lever": 28, "selector": 28, "mirror": 28, "bell": 28, "ball_pad": 36}
 ## Level arrays a block may append to; everything else is the stage's.
 const LEVEL_ARRAYS := ["drops", "access_zones"]
 ## What each block must name.
@@ -88,10 +99,10 @@ const NEEDS := {
 	"fog_lantern": ["lever"], "crank_bridge": ["routes"], "weight_pan": ["pad", "routes"],
 	"platform": ["id", "stops"], "weight_lift": ["id", "low", "high", "pads"],
 	"rope_raft": ["id", "selector", "stops"], "sinking_stones": ["stones"], "rope_ladder": ["stairs"],
-	"wheel_ride": ["stairs", "when"], "falls_path": ["lever", "routes"],
+	"wheel_ride": ["stairs", "when"], "falls_path": ["lever", "routes"], "light": ["bounds"],
 }
 ## The new pieces' blocks (rules 16).
-const PIECE_BLOCKS := ["fog_lantern", "crank_bridge", "weight_pan", "platform", "weight_lift", "rope_raft", "sinking_stones", "rope_ladder", "wheel_ride", "falls_path"]
+const PIECE_BLOCKS := ["fog_lantern", "crank_bridge", "weight_pan", "platform", "weight_lift", "rope_raft", "sinking_stones", "rope_ladder", "wheel_ride", "falls_path", "light"]
 ## Blocks each family's rules can play.
 const FAMILY_BLOCKS := {
 	COOPERATIVE: ["pad", "lever", "open_route", "hold_door", "relay_lever", "weight_pad", "one_way_drop", "ring_bell", "raw"],
@@ -127,6 +138,8 @@ static func problems(source: Dictionary) -> Array[String]:
 	for stage: Dictionary in source.get("stages", []):
 		for block: Dictionary in stage.get("blocks", []):
 			for message: String in _missing(block, family): found.append("%s: %s" % [stage.get("id", "?"), message])
+		var lights: int = stage.get("blocks", []).filter(func(block: Dictionary) -> bool: return block.get("block") == "light").size()
+		if lights > 1 or (lights == 1 and stage.has("optical_field")): found.append("%s: a stage has one light" % stage.get("id", "?"))
 	if not found.is_empty(): return found
 	var level := expand(source)
 	var routes: Array = []
@@ -168,7 +181,7 @@ static func _missing(block: Dictionary, family: String) -> Array[String]:
 	if kind == "selector": _need(found, kind, "selector", block, ["values"])
 	if kind == "selector_gate":
 		if not block.routes is Dictionary: found.append("block selector_gate's routes must map each route to its value")
-	elif block.has("routes") and not block.routes is Array: found.append("block %s's routes must be a list" % kind)
+	elif block.has("routes") and kind != "light" and not block.routes is Array: found.append("block %s's routes must be a list" % kind)
 	_piece_missing(found, kind, block)
 	if kind == "match_selectors" and not block.values is Array: found.append("block match_selectors's values must be a list")
 	if block.get("lip") != null: _need(found, kind, "lip", block.lip, ["id", "rect", "owner"])
@@ -206,6 +219,19 @@ static func _piece_missing(found: Array[String], kind: String, block: Dictionary
 		"sinking_stones":
 			if not block.stones is Array: found.append("block sinking_stones's stones must be a list")
 			if block.has("when") and not block.when is Dictionary: found.append("block sinking_stones's when must be a when")
+		"light":
+			if not block.bounds is Array or block.bounds.size() != 4: found.append("block light's bounds must be [x0, z0, x1, z1]")
+			var parts := {"lamps": ["id", "at", "facing"], "mirrors": ["id", "at", "surface", "owner", "initial"], "fixed_mirrors": ["id", "at", "orientation"],
+				"selectors": ["id", "at", "surface", "owner", "values", "initial", "optics"], "receivers": ["id", "at"]}
+			for field: String in parts:
+				if not block.has(field): continue
+				if not block[field] is Array:
+					found.append("block light's %s must be a list" % field)
+					continue
+				for given: Variant in block[field]: _need(found, kind, field, given, parts[field])
+			for lamp: Variant in block.get("lamps", []):
+				if lamp is Dictionary and lamp.has("when") and not lamp.when is Dictionary: found.append("block light's lamp %s: when must be a when" % lamp.get("id", "?"))
+			if block.has("routes") and not block.routes is Dictionary: found.append("block light's routes must map each route to its receivers")
 
 static func _pads_missing(found: Array[String], kind: String, block: Dictionary, field: String) -> void:
 	if not block[field] is Array or block[field].is_empty():
@@ -321,6 +347,8 @@ static func _emit(level: Dictionary, stage: Dictionary, block: Dictionary, famil
 		"falls_path":
 			var water_gate := _place(level, stage, block.lever, "levers", "lever", family)
 			for route: String in block.routes: _add(level, stage, "gates", {"route_id": route, "when": {"lever_id": water_gate}})
+		"light":
+			_light(level, stage, block, family)
 		"raw":
 			for field: String in block:
 				if field == "block": continue
@@ -328,6 +356,35 @@ static func _emit(level: Dictionary, stage: Dictionary, block: Dictionary, famil
 				var owner: Dictionary = level if field in LEVEL_ARRAYS else stage
 				if not owner.has(field): owner[field] = []
 				for item: Variant in block[field]: _add(level, stage, field, item.duplicate(true) if item is Dictionary else item)
+
+## The stage's light (core/physical/light_pieces.gd): its optical field, its
+## mirror and selector controls, its lamps' lit_when and a gate per route.
+static func _light(level: Dictionary, stage: Dictionary, block: Dictionary, family: String) -> void:
+	var field := {"schema_version": 1, "bounds_cm": block.bounds.duplicate(), "emitters": [], "mirrors": [], "receivers": [], "blockers": []}
+	for lamp: Dictionary in block.get("lamps", []):
+		field.emitters.append({"id": lamp.id, "position_cm": lamp.at.duplicate(), "enabled": true, "direction": lamp.facing})
+		if lamp.has("when"):
+			if not stage.has("lit_when"): stage["lit_when"] = {}
+			stage.lit_when[lamp.id] = lamp.when.duplicate(true)
+	for mirror: Dictionary in block.get("mirrors", []):
+		var control := _point(mirror, "mirror", family)
+		control.merge({"kind": "mirror", "initial": mirror.initial, "values": ["slash", "backslash"]})
+		_add(level, stage, "controls", control)
+		field.mirrors.append({"id": mirror.id, "position_cm": mirror.at.duplicate(), "enabled": true, "orientation": mirror.initial})
+	for mirror: Dictionary in block.get("fixed_mirrors", []):
+		field.mirrors.append({"id": mirror.id, "position_cm": mirror.at.duplicate(), "enabled": true, "orientation": mirror.orientation})
+	for selector: Dictionary in block.get("selectors", []):
+		var control := _selector(selector)
+		control["optics"] = selector.optics.duplicate(true)
+		_add(level, stage, "controls", control)
+	for receiver: Dictionary in block.get("receivers", []):
+		field.receivers.append({"id": receiver.id, "position_cm": receiver.at.duplicate(), "enabled": true})
+	stage["optical_field"] = field
+	var routes: Dictionary = block.get("routes", {})
+	for route: String in routes:
+		var ids: Array = routes[route] if routes[route] is Array else [routes[route]]
+		var signals: Array = ids.map(func(id: Variant) -> Dictionary: return {"signal_id": str(id)})
+		_add(level, stage, "gates", {"route_id": route, "when": _any_of(signals)})
 
 ## Appends to the stage's array, or the level's for a level array.
 static func _add(level: Dictionary, stage: Dictionary, field: String, item: Variant) -> void:

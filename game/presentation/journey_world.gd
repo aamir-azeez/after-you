@@ -9,6 +9,7 @@ const CarriedItems = preload("res://core/physical/carried_items.gd")
 const CarriedItemKit = preload("res://presentation/kit/pieces/carried_item.gd")
 const CurrentKit = preload("res://presentation/kit/pieces/current.gd")
 const ItemParts = preload("res://presentation/kit/pieces/parts.gd")
+const LightPieces = preload("res://core/physical/light_pieces.gd")
 ## The soft honey dashes round a crossing a wait hint names.
 const HINT_DASH := Color("f2d39b")
 ## A selector's bubble body stands as if its tail ended here, just over the
@@ -101,6 +102,11 @@ var _item_pieces: Dictionary = {}
 ## stop's deck (kit/new_pieces.gd ride).
 var _item_decks: Dictionary = {}
 var _current_piece: RefCounted
+## Light pieces (core/physical/light_pieces.gd): each lens cradle's ring by its
+## item spot id, lit while a lens rests there, and the cables from each lamp's
+## light pads and cradles (lamp id -> cables), lit while the lamp shines.
+var _cradles: Dictionary = {}
+var _lamp_cables: Dictionary = {}
 
 func show_stage(stage: Dictionary) -> void:
 	if str(stage.get("id", "")) == displayed_stage_id: return
@@ -115,11 +121,14 @@ func show_stage(stage: Dictionary) -> void:
 	_item_pieces.clear()
 	_item_decks.clear()
 	_current_piece = null
+	_cradles.clear()
+	_lamp_cables.clear()
 	_shown_stage = stage
 	_stage_built = false
 	# Before the build awaits: a present meanwhile reads this stage's crossings.
 	_wait_hints.setup(stage, _descriptor(), PlayerCopy.WAIT_HINT_CROSSING)
 	await super.show_stage(stage)
+	_build_light(stage)
 	_build_seats(stage)
 	await _build_step()
 	await _build_items(stage)
@@ -534,6 +543,8 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	_placement_due = true
 	var visual := state.duplicate()
 	visual["mirrors"] = state.get("controls",{}).duplicate()
+	# A mirror a selector steers turns as the light runs (light_pieces.gd).
+	if str(_shown_stage.get("id","")) == str(state.get("stage_id","")): visual.mirrors.merge(LightPieces.orientations(_shown_stage,state.get("controls",{})),false)
 	visual["emitter_powered"] = not state.get("optics",{}).get("segments",[]).is_empty()
 	# Detach the one nested dictionary this adapter extends. Every other
 	# snapshot branch is consumed without mutation by the physical renderer.
@@ -553,6 +564,7 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	if is_instance_valid(_waiting_ring): _glow(_waiting_ring,CREAM,0.6 if state.get("can_commit",false) and not OpenTurns.pinned(chapter_definition) else 0.0)
 	_present_seats(state, immediate)
 	_present_items(state, immediate)
+	_present_light(state)
 	if _wait_hints_on and _wait_hints.update(state): _show_wait_marks()
 	# What a world sets after this (its own levers and wheels) is read by the
 	# next pass, not by the one an immediate present already ran.
@@ -737,6 +749,84 @@ func _present_seats(state: Dictionary, immediate: bool) -> void:
 				if pose != SpiritVisual.SpiritIdle.DOZE: actor.set_pose(SpiritVisual.SpiritIdle.SIT, seat.params, immediate)
 			elif pose == SpiritVisual.SpiritIdle.SIT: actor.set_pose(SpiritVisual.SpiritIdle.REST, {}, true)
 
+# --- Light pieces (core/physical/light_pieces.gd) ---
+
+## The stage's light beyond its mirror controls (lighthouse_world draws those,
+## its lamps and receivers): each optical mirror no hand turns (a selector
+## steers it, or it stands fixed), a cradle at each item spot where a lens
+## lights a lamp, and a cable from each lamp's light pad and cradle to its foot
+## where they share a floor. Plain scenery: the snapshot lights it.
+func _build_light(stage: Dictionary) -> void:
+	var field: Dictionary = stage.get("optical_field", {})
+	if field.is_empty(): return
+	var turned: Dictionary = {}
+	for control: Dictionary in stage.get("controls", []):
+		if str(control.get("kind", "")) == "mirror": turned[str(control.id)] = true
+	var set := LightPieces.orientations(stage, {})
+	for mirror: Dictionary in field.get("mirrors", []):
+		if turned.has(str(mirror.id)): continue
+		var pivot := _mirror_body(point(mirror.position_cm), _control_base_height(mirror), terrain, false)
+		pivot.rotation.y = PI / 4.0 if set.get(str(mirror.id), "") == "slash" else -PI / 4.0
+		_mirror_nodes[str(mirror.id)] = pivot
+	var lit: Dictionary = stage.get("lit_when", {})
+	for id: String in lit:
+		var lamp: Dictionary = {}
+		for emitter: Dictionary in field.get("emitters", []):
+			if str(emitter.id) == id: lamp = emitter
+		if lamp.is_empty(): continue
+		var foot := point(lamp.position_cm) + Vector3(0, _control_base_height(lamp) + LIGHT_LINK_LIFT, 0)
+		var cables: Array[MeshInstance3D] = []
+		var powers: Array = []
+		_lamp_powers(lit[id], powers)
+		for power: Dictionary in powers:
+			var at := Vector3.INF
+			if power.has("pad_id"):
+				for pad: Dictionary in stage.get("pressure_pads", []):
+					if str(pad.id) == str(power.pad_id): at = _at(pad)
+			elif not _cradles.has(str(power.spot_id)):
+				var spot := CarriedItems.spot(chapter_definition, str(power.spot_id))
+				if spot.is_empty(): continue
+				var root := Node3D.new()
+				root.name = "LensCradle_" + str(spot.id)
+				root.position = _at(spot)
+				terrain.add_child(root)
+				_cradles[str(spot.id)] = SocketKit.cradle(root, float(spot.get("radius_cm", CarriedItems.SPOT_RADIUS_CM)) / 100.0, CREAM)
+				at = root.position
+			if at == Vector3.INF: continue
+			var start := at + Vector3(0, LIGHT_LINK_LIFT, 0)
+			var elbow := Vector3(foot.x, start.y, start.z)
+			if not _shares_floor(start, elbow) or not _shares_floor(elbow, foot): continue
+			for leg: Array in [[start, elbow], [elbow, foot]]:
+				if (leg[0] as Vector3).distance_to(leg[1]) > 0.01: cables.append(_floor_cable(leg[0], leg[1], 0.025, LIGHT_LINK))
+		_lamp_cables[id] = cables
+
+## A cable's lift off its floor, and its colour while its lamp is dark (m).
+const LIGHT_LINK_LIFT := 0.03
+const LIGHT_LINK := Color("8a8f86")
+
+## What powers a lamp in its lit_when: each light pad ({"pad_id"}) and each
+## cradle ({"spot_id"} of an item term), appended to `found`.
+static func _lamp_powers(when: Dictionary, found: Array) -> void:
+	if when.has("pad_id"): found.append({"pad_id": str(when.pad_id)})
+	if CarriedItems.is_term(when) and when.has("spot_id"): found.append({"spot_id": str(when.spot_id)})
+	for key: String in ["all", "any"]:
+		for child: Variant in when.get(key, []):
+			if child is Dictionary: _lamp_powers(child, found)
+
+## Each cradle glows while its lens rests there, each lamp's cables while it shines.
+func _present_light(state: Dictionary) -> void:
+	if _cradles.is_empty() and _lamp_cables.is_empty(): return
+	var items: Dictionary = state.get("mechanisms", {}).get("items", {})
+	for id: String in _cradles:
+		var resting := false
+		for item: Dictionary in items.values():
+			if str(item.get("holder", "")).is_empty() and str(item.get("spot", "")) == id: resting = true
+		_glow(_cradles[id], LIGHT_COLOR, 1.0 if resting else 0.0)
+	var shining: Dictionary = {}
+	for segment: Dictionary in state.get("optics", {}).get("segments", []): shining[str(segment.get("emitter_id", ""))] = true
+	for id: String in _lamp_cables:
+		for cable: MeshInstance3D in _lamp_cables[id]: _glow(cable, LIGHT_COLOR if shining.has(id) else LIGHT_LINK, 0.7 if shining.has(id) else 0.0)
+
 # --- Rules 16: carried items, floats, currents and both-hands crossings ---
 
 ## Every item of the level in its style (a pin by id, else the dressing's
@@ -807,6 +897,9 @@ func _ride_current(_legs: Array) -> void:
 
 func _item_point(state: Dictionary) -> Vector3:
 	if state.is_empty(): return Vector3.ZERO
+	# Resting in a lens cradle: on its drum.
+	if str(state.get("holder", "")).is_empty() and _cradles.has(str(state.get("spot", ""))):
+		return _at({"position_cm": [int(state.x), int(state.z)], "surface_id": str(state.surface_id)}) + Vector3(0, SocketKit.CRADLE_TOP, 0)
 	# Thrown: where its arc has it.
 	if CarriedItems.in_flight(state): return Vector3(float(state.x), float(state.height), float(state.z)) / 100.0
 	# On a platform's stop: at that stop's height (its deck carries it there).

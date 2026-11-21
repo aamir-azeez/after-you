@@ -4,6 +4,7 @@ import { checkRoutesAndLevers, checkTurnBounds, openPhysicalRecording, physicalR
 import { openTurns, piecesRules, tideRules as tideRulesVersion, type ChapterAdapter, type ChapterCheckpoint, type ChapterRecording } from "./chapter-types";
 import { OPEN_CHECKPOINT_KEYS, OPEN_CHECKPOINT_SCHEMA, openAccepted, openStageEnds, openTurnsProblem } from "./open-turns";
 import { checkItemDefinition, checkItems, declaresItems, isItemTerm, itemHolds, type ItemDefinition } from "./protocol-items";
+import { lightSignals, type LightStage } from "./light-pieces";
 import conservatoryDefinition from "./conservatory.json";
 import conservatoryInitial from "./conservatory-initial.json";
 import homeDefinition from "./long-way-home.json";
@@ -41,11 +42,13 @@ export const FOG_MARSH_HASH = "0cdfc1875835b016d69e446e9818f89a2bc6ab18664ad1acf
 type Surface = { id: string; rect_cm: number[]; height_cm?: number; owner_slot?: string; axis?: string; from_height_cm?: number; to_height_cm?: number };
 export type Marker = { id: string; position_cm: number[]; surface_id: string; height_cm: number; radius_cm: number; owner_slot?: string };
 export type Predicate = { all?: Predicate[]; any?: Predicate[]; not?: Predicate; control_id?: string; value?: string; lever_id?: string; pad_id?: string; signal_id?: string; item_id?: string; carried?: boolean; spot_id?: string };
-type Control = Marker & { values: string[]; initial: string };
+type Control = Marker & { values: string[]; initial: string; kind?: string; optics?: LightStage["controls"][number]["optics"] };
 type Stage = { id: string; version: number; first_player_slot: string; turn_cap?: number; controls: Control[]; levers: Marker[]; pressure_pads: Marker[];
   gates: { route_id: string; when?: Predicate }[]; entry_latch_routes: string[]; goal: Marker; goal_policy: { kind?: string; when?: Predicate };
   /** Rules 16 (chapter-types.ts PIECES_RULES): stones that hold one pip; platform stops are plain gated crossings. */
   sinking?: string[];
+  /** Light pieces (light-pieces.ts): the stage's light and the lamps lit only while a when holds. */
+  optical_field?: LightStage["optical_field"]; lit_when?: Record<string, Predicate>;
   source_policy: { kind: string; when?: Predicate; endpoint?: Marker; branches?: { pad_id: string }[] } };
 type Definition = { id: string; version: number; simulation_version: number; premium: boolean; islands: Surface[]; bridges: Surface[]; stairs: Surface[]; stages: Stage[]; turn_limits?: TurnLimits };
 const CHECKPOINT_KEYS = ["schema_version", "level_id", "level_version", "definition_hash", "stage_index", "completed_stage_id", "next_stage_id", "players", "mechanisms", "previous_checkpoint_hash", "a_recording_hash", "b_recording_hash", "checkpoint_hash", "proof"];
@@ -53,16 +56,6 @@ function need(value: unknown, code: string): asserts value { if (!value) throw n
 function near(player: Record<string, unknown>, marker: Marker): boolean {
   return player.surface_id === marker.surface_id && player.height === marker.height_cm &&
     (Number(player.x) - marker.position_cm[0]) ** 2 + (Number(player.z) - marker.position_cm[1]) ** 2 <= marker.radius_cm ** 2;
-}
-
-/** These two pinned circuits have a unique alignment for each required light.
- * This is an envelope sanity check, not a second ray/physics simulator. Native
- * replay remains required to establish every control action and entry latch. */
-function signals(controls: Record<string, unknown>): Record<string, boolean> {
-  return { "high-light": controls["court-fork"] === "slash" && controls["high-return"] === "slash" && controls["preserved-turn"] === "backslash",
-    "garden-light": controls["gallery-fork"] === "backslash" && controls["garden-return"] === "slash",
-    "crossing-light": controls["lower-fork"] === "backslash" && controls["crossing-return"] === "slash",
-    "second-light": controls["final-mirror"] === "slash" };
 }
 
 /** A gate tree on an end state, as the client's Seven.predicate: all, any, not (rules 16),
@@ -166,7 +159,9 @@ export function journeyAdapter(definition: Definition, initial: ChapterCheckpoin
         (surface.to_height_cm! - surface.from_height_cm) * (coordinate - surface.rect_cm[axis]) / (surface.rect_cm[axis + 2] - surface.rect_cm[axis]));
       need(height === expectedHeight, "checkpoint_surface_mismatch");
     }
-    const source = object(players[stage.first_player_slot]), receiver = object(players[stage.first_player_slot === "p0" ? "p1" : "p0"]), light = signals(controls);
+    const source = object(players[stage.first_player_slot]), receiver = object(players[stage.first_player_slot === "p0" ? "p1" : "p0"]);
+    // The stage's light on the end state (light-pieces.ts): a lamp's lit_when reads no signal.
+    const light = lightSignals(stage, controls, when => gateHolds(when as Predicate, { controls, levers, light: {}, players, stage, open, items }));
     const predicate = (value: Predicate = {}): boolean => gateHolds(value, { controls, levers, light, players, stage, open, items });
     for (const id of stubs) need(stage.gates.some(gate => gate.route_id === id && predicate(gate.when)), "checkpoint_surface_mismatch");
     if (piecesRules(definition.simulation_version)) need(!sunkTogether(stage, players), "checkpoint_surface_mismatch");

@@ -125,7 +125,7 @@ const SLOTS := {
 	"spillway": {"trickle": {}, "falls": {}},
 	# Rules 16's carried items and floats (kit/pieces/carried_item.gd) and the
 	# current that carries them (kit/pieces/current.gd).
-	"carried_item": {"parcel": {}, "pipsport": {}, "raft": {}, "seed": {}},
+	"carried_item": {"parcel": {}, "pipsport": {}, "raft": {}, "seed": {}, "lens": {}},
 	"current": {"ripples": {}, "chevrons": {}},
 	# The post by a missing crossing (kit/pieces/pulley.gd): each style names the
 	# weight that hangs from it, down while the crossing is laid.

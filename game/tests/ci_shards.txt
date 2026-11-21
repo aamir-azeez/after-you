@@ -196,6 +196,7 @@ level_view 2
 license_catalog 2
 licenses 3
 lifecycle 2
+light_pieces 3
 lighthouse_admission 2
 lighthouse_compatibility 3
 lighthouse_finale 3

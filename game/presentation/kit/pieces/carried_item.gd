@@ -8,6 +8,8 @@ extends "res://presentation/kit/pieces/piece.gd"
 ##   "raft": a few lashed planks, for a float nobody carries.
 ##   "seed": the seed every world draws (presentation/seed_visual.gd), First
 ##       Steps' golden one.
+##   "lens": the Lighthouse's portable lens: a sea-glass disc in a brass ring
+##       with three notches (lighthouse_world.gd's lens), standing on its edge.
 ##
 ## The world shows each snapshot's item state (journey_world _present_items):
 ## over a spirit's head (carry: held the one way a seed or a lens is, its
@@ -24,7 +26,11 @@ extends "res://presentation/kit/pieces/piece.gd"
 const Floats = preload("res://presentation/kit/floats.gd")
 const Models = preload("res://presentation/kit/models.gd")
 const SpiritVisual = preload("res://presentation/spirit_visual.gd")
-const STYLES := ["parcel", "pipsport", "raft", "seed"]
+const STYLES := ["parcel", "pipsport", "raft", "seed", "lens"]
+## The lens: its glass and ring radii (m) and colours, lighthouse_world.gd's.
+const LENS_RADIUS := 0.18
+const LENS_GLASS := Color("99dfd9")
+const LENS_RING := Color("d5b876")
 ## How long a pick-up or a set-down takes between the ground and the head (s).
 const HANDOFF := 0.2
 const NAVY := Color("2f3e66")
@@ -73,6 +79,16 @@ func _make(item_style: String, at: Vector3, parent: Node3D, options: Dictionary)
 		"seed":
 			# The seed's builder asks the world for its meshes: the terrain's parent.
 			SeedVisual.create(options.get("world", parent.get_parent()), SEED_RADIUS, SEED_GOLD, Vector3(0, SEED_RADIUS, 0), root)
+		"lens":
+			# On its edge, its lowest point on the ground, facing the camera.
+			var lens := Node3D.new()
+			lens.position = Vector3(0, LENS_RADIUS + 0.03, 0)
+			root.add_child(lens)
+			Parts.disc(LENS_RADIUS, 0.035, LENS_GLASS, Vector3.ZERO, lens).rotation.x = PI / 2.0
+			Parts.disc(LENS_RADIUS + 0.025, 0.02, LENS_RING, Vector3(0, 0, -0.01), lens).rotation.x = PI / 2.0
+			for index in range(3):
+				var angle := float(index) * TAU / 3.0
+				Parts.box(Vector3(0.05, 0.07, 0.05), Parts.LIGHT, Vector3(sin(angle) * (LENS_RADIUS + 0.03), cos(angle) * (LENS_RADIUS + 0.03), 0), lens)
 		"raft":
 			# The log raft model at the float's 0.8 by 0.72 m, resting on its spot.
 			var raft := Models.moving("res://assets/models/raft.glb", "raft", {"log_a": Parts.TIMBER, "log_b": Parts.TIMBER_LIGHT, "lashing": Color("c9b48a"), "bearer": Parts.TIMBER_DARK}, root)

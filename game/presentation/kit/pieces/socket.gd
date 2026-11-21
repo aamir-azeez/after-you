@@ -18,6 +18,10 @@ extends RefCounted
 ##       there (plant_animation.gd soil()).
 ##   landing(): the ring of eight cream ticks round a teal ring that marks
 ##       where a thrown seed lands.
+##   cradle(): a lens cradle (light pieces, core/physical/light_pieces.gd: a
+##       spot where a resting lens lights a lamp): a low slate drum with a
+##       ring the colour the world gives and three brass notches round where
+##       the lens stands on its edge, CRADLE_TOP up (lighthouse_world.gd's).
 const Primitives = preload("res://presentation/kit/primitives.gd")
 const Parts = preload("res://presentation/kit/pieces/parts.gd")
 const ContactShadows = preload("res://presentation/kit/contact_shadows.gd")
@@ -97,6 +101,26 @@ static func landing(root: Node3D) -> void:
 		var angle := float(index) * TAU / 8.0
 		var tick := Primitives.mesh_node(Primitives.cached_box(Vector3(0.06, 0.025, 0.13)), Primitives.shared_material(Parts.CREAM), Vector3(cos(angle) * LANDING_TICKS, 0.03, sin(angle) * LANDING_TICKS), root)
 		tick.rotation.y = -angle
+
+## The top of a lens cradle's drum (m): a lens resting there stands on it.
+const CRADLE_TOP := 0.12
+## Where the lens's middle sits over the drum, and the notches round it (m).
+const CRADLE_LENS := 0.21
+const CRADLE_SLATE := Color("728994")
+const CRADLE_BRASS := Color("d5b876")
+
+## A lens cradle under `root`, `radius` across, its ring in `ring_color`.
+## Returns the ring, which the world lights while the lens rests there.
+static func cradle(root: Node3D, radius: float, ring_color: Color) -> MeshInstance3D:
+	ContactShadows.mark(root)
+	_cyl(root, 0.31, CRADLE_TOP, CRADLE_SLATE, Vector3(0, CRADLE_TOP * 0.5, 0))
+	var ring := Parts.ring(radius, ring_color, Vector3(0, CRADLE_TOP + 0.01, 0), root)
+	ring.name = "CradleRing"
+	# Wider than the lens's own notches, so a resting lens never shares a face with them.
+	for index in range(3):
+		var angle := float(index) * TAU / 3.0
+		Parts.box(Vector3(0.075, 0.12, 0.065), CRADLE_BRASS, Vector3(sin(angle) * 0.25, CRADLE_TOP + CRADLE_LENS + cos(angle) * 0.25, -0.05), root)
+	return ring
 
 static func _cyl(root: Node3D, radius: float, height: float, color: Color, at: Vector3, top: float = -1.0) -> MeshInstance3D:
 	return Primitives.mesh_node(Primitives.cached_shape(Primitives.cylinder_mesh(radius, height, top, 14 if top >= 0.0 else 24)), Primitives.shared_material(color), at, root)
