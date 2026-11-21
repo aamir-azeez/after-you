@@ -2,7 +2,7 @@ import { ApiError, HASH_PATTERN, canonicalJson, digest, integer, object } from "
 import { boundedValue, exact, MAX_CHECKPOINT_BYTES } from "./protocol-relay";
 import { checkRoutesAndLevers, checkTurnBounds, openPhysicalRecording, physicalRecording, physicalAccepted as accepted, scaledLimits, turnLimits, type TurnLimits } from "./protocol-physical-recording";
 import { openTurns, piecesRules, tideRules as tideRulesVersion, type ChapterAdapter, type ChapterCheckpoint, type ChapterRecording } from "./chapter-types";
-import { OPEN_CHECKPOINT_KEYS, OPEN_CHECKPOINT_SCHEMA, openAccepted, openStageEnds, openTurnsProblem } from "./open-turns";
+import { openAccepted, openCheckpointShape, openStageEnds, openTurnsProblem } from "./open-turns";
 import { checkItemDefinition, checkItems, declaresItems, isItemTerm, itemHolds, type ItemDefinition } from "./protocol-items";
 import conservatoryDefinition from "./conservatory.json";
 import conservatoryInitial from "./conservatory-initial.json";
@@ -112,10 +112,11 @@ export function journeyAdapter(definition: Definition, initial: ChapterCheckpoin
   const isAccepted = open ? openAccepted : accepted;
   async function checkpoint(value: unknown, previous: ChapterCheckpoint, a: ChapterRecording, b: ChapterRecording, passes: readonly ChapterRecording[] = []): Promise<ChapterCheckpoint> {
     boundedValue(value, limits?.checkpoint_bytes ?? MAX_CHECKPOINT_BYTES, limits?.checkpoint_values);
-    const c = object(value); exact(c, open ? OPEN_CHECKPOINT_KEYS : CHECKPOINT_KEYS);
+    const shape = openLimits ? openCheckpointShape(openLimits) : { schema: 7, keys: CHECKPOINT_KEYS };
+    const c = object(value); exact(c, shape.keys);
     need(c.level_id === key.level_id && c.level_version === key.level_version && c.definition_hash === key.definition_hash, "unsupported_chapter");
     const index = previous.stage_index + 1, stage = definition.stages[index - 1];
-    need(c.schema_version === (open ? OPEN_CHECKPOINT_SCHEMA : 7) && c.stage_index === index && stage && index <= definition.stages.length && c.completed_stage_id === stage.id && c.next_stage_id === (definition.stages[index]?.id ?? ""), "checkpoint_stage_mismatch");
+    need(c.schema_version === shape.schema && c.stage_index === index && stage && index <= definition.stages.length && c.completed_stage_id === stage.id && c.next_stage_id === (definition.stages[index]?.id ?? ""), "checkpoint_stage_mismatch");
     // The first turn, any passes in order, then the closing turn: each over the one before it, from this stage's start.
     // Open turns: the turns before the closing one are the room's stored rows, usually fingerprints; every check below reads header fields only.
     const all = [a, ...passes, b];
@@ -129,8 +130,8 @@ export function journeyAdapter(definition: Definition, initial: ChapterCheckpoin
     need(c.previous_checkpoint_hash === previous.checkpoint_hash && all.every((turn, i) => turn.checkpoint_hash === previous.checkpoint_hash && turn.stage_id === stage.id &&
       (i === 0 || turn.source_recording_hash === all[i - 1].recording_hash)), "checkpoint_source_mismatch");
     if (openLimits) {
-      // Open turns: the next pip each turn, never shorter than its memory, within the stage's cap; the turns by hash, no proof.
-      const problem = openTurnsProblem(openLimits, index - 1, stage.first_player_slot, all, c.turn_hashes);
+      // Open turns: the next pip each turn, never shorter than its memory (on carry-over turns, chained by hand-off), within the stage's cap; the turns by hash, no proof.
+      const problem = openTurnsProblem(openLimits, index - 1, stage, previous, all, c);
       need(!problem, problem);
     } else {
       const proof = object(c.proof);

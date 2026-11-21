@@ -1,5 +1,5 @@
 import { canonicalJson } from "../protocol";
-import type { ChapterRecording, Slot } from "./chapter-types";
+import type { ChapterCheckpoint, ChapterRecording, Slot } from "./chapter-types";
 import { MAX_REPLAY_ARCHIVE_BYTES, MAX_ROOM_PAIRS, MAX_ROOM_TURNS, MAX_ROW_BYTES } from "./row-bound";
 import { checkBytes, checkTicks, isPacked } from "./recording-codec";
 
@@ -27,6 +27,13 @@ import { checkBytes, checkTicks, isPacked } from "./recording-codec";
  * these rules, so a JSON turn is refused and the bounds below are sized by the widest packed turn.
  * Turn ids keep a letter for the turn's number, so the first two keep today's ids: t<branch>-<stage>-a, -b, -c ...
  * This file is the one place these rules live on the server; core/physical/open_turns.gd mirrors them on the phone.
+ *
+ * Carry-over turns (rules 18 to 21, owner 2026-11-21; claude-20261011/carry-over-turns/design.md): a stage is one
+ * timeline. Turn k starts from turn k-1's world at its hand-off tick H(k) and plays beside the rest of it, M(k) ticks.
+ * The server never simulates: each turn names its start world's hash, its hand-off tick and the world hash at the tick
+ * the next turn takes over, and the server checks that these chain (carryFits), string compares and sums over header
+ * fields it already holds. A stage's first pip comes from the checkpoint before it (next_first_slot, schema 9), so turns
+ * alternate across stages; the first stage starts with the host's pip.
  */
 export const DEFAULT_TURN_CAP = 10;
 /**
@@ -44,6 +51,11 @@ export const OPEN_TURN_ID_PATTERN = /^t(?:[0-9]|[12][0-9]|3[01])-[0-7]-[a-t]$/;
 export const OPEN_CHECKPOINT_SCHEMA = 8;
 /** An open turns checkpoint's keys: every turn of the stage by hash, in order, in place of the a and b hashes; no proof nests in it. */
 export const OPEN_CHECKPOINT_KEYS = ["schema_version", "level_id", "level_version", "definition_hash", "stage_index", "completed_stage_id", "next_stage_id", "players", "mechanisms", "previous_checkpoint_hash", "turn_hashes", "checkpoint_hash"];
+/** Carry-over turns: schema 8's keys plus next_first_slot, the pip that plays the next stage's first turn. */
+export const CARRY_CHECKPOINT_SCHEMA = 9;
+export const CARRY_CHECKPOINT_KEYS = [...OPEN_CHECKPOINT_KEYS.slice(0, -1), "next_first_slot", "checkpoint_hash"];
+/** Carry-over turns: the header fields every turn adds (chapter-types.ts ChapterRecording), all under its recording_hash. */
+export const CARRY_RECORD_KEYS = ["handoff_tick", "start_hash", "handoff_hash"];
 /** Open turns chapters keep seven branches, so their widest replay archive fits (openTurnLimits). */
 export const OPEN_TURNS_BRANCHES = 7;
 /** Room keys, ids and counters beside the records; the same allowance the pair row bound keeps (protocol-physical-recording.ts). */
@@ -59,6 +71,8 @@ export type OpenTurns = {
   readonly recording_bytes: number;
   /** The branches (attempts) the chapter keeps, so every row a room holds fits its archive (openTurnLimits). */
   readonly branches: number;
+  /** Carry-over turns (rules 18 to 21): turns chain by hand-off (carryFits) and each stage's first pip is the checkpoint's. */
+  readonly carry: boolean;
 };
 
 /** A stage's turn cap, as its definition declares it: a whole number from 2 to 20 (open_turns.gd cap_valid). Throws at module load on a bad value. */
@@ -94,12 +108,12 @@ const MAX_WORKER_BODY_BYTES = 1_250_000;
  *   MAX_REPLAY_ARCHIVE_BYTES, so the room snapshot and the replay archive fit.
  * The chapter keeps as many of `maxBranches` as fit. Throws at module load when even one branch cannot.
  */
-export function openTurnLimits(stages: readonly { turn_cap?: unknown }[], recordingBytes: number, maxBranches: number): OpenTurns {
+export function openTurnLimits(stages: readonly { turn_cap?: unknown }[], recordingBytes: number, maxBranches: number, carry = false): OpenTurns {
   const caps = stages.map(stageTurnCap);
   if (recordingBytes + ENVELOPE_BYTES > MAX_ROW_BYTES || recordingBytes + CHECKPOINT_BYTES + ENVELOPE_BYTES > MAX_WORKER_BODY_BYTES) throw new Error("open turns outgrow the room row bound");
   const held = MAX_ROOM_TURNS * (PACKED_HEADER_BYTES + ENVELOPE_BYTES) + MAX_ROOM_PAIRS * (2 * PACKED_HEADER_BYTES + CHECKPOINT_BYTES + ENVELOPE_BYTES);
   for (let branches = maxBranches; branches >= 1; branches--) {
-    if (held + branches * 2 * recordingBytes <= MAX_REPLAY_ARCHIVE_BYTES) return Object.freeze({ caps: Object.freeze(caps), recording_bytes: recordingBytes, branches });
+    if (held + branches * 2 * recordingBytes <= MAX_REPLAY_ARCHIVE_BYTES) return Object.freeze({ caps: Object.freeze(caps), recording_bytes: recordingBytes, branches, carry });
   }
   throw new Error("open turns outgrow the room row bound");
 }
@@ -121,6 +135,36 @@ export function isFingerprint(recording: object): boolean { return !isPacked(rec
 export function turnSlot(first: string, turn: number): Slot {
   return (turn % 2 === 1) === (first === "p0") ? "p0" : "p1";
 }
+/**
+ * The pip that plays a stage's turn 1. Carry-over turns: the checkpoint before the stage names it (next_first_slot), and
+ * the first stage's, whose checkpoint names none, is the host's (p0). Earlier rules: the definition's first_player_slot.
+ */
+export function firstSlot(open: OpenTurns | undefined, stage: { first_player_slot: string }, checkpoint: { next_first_slot?: unknown } | null | undefined): Slot {
+  if (open?.carry) return checkpoint?.next_first_slot === "p1" ? "p1" : "p0";
+  return stage.first_player_slot === "p1" ? "p1" : "p0";
+}
+/** The other pip. */
+export function otherSlot(slot: string): Slot { return slot === "p0" ? "p1" : "p0"; }
+/**
+ * Carry-over turns: the tick of `memory` (turn k-1) at which turn k takes over, H(k) = S(k) - S(k-1). Turns 1 and 2 hand
+ * off at 0; from turn 3 on it is the rest of turn k-2 that played beside turn k-1, M(k-1) = L(k-2) - H(k-1).
+ * `beforeMemory` is turn k-2, or null for turn 2.
+ */
+export function handoffTick(memory: Pick<ChapterRecording, "handoff_tick">, beforeMemory: Pick<ChapterRecording, "duration_ticks"> | null): number {
+  return beforeMemory ? beforeMemory.duration_ticks - (memory.handoff_tick ?? 0) : 0;
+}
+/**
+ * Whether turn k chains onto the stage's turns before it, from header fields alone (a stored turn may be its
+ * fingerprint). Turn 1 (`memory` null) hands off at 0 and is its own next start (M = 0: the world at its tick 0).
+ * Turn k from 2 on starts from turn k-1's hand-off world and hands off at H(k) (handoffTick). A pass also lasts at least
+ * the friend's replay beside it, M(k) = L(k-1) - H(k), so the next hand-off falls inside it; a closing turn may end the
+ * moment both pips reach the goal, replay or not (owner, 2026-11-21).
+ */
+export function carryFits(turn: ChapterRecording, memory: ChapterRecording | null, beforeMemory: ChapterRecording | null): boolean {
+  if (!memory) return turn.handoff_tick === 0 && turn.handoff_hash === turn.start_hash;
+  const handoff = handoffTick(memory, beforeMemory);
+  return turn.start_hash === memory.handoff_hash && turn.handoff_tick === handoff && (turn.completed || turn.duration_ticks >= memory.duration_ticks - handoff);
+}
 /** Turn `turn`'s id on `branch` and stage `stage`. */
 export function turnId(branch: number, stage: number, turn: number): string {
   return `t${branch}-${stage}-${TURN_LETTERS[turn - 1]}`;
@@ -141,14 +185,23 @@ export function recordingBytes(recording: ChapterRecording): number {
 export function mustFinish(open: OpenTurns, stage: number, turn: number): boolean {
   return turn >= 2 && turn >= open.caps[stage];
 }
+/** The schema and keys of an open turns chapter's checkpoints: 8, or 9 with next_first_slot on carry-over turns. */
+export function openCheckpointShape(open: OpenTurns): { schema: number; keys: readonly string[] } {
+  return open.carry ? { schema: CARRY_CHECKPOINT_SCHEMA, keys: CARRY_CHECKPOINT_KEYS } : { schema: OPEN_CHECKPOINT_SCHEMA, keys: OPEN_CHECKPOINT_KEYS };
+}
 /**
- * Why a closing checkpoint's turns (`all`: the first, the passes, the closing turn) break open turns, or "": past the
- * stage's cap, a turn not the next pip's or shorter than its memory, or `turnHashes` not naming them in order. Every
- * family's adapter asks it; the turns are stored rows, usually fingerprints, so only header fields are read.
+ * Why a closing checkpoint `c`'s turns (`all`: the first, the passes, the closing turn) break open turns, or "": past
+ * the stage's cap, a turn not the next pip's or shorter than its memory, or turn_hashes not naming them in order.
+ * Carry-over turns: the first pip is `previous`'s next_first_slot (firstSlot), the turns chain by hand-off (carryFits),
+ * and `c` names the pip that did not close the stage to start the next. Every family's adapter asks it; the turns are
+ * stored rows, usually fingerprints, so only header fields are read.
  */
-export function openTurnsProblem(open: OpenTurns, stageIndex: number, firstPlayer: string, all: readonly ChapterRecording[], turnHashes: unknown): string {
-  if (all.length > open.caps[stageIndex] || !all.every((turn, i) => turn.player_slot === turnSlot(firstPlayer, i + 1) && (i === 0 || turn.duration_ticks >= all[i - 1].duration_ticks))) return "checkpoint_recording_mismatch";
-  return canonicalJson(turnHashes) === canonicalJson(all.map(turn => turn.recording_hash)) ? "" : "checkpoint_source_mismatch";
+export function openTurnsProblem(open: OpenTurns, stageIndex: number, stage: { first_player_slot: string }, previous: ChapterCheckpoint, all: readonly ChapterRecording[], c: Record<string, unknown>): string {
+  const first = firstSlot(open, stage, previous);
+  if (all.length > open.caps[stageIndex] || !all.every((turn, i) => turn.player_slot === turnSlot(first, i + 1) &&
+    (open.carry ? carryFits(turn, all[i - 1] ?? null, all[i - 2] ?? null) : i === 0 || turn.duration_ticks >= all[i - 1].duration_ticks))) return "checkpoint_recording_mismatch";
+  if (open.carry && c.next_first_slot !== otherSlot(all[all.length - 1].player_slot)) return "checkpoint_recording_mismatch";
+  return canonicalJson(c.turn_hashes) === canonicalJson(all.map(turn => turn.recording_hash)) ? "" : "checkpoint_source_mismatch";
 }
 /**
  * When an open turns stage ends (owner, 2026-11-14): both pips end a turn in the goal area (the live pip and the
