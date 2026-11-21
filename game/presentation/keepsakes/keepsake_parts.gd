@@ -36,8 +36,9 @@ const GOLD_DEEP := Color("e9a823")
 const LEAF := Color("6f9e68")
 const POT := Color("ba8770")
 const GLASS := Color("bfe6dc")
-## The started and next outline's veil.
-const GHOST := Color(0.29, 0.48, 0.43, 0.42)
+## The started and next outline's veil: pale, so a keepsake not earned yet
+## only ever lightens the grass under it and never reads as a shadow.
+const GHOST := Color(SNOW, 0.5)
 ## A stage's dot: done solo, done with a friend, not done.
 const DOT_SOLO := PEACH
 const DOT_FRIEND := MINT

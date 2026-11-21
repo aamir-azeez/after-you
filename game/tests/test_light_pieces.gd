@@ -115,7 +115,7 @@ func _graph() -> void:
 
 func _world() -> void:
 	var world: Node3D = JourneyWorld.new()
-	world.descriptor_override = {"piece_styles": {"lens": "lens"}}
+	world.descriptor_override = {"piece_styles": {"lens": "lens", "cradle": "cradle"}}
 	root.add_child(world)
 	world.reduced_motion = true
 	world.load_level(level)

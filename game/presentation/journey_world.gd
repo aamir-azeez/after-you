@@ -102,9 +102,10 @@ var _item_pieces: Dictionary = {}
 ## stop's deck (kit/new_pieces.gd ride).
 var _item_decks: Dictionary = {}
 var _current_piece: RefCounted
-## Light pieces (core/physical/light_pieces.gd): each lens cradle's ring by its
-## item spot id, lit while a lens rests there, and the cables from each lamp's
-## light pads and cradles (lamp id -> cables), lit while the lamp shines.
+## Light pieces (core/physical/light_pieces.gd): the ring of each item spot in
+## the "cradle" style a lamp's lit_when names, by spot id, lit while a lens
+## rests there, and the cables from each lamp's light pads and cradles (lamp id
+## -> cables), lit while the lamp shines.
 var _cradles: Dictionary = {}
 var _lamp_cables: Dictionary = {}
 
@@ -128,10 +129,10 @@ func show_stage(stage: Dictionary) -> void:
 	# Before the build awaits: a present meanwhile reads this stage's crossings.
 	_wait_hints.setup(stage, _descriptor(), PlayerCopy.WAIT_HINT_CROSSING)
 	await super.show_stage(stage)
-	_build_light(stage)
 	_build_seats(stage)
 	await _build_step()
 	await _build_items(stage)
+	_build_light(stage)
 	_stage_built = true
 	_build_wait_marks()
 	_sort_bubbles()
@@ -753,9 +754,9 @@ func _present_seats(state: Dictionary, immediate: bool) -> void:
 
 ## The stage's light beyond its mirror controls (lighthouse_world draws those,
 ## its lamps and receivers): each optical mirror no hand turns (a selector
-## steers it, or it stands fixed), a cradle at each item spot where a lens
-## lights a lamp, and a cable from each lamp's light pad and cradle to its foot
-## where they share a floor. Plain scenery: the snapshot lights it.
+## steers it, or it stands fixed), and a cable from each lamp's light pad and
+## item spot (its cradle: _build_items draws it in its item_spot style) to the
+## lamp's foot where they share a floor. Plain scenery: the snapshot lights it.
 func _build_light(stage: Dictionary) -> void:
 	var field: Dictionary = stage.get("optical_field", {})
 	if field.is_empty(): return
@@ -783,15 +784,13 @@ func _build_light(stage: Dictionary) -> void:
 			if power.has("pad_id"):
 				for pad: Dictionary in stage.get("pressure_pads", []):
 					if str(pad.id) == str(power.pad_id): at = _at(pad)
-			elif not _cradles.has(str(power.spot_id)):
+			else:
 				var spot := CarriedItems.spot(chapter_definition, str(power.spot_id))
 				if spot.is_empty(): continue
-				var root := Node3D.new()
-				root.name = "LensCradle_" + str(spot.id)
-				root.position = _at(spot)
-				terrain.add_child(root)
-				_cradles[str(spot.id)] = SocketKit.cradle(root, float(spot.get("radius_cm", CarriedItems.SPOT_RADIUS_CM)) / 100.0, CREAM)
-				at = root.position
+				at = _at(spot)
+				var built := terrain.get_node_or_null("ItemSpot_" + str(spot.id))
+				var ring: Node = built.find_child("CradleRing", false, false) if built != null else null
+				if ring is MeshInstance3D: _cradles[str(spot.id)] = ring
 			if at == Vector3.INF: continue
 			var start := at + Vector3(0, LIGHT_LINK_LIFT, 0)
 			var elbow := Vector3(foot.x, start.y, start.z)
@@ -830,13 +829,22 @@ func _present_light(state: Dictionary) -> void:
 # --- Rules 16: carried items, floats, currents and both-hands crossings ---
 
 ## Every item of the level in its style (a pin by id, else the dressing's
-## "carried_item" pick; a float nobody carries is a raft unless pinned), the
-## stage's current legs, and the rungs that mark a crossing needing both
-## hands (core/physical/carried_items.gd): a carrier stops at a ladder. A
-## rope bridge (kit/pieces/deck.gd) needs no rungs.
+## "carried_item" pick; a float nobody carries is a raft unless pinned), every
+## item spot in its "item_spot" style (a pedestal, a planter, a nest or none:
+## kit/pieces/socket.gd item_spot), the stage's current legs, and the rungs
+## that mark a crossing needing both hands (core/physical/carried_items.gd): a
+## carrier stops at a ladder. A rope bridge (kit/pieces/deck.gd) needs no rungs.
 func _build_items(stage: Dictionary) -> void:
 	var view: Dictionary = CooperativeCatalog.stage_definition(chapter_definition, str(stage.get("id", "")))
 	if view.get("items", []).is_empty(): return
+	for spot: Dictionary in view.get("item_spots", []):
+		var look := _piece_style("item_spot", str(spot.id))
+		if look == "none": continue
+		var root := Node3D.new()
+		root.name = "ItemSpot_" + str(spot.id)
+		root.position = _at(spot)
+		terrain.add_child(root)
+		SocketKit.item_spot(look, root, spot)
 	var start: Dictionary = CarriedItems.initial(view)
 	for item: Dictionary in view.items:
 		var id := str(item.id)
@@ -897,14 +905,14 @@ func _ride_current(_legs: Array) -> void:
 
 func _item_point(state: Dictionary) -> Vector3:
 	if state.is_empty(): return Vector3.ZERO
-	# Resting in a lens cradle: on its drum.
-	if str(state.get("holder", "")).is_empty() and _cradles.has(str(state.get("spot", ""))):
-		return _at({"position_cm": [int(state.x), int(state.z)], "surface_id": str(state.surface_id)}) + Vector3(0, SocketKit.CRADLE_TOP, 0)
 	# Thrown: where its arc has it.
 	if CarriedItems.in_flight(state): return Vector3(float(state.x), float(state.height), float(state.z)) / 100.0
 	# On a platform's stop: at that stop's height (its deck carries it there).
 	if new_pieces != null and not new_pieces.ride(str(state.surface_id)).is_empty(): return Vector3(float(state.x), float(state.height), float(state.z)) / 100.0
-	return _at({"position_cm": [int(state.x), int(state.z)], "surface_id": str(state.surface_id)})
+	var at := _at({"position_cm": [int(state.x), int(state.z)], "surface_id": str(state.surface_id)})
+	# At a drawn item spot: on its pedestal, in its planter's soil or its nest.
+	var spot := str(state.get("spot", ""))
+	return at if spot.is_empty() else at + Vector3(0, SocketKit.rest_height(_piece_style("item_spot", spot)), 0)
 
 ## Rungs across a both-hands crossing every RUNG_CM along it, at its height
 ## there, with a post at each end: plain leaves the static fold batches.

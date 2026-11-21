@@ -51,7 +51,9 @@ const DATA := {
 	"dressing": "res://content/dressing/sleeping_lighthouse_v3.gd",
 	"beds": ["water_far", "shore"],
 	# The court and tower bells keep their bells, the crests where the light
-	# ends are low crests, and the lens is the Lighthouse's lens.
-	"piece_styles": {"court-bell": "bell", "tower-bell": "bell", "lens-crest": "crest", "promise-crest": "crest", "projector-crest": "crest", "beacon-crest": "crest", "lens": "lens"},
+	# ends are low crests, the lens is the Lighthouse's lens, resting on a stone
+	# pedestal on the north isle and in a cradle wherever it lights a lamp.
+	"piece_styles": {"court-bell": "bell", "tower-bell": "bell", "lens-crest": "crest", "promise-crest": "crest", "projector-crest": "crest", "beacon-crest": "crest", "lens": "lens",
+		"north-shelf": "pedestal", "court-cradle": "cradle", "rest-perch": "cradle", "tower-projector": "cradle"},
 	"server": {"flag": "SLEEPING_LIGHTHOUSE_V3_CHAPTER_ENABLED", "max_branches": 7},
 }

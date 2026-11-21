@@ -172,6 +172,7 @@ const CHAPTERS := [
 	preload("res://content/chapters/a_house_for_two_v2.gd"),
 	preload("res://content/chapters/the_falls.gd"),
 	preload("res://content/chapters/fog_marsh.gd"),
+	preload("res://content/chapters/relay_isles_v3.gd"),
 	preload("res://content/chapters/sleeping_lighthouse_v3.gd"),
 ]
 

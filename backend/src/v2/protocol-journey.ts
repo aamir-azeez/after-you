@@ -27,6 +27,8 @@ import theFallsDefinition from "./the-falls.json";
 import theFallsInitial from "./the-falls-initial.json";
 import fogMarshDefinition from "./fog-marsh.json";
 import fogMarshInitial from "./fog-marsh-initial.json";
+import relayIslesV3Definition from "./relay-isles-v3.json";
+import relayIslesV3Initial from "./relay-isles-v3-initial.json";
 import sleepingLighthouseV3Definition from "./sleeping-lighthouse-v3.json";
 import sleepingLighthouseV3Initial from "./sleeping-lighthouse-v3-initial.json";
 
@@ -40,6 +42,7 @@ export const TURN_OF_THE_TIDE_V3_HASH = "71a7eb45f220aeacefe3d982318f50769899919
 export const CONSERVATORY_V2_HASH = "96499f4766718124c64380b6a9ab0452b5e7dde69f2f026b7d932b64cca2ca08";
 export const FIRST_STEPS_V2_HASH = "12cbcd0d89a440e6d81889441382d1a86136b58579ce872ff308bbf5f1621840";
 export const THE_FALLS_HASH = "31c50a815a1a8c70a62c67234854ed36cbeb4044c871da0ca5bac49058cf7f8b";
+export const RELAY_ISLES_V3_HASH = "30ff6b4e95e79dbadb6c4928c6bc80c1fb4a5b4f495e649f0087912c56a42bb9";
 export const FOG_MARSH_HASH = "0cdfc1875835b016d69e446e9818f89a2bc6ab18664ad1acf6d9546e8994a5cd";
 export const SLEEPING_LIGHTHOUSE_V3_HASH = "9d31b792e17b589e987d1ddfbb5138f30d3d9fc310e5554d7ee98d233c9d3492";
 type Surface = { id: string; rect_cm: number[]; height_cm?: number; owner_slot?: string; axis?: string; from_height_cm?: number; to_height_cm?: number };
@@ -219,6 +222,9 @@ export const firstStepsV2 = journeyAdapter(firstStepsV2Definition as Definition,
 export const theFalls = journeyAdapter(theFallsDefinition, theFallsInitial, THE_FALLS_HASH);
 /** The new pieces with carried items (16): three stages catching the pipsport in the marsh and carrying it home. Unreleased. */
 export const fogMarsh = journeyAdapter(fogMarshDefinition, fogMarshInitial, FOG_MARSH_HASH);
+/** Open turns with the new pieces (16): the Relay Isles on the journey rules, the seed a carried item on a solid
+ * pedestal, placed in a solid nest and thrown over the garden's rope bridge. relay-isles@2 keeps its own adapter. Unreleased. */
+export const relayIslesV3 = journeyAdapter(relayIslesV3Definition as Definition, relayIslesV3Initial, RELAY_ISLES_V3_HASH);
 /** Open turns with the new pieces and light pieces (16): the six Lighthouse stages on the journey rules, its bridges held by
  * light (light-pieces.ts), its lens a carried item thrown to Rest Rock. Seven branches, as every open chapter. Unreleased. */
 export const sleepingLighthouseV3 = journeyAdapter(sleepingLighthouseV3Definition as unknown as Definition, sleepingLighthouseV3Initial, SLEEPING_LIGHTHOUSE_V3_HASH, 7);

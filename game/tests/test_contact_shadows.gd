@@ -226,6 +226,13 @@ func _check_unseen(holder: Node3D) -> void:
 	var deck := _box(under_cutaway, Vector3(0.3, 1.2, 0.3), Vector3(0, 0.6, 0))
 	Cutaway.fade_mesh(deck, true)
 	_check(ContactShadows.feet(under_cutaway).size() == 1, "A part the cutaway fades for now still has its shadow")
+	# A tall post outranks low wide plinths for the sun's shadow, so an arch's
+	# shadow keeps its legs instead of floating off as its top alone.
+	var arch := _marked(holder)
+	for index in range(ContactShadows.CASTS_MOST): _box(arch, Vector3(0.6, 0.24, 0.6), Vector3(index * 0.7, 0.12, 3))
+	_box(arch, Vector3(0.1, 2.4, 0.1), Vector3(-1, 1.2, 3))
+	ContactShadows.feet(arch)
+	_check((arch.get_meta(ContactShadows.CASTERS_META) as Array).any(func(caster: Array) -> bool: return float(caster[3]) > 2.0), "A tall post casts the sun's shadow before low wide plinths")
 	var source := FileAccess.get_file_as_string("res://presentation/home_keepsake_layer.gd")
 	_check(source.contains("parts = builder.build(holder, state)") and source.contains("# Only an earned keepsake") and source.contains("ContactShadows.changes(part)"), "Home marks only earned keepsakes and leaves their moving parts out")
 
@@ -270,6 +277,16 @@ func _check_bake() -> void:
 	_check(ContactShadows.bake(rect, [[Vector2(9, 9), Vector2(0.2, 0.2), 1.0, Vector2.RIGHT]], [], true).is_empty(), "A floor with nothing on it bakes nothing")
 	var cast := ContactShadows.bake(rect, [], [[Vector2(2, 1), Vector2(1, 0), Vector2(0.5, 0.2), 0.1]], true)
 	_check((cast.image as Image).get_pixel(int(2.4 / ContactShadows.TEXEL), int(1.0 / ContactShadows.TEXEL)).b > 0.9 and (cast.image as Image).get_pixel(int(2.4 / ContactShadows.TEXEL), int(1.0 / ContactShadows.TEXEL)).r == 0.0, "The sun's shadow has its own channel")
+	# A long thin beam high up (the Bell Arch's top) casts a thin band, not a
+	# blob as wide as the beam is long; a round post keeps its round shadow.
+	var sun_x := Vector3(0.6, 0, 0)
+	var beam := ContactShadows._cast([Vector2.ZERO, Vector2(0.14, 1.6), 2.7, 2.8], Transform3D.IDENTITY, sun_x)
+	var beam_half: Vector2 = beam[2]
+	_check(beam_half.y > 1.2 and beam_half.x < 0.2, "A beam across the sun casts a thin band its length: half %s" % beam_half)
+	var along_beam := ContactShadows._cast([Vector2.ZERO, Vector2(1.6, 0.14), 2.7, 2.8], Transform3D(Basis(Vector3.UP, PI / 2), Vector3.ZERO), sun_x)
+	_check(is_equal_approx((along_beam[2] as Vector2).y, beam_half.y), "A beam turned a quarter round to lie the same way casts the same band")
+	var post := ContactShadows._cast([Vector2.ZERO, Vector2(0.2, 0.2), 0.0, 1.0], Transform3D(Basis(Vector3.UP, PI / 4), Vector3.ZERO), sun_x)
+	_check(is_equal_approx((post[2] as Vector2).y, 0.16), "A round post's shadow is as wide whichever way it is turned")
 	var look := FileAccess.get_file_as_string(ContactShadows.SHADE_SHADER.resource_path)
 	_check(look.contains("blend_mul") and look.contains("depth_draw_never") and look.contains("max(s.r"), "The floor's shade multiplies the floor, writes no depth and takes the darker of contact and sun")
 

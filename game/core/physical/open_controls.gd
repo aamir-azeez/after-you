@@ -19,6 +19,9 @@ extends RefCounted
 ## and open turns all hold for it. 17 is 14 with one shared ball (runtime.gd
 ## _shared_ball): the live pip and its memory both push it, and a ball home
 ## stage ends with it in its cradle; OpenTurns.pin gives it to a level with a ball.
+## Carry-over turns (open_turns.gd, the shared timeline) take over 14 to 17
+## as 18 (comfort), 19 (tide), 20 (pieces) and 21 (shared ball) when the
+## engine lands; 14 to 17 and their code then go.
 const OPEN_RULES_VERSION := 12
 const OPEN_TIDE_RULES_VERSION := 13
 const OPEN_TURNS_RULES_VERSION := 14

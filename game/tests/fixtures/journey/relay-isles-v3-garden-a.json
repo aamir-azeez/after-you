@@ -1,0 +1,24 @@
+{
+	"catch_assistance": true,
+	"checkpoint_hash": "eeebcdf601d70d461b9a17629f2ef4554113bc71395922868f6246915f40e1d3",
+	"completed": false,
+	"definition_hash": "30ff6b4e95e79dbadb6c4928c6bc80c1fb4a5b4f495e649f0087912c56a42bb9",
+	"duration_ticks": 140,
+	"final_state_hash": "6b1a6f6d7355875dff74dadb8c9f54bb631d7ee9a637c81d27229d611405e64b",
+	"level_id": "relay-isles",
+	"level_version": 3,
+	"outcome": {
+		"objective_complete": false,
+		"source_ready": true
+	},
+	"packed": "AQ8MZAACGQAaAJwCALUCAAADAAAYAGQCADIoZAACAAADAAA0nAAC5wAyAJw8AAA3UJj7zuusDjsZBjWVMfzhNNL+E4kY8mn3xQrAX5K0zA==",
+	"player_slot": "p1",
+	"recording_hash": "41f93eb5b8a0bf5d7c37970183f1fe5089d6acc9bde6404d36697a4ea54e34df",
+	"role": "a",
+	"schema_version": 7,
+	"simulation_version": 16,
+	"source_recording_hash": "",
+	"stage_id": "garden",
+	"stage_version": 1,
+	"tick_rate": 30
+}
