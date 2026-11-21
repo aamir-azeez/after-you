@@ -3,6 +3,7 @@ extends RefCounted
 const Canonical = preload("res://core/v2/canonical.gd")
 const Solid = preload("res://core/solid_footprint.gd")
 const CarriedItems = preload("res://core/physical/carried_items.gd")
+const Seven = preload("res://core/journey/seven_mechanisms.gd")
 const Home = preload("res://core/journey/long_way_home_catalog.gd")
 const Conservatory = preload("res://core/journey/conservatory_catalog.gd")
 const Tide = preload("res://core/journey/turn_of_the_tide_catalog.gd")
@@ -68,6 +69,22 @@ static func initial_checkpoint(level: Dictionary) -> Dictionary:
 	if CarriedItems.declared(level): checkpoint.mechanisms["items"]=CarriedItems.initial(level)
 	checkpoint["checkpoint_hash"]=checkpoint_hash(checkpoint)
 	return checkpoint
+
+## Stepping stones the water can leave standing too tall to step on, by
+## chapter (every version alike): route id -> a controls-only predicate that
+## holds while its water stands below it. A shut stone is then left high
+## instead of under the water; the tide rules (simulation.gd) keep a pip on it
+## up there and a pip that walks off it falls, and the water world draws it
+## standing tall (presentation/water_world.gd). Beside the definition, not in
+## it: no published hash, record or checkpoint moves, since a pip on a shut
+## stone used to drown, so no kept turn ever had one there.
+static func tall_stones(level: Dictionary) -> Dictionary:
+	return Tide.TALL_STONES if str(level.get("id", "")) == "turn-of-the-tide" else {}
+
+## Whether shut stone `id` stands too tall for its water under `controls`.
+static func left_high(level: Dictionary, id: String, controls: Dictionary) -> bool:
+	var when: Variant = tall_stones(level).get(id)
+	return when is Dictionary and Seven.predicate(when, {}, {}, {"controls": controls, "levers": {}})
 
 static func checkpoint_hash(checkpoint: Dictionary) -> String:
 	var body:=checkpoint.duplicate(true)

@@ -1700,6 +1700,12 @@ const TURN_OF_THE_TIDE_V2_SLACK_HINT_B_SOLO := "Let your memory cross before you
 const JOURNEY_DROWNED_YOU := "Oh no, you drowned! Try again?"
 const JOURNEY_DROWNED_FRIEND := "Oh no, your friend drowned! Try again?"
 const JOURNEY_DROWNED_MEMORY := "Oh no, your memory drowned! Try again?"
+# A turn that ends with a spirit walking off a stepping stone its water left
+# standing tall, the same three ways; and Finish held while one is up there.
+const JOURNEY_FELL_YOU := "Your pip fell! Try again?"
+const JOURNEY_FELL_FRIEND := "Your friend fell! Try again?"
+const JOURNEY_FELL_MEMORY := "Your memory fell! Try again?"
+const JOURNEY_LEFT_HIGH := "A pip is stuck up on the stones."
 # Finish is held while a spirit stands on a crossing that is closing.
 const JOURNEY_ON_CLOSING := "Step off the crossing before it shuts."
 # The winch's two settings as its lever's bubble names them. The catalog keeps
@@ -3358,6 +3364,10 @@ const TEXT := {
 	"journey.drowned_you": JOURNEY_DROWNED_YOU,
 	"journey.drowned_friend": JOURNEY_DROWNED_FRIEND,
 	"journey.drowned_friend" + SOLO: JOURNEY_DROWNED_MEMORY,
+	"journey.fell_you": JOURNEY_FELL_YOU,
+	"journey.fell_friend": JOURNEY_FELL_FRIEND,
+	"journey.fell_friend" + SOLO: JOURNEY_FELL_MEMORY,
+	"journey.left_high": JOURNEY_LEFT_HIGH,
 	"journey.on_closing": JOURNEY_ON_CLOSING,
 	"cooperative.high_summary": COOPERATIVE_HIGH_SUMMARY,
 	"cooperative.rolling_summary": COOPERATIVE_ROLLING_SUMMARY,
@@ -4134,6 +4144,9 @@ const CANONICAL_KEYS := {
 	"Wait until your friend has crossed the harbour before you turn the tide. Then fetch the pin, key or line at the mill, each at its own tide, and light the lantern.": "turn_of_the_tide_v2.slack_water_b",
 	"Oh no, you drowned! Try again?": "journey.drowned_you",
 	"Oh no, your friend drowned! Try again?": "journey.drowned_friend",
+	"Your pip fell! Try again?": "journey.fell_you",
+	"Your friend fell! Try again?": "journey.fell_friend",
+	"A pip is stuck up on the stones.": "journey.left_high",
 	"Step off the crossing before it shuts.": "journey.on_closing",
 	"Help your partner reach the loft.": "cooperative.upper_path_a",
 	"Reach the bell above.": "cooperative.upper_path_b",

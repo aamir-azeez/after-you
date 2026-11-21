@@ -19,10 +19,11 @@ extends "res://presentation/journey_world.gd"
 ##
 ## What every water world shows with no code of its own: boats riding the water
 ## by the float rule (kit/floats.gd: the dressing's "moored_boats", and any
-## dressing "boat" prop standing over water), a drowning (kit/drowning.gd), and
-## stepping stones that sink just under the water while they are down (shut,
-## or pushed under) and rise again, never hidden. A world never builds its own
-## (test_shared_paths guards it).
+## dressing "boat" prop standing over water), a drowning or a fall
+## (kit/drowning.gd), and stepping stones that sink just under the water while
+## they are down (shut, or pushed under), stand tall while their water has
+## fallen away (journey stage_catalog.gd tall_stones) and come back again,
+## never hidden and never resized. A world never builds its own (test_shared_paths guards it).
 
 const WaterBodies = preload("res://presentation/kit/water_bodies.gd")
 const WaterLocks = preload("res://presentation/kit/water_locks.gd")
@@ -42,6 +43,12 @@ const PILE_OVER := 0.19
 ## how fast it sinks and rises (m a second).
 const STONE_UNDER := 0.10
 const STONE_RATE := 0.45
+## How far over its open height a stone its water left high stands (m), clear
+## above the floors it joins, so no pip steps on; a pip already on it rides up.
+## A world builds each stone long enough to stand this tall with its foot
+## still on the bed.
+const STONE_TALL := 0.45
+const JourneyCatalog = preload("res://core/journey/stage_catalog.gd")
 
 ## The water kit for the shown stage.
 var waters := WaterBodies.new(self)
@@ -68,7 +75,7 @@ var _boats: Array[Node3D] = []
 ## the water stands: [{"at": [x, z] cm, "heading": radians, "water": body id}].
 var _floating: Array = []
 ## Stepping stones (crossings standing in the water): id -> {"deck", "rest"
-## (its open height), "water" (body id), "down", "y" (shown height)}.
+## (its open height), "water" (body id), "down", "tall", "y" (shown height)}.
 var _stones: Dictionary = {}
 
 func show_stage(stage: Dictionary) -> void:
@@ -196,7 +203,7 @@ func _find_stones(stage: Dictionary) -> void:
 	for id: String in _decks:
 		var deck: Node3D = _decks[id]
 		if id not in standing and (new_pieces == null or new_pieces.deck_style(id) != "stones"): continue
-		_stones[id] = {"deck": deck, "rest": deck.position.y, "water": waters.body_of(_route_rect(id)), "down": false, "y": deck.position.y}
+		_stones[id] = {"deck": deck, "rest": deck.position.y, "water": waters.body_of(_route_rect(id)), "down": false, "tall": false, "y": deck.position.y}
 
 func _route_rect(id: String) -> Array:
 	for route: Dictionary in current_level.get("bridges", []):
@@ -204,21 +211,28 @@ func _route_rect(id: String) -> Array:
 	return [0, 0, 0, 0]
 
 ## A stone is down while its crossing is shut, or once it is pushed under (a
-## drowning on it): it stays in view, sinking to just under its water.
+## drowning on it): it stays in view, sinking to just under its water. A shut
+## stone its water has fallen away from stands tall instead, the same rule the
+## simulation plays (stage_catalog.gd left_high), and a fall off it leaves it so.
 func _present_stones(state: Dictionary, immediate: bool) -> void:
 	var routes: Dictionary = state.get("bridges", {})
-	var sunk := str(state.get("drowned", {}).get("route", ""))
+	var drowned: Dictionary = state.get("drowned", {})
+	var sunk := "" if drowned.has("fell") else str(drowned.get("route", ""))
+	var controls: Dictionary = state.get("controls", {})
 	for id: String in _stones:
 		var stone: Dictionary = _stones[id]
 		if not is_instance_valid(stone.deck): continue
 		stone.down = not bool(routes.get(id, false)) or id == sunk
+		stone.tall = stone.down and id != sunk and JourneyCatalog.left_high(chapter_definition, id, controls)
 		stone.deck.visible = true
 		if immediate or reduced_motion:
 			stone.y = _stone_target(stone)
 			stone.deck.position.y = stone.y
 
-## Where a stone heads: its open height, or just under its water while down.
+## Where a stone heads: its open height, STONE_TALL over it while left high,
+## or just under its water while down.
 func _stone_target(stone: Dictionary) -> float:
+	if stone.tall: return float(stone.rest) + STONE_TALL
 	if not stone.down: return float(stone.rest)
 	var body: Node3D = waters.bodies.get(str(stone.water))
 	var level: float = float(body.get_meta("shown")) if is_instance_valid(body) and body.has_meta("shown") else float(stone.rest)
@@ -231,6 +245,18 @@ func _sink_stones(delta: float) -> void:
 		if is_equal_approx(float(stone.y), target): continue
 		stone.y = target if reduced_motion else move_toward(float(stone.y), target, STONE_RATE * maxf(delta, 0.0))
 		stone.deck.position.y = stone.y
+
+## A spirit on a stone rides it up while the stone stands over its open
+## height (left high), the live pip and the memory alike; a falling or
+## drowning spirit is the drowning kit's.
+func _carry(role: String, actor: Node3D) -> Vector3:
+	var lift := super._carry(role, actor)
+	return lift if drowning.slot == role else lift + Vector3(0.0, stone_lift(role), 0.0)
+
+## How high spirit `slot` rides over its snapshot place on a stone left high (m).
+func stone_lift(slot: String) -> float:
+	var stone: Dictionary = _stones.get(str(_floors.get(slot, "")), {})
+	return 0.0 if stone.is_empty() else maxf(0.0, float(stone.y) - float(stone.rest))
 
 # --- Floors: solid decks with walls down to the water ---
 

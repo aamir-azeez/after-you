@@ -30,9 +30,12 @@ extends SceneTree
 ##    (kit/floats.gd), its keel in the water and its inside floor over it at
 ##    every level its water stands at and all through its bob, and no boat
 ##    prop stands over water unfloated;
-##  - a stone that vanishes: a stepping stone that is down (shut, or pushed
-##    under by a drowning) stays in view just under its water, and a drowning
-##    on it shows the shared drown (kit/drowning.gd).
+##  - a stone that vanishes or changes size: a stepping stone that is down
+##    (shut, or pushed under by a drowning) stays in view just under its water,
+##    or stands tall over its open height while its water has fallen away
+##    (journey stage_catalog.gd left_high), a pip on it riding up; a drowning
+##    on it shows the shared drown and a fall off it the shared fall
+##    (kit/drowning.gd).
 ## KNOWN lists what fails on purpose, by the start of its message, with why;
 ## an entry that stops failing fails the suite. The definitions-only half is
 ## tests/test_level_checker.gd.
@@ -45,6 +48,7 @@ const LevelGraph = preload("res://tests/level_graph.gd")
 const FoldPresent = preload("res://tests/test_fold_present.gd")
 const Navigation = preload("res://core/cooperative/navigation.gd")
 const WaterBodies = preload("res://presentation/kit/water_bodies.gd")
+const JourneyCatalog = preload("res://core/journey/stage_catalog.gd")
 const Runtime = preload("res://core/physical/runtime.gd")
 const WalkReach = preload("res://presentation/kit/walk_reach.gd")
 ## The engine's walk radius and the drawn pip's half-width (cm).
@@ -618,7 +622,10 @@ func _stones(world: Node3D, where: String, base: Dictionary) -> void:
 		world.present(down, true)
 		var body: Node3D = world.waters.bodies.get(str(stone.water))
 		var level: float = float(body.get_meta("shown")) if body != null else float(stone.rest)
-		_check(deck.is_visible_in_tree() and deck.position.y <= minf(float(stone.rest), level - world.STONE_UNDER) + 0.001 and deck.position.y > level - 0.3, "%s: the stone %s, down, stays in view just under its water (top %.2f, water %.2f)" % [where, id, deck.position.y, level])
+		if JourneyCatalog.left_high(world.chapter_definition, id, down.get("controls", {})):
+			_tall_stone(world, where, id, down, level)
+		else:
+			_check(deck.is_visible_in_tree() and deck.position.y <= minf(float(stone.rest), level - world.STONE_UNDER) + 0.001 and deck.position.y > level - 0.3, "%s: the stone %s, down, stays in view just under its water (top %.2f, water %.2f)" % [where, id, deck.position.y, level])
 		var up := base.duplicate(true)
 		up.bridges[id] = true
 		world.present(up, true)
@@ -633,6 +640,38 @@ func _stones(world: Node3D, where: String, base: Dictionary) -> void:
 		world.present(up, true)
 		_check(world.drowning.slot.is_empty() and is_equal_approx(deck.position.y, rest_y), "%s: without the drowning the stone %s stands again" % [where, id])
 		world.present(base, true)
+
+## A stone its water has fallen away from, shut: it stands STONE_TALL over its
+## open height, the same column (never resized); a pip on it rides up with it;
+## a fall off it leaves it standing and shows the shared fall: a wobble on top,
+## then the pip dizzy in the water in front of it with a ring spreading.
+func _tall_stone(world: Node3D, where: String, id: String, down: Dictionary, level: float) -> void:
+	var stone: Dictionary = world._stones[id]
+	var deck: Node3D = stone.deck
+	var size := _stone_extent(deck)
+	_check(deck.is_visible_in_tree() and is_equal_approx(deck.position.y, float(stone.rest) + world.STONE_TALL) and deck.position.y > level, "%s: the stone %s, left high by its water, stands tall over its open height (top %.2f, water %.2f)" % [where, id, deck.position.y, level])
+	var on := down.duplicate(true)
+	var route: Array = world._route_rect(id)
+	on.players.p0.merge({"x": (int(route[0]) + int(route[2])) / 2, "z": (int(route[1]) + int(route[3])) / 2, "surface_id": id}, true)
+	world.present(on, true)
+	world._process(1.0)
+	_check(absf(world.actors.p0.position.y - world.actor_targets.p0.y - world.STONE_TALL) < 0.01, "%s: a pip on the stone %s left high rides up on it" % [where, id])
+	var fell := on.duplicate(true)
+	fell["drowned"] = {"slot": "p0", "route": id, "tick": 1, "fell": true}
+	world.present(fell, true)
+	_check(world.drowning.slot == "p0" and is_equal_approx(deck.position.y, float(stone.rest) + world.STONE_TALL) and world.actor_targets.p0.y > level, "%s: a pip falling off the stone %s wobbles on top of it, the stone still standing tall" % [where, id])
+	world.drowning.advance(world.drowning.WOBBLE + 0.01)
+	_check(world.actor_targets.p0.y < level and world.drowning.ring.visible and _stone_extent(deck).is_equal_approx(size), "%s: then it lands in the water in front of the stone %s, a ring spreading, the stone the same size" % [where, id])
+	world.present(down, true)
+	_check(world.drowning.slot.is_empty() and is_zero_approx(world.actors.p0.rotation.z), "%s: without the fall the pip stands upright again" % where)
+
+## A deck's drawn size: the bounds of its meshes in its own frame.
+static func _stone_extent(deck: Node3D) -> Vector3:
+	var box := AABB()
+	for node: Node in deck.find_children("*", "MeshInstance3D", true, false):
+		var mesh := node as MeshInstance3D
+		box = box.merge(deck.global_transform.affine_inverse() * mesh.global_transform * mesh.get_aabb())
+	return box.size
 
 ## Crossing ends found so far, by the stage floors they were read from.
 var _ends_by_floors: Dictionary = {}

@@ -13,7 +13,11 @@ extends SceneTree
 ##   it drowns (the live one or the memory), one that steps off in time does
 ##   not, a gate that holds again inside the window never shuts, and a memory
 ##   walking onto a crossing already shut drowns at once;
-## - the drowned lines read "you", "your friend", or solo "your memory";
+## - the stepping stones left high by a low tide drown no one (@3 played, the
+##   same rule as @2): a pip on one as it shuts stays up there with Finish
+##   held, and walking off it falls where it stood, live or as the memory,
+##   ending the turn as a drowning does and replaying exactly;
+## - the drowned and fell lines read "you", "your friend", or solo "your memory";
 ## - the removed settled-source @2 is retired.
 const KEY := "turn-of-the-tide@2"
 const Registry = preload("res://services/chapter_registry.gd")
@@ -46,6 +50,7 @@ func _run() -> void:
 	_memory_drowns(ends.get("low", {}))
 	_memory_steps_onto_shut(ends.get("half", {}))
 	_no_finish_while_closing()
+	_left_high()
 	_lines()
 	_check(Canonical.digest(Registry.definition(KEY)) == digest, "Playing never changes the definition")
 	print("TURN OF THE TIDE V2 RULES: %d checks, %d failures" % [checks, failures])
@@ -224,9 +229,60 @@ func _no_finish_while_closing() -> void:
 	while not a.finished: a.step({})
 	_check(a.snapshot().drowned.get("route") == "wheel-step" and not a.can_commit(), "The step shuts under it and it drowns")
 
+## @3 (open turns, the tide rules): the memory turns the tide to half, waits
+## while the live pip walks onto the first stones, then turns it high and low.
+## The stones shut left high, not under water: the pip stays up there and
+## Finish is held, saying why; walking off, it falls where it stood, the turn
+## ends as a drowning does and replays exactly. Then a memory the live pip's
+## tide leaves high on the stones falls when its recording walks on.
+func _left_high() -> void:
+	var key := "turn-of-the-tide@3"
+	var open_level := Registry.definition(key)
+	var start := Registry.initial_checkpoint(key)
+	var a := Simulation.new()
+	a.reset(open_level, SET, start, {}, "a")
+	var trouble := Tide.play(a, Tide.APPROACH + [Tide.T, ["n", 420], Tide.T, Tide.T, ["n", 90]])
+	_check(trouble.is_empty() and a._mechanisms.controls.tide == "low" and a.can_commit(), "The memory turns the tide to half, waits, then turns it high and low (%s)" % trouble)
+	var first: Dictionary = a.export_recording()
+	var b := Simulation.new()
+	b.reset(open_level, SET, start, first, "b")
+	while not b.finished and not bool(b._routes.get("stones-1", false)): b.step({})
+	trouble = Tide.play(b, [["w", [-176, 416]], ["w", [-176, 0]], ["w", [-64, 0]]])
+	_check(trouble.is_empty() and str(b._players.p1.surface_id) == "stones-1", "The live pip walks onto the first stones at half tide (%s)" % trouble)
+	var stood: Dictionary = b._players.p1.duplicate()
+	while not b.finished and not b._high.has("p1"): b.step({})
+	_check(b._high.has("p1") and b._mechanisms.controls.tide == "low" and b.snapshot().drowned.is_empty() and not b.can_commit() and not b._may_pass() and b.commit_reason() == Simulation.LEFT_HIGH and PlayerCopy.from_canonical(Simulation.LEFT_HIGH) == PlayerCopy.JOURNEY_LEFT_HIGH, "Shut at low tide, the stones leave the pip high, not drowned; Finish is held and says why (%s)" % b.commit_reason())
+	for _tick in range(30): b.step({})
+	_check(not b.finished and b._high.has("p1") and str(b._players.p1.surface_id) == "stones-1", "Standing still, it stays up there")
+	b.step({"move_x": 1.0, "move_z": 0.0})
+	var fell: Dictionary = b.snapshot().drowned
+	_check(b.finished and fell.get("fell") == true and fell.get("slot") == "p1" and fell.get("route") == "stones-1" and int(b._players.p1.x) == int(stood.x) and b._events.has("fell:p1"), "Walking off, it falls where it stood and the turn ends (%s)" % str(fell))
+	_check(not b.can_commit() and not b.keeps_draft() and b.commit_reason() == Simulation.FELL_YOU, "A fall cannot be saved and says so")
+	var again := Simulation.new()
+	again.reset(open_level, SET, start, first, "b")
+	for input: Dictionary in Simulation.expand_recording_inputs(b.export_recording()): again.step(input)
+	_check(again.finished and again.snapshot().drowned == fell and again.state_hash() == b.state_hash(), "The fall replays exactly from its recording (Retry and Preview see the same ending)")
+	var memory := Simulation.new()
+	memory.reset(open_level, SET, start, {}, "a")
+	trouble = Tide.play(memory, Tide.APPROACH + [Tide.T, ["w", [96, -352]], ["w", [96, 0]], ["w", [-64, 0]], ["n", 120], ["w", [-250, 0]]])
+	_check(trouble.is_empty() and memory.can_commit(), "The memory turns the tide to half and crosses the first stones, resting on them (%s)" % trouble)
+	var c := Simulation.new()
+	c.reset(open_level, SET, start, memory.export_recording(), "b")
+	while not c.finished and not (str(c._players.p0.surface_id) == "stones-1" and int(c._players.p0.x) <= -63): c.step({})
+	# The live pip's tide falls under the memory (its own wheel turn, as a control the memory never touches again).
+	c._mechanisms.controls["tide"] = "low"
+	var rested: Dictionary = {}
+	while not c.finished:
+		c.step({})
+		if rested.is_empty() and c._high.has("p0") and c.commit_reason() == Simulation.LEFT_HIGH: rested = c._players.p0.duplicate()
+	var memory_fell: Dictionary = c.snapshot().drowned
+	_check(not rested.is_empty() and memory_fell.get("fell") == true and memory_fell.get("slot") == "p0" and int(c._players.p0.x) == int(rested.x) and c.commit_reason() == Simulation.FELL_FRIEND, "A memory left high falls where it stood when its recording walks on (%s)" % str(memory_fell))
+
 func _lines() -> void:
 	_check(PlayerCopy.from_canonical(Simulation.DROWNED_YOU) == PlayerCopy.JOURNEY_DROWNED_YOU and PlayerCopy.from_canonical(Simulation.DROWNED_YOU, true) == PlayerCopy.JOURNEY_DROWNED_YOU, "The player's own drowning reads the same online and solo")
 	_check(PlayerCopy.from_canonical(Simulation.DROWNED_FRIEND) == PlayerCopy.JOURNEY_DROWNED_FRIEND and PlayerCopy.from_canonical(Simulation.DROWNED_FRIEND, true) == PlayerCopy.JOURNEY_DROWNED_MEMORY, "The memory's drowning says your friend online and your memory solo")
+	_check(PlayerCopy.from_canonical(Simulation.FELL_YOU) == PlayerCopy.JOURNEY_FELL_YOU and PlayerCopy.from_canonical(Simulation.FELL_YOU, true) == PlayerCopy.JOURNEY_FELL_YOU, "The player's own fall reads the same online and solo")
+	_check(PlayerCopy.from_canonical(Simulation.FELL_FRIEND) == PlayerCopy.JOURNEY_FELL_FRIEND and PlayerCopy.from_canonical(Simulation.FELL_FRIEND, true) == PlayerCopy.JOURNEY_FELL_MEMORY, "The memory's fall says your friend online and your memory solo")
 	var hint: String = level.stages[1].hint_b
 	_check(PlayerCopy.from_canonical(hint) == PlayerCopy.TURN_OF_THE_TIDE_V2_SLACK_HINT_B and PlayerCopy.from_canonical(hint, true) == PlayerCopy.TURN_OF_THE_TIDE_V2_SLACK_HINT_B_SOLO, "Slack Water's hint names your friend online and your memory solo")
 	# The HUD reads the stage copy, the player's own line, through the same call.
