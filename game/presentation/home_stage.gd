@@ -6,6 +6,7 @@ const PlatformSupport = preload("res://services/platform_support.gd")
 ## Home-only presentation. No simulation, recordings, persistence or account I/O.
 const CameraExploration = preload("res://presentation/camera_exploration.gd")
 const KeepsakeLayer = preload("res://presentation/home_keepsake_layer.gd")
+const Isles = preload("res://presentation/keepsakes/home_isles.gd")
 const KeepsakeCard = preload("res://presentation/keepsakes/keepsake_card.gd")
 const EndReactions = preload("res://presentation/end_reactions.gd")
 const ReactionCatalog = preload("res://services/reaction_catalog.gd")
@@ -65,7 +66,8 @@ const DEFAULT_SIZE := 15.7
 const MIN_SIZE := 8.0
 const MAX_SIZE := 25.0
 ## How far Home's view pans (camera-plane units of DEFAULT_SIZE): enough to
-## bring the keepsake isles behind and beside the Home islands into view.
+## bring the keepsake isles behind and beside the Home islands into view; an
+## isle further out pans further (home_isles.gd "pan") once it is built.
 const HOME_PAN := Vector2(0.42, 0.40)
 const WALK_SPEED := 0.52
 const SEPARATION := 0.92
@@ -484,6 +486,7 @@ func _create_keepsake_display() -> void:
 		if play_haptic.is_valid(): play_haptic.call()
 	_terrain.add_child(_keepsake_layer)
 	_keepsake_layer.configure(_world, _keepsakes, _hard_marks, _together_hard, _free_only)
+	_exploration.maximum_pan = Isles.pan(_keepsake_layer.island_ids(), HOME_PAN)
 	_box_fit.clear()
 	for prop: Variant in [_world.garden, _world.goal_ring, _world.seed, _world.landing_marker, _world.keepsake_landmark]:
 		if is_instance_valid(prop):
@@ -870,7 +873,7 @@ func frame_selected() -> void:
 	if room.has_point(screen): return
 	var delta := stage.get_center() - screen
 	var height := maxf(get_viewport_rect().size.y, 1.0)
-	_pan_goal = (_exploration.pan + Vector2(-delta.x, delta.y) * (zoom_target / DEFAULT_SIZE) / height).clamp(-HOME_PAN, HOME_PAN)
+	_pan_goal = (_exploration.pan + Vector2(-delta.x, delta.y) * (zoom_target / DEFAULT_SIZE) / height).clamp(-_exploration.maximum_pan, _exploration.maximum_pan)
 
 func _frame_camera() -> void:
 	var camera: Camera3D = _world.camera

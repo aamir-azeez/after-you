@@ -1,7 +1,8 @@
 extends RefCounted
 ## Home's extra islands for the keepsakes, as the older Home had: a tide isle
-## beside the right island and two journey isles behind, each joined to a Home
-## island by a fixed plank bridge. The two Home islands themselves come from
+## beside the right island, two journey isles behind, each joined to a Home
+## island by a fixed plank bridge, and a brook isle behind the tide isle,
+## joined to it by one. The two Home islands themselves come from
 ## the level (bounds, gap and its lowering bridge).
 ##
 ## A keepsake names its island in its descriptor (content/chapters/index.gd);
@@ -15,13 +16,16 @@ const NODE_NAME := "HomeIsles"
 ## Home's own grass (the Home level's palette).
 const GRASS := Color("a6c9a0")
 ## Each isle's dressing pattern (island_world.gd island_dressing), so no two match.
-const DRESSING := {"tide": 1, "journey_left": 2, "journey_right": 3}
-## Each isle: its middle and size in metres, and its plank bridge from the
-## Home island's edge into the isle.
+const DRESSING := {"tide": 1, "journey_left": 2, "journey_right": 3, "brook": 4}
+## Each isle: its middle and size in metres, its plank bridge from the Home
+## island's (or, for the brook isle, the tide isle's) edge into the isle, and
+## for an isle further out than Home's view pans, how far it must pan
+## (home_stage.gd HOME_PAN) to bring the isle's keepsakes into view.
 const ISLES := {
 	"tide": {"center": Vector2(9.2, 0.2), "size": Vector2(5.4, 7.0), "bridge": [Vector2(5.6, 0.0), Vector2(6.6, 0.0)]},
 	"journey_left": {"center": Vector2(-3.8, -9.4), "size": Vector2(5.6, 9.6), "bridge": [Vector2(-3.0, -2.9), Vector2(-3.0, -4.8)]},
 	"journey_right": {"center": Vector2(3.8, -9.4), "size": Vector2(5.6, 9.6), "bridge": [Vector2(3.2, -2.9), Vector2(3.2, -4.8)]},
+	"brook": {"center": Vector2(10.8, -9.3), "size": Vector2(5.6, 8.0), "bridge": [Vector2(11.3, -3.3), Vector2(11.3, -5.5)], "pan": Vector2(0.6, 0.4)},
 }
 const BRIDGE_WIDTH := 1.0
 const PLANK_STEP := 0.34
@@ -61,6 +65,14 @@ static func _bridge(holder: Node3D, id: String, ends: Array) -> void:
 	for index in range(count): Parts.box(bridge, Vector3(BRIDGE_WIDTH, 0.1, step - 0.03), Parts.PLANK, Vector3(0, -0.06, -(index + 0.5) * step))
 	for side: int in [-1, 1]:
 		for index in range(0, count + 1, 2): Parts.cyl(bridge, 0.04, 0.38, Parts.POST, Vector3(side * (BRIDGE_WIDTH * 0.5 - 0.06), 0.15, -index * step))
+
+## How far Home's view pans with the isles `ids` built: `least`, or further
+## where an isle asks for it.
+static func pan(ids: Array, least: Vector2) -> Vector2:
+	var result := least
+	for id: String in ids:
+		if ISLES.has(id): result = result.max(ISLES[id].get("pan", least))
+	return result
 
 ## Each isle's floor (inset from its edges), by id.
 static func floors(ids: Array, inset: float) -> Dictionary:

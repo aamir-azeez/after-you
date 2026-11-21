@@ -48,8 +48,9 @@ const DATA := {
 	# The chapter's keepsake on Home (presentation/keepsakes/).
 	"home_keepsake": {
 		"builder": "res://presentation/keepsakes/the_falls.gd",
-		"island": "right",
-		"slot": [0.0, 0.0],
+		"island": "brook",
+		"slot": [0.3, -2.4],
+		"yaw": 0.0,
 		"copy": {
 			"name": PlayerCopy.THE_FALLS_KEEPSAKE_NAME,
 			"action": PlayerCopy.THE_FALLS_KEEPSAKE_ACTION,
@@ -57,7 +58,7 @@ const DATA := {
 			"hard": PlayerCopy.THE_FALLS_KEEPSAKE_HARD,
 			"top": PlayerCopy.THE_FALLS_KEEPSAKE_TOP,
 		},
-		"sounds": {"base": "garden_opened", "together": "lift_ready", "hard": "bell_rung", "top": "island_bloomed"},
+		"sounds": {"base": "water_rise", "together": "winch_wound", "hard": "bridge_opened", "top": "receivers_joined"},
 	},
 	"dressing": "res://content/dressing/the_falls.gd",
 	"water": "res://content/water/the_falls.gd",
