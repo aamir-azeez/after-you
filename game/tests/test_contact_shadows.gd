@@ -20,6 +20,10 @@ const Socket = preload("res://presentation/kit/pieces/socket.gd")
 const SpiritVisual = preload("res://presentation/spirit_visual.gd")
 const Primitives = preload("res://presentation/kit/primitives.gd")
 const Cutaway = preload("res://presentation/kit/cutaway.gd")
+const KeepsakeParts = preload("res://presentation/keepsakes/keepsake_parts.gd")
+## How far past its own footprint (Props.extent()) a grown or tiny dressing
+## prop's shade may reach, metres.
+const STAMP_MARGIN := 0.1
 const AT := Vector3(1, 0.5, 2)
 var checks := 0
 var failures := 0
@@ -39,6 +43,8 @@ func _run() -> void:
 	_check_props(holder)
 	_check_pieces(holder)
 	_check_feet(holder)
+	_check_dressing_stamps(holder)
+	_check_unseen(holder)
 	holder.free()
 	_check_bake()
 	await _check_layer()
@@ -138,6 +144,91 @@ func _check_feet(holder: Node3D) -> void:
 	var sunk := _marked(holder)
 	_box(sunk, Vector3(0.1, 1.0, 0.1), Vector3(0, 0.2, 0))
 	_check(is_zero_approx(float(ContactShadows.feet(sunk)[0][2])), "A post sunk into the floor casts at the floor's level")
+
+## Dressing that grows (PROP_SOFT) or is tiny (under TINY_HEIGHT): every
+## stamp round, never square-edged, wearing no grass, and no shade past the
+## prop's own footprint plus STAMP_MARGIN; a tiny one is one faint stamp with
+## no sun shadow. A part that leans a little keeps its base's outline, never
+## its whole box.
+func _check_dressing_stamps(holder: Node3D) -> void:
+	var tested := 0
+	for kind: String in _prop_kinds():
+		if ContactShadows.PROP_NONE.has(kind): continue
+		var spec := {"kind": kind, "at": [37, 11]}
+		if kind in Styles.LINE_KINDS: spec = {"kind": kind, "from": [-80, 0], "to": [80, 0]}
+		var prop := Props.build(spec, holder, 0.0, false)
+		if prop == null: continue
+		var feet := ContactShadows.feet(prop)
+		var tiny := feet.size() == 1 and float(feet[0][5]) < 1.0
+		_check(ContactShadows.PROP_SOFT.has(kind) == (str(prop.get_meta(ContactShadows.LOOK_META)) == "soft"), "A %s is marked soft only when PROP_SOFT names it" % kind)
+		if not tiny and not ContactShadows.PROP_SOFT.has(kind): continue
+		tested += 1
+		if tiny: _check((prop.get_meta(ContactShadows.CASTERS_META) as Array).is_empty() and is_equal_approx(float(feet[0][5]), ContactShadows.TINY_STRENGTH), "A tiny %s gets one faint shade and no sun shadow" % kind)
+		var footprint: Rect2 = Props.extent(spec).rect
+		var area := footprint.grow(1.0)
+		for foot: Array in feet:
+			_check(is_equal_approx(float(foot[3]), 1.0) and not bool(foot[6]), "A %s's shade is round and wears no grass: %s" % [kind, foot])
+			var baked := ContactShadows.bake(area, [ContactShadows._ground_foot(foot, prop.transform)], [], true)
+			var image: Image = baked.image
+			var past := 0.0
+			for j in range(image.get_height()):
+				for i in range(image.get_width()):
+					var shade := image.get_pixel(i, j)
+					if shade.r == 0.0 and shade.g == 0.0: continue
+					var at := area.position + (Vector2(i, j) + Vector2.ONE * 0.5) * ContactShadows.TEXEL
+					past = maxf(past, Vector2(maxf(maxf(footprint.position.x - at.x, at.x - footprint.end.x), 0.0), maxf(maxf(footprint.position.y - at.y, at.y - footprint.end.y), 0.0)).length())
+			_check(past <= STAMP_MARGIN, "A %s's shade reaches %.2f m past its footprint (at most %.2f)" % [kind, past, STAMP_MARGIN])
+			# Not square-edged: at its footprint's corner the shade is lighter
+			# than at the middle of its side (a stamp a few texels across is a
+			# blur either way).
+			var centre := ContactShadows._ground_foot(foot, prop.transform)[0] as Vector2
+			var half := ContactShadows._ground_foot(foot, prop.transform)[1] as Vector2
+			var pixel := func(point: Vector2) -> float: return image.get_pixelv(Vector2i(((point - area.position) / ContactShadows.TEXEL).floor())).r
+			var side: float = pixel.call(centre + Vector2(half.x, 0))
+			var corner: float = pixel.call(centre + half)
+			_check(minf(half.x, half.y) < ContactShadows.TEXEL * 2.0 or corner < side, "A %s's shade is round, not a box: corner %.2f, side %.2f" % [kind, corner, side])
+	_check(tested >= 4, "Grown and tiny dressing is checked: %d kinds" % tested)
+	var leaning := _marked(holder)
+	var straight := _marked(holder)
+	var flower: Mesh = (Props.build({"kind": "flowers", "at": [0, 0]}, holder, 0.0, false).find_children("*", "MeshInstance3D", true, false)[0] as MeshInstance3D).mesh
+	for pair: Array in [[leaning, 0.08], [straight, 0.0]]:
+		var part := MeshInstance3D.new()
+		part.mesh = flower
+		part.material_override = Primitives.shared_material(Color("6f9a64"))
+		part.rotation = Vector3(pair[1], 0, 0)
+		(pair[0] as Node3D).add_child(part)
+	var lean_half: Vector2 = ContactShadows.feet(leaning)[0][1]
+	var straight_half: Vector2 = ContactShadows.feet(straight)[0][1]
+	_check(lean_half.distance_to(straight_half) < 0.02, "A part leaning a little keeps its base's outline, not its whole box: %s vs %s" % [lean_half, straight_half])
+
+## Only what is drawn solid and stays is baked: a hidden part, a see-through
+## one, an unearned keepsake's outline, a part drawn with no shadow and a
+## part that moves or shows as its thing plays never count; a mesh the
+## cutaway fades for now is still there.
+func _check_unseen(holder: Node3D) -> void:
+	var thing := _marked(holder)
+	_box(thing, Vector3(0.2, 1.0, 0.2), Vector3(0, 0.5, 0))
+	var hidden := _box(thing, Vector3(0.3, 1.2, 0.3), Vector3(1, 0.6, 0))
+	hidden.visible = false
+	var clear := Primitives.mesh_node(Primitives.cached_box(Vector3(0.3, 1.2, 0.3)), Primitives.shared_material(Color(0.8, 0.8, 0.8, 0.4)), Vector3(-1, 0.6, 0), thing)
+	var faded := _box(thing, Vector3(0.3, 1.2, 0.3), Vector3(0, 0.6, 1))
+	faded.transparency = 0.5
+	var unlit := _box(thing, Vector3(0.3, 1.2, 0.3), Vector3(0, 0.6, -1))
+	unlit.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var veil := Primitives.mesh_node(Primitives.cached_box(Vector3(0.3, 1.2, 0.3)), KeepsakeParts.ghost(), Vector3(1, 0.6, 1), thing)
+	var spinning := _box(thing, Vector3(0.3, 1.2, 0.3), Vector3(-1, 0.6, -1))
+	ContactShadows.changes(spinning)
+	_check(clear != null and veil != null, "The see-through parts are built")
+	var feet := ContactShadows.feet(thing)
+	var casters: Array = thing.get_meta(ContactShadows.CASTERS_META)
+	_check(feet.size() == 1 and casters.size() == 1 and (feet[0][0] as Vector2).is_zero_approx(), "Only the solid post is baked, nothing hidden, see-through, unlit or changing: %d feet, %d casters" % [feet.size(), casters.size()])
+	var under_cutaway := _marked(holder)
+	var deck := _box(under_cutaway, Vector3(0.3, 1.2, 0.3), Vector3(0, 0.6, 0))
+	Cutaway.fade_mesh(deck, true)
+	_check(ContactShadows.feet(under_cutaway).size() == 1, "A part the cutaway fades for now still has its shadow")
+	var source := FileAccess.get_file_as_string("res://presentation/home_keepsake_layer.gd")
+	_check(source.contains("parts = builder.build(holder, state)
+			# Only an earned keepsake") and source.contains("ContactShadows.changes(part)"), "Home marks only earned keepsakes and leaves their moving parts out")
 
 func _marked(holder: Node3D) -> Node3D:
 	var node := Node3D.new()

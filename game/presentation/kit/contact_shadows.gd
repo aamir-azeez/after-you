@@ -30,7 +30,12 @@ extends Node3D
 ## A marked root is a plain Node3D container. Its feet are the bottoms of the
 ## meshes that reach down to its lowest point (a tree stands on its trunk, not
 ## its crown; a model by the outline of its lowest vertices), each foot its
-## own shape, turned with its part. Parts the static fold keeps whole because
+## own shape, turned with its part (a slight lean keeps its base's outline; a
+## rounded underside, too few vertices to outline, rests on a round spot).
+## Dressing that grows (PROP_SOFT) gets a soft round shade under each base
+## and wears no grass; dressing lower than TINY_HEIGHT gets one faint round
+## one, smaller than its base, and casts no sun shadow (never a box from a
+## clump's bounds). Parts the static fold keeps whole because
 ## they move (a lever's handle, a pad's plate, a bell) never count:
 ## kit/static_batch.gd start() measures every marked root under what it folds
 ## before any leaf is folded away (FEET_META); a root measured later (a world
@@ -66,7 +71,8 @@ const GROUND_GROUP := &"contact_ground"
 const GROUND_RECT_META := &"contact_ground_rect"
 const GROUND_WORN_META := &"contact_ground_worn"
 ## On a marked root: its feet, [[centre Vector2, half Vector2, y, round,
-## across Vector2 (unit)]] in its own space; [] for none.
+## across Vector2 (unit), strength 0..1, wears grass]] in its own space; []
+## for none.
 const FEET_META := &"contact_shadow_feet"
 ## On a marked root: what casts the sun's shadow, [[centre Vector2, half
 ## Vector2, low, high]] in its own space.
@@ -75,6 +81,11 @@ const CASTERS_META := &"contact_shadow_casters"
 const OFF_META := &"contact_shadow_off"
 ## On a marked root: it moves, so it gets a quad instead of being baked.
 const LIVE_META := &"contact_shadow_live"
+## On a part under a marked root that moves, shows or hides as it plays (a
+## keepsake's spinning arm, a lamp that lights): it never counts (changes()).
+const CHANGES_META := &"contact_shadow_changes"
+## On a dressing root (prop()): "soft" for a kind in PROP_SOFT, else "firm".
+const LOOK_META := &"contact_shadow_look"
 ## On a still root: how often it moved on its floor and settled.
 const MOVES_META := &"contact_shadow_moves"
 ## The look, shared with the pip's shadow and the baked floors.
@@ -88,6 +99,19 @@ const BAND := 0.04
 ## A root whose lowest point is higher than this over its origin hangs (a
 ## bell, a sign): no shadow.
 const GROUND_REACH := 0.08
+## A part leaning less than this (the sine of its lean) still stands on its
+## own base's outline; one leaning more falls back to its box.
+const LEAN := 0.2
+## A model whose lowest vertices are too few to outline (a rounded underside,
+## a leafy ball) rests on the outline of its vertices this share of its
+## height up, round.
+const ROUNDED_BAND := 0.25
+## Dressing lower than this (metres over its ground) is tiny: one faint round
+## shade, TINY_SHARE of its base across and TINY_STRENGTH as dark, no worn
+## grass and no sun shadow.
+const TINY_HEIGHT := 0.2
+const TINY_SHARE := 0.6
+const TINY_STRENGTH := 0.5
 ## How far a shadow fades out past its footprint: a share of its smaller
 ## half size, at least the first and at most the second (metres).
 const FADE_SHARE := 0.55
@@ -144,6 +168,13 @@ const PROP_NONE := {
 	"stilt_hut": "stands in the water on stilts",
 	"mill_wheel": "turns in the water",
 }
+## Dressing kinds that grow rather than stand, with why: every foot a soft
+## round shade under its base, wearing no grass.
+const PROP_SOFT := {
+	"bush": "leafy balls sit on the grass",
+	"flowers": "a clump of leaves and stems",
+	"hedge": "leafy balls in a row",
+}
 
 static var _touches := 0
 static var _material: ShaderMaterial
@@ -161,10 +192,17 @@ static func mark(root: Node3D, live: bool = false) -> void:
 	if live: root.set_meta(LIVE_META, true)
 	root.add_to_group(GROUP)
 
+## Marks `part` as one that moves, shows or hides as its thing plays: the
+## bake leaves it out, as it leaves out what the fold keeps.
+static func changes(part: Node) -> void:
+	part.set_meta(CHANGES_META, true)
+
 ## Marks a dressing prop of `spec`, unless its kind gets none or it stands
 ## below its floor (in water or mud).
 static func prop(root: Node3D, spec: Dictionary) -> void:
-	if PROP_NONE.has(str(spec.get("kind", ""))) or bool(spec.get("wall", false)) or float(spec.get("y", 0)) < 0.0: return
+	var kind := str(spec.get("kind", ""))
+	if PROP_NONE.has(kind) or bool(spec.get("wall", false)) or float(spec.get("y", 0)) < 0.0: return
+	root.set_meta(LOOK_META, "soft" if PROP_SOFT.has(kind) else "firm")
 	mark(root)
 
 ## Registers a floor top under `parent`: `rect` (x, z in parent space) walked
@@ -236,13 +274,19 @@ static func feet(root: Node3D, kept: Dictionary = {}) -> Array:
 		if lowest <= GROUND_REACH:
 			# A post sunk into the floor meets it at the root's own level.
 			var ground_y := maxf(lowest, 0.0)
+			var top := ground_y
+			for part: Array in parts: top = maxf(top, (part[0] as AABB).end.y)
+			var look := str(root.get_meta(LOOK_META, ""))
+			var tiny := not look.is_empty() and top - ground_y < TINY_HEIGHT
+			var soft := look == "soft"
 			for part: Array in parts:
 				var box: AABB = part[0]
-				if box.end.y - ground_y >= CAST_HEIGHT: casters.append([Vector2(box.get_center().x, box.get_center().z), Vector2(box.size.x, box.size.z) * 0.5, maxf(box.position.y, ground_y), box.end.y])
+				if box.end.y - ground_y >= CAST_HEIGHT and not tiny: casters.append([Vector2(box.get_center().x, box.get_center().z), Vector2(box.size.x, box.size.z) * 0.5, maxf(box.position.y, ground_y), box.end.y])
 				if box.position.y > ground_y + BAND or box.end.y < ground_y: continue
 				var foot := _foot(part[1], part[2])
 				if (foot[1] as Vector2).x < 0.0025 or (foot[1] as Vector2).y < 0.0025: continue
-				result.append([foot[0], foot[1], ground_y, foot[2], foot[3]])
+				result.append([foot[0], foot[1], ground_y, 1.0 if soft else foot[2], foot[3], 1.0, not soft])
+			if tiny and not result.is_empty(): result = [_tiny_foot(result, ground_y)]
 	# The biggest first; equal ones by where they stand, so the same few win
 	# whatever order the parts were found in.
 	casters.sort_custom(func(a: Array, b: Array) -> bool: return _before([-_q((a[1] as Vector2).x * (a[1] as Vector2).y), _q((a[0] as Vector2).x), _q((a[0] as Vector2).y), _q(float(a[3]))], [-_q((b[1] as Vector2).x * (b[1] as Vector2).y), _q((b[0] as Vector2).x), _q((b[0] as Vector2).y), _q(float(b[3]))]))
@@ -250,11 +294,24 @@ static func feet(root: Node3D, kept: Dictionary = {}) -> Array:
 	root.set_meta(FEET_META, result)
 	return result
 
-## The solid meshes under node, past any kept part or another marked root,
-## each as [box in root's space, mesh, transform in root's space].
+## Tiny dressing's one faint round foot: under the middle of its feet,
+## TINY_SHARE of their outline across, wearing no grass.
+static func _tiny_foot(feet_list: Array, ground_y: float) -> Array:
+	var outline := Rect2()
+	for index in range(feet_list.size()):
+		var foot: Array = feet_list[index]
+		var across: Vector2 = foot[4]
+		var half: Vector2 = foot[1]
+		var spread := Vector2(absf(across.x) * half.x + absf(across.y) * half.y, absf(across.y) * half.x + absf(across.x) * half.y)
+		var rect := Rect2((foot[0] as Vector2) - spread, spread * 2.0)
+		outline = rect if index == 0 else outline.merge(rect)
+	return [outline.get_center(), outline.size * 0.5 * TINY_SHARE, ground_y, 1.0, Vector2.RIGHT, TINY_STRENGTH, false]
+
+## The solid meshes under node, past any kept, changing or hidden part or
+## another marked root, each as [box in root's space, mesh, transform in root's space].
 static func _parts(node: Node, to_root: Transform3D, kept: Dictionary, parts: Array) -> void:
 	for child: Node in node.get_children():
-		if not child is Node3D or kept.has(child.get_instance_id()) or child.is_in_group(GROUP) or child.is_in_group(GROUND_GROUP): continue
+		if not child is Node3D or not (child as Node3D).visible or child.has_meta(CHANGES_META) or kept.has(child.get_instance_id()) or child.is_in_group(GROUP) or child.is_in_group(GROUND_GROUP): continue
 		var xform := to_root * (child as Node3D).transform
 		if child is MeshInstance3D and _solid(child as MeshInstance3D):
 			var mesh := (child as MeshInstance3D).mesh
@@ -268,7 +325,7 @@ static func _foot(mesh: Mesh, xform: Transform3D) -> Array:
 	var rect: Rect2 = bottom[0]
 	var across := Vector3(xform.basis.x.x, 0, xform.basis.x.z)
 	var deep := Vector3(xform.basis.z.x, 0, xform.basis.z.z)
-	var upright := absf(xform.basis.x.y) < 0.02 and absf(xform.basis.z.y) < 0.02
+	var upright := absf(xform.basis.x.y) < LEAN * xform.basis.x.length() and absf(xform.basis.z.y) < LEAN * xform.basis.z.length()
 	if not upright:
 		var box := xform * mesh.get_aabb()
 		return [Vector2(box.get_center().x, box.get_center().z), Vector2(box.size.x, box.size.z) * 0.5, minf(float(bottom[1]), 0.5), Vector2.RIGHT]
@@ -319,14 +376,17 @@ static func bottom(mesh: Mesh) -> Array:
 	var id := mesh.get_instance_id()
 	if _bottoms.has(id): return _bottoms[id]
 	if _bottoms.is_empty(): SessionRelease.on_exit(_release)
-	var band := box.position.y + maxf(box.size.y * 0.05, 0.01)
-	var low: Array[Vector2] = []
-	for surface in range(mesh.get_surface_count()):
-		var arrays := mesh.surface_get_arrays(surface)
-		for point: Vector3 in arrays[Mesh.ARRAY_VERTEX] as PackedVector3Array:
-			if point.y <= band: low.append(Vector2(point.x, point.z))
+	var low := _low_points(mesh, box.position.y + maxf(box.size.y * 0.05, 0.01))
 	var found := [whole, 0.3]
-	if low.size() >= 3:
+	if low.size() < 3:
+		# A rounded underside: it rests on a round spot, the outline a little
+		# way up it (ROUNDED_BAND), never its whole box.
+		low = _low_points(mesh, box.position.y + box.size.y * ROUNDED_BAND)
+		if low.size() >= 3:
+			var spot := Rect2(low[0], Vector2.ZERO)
+			for point: Vector2 in low: spot = spot.expand(point)
+			found = [spot, 1.0]
+	else:
 		var rect := Rect2(low[0], Vector2.ZERO)
 		for point: Vector2 in low: rect = rect.expand(point)
 		var half := rect.size * 0.5
@@ -341,11 +401,32 @@ static func bottom(mesh: Mesh) -> Array:
 	_bottoms[id] = found
 	return found
 
-## A mesh that stands on the ground: opaque, not a glow or a pool of light.
+## A mesh's vertices no higher than `band`, flat (x, z).
+static func _low_points(mesh: Mesh, band: float) -> Array[Vector2]:
+	var low: Array[Vector2] = []
+	for surface in range(mesh.get_surface_count()):
+		var arrays := mesh.surface_get_arrays(surface)
+		for point: Vector3 in arrays[Mesh.ARRAY_VERTEX] as PackedVector3Array:
+			if point.y <= band: low.append(Vector2(point.x, point.z))
+	return low
+
+## A mesh that stands on the ground, drawn solid: every look it draws with
+## opaque, not a glow, a pool of light, a see-through veil (an unearned
+## keepsake's outline) or a part drawn with no shadow of its own. A mesh the
+## cutaway fades for now (kit/cutaway.gd) is still there: it counts.
 static func _solid(mesh: MeshInstance3D) -> bool:
-	if mesh.mesh == null or mesh.transparency > 0.0: return false
-	var look := mesh.material_override
-	if look == null: return true
+	if mesh.mesh == null: return false
+	if mesh.get_meta("cutaway", false): return true
+	if mesh.transparency > 0.0 or mesh.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF: return false
+	if mesh.material_override != null: return _opaque(mesh.material_override)
+	for surface in range(mesh.mesh.get_surface_count()):
+		var look := mesh.get_surface_override_material(surface)
+		if look == null: look = mesh.mesh.surface_get_material(surface)
+		if look != null and not _opaque(look): return false
+	return true
+
+## A look drawn solid: an opaque base material that does not glow.
+static func _opaque(look: Material) -> bool:
 	if not look is BaseMaterial3D: return false
 	var base := look as BaseMaterial3D
 	return base.transparency == BaseMaterial3D.TRANSPARENCY_DISABLED and not (base.emission_enabled and base.emission_energy_multiplier > 1.5)
@@ -401,7 +482,8 @@ static func worn_for(half: Vector2) -> float:
 
 # --- Baking a floor -------------------------------------------------------------
 
-## Bakes `feet` ([[centre, half, round, across (unit)]] in the ground's space)
+## Bakes `feet` ([[centre, half, round, across (unit), strength, wears grass]]
+## in the ground's space; the last two default to 1 and true)
 ## and `casts` ([[centre, along (unit), half, soft]]) into an RGB image over
 ## `rect` (see ground_shade.gdshader). Returns {image, tiles: [Rect2]} or {}
 ## when nothing shows. Every input is snapped first (SNAP), and the stamps
@@ -417,8 +499,9 @@ static func bake(rect: Rect2, feet_list: Array, casts: Array, worn: bool) -> Dic
 	for foot: Array in feet_list:
 		var half := _snapped2(foot[1])
 		var fade := fade_for(half)
-		var reach := worn_for(half) if worn else fade
-		var box := _stamp(data, width, height, rect, _snapped2(foot[0]), _snapped2(foot[3]), half, _snapped(float(foot[2])) * minf(half.x, half.y), fade, reach, 0 if worn else -1)
+		var wears := worn and (bool(foot[5]) if foot.size() > 5 else true)
+		var reach := worn_for(half) if wears else fade
+		var box := _stamp(data, width, height, rect, _snapped2(foot[0]), _snapped2(foot[3]), half, _snapped(float(foot[2])) * minf(half.x, half.y), fade, reach, 0 if wears else -1, _strength(foot, 4))
 		_mark_tiles(box, per_tile, tiles_across, marked)
 	for cast: Array in casts:
 		var cast_half := _snapped2(cast[2])
@@ -436,9 +519,10 @@ static func bake(rect: Rect2, feet_list: Array, casts: Array, worn: bool) -> Dic
 ## and what it adds: centre, its across axis (unit), half size, corner radius,
 ## how far its own channel fades out past it and how far the worn channel
 ## does. `worn`: 0 also writes the worn channel, -1 only the contact channel,
-## -2 the sun's (b) channel alone. Returns the texel box it touched (a
-## negative size when it lies off the floor).
-static func _stamp(data: PackedByteArray, width: int, height: int, rect: Rect2, centre: Vector2, across: Vector2, half: Vector2, corner: float, fade: float, reach: float, worn: int) -> Rect2i:
+## -2 the sun's (b) channel alone. `strength` scales how dark its own channel
+## gets. Returns the texel box it touched (a negative size when it lies off the
+## floor).
+static func _stamp(data: PackedByteArray, width: int, height: int, rect: Rect2, centre: Vector2, across: Vector2, half: Vector2, corner: float, fade: float, reach: float, worn: int, strength: float = 1.0) -> Rect2i:
 	var deep := Vector2(-across.y, across.x)
 	var outer := half + Vector2.ONE * maxf(fade, reach)
 	var spread := Vector2(absf(across.x) * outer.x + absf(deep.x) * outer.y, absf(across.y) * outer.x + absf(deep.y) * outer.y)
@@ -462,7 +546,7 @@ static func _stamp(data: PackedByteArray, width: int, height: int, rect: Rect2, 
 			var at := (row + i) * 3
 			var shade := clampf(1.0 - outside / fade, 0.0, 1.0)
 			if shade > 0.0:
-				var level := int(shade * shade * (3.0 - 2.0 * shade) * 255.0)
+				var level := int(shade * shade * (3.0 - 2.0 * shade) * 255.0 * strength)
 				if level > data[at + channel]: data[at + channel] = level
 			if worn == 0:
 				var wear := clampf(1.0 - outside / reach, 0.0, 1.0)
@@ -706,7 +790,8 @@ func _ground_for(root: Node3D, foot: Array, grounds: Array[Node3D]) -> Node3D:
 			best = ground
 	return best
 
-## A foot of a root in its ground's space: [centre, half, round, across].
+## A foot of a root in its ground's space: [centre, half, round, across,
+## strength, wears grass].
 static func _ground_foot(foot: Array, to_ground: Transform3D) -> Array:
 	var turn: Vector2 = foot[4]
 	var centre := to_ground * Vector3((foot[0] as Vector2).x, float(foot[2]), (foot[0] as Vector2).y)
@@ -714,7 +799,11 @@ static func _ground_foot(foot: Array, to_ground: Transform3D) -> Array:
 	var deep := to_ground.basis * Vector3(-turn.y, 0, turn.x)
 	var flat_across := Vector2(across.x, across.z)
 	var half := (foot[1] as Vector2) * Vector2(flat_across.length(), Vector2(deep.x, deep.z).length())
-	return [Vector2(centre.x, centre.z), half, foot[3], _unit(flat_across)]
+	return [Vector2(centre.x, centre.z), half, foot[3], _unit(flat_across), _strength(foot, 5), bool(foot[6]) if foot.size() > 6 else true]
+
+## A foot's strength (0..1) at `index` of its array, 1 when it gives none.
+static func _strength(foot: Array, index: int) -> float:
+	return clampf(float(foot[index]), 0.0, 1.0) if foot.size() > index else 1.0
 
 ## A caster's soft shadow on its ground, cast along `sun` (the floor offset
 ## per metre of height, in the ground's space): [centre, along, half, soft].
@@ -822,7 +911,7 @@ func _place(index: int, seen: Transform3D) -> void:
 	many.set_instance_transform(index, placed)
 	# A live shadow is always round: a soft blob, never a box.
 	many.set_instance_custom_data(index, Color(half.x, half.y, fade, 1.0))
-	many.set_instance_color(index, Color(1, 1, 1, strength))
+	many.set_instance_color(index, Color(1, 1, 1, strength * float(ground_foot[4])))
 
 ## Looks at a few roots for a move, and every frame at those that just moved:
 ## a live one is followed; a still one is baked again where it settles, and
