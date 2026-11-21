@@ -1649,6 +1649,16 @@ const FIRST_STEPS_LIFT_HINT_B := "Ride up, then stand on the loft's spot to brin
 const FIRST_STEPS_GROW_TITLE := "A Place to Grow"
 const FIRST_STEPS_GROW_HINT_A := "Take the seed from beside the pedestal. Throw it from the marked edge, or ride the lift down with it."
 const FIRST_STEPS_GROW_HINT_B := "Put the seed in the garden and meet by its lamp."
+# relay-isles@3 (open turns, the shared rules). Its title, summary and stage
+# titles are relay-isles@2's; the completion and hints are drafts awaiting the owner.
+const RELAY_ISLES_TITLE := "The Relay Isles"
+const RELAY_ISLES_COMPLETION := "Three islands are awake and the garden is growing."
+const RELAY_ISLES_RELAY_TITLE := "The Relay"
+const RELAY_ISLES_RELAY_HINT_A := "Take the seed from its pedestal. A plate on each shore holds the bridge."
+const RELAY_ISLES_RELAY_HINT_B := "Put the seed in the nest and meet by the bell."
+const RELAY_ISLES_GARDEN_TITLE := "The Garden"
+const RELAY_ISLES_GARDEN_HINT_A := "The rope bridge needs both hands. Throw the seed over from the mark."
+const RELAY_ISLES_GARDEN_HINT_B := "Plant the seed and meet by the garden lamp."
 const LONG_WAY_HOME_TITLE := "Long Way Home"
 const LONG_WAY_HOME_SUMMARY := "You went out this morning and you still aren't back. I've been standing at the door since the fireflies came out. Just getting some air, in case you ask. The kettle's been boiled twice and gone cold twice. Come home whichever way you like, just don't take all night."
 # long-way-home@3 (open turns) has its own line.

@@ -18,6 +18,14 @@ extends RefCounted
 ##       there (plant_animation.gd soil()).
 ##   landing(): the ring of eight cream ticks round a teal ring that marks
 ##       where a thrown seed lands.
+##   pedestal(): First Steps' stone pedestal, a drum, a cream cap a little
+##       wider and a gold ring, the seed resting on the cap.
+##   item_spot(): a rules 16 item spot (core/physical/carried_items.gd) in the
+##       "item_spot" style its piece resolves to (content/dressing/piece_styles.gd):
+##       "pedestal", "planter" (garden()), "nest" (relay()) or "none". A solid
+##       spot (core/solid_footprint.gd) sizes a pedestal's drum to its solid
+##       circle; a planter takes the spot's radius. rest_height() is how high an
+##       item resting there sits.
 const Primitives = preload("res://presentation/kit/primitives.gd")
 const Parts = preload("res://presentation/kit/pieces/parts.gd")
 const ContactShadows = preload("res://presentation/kit/contact_shadows.gd")
@@ -43,6 +51,16 @@ const PLANTER := 0.09
 ## The landing ring's radius and its ticks' (metres).
 const LANDING := 0.66
 const LANDING_TICKS := 0.83
+## A pedestal's drum height, its cap (radius, height), the top a seed rests on
+## (@1's seed_height_cm 205 on its 160 cm loft) and its stone (metres).
+const DRUM_HEIGHT := 0.35
+const CAP := Vector2(0.37, 0.10)
+const PEDESTAL_TOP := 0.45
+const PEDESTAL_STONE := Color("bbccb5")
+## Where a seed rests in the nest: 35 cm up, the v2 engine's socket height.
+const NEST_REST := 0.35
+## How high an item resting at a spot of each "item_spot" style sits (metres).
+const REST := {"pedestal": PEDESTAL_TOP, "planter": PLANTER + 0.02, "nest": NEST_REST}
 
 ## A stand under `root` (the spot's node, on its floor): a base `radius`
 ## across in `base_color`, a ring in `ring_color` round it (none when
@@ -89,6 +107,27 @@ static func garden(root: Node3D, radius: float, ring_color: Color) -> MeshInstan
 	var ring := Parts.ring(radius + 0.01, ring_color, Vector3(0, PLANTER + 0.03, 0), root)
 	ring.name = "GoalRing"
 	return ring
+
+## A stone pedestal under `root`, its drum `radius` across.
+static func pedestal(root: Node3D, radius: float) -> void:
+	ContactShadows.mark(root)
+	Parts.cylinder(radius, DRUM_HEIGHT, PEDESTAL_STONE, Vector3(0, DRUM_HEIGHT * 0.5, 0), root)
+	Parts.cylinder(CAP.x, CAP.y, Parts.CREAM, Vector3(0, DRUM_HEIGHT + CAP.y * 0.5 - 0.01, 0), root)
+	Parts.ring(0.31, Parts.GOLD, Vector3(0, PEDESTAL_TOP + 0.005, 0), root)
+
+## Item spot `spot` (a definition's item spot) in `style` under `root`, the
+## node at the spot's place: nothing for "none" or a style it does not know.
+static func item_spot(style: String, root: Node3D, spot: Dictionary) -> void:
+	var solid: Variant = spot.get("solid", {})
+	var radius := float(solid.radius_cm if solid is Dictionary and solid.has("radius_cm") else spot.get("radius_cm", 30)) / 100.0
+	match style:
+		"pedestal": pedestal(root, radius)
+		"planter": garden(root, float(spot.get("radius_cm", 48)) / 100.0, Parts.GOLD)
+		"nest": relay(root)
+
+## How high an item resting at a spot of `style` sits over its floor (metres).
+static func rest_height(style: String) -> float:
+	return float(REST.get(style, 0.0))
 
 ## The landing mark under `root` (the node the world moves to each landing).
 static func landing(root: Node3D) -> void:
