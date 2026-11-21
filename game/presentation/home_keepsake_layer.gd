@@ -212,10 +212,14 @@ func _make_set(shown_now: bool) -> Dictionary:
 		var state := _look(id)
 		if item.look == "keepsake":
 			parts = builder.build(holder, state)
+			# Only an earned keepsake is really there: an outline is a preview,
+			# with no shadow (kit/contact_shadows.gd).
+			ContactShadows.mark(holder)
 		else:
 			Parts.outline(holder, builder, "%s|%d" % [id, item.stages.size()], item.stages if item.look == "started" else [])
-		ContactShadows.mark(holder)
-		for part: Node in _moving(parts): _held.append(part)
+		for part: Node in _moving(parts):
+			_held.append(part)
+			ContactShadows.changes(part)
 		var drawn := state if item.look == "keepsake" else {}
 		var solids: Array[Rect2] = builder.solids(drawn)
 		var overhead := Approach.kept_off(builder.ride_overhead(drawn), WALK_CLEARANCE)
