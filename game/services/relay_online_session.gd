@@ -511,6 +511,7 @@ func _load_capabilities(still: Callable) -> bool:
 	_supported_chapters.assign(checked.chapters)
 	var scope := nickname_scope()
 	if not scope.is_empty(): DisplayNames.shared().set_enabled(str(scope.server), str(scope.owner), display_names_supported())
+	if not scope.is_empty(): DisplayNames.shared().set_usernames(str(scope.server), str(scope.owner), usernames_supported())
 	# The faces this server takes, for every faces card wherever it shows (services/face_packs.gd).
 	if not scope.is_empty(): FacePacks.note_version(str(scope.server), str(scope.owner), face_version())
 	# Home's rows that follow the server's public switches keep this answer too (services/server_switches.gd).
@@ -1518,6 +1519,10 @@ func grant_supported() -> bool:
 ## The server shows display names to this player (services/display_names.gd).
 func display_names_supported() -> bool:
 	return Typed.equal(capabilities.get("display_names_version"), 1.0)
+
+## The server has players pick usernames (services/usernames.gd).
+func usernames_supported() -> bool:
+	return display_names_supported() and Typed.equal(capabilities.get("usernames_version"), 1.0)
 
 ## The server has leaderboards open for this build (backend src/leaderboards/routes.ts).
 func leaderboards_supported() -> bool:

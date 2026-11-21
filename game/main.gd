@@ -369,6 +369,8 @@ func _ready() -> void:
 	add_child(capabilities_refresh,false,Node.INTERNAL_MODE_BACK)
 	# Each answer, or a run of failures, redraws Home's rows that wait on it.
 	capabilities_refresh.changed.connect(_refresh_home_pollen)
+	# Usernames on and none picked yet: Home asks once a run (presentation/display_name_flow.gd).
+	capabilities_refresh.changed.connect(_maybe_ask_username)
 	pollen_client=PollenClient.new(api,_names_scope)
 	# The player's own look follows the signed-in player (services/own_look.gd).
 	Wardrobe.shared().scope_source=_names_scope
@@ -2262,6 +2264,13 @@ func _home_free_for_card() -> bool:
 	if is_instance_valid(shared_replay_child) or is_instance_valid(photo_transfer_child) or is_instance_valid(safety_screen): return false
 	if is_instance_valid(_whats_new_card) or _top_modal() != null or TouchInput.press_held(overlay): return false
 	return not (is_instance_valid(home_stage_view) and home_stage_view.is_exploring())
+
+## The username prompt over Home, once a run, after a capabilities read says
+## the server has players pick one and this player has none yet, while Home is
+## free for a card (never over a turn, another card or a held finger).
+func _maybe_ask_username() -> void:
+	if _update_gate_active() or not _home_free_for_card(): return
+	display_name_flow.maybe_ask_username(ui, true)
 
 ## "Your monthly Pollen arrived", once per instalment, on Home only and only
 ## when nothing else is up: never over a turn, a card or a held finger. Home

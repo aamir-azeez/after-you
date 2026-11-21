@@ -48,3 +48,19 @@ export function namePrice(fields: DisplayNameFields, name: string | null, now: n
 export function countNameSet(fields: DisplayNameFields, before: DisplayNameFields): void {
   fields.display_name_sets = Math.min(MAX_COUNTED_SETS, setsSoFar(before) + 1);
 }
+
+/**
+ * The same rule for usernames (usernames.ts), counted on their own so the first username (the one every player
+ * picks when usernames arrive) is free whatever display names they had: the first and the first change after it
+ * are free, then NAME_CHANGE_PRICE; the first change after a moderator's lock has passed is free; capitals alone
+ * are always free (the caller never prices them).
+ */
+export function nextUsernamePrice(fields: { username_sets?: number; display_name_locked_until?: number }, now: number): number {
+  if (fields.display_name_locked_until !== undefined && fields.display_name_locked_until <= now) return 0;
+  return (fields.username_sets ?? 0) < MAX_COUNTED_SETS ? 0 : NAME_CHANGE_PRICE;
+}
+
+/** What the username change after the next one costs, once the next one goes through. */
+export function nextUsernamePriceAfter(fields: { username_sets?: number }, now: number): number {
+  return nextUsernamePrice({ username_sets: Math.min(MAX_COUNTED_SETS, (fields.username_sets ?? 0) + 1) }, now);
+}

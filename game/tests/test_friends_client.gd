@@ -181,7 +181,7 @@ func _short_names() -> void:
 	var aliased := page()
 	aliased["friend_alias"] = "aamir"
 	check(Client.valid_page(aliased,OWNER),"A page may carry the player's short name")
-	for bad: Variant in ["Aamir","aa","a-mir","1aamir","",7,null]:
+	for bad: Variant in ["Aamir","aa","a--mir","-aamir","",7,null]:
 		aliased.friend_alias = bad
 		check(not Client.valid_page(aliased,OWNER),"A malformed short name rejects the page: " + str(bad))
 	var extra := page()
@@ -192,7 +192,7 @@ func _short_names() -> void:
 	for typed: String in ["friend-aamir","Friend-Aamir","aamir","AAMIR"," https://aamirazeez.com/after-you/link#friend-aamir ","https://aamirazeez.com/after-you/link/?c=friend-Aamir"]:
 		check(await client.add_friend(typed) and calls.back().path == "/v1/friends/request" and calls.back().body == {"schema_version":1,"friend_code":"aamir"},"A short name is sent lowercased for the server to resolve: " + typed)
 	var count := calls.size()
-	for rejected: String in ["friend-aa","a!mir","friend-" + "a".repeat(17)]:
+	for rejected: String in ["friend-aa","a!mir","friend-" + "a".repeat(19)]:
 		check(not await client.add_friend(rejected) and client.last_error == PlayerCopy.FRIEND_CODE_INVALID and calls.size() == count,"A malformed short name never reaches the server: " + rejected)
 	client.invalidate()
 	aliased = page()

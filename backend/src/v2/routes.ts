@@ -34,6 +34,7 @@ import { runReactionsWanted } from "./run-reactions";
 import { hardWanted, parseMode, parseSince } from "./hard-mode";
 import { CHAPTER_NOT_OPEN, chapterOpen, openChapters } from "./chapter-unlocks";
 import { displayNamesCapability, displayNamesShown } from "../display-names";
+import { usernamesCapability } from "../usernames";
 import { checkedWithEnd, creditCommitted, creditTurn, pollenCapability } from "../pollen/routes";
 import { storeCapability } from "../entitlement";
 import type { PollenMember } from "../pollen/turn-facts";
@@ -146,6 +147,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     ...liveCapability(request, env),
     ...platformCapability(request, env, playerId, platformLinked),
     ...displayNamesCapability(request, env),
+    ...usernamesCapability(request, env),
     ...pollenCapability(request, env),
     ...storeCapability(request, env),
     ...looksCapability(request, env),
