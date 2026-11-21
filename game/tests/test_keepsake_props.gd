@@ -18,8 +18,8 @@ const Bell = preload("res://presentation/kit/pieces/bell.gd")
 const Reach = preload("res://tests/keepsake_reach.gd")
 ## Round 2's keepsakes are bigger: the README budget for all eleven with every
 ## upgrade is 45,000 triangles (Home's isles included, counted by the layer suite).
-## The Mill Wheel and the Fog Lantern add about 6,500 more before folding, the
-## cost their board showed (approved 2026-11-20).
+## The Mill Wheel and the Fog Lantern add about 5,100 more before folding
+## (approved 2026-11-20).
 const MAX_PARTS := 90
 const MAX_TRIANGLES := 6000
 const ALL_TRIANGLES := 42000

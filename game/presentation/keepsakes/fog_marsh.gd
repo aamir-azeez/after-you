@@ -63,7 +63,7 @@ func build(root: Node3D, state: Dictionary) -> Dictionary:
 		var flies := P.pivot(root, JAR + Vector3(0, P.PLINTH_TOP + 0.14, 0), "Flies")
 		for index in range(6):
 			var angle := index * TAU / 6.0
-			P.node(flies, P.low_sphere(0.025), P.glow(P.LAMP, 2.4), Vector3(cos(angle) * 0.06, 0.05 * (index % 3) - 0.05, sin(angle) * 0.06))
+			P.node(flies, P.Primitives.shared_mesh("box", 0.04, 0.04, 0.04), P.glow(P.LAMP, 2.4), Vector3(cos(angle) * 0.06, 0.05 * (index % 3) - 0.05, sin(angle) * 0.06))
 		parts.flies = flies
 	if state.get("top", false):
 		var moon := P.pivot(root, POST + Vector3(0.02, 2.42, 0), "Moon")

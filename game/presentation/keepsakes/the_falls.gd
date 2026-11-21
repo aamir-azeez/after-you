@@ -92,7 +92,7 @@ func build(root: Node3D, state: Dictionary) -> Dictionary:
 		P.node(rainbow, P.torus(RAINBOW_R - 0.075, 0.05), P.mat(P.GOLD), Vector3.ZERO)
 		P.node(rainbow, P.torus(RAINBOW_R - 0.14, 0.04), P.mat(P.PEACH), Vector3.ZERO)
 		var foot := Vector3(cos(RAINBOW_YAW), 0, -sin(RAINBOW_YAW)) * RAINBOW_R
-		for side: float in [-1.0, 1.0]: P.cyl(root, 0.08, 0.14, P.STONE_LIGHT, RAINBOW + foot * side + Vector3(0, -0.03, 0), 0.07)
+		for side: float in [-1.0, 1.0]: P.box(root, Vector3(0.15, 0.14, 0.15), P.STONE_LIGHT, RAINBOW + foot * side + Vector3(0, -0.03, 0))
 		parts.top = rainbow
 	return parts
 
