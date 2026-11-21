@@ -483,12 +483,15 @@ static func dressing_faults(world: Node3D, view: Dictionary) -> Array[String]:
 	var spaces := PropRules.walkable(view)
 	var places := PropRules.places(view, PropRules.heights(view))
 	var floors := PropRules.grounds(view)
+	var levels := PropRules.heights(view)
 	for prop: Node3D in props:
 		var spec: Dictionary = prop.get_meta("dressing_spec")
 		var kind := str(spec.get("kind", ""))
 		var shapes: Array = parts.get(prop, [])
 		if kind == "bank" or shapes.is_empty() or kind in Props.HUNG + Props.GLOWS + Props.FIXTURES or bool(spec.get("wall", false)): continue
 		var label := "%s at %s" % [kind, spec.get("at", [spec.get("from", ""), spec.get("to", "")])]
+		# Where it is set (its surface and "y"): a sunk prop's lowest mesh is far under it.
+		var base := float(levels.get(str(spec.get("surface", "")), 0.0)) + float(spec.get("y", 0)) / 100.0
 		var low := INF
 		for shape: Dictionary in shapes: low = minf(low, float(shape.low))
 		var wading := rings.any(func(source: Node) -> bool: return is_instance_valid(source) and (source == prop or prop.is_ancestor_of(source)))
@@ -523,7 +526,7 @@ static func dressing_faults(world: Node3D, view: Dictionary) -> Array[String]:
 			for wall: Dictionary in walls:
 				# The ground it stands on or sunk in is not in its way, nor is what
 				# hangs in the air (bunting, fireflies): a wall rises from about its ground.
-				if float(wall.high) <= low + PropRules.SUNK + 0.001 or float(wall.low) > low + WALL_FOOT: continue
+				if float(wall.high) <= low + PropRules.SUNK + 0.001 or float(wall.low) > base + WALL_FOOT: continue
 				if _cuts(shape, wall): cuts["%s (%s, %.2f to %.2f m)" % [wall.name, _bounds(wall.outline), wall.low, wall.high]] = true
 			# Every other floor the world shows (the whole chapter's), as its slab.
 			for island: Dictionary in view.get("chapter_islands", []):
@@ -541,7 +544,7 @@ static func dressing_faults(world: Node3D, view: Dictionary) -> Array[String]:
 
 ## A prop's foot: its meshes whose bottom is this near its lowest point.
 const FOOT_BAND := 0.03
-## A wall rises from no higher than this over a prop's foot (metres).
+## A wall rises from no higher than this over where a prop is set (metres).
 const WALL_FOOT := 0.3
 ## A walking space's slab under its floor, which nothing cuts.
 const SLAB := 0.25

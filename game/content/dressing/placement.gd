@@ -619,6 +619,17 @@ static func _spot(spec: Dictionary) -> Vector2:
 	var at: Array = spec.get("at", spec.get("from", [0, 0]))
 	return Vector2(float(at[0]), float(at[1]))
 
+## The lowest level the water at plan point `at` (cm) ever stands at
+## (metres); -INF over no water.
+static func _lowest_level(view: Dictionary, at: Vector2) -> float:
+	for body: Dictionary in (view.get("water", {}) as Dictionary).get("bodies", []):
+		for r: Array in body.get("rects", []):
+			if at.x >= float(r[0]) and at.x <= float(r[2]) and at.y >= float(r[1]) and at.y <= float(r[3]):
+				var low := INF
+				for level: Variant in (body.get("levels", {}) as Dictionary).values(): low = minf(low, float(level))
+				return low if low != INF else -INF
+	return -INF
+
 ## The body of water at plan point `at` (cm), or "".
 static func _water_at(view: Dictionary, at: Vector2) -> String:
 	var block: Dictionary = view.get("water", {})
@@ -789,6 +800,10 @@ static func _footing(spec: Dictionary, stage: Dictionary) -> Dictionary:
 	elif z_in and low.x >= float(r[2]) - 1.0 and high.x - float(r[2]) <= FOOTING_REACH: rect = [float(r[2]) + _rim(stage.view, Vector2(float(r[2]) + PropRules.LIP * 100.0, mid.y)), low.y - FOOTING_PAD, high.x + FOOTING_PAD, high.y + FOOTING_PAD]
 	if rect.is_empty(): return {}
 	var bank := {"kind": "bank", "rect": rect.map(func(value: float) -> int: return roundi(value)), "surface": surface, "height": FOOTING_HEIGHT}
+	# Over open water it reaches down into the water at its lowest, or it
+	# would hang over it: none.
+	var centre := Vector2(float(rect[0] + rect[2]), float(rect[1] + rect[3])) * 0.5
+	if not _water_at(stage.view, centre).is_empty() and float(stage.heights.get(surface, 0.0)) + float(Props.extent(bank).base) > _lowest_level(stage.view, centre): return {}
 	for other: Dictionary in stage.get("banks", []):
 		if str(other.get("surface", "")) != surface: continue
 		for field: String in ["side", "top"]:

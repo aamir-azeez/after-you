@@ -98,8 +98,9 @@ const DATA := {
 		# mill's bank and the island, washing on the mill deck, a bench in the
 		# yard, ferns down the island's far side.
 		{"kind": "boat", "floor": "beach", "edge": "front", "along": 0.3, "out": 70, "y": -20, "rot": 0, "size": 0.9},
-		{"kind": "fishing_rod", "floor": "beach", "edge": "front", "along": 0.75, "out": 55},
-		{"kind": "rope_coil", "floor": "beach", "edge": "front", "along": 0.6, "out": 40},
+		{"slot": "bank", "floor": "beach", "edge": "front", "depth": 50, "height": 8, "gap": 10, "span": [0.5, 0.9]},
+		{"kind": "fishing_rod", "floor": "beach", "edge": "front", "along": 0.75},
+		{"kind": "rope_coil", "floor": "beach", "edge": "front", "along": 0.6},
 		{"slot": "lamp", "floor": "mill", "edge": "back", "along": 0.55, "size": 1.6},
 		{"slot": "lamp", "floor": "isle", "edge": "back", "along": 0.35, "size": 1.6},
 		{"slot": "shrub", "style": "wild_fern", "floor": "isle", "edge": "front", "span": [0.0, 0.45], "spacing": 210},

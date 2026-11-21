@@ -62,9 +62,10 @@ const BELOW := {"rock": 0.07, "fishing_rod": 0.14, "reed_bed": 0.16, "dead_tree"
 const FLOATS := ["boat"]
 ## Kinds on a pole that may stand in water with no ground under them: given
 ## "wade" (cm), the pole runs that far down under the base to the water's
-## bed. Each is the pole's width at size 1 (metres). A mooring post only: a
-## lamp or a mailbox by the water stands on ground (a footing if need be).
-const WADERS := {"post": 0.11}
+## bed. Each is the pole's width at size 1 (metres): a mooring post and a
+## post box on its post. A lamp by the water stands on ground (a footing if
+## need be).
+const WADERS := {"post": 0.11, "post_box": 0.07}
 ## Kinds that may stand out in open water on purpose, down to its bed (a
 ## boat floats on it, a pole wades): landmarks of a marsh or a shore. Any
 ## other kind rests on ground.
