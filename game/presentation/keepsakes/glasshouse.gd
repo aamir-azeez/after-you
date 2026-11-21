@@ -3,9 +3,10 @@ extends "res://presentation/keepsakes/keepsake_builder.gd"
 ## by the door. Pushing the pump handle (walking up to it, or a tap) runs water
 ## in; the roof opens and the flower grows taller than the pip and blooms, and
 ## it stays grown, the roof open, until the pump is pushed again, when the
-## flower starts small and grows again. Together: a mint watering can that tips
-## and waters too. Hard: vines climb both back corners from slate plinths, and
-## their flowers open with the bloom and stay open. Together Hard: a gold sun
+## flower starts small and grows again. Together: a mint watering can beside
+## the pump (a Blender model, models/watering_can.py) that lifts, tips its
+## rose and sprinkles the grass too. Hard: vines climb both back corners from
+## slate plinths, and their flowers open with the bloom and stay open. Together Hard: a gold sun
 ## on the ridge turns, and the flower's middle turns gold and stays gold.
 const P = preload("res://presentation/keepsakes/keepsake_parts.gd")
 const Models = preload("res://presentation/kit/models.gd")
@@ -15,7 +16,16 @@ const D := 1.35
 const WALL := 1.15
 const RIDGE := 1.75
 const PUMP := Vector3(1.25, 0, 0.62)
-const CAN := Vector3(-1.35, 0, 0.5)
+## The can stands back beside the glass, behind the pump (far enough back that
+## the pump handle never crosses it on screen), its spout pointing away from
+## the glasshouse (+x), so it never reaches into the glass at rest or as it
+## tips (test_keepsake_props: its pieces stay apart).
+const CAN := Vector3(1.6, 0, -0.62)
+const CAN_MODEL := "res://assets/models/watering_can.glb"
+## The rose's middle in the model: its SPOUT end, plus 0.9 ROSE_LENGTH along ROSE_TILT.
+const CAN_ROSE := Vector3(0.51, 0.5, 0)
+const CAN_LIFT := 0.5
+const CAN_TIP := -0.75
 ## How much the flower grows when it blooms.
 const GROWN := 2.2
 
@@ -53,9 +63,7 @@ func build(root: Node3D, state: Dictionary) -> Dictionary:
 	parts.handle = handle
 	if state.get("together", false):
 		var can := P.pivot(root, CAN, "Can")
-		P.cyl(can, 0.2, 0.34, P.MINT, Vector3(0, 0.17, 0), 0.18)
-		P.ring(can, 0.2, 0.05, P.MINT_DEEP, Vector3(0, 0.34, 0))
-		P.bar(can, Vector3(0.16, 0.12, 0), Vector3(0.44, 0.4, 0), 0.06, P.MINT_DEEP)
+		Models.moving(CAN_MODEL, "watering_can", {"body": P.MINT, "trim": P.MINT_DEEP, "rose": P.GOLD}, can)
 		parts.can = can
 	if state.get("hard", false):
 		for side: int in [-1, 1]:
@@ -76,8 +84,9 @@ func build(root: Node3D, state: Dictionary) -> Dictionary:
 static func _glass() -> Material:
 	return P.clear(P.GLASS, 0.28)
 
+## Each vine's plinth, on a back corner, clear of the little house's doormat behind it.
 static func _vine(side: int) -> Vector3:
-	return Vector3(side * (W * 0.5 + 0.12), 0, -D * 0.5 - 0.05)
+	return Vector3(side * (W * 0.5 + 0.12), 0, -D * 0.5)
 
 func base_time() -> float:
 	return 2.4
@@ -119,14 +128,17 @@ func play(beat: String, anim: RefCounted, parts: Dictionary, state: Dictionary) 
 			# follows a beat's own cue, which Reduce motion plays alone.
 			for index in range(4): anim.sound("drip", 0.6 + index * 0.12, index)
 		"together":
+			# The can lifts and tips, and its rose sprinkles a fan of drops on the grass.
 			var can: Node3D = parts.can
-			anim.move(can, "position:y", CAN.y + 0.55, 0.0, 0.2)
-			anim.move(can, "rotation:z", -0.7, 0.1, 0.2)
-			for index in range(3):
-				var drop: MeshInstance3D = anim.spawn(anim.fx, P.low_sphere(0.04, 0.1), P.mat(P.TIDE), CAN + Vector3(0.44, 0.75, 0))
-				anim.set_at(drop, "visible", true, 0.25 + index * 0.08)
-				anim.move(drop, "position", CAN + Vector3(0.6, 0.1, 0), 0.25 + index * 0.08, 0.25, Tween.TRANS_QUAD, Tween.EASE_IN)
-				anim.set_at(drop, "visible", false, 0.5 + index * 0.08)
+			anim.move(can, "position:y", CAN.y + CAN_LIFT, 0.0, 0.2, Tween.TRANS_BACK, Tween.EASE_OUT)
+			anim.move(can, "rotation:z", CAN_TIP, 0.1, 0.2)
+			var rose := Transform3D(Basis(Vector3.BACK, CAN_TIP), CAN + Vector3(0, CAN_LIFT, 0)) * CAN_ROSE
+			for index in range(5):
+				var fan := Vector3(0.03 * (index % 3), 0, 0.05 * (index - 2))
+				var drop: MeshInstance3D = anim.spawn(anim.fx, P.low_sphere(0.035, 0.1), P.mat(P.TIDE), rose + fan * 0.3)
+				anim.set_at(drop, "visible", true, 0.28 + index * 0.05)
+				anim.move(drop, "position", Vector3(rose.x, 0.04, rose.z) + fan + Vector3(0.06, 0, 0), 0.28 + index * 0.05, 0.22, Tween.TRANS_QUAD, Tween.EASE_IN)
+				anim.set_at(drop, "visible", false, 0.5 + index * 0.05)
 			anim.sound(str(sounds.get("together", "")), 0.0)
 			for index in range(3): anim.sound("drip", 0.5 + index * 0.08, index + 4)
 		"hard":
@@ -154,10 +166,12 @@ func trigger() -> Dictionary:
 
 func solids(state: Dictionary) -> Array[Rect2]:
 	var result: Array[Rect2] = [Rect2(-W * 0.5 - 0.05, -D * 0.5 - 0.05, W + 0.1, D + 0.1), Rect2(PUMP.x - 0.1, PUMP.z - 0.1, 0.2, 0.2)]
-	if state.get("together", false): result.append(Rect2(CAN.x - 0.22, CAN.z - 0.22, 0.44, 0.44))
+	# The can's body, its handle behind and its spout and rose out in front.
+	if state.get("together", false): result.append(Rect2(CAN.x - 0.3, CAN.z - 0.18, 0.88, 0.36))
 	if state.get("hard", false):
 		for side: int in [-1, 1]: result.append(Rect2(_vine(side).x - 0.18, _vine(side).z - 0.18, 0.36, 0.36))
 	return result
 
 func footprint() -> Rect2:
-	return Rect2(-1.6, -0.95, 3.65, 2.1)
+	# As wide as before the can moved, so the chapters' corner draws it the same size.
+	return Rect2(-1.4, -0.95, 3.65, 2.1)
