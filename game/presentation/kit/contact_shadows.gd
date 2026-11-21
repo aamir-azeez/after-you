@@ -34,12 +34,19 @@ extends Node3D
 ## they move (a lever's handle, a pad's plate, a bell) never count:
 ## kit/static_batch.gd start() measures every marked root under what it folds
 ## before any leaf is folded away (FEET_META); a root measured later (a world
-## that never folds) is measured on the layer's next gather.
+## that never folds) is measured on the layer's next gather, past the same
+## parts (its world's _static_keep()), so feet never depend on which came first.
+##
+## A bake is the same on every machine and in any order: its inputs are
+## snapped to a fixed grid (SNAP) and it uses no trigonometry (a foot's turn is
+## its across axis), overlapping feet keep the darkest, floors bake in a fixed
+## order, BAKE_STAMPS a frame (work, never time), and each floor's overlay is
+## made with the floor (ground()), so baking adds and removes no nodes.
 ##
 ## The layer (one per world, island_world._ready) gathers the marked roots
 ## and grounds under its world whenever one comes or goes, shows or hides, or
 ## calls touch(), and bakes again only the floors whose feet changed, a few
-## milliseconds a frame at most. Between gathers it looks at a few roots a
+## floors a frame. Between gathers it looks at a few roots a
 ## frame: a still root that moved on its floor is baked where it settles; one
 ## that keeps moving becomes live. A live item lifted off its rest fades its
 ## shadow out; a carried or floating item sets_off() its own (the pip's
@@ -59,7 +66,7 @@ const GROUND_GROUP := &"contact_ground"
 const GROUND_RECT_META := &"contact_ground_rect"
 const GROUND_WORN_META := &"contact_ground_worn"
 ## On a marked root: its feet, [[centre Vector2, half Vector2, y, round,
-## turn]] in its own space; [] for none.
+## across Vector2 (unit)]] in its own space; [] for none.
 const FEET_META := &"contact_shadow_feet"
 ## On a marked root: what casts the sun's shadow, [[centre Vector2, half
 ## Vector2, low, high]] in its own space.
@@ -99,8 +106,15 @@ const CAST_SOFT := Vector2(0.06, 0.16)
 ## A baked floor's texel and the tiles its overlay is drawn in (metres).
 const TEXEL := 0.05
 const TILE := 0.5
-## Milliseconds of baking a frame, once a frame has started one.
-const BAKE_BUDGET_USEC := 4000
+## Stamps (feet and sun shadows) baked a frame, once a frame has baked a
+## floor: about 2 ms on a desktop, so the busiest chapter bakes in about 25
+## frames.
+const BAKE_STAMPS := 16
+## A bake's inputs snap to 1/SNAP metres (a power of two, so exact), so the
+## last bit of a transform never changes a texel between platforms.
+const SNAP := 4096.0
+## On a ground: its overlay, made with it (overlay_of()).
+const OVERLAY_META := &"contact_ground_overlay"
 ## A root lifted this far over where it rested has no shadow left.
 const LIFT_FADE := 0.35
 ## Roots looked at per frame for moves, frames a moved one stays watched,
@@ -162,7 +176,23 @@ static func ground(parent: Node3D, rect: Rect2, top: float, worn: bool) -> Node3
 	node.set_meta(GROUND_WORN_META, worn)
 	node.add_to_group(GROUND_GROUP)
 	parent.add_child(node)
+	# Its overlay comes with it, empty until the layer bakes it.
+	var overlay := MeshInstance3D.new()
+	overlay.name = "Shade"
+	overlay.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	overlay.set_meta(Cutaway.HIDE, true)
+	var look := ShaderMaterial.new()
+	look.shader = SHADE_SHADER
+	look.set_shader_parameter("dark_tint", Vector3(TINT.r, TINT.g, TINT.b))
+	overlay.material_override = look
+	node.add_child(overlay)
+	node.set_meta(OVERLAY_META, overlay)
 	return node
+
+## A ground's overlay (null for a node that is not one).
+static func overlay_of(ground: Node3D) -> MeshInstance3D:
+	var overlay: Variant = ground.get_meta(OVERLAY_META, null)
+	return overlay if is_instance_valid(overlay) else null
 
 ## Whether root has its shadow switched off (or its kind none).
 static func set_off(root: Node3D, off: bool) -> void:
@@ -202,7 +232,9 @@ static func feet(root: Node3D, kept: Dictionary = {}) -> Array:
 				var foot := _foot(part[1], part[2])
 				if (foot[1] as Vector2).x < 0.0025 or (foot[1] as Vector2).y < 0.0025: continue
 				result.append([foot[0], foot[1], ground_y, foot[2], foot[3]])
-	casters.sort_custom(func(a: Array, b: Array) -> bool: return (a[1] as Vector2).x * (a[1] as Vector2).y > (b[1] as Vector2).x * (b[1] as Vector2).y)
+	# The biggest first; equal ones by where they stand, so the same few win
+	# whatever order the parts were found in.
+	casters.sort_custom(func(a: Array, b: Array) -> bool: return _before([-_q((a[1] as Vector2).x * (a[1] as Vector2).y), _q((a[0] as Vector2).x), _q((a[0] as Vector2).y), _q(float(a[3]))], [-_q((b[1] as Vector2).x * (b[1] as Vector2).y), _q((b[0] as Vector2).x), _q((b[0] as Vector2).y), _q(float(b[3]))]))
 	root.set_meta(CASTERS_META, casters.slice(0, CASTS_MOST))
 	root.set_meta(FEET_META, result)
 	return result
@@ -218,8 +250,8 @@ static func _parts(node: Node, to_root: Transform3D, kept: Dictionary, parts: Ar
 			parts.append([xform * mesh.get_aabb(), mesh, xform])
 		_parts(child, xform, kept, parts)
 
-## A mesh's foot in root space: [centre, half, round, turn]. Its bottom's
-## outline (bottom()) turned with it; a tilted part keeps its box's.
+## A mesh's foot in root space: [centre, half, round, across (unit)]. Its
+## bottom's outline (bottom()) turned with it; a tilted part keeps its box's.
 static func _foot(mesh: Mesh, xform: Transform3D) -> Array:
 	var bottom := bottom(mesh)
 	var rect: Rect2 = bottom[0]
@@ -228,9 +260,38 @@ static func _foot(mesh: Mesh, xform: Transform3D) -> Array:
 	var upright := absf(xform.basis.x.y) < 0.02 and absf(xform.basis.z.y) < 0.02
 	if not upright:
 		var box := xform * mesh.get_aabb()
-		return [Vector2(box.get_center().x, box.get_center().z), Vector2(box.size.x, box.size.z) * 0.5, minf(float(bottom[1]), 0.5), 0.0]
+		return [Vector2(box.get_center().x, box.get_center().z), Vector2(box.size.x, box.size.z) * 0.5, minf(float(bottom[1]), 0.5), Vector2.RIGHT]
 	var centre := xform * Vector3(rect.get_center().x, mesh.get_aabb().position.y, rect.get_center().y)
-	return [Vector2(centre.x, centre.z), rect.size * 0.5 * Vector2(across.length(), deep.length()), bottom[1], atan2(across.z, across.x)]
+	return [Vector2(centre.x, centre.z), rect.size * 0.5 * Vector2(across.length(), deep.length()), bottom[1], _unit(Vector2(across.x, across.z))]
+
+## v made unit, or the x axis for none.
+static func _unit(v: Vector2) -> Vector2:
+	return v / v.length() if v.length() > 0.000001 else Vector2.RIGHT
+
+## A length in whole 1/SNAP metres.
+static func _q(value: float) -> int:
+	return roundi(value * SNAP)
+
+static func _snapped(value: float) -> float:
+	return roundi(value * SNAP) / SNAP
+
+static func _snapped2(value: Vector2) -> Vector2:
+	return Vector2(_snapped(value.x), _snapped(value.y))
+
+## Whether key a (whole numbers) sorts before key b.
+static func _before(a: Array, b: Array) -> bool:
+	for index in range(a.size()):
+		if a[index] != b[index]: return a[index] < b[index]
+	return false
+
+## The instance ids of what root's world keeps whole because it moves (its
+## _static_keep(), as its fold leaves out), for measuring feet without a fold.
+static func _kept_by(world: Node) -> Dictionary:
+	var ids: Dictionary = {}
+	if world == null or not world.has_method("_static_keep"): return ids
+	for node: Variant in world.call("_static_keep"):
+		if is_instance_valid(node) and node is Node: ids[(node as Node).get_instance_id()] = true
+	return ids
 
 ## A mesh's bottom outline in its own space: [Rect2 (x, z), round 0..1].
 ## Primitives by their shape; a model by its vertices near its lowest point
@@ -329,10 +390,11 @@ static func worn_for(half: Vector2) -> float:
 
 # --- Baking a floor -------------------------------------------------------------
 
-## Bakes `feet` ([[centre, half, round, turn]] in the ground's space) and
-## `casts` ([[centre, along (unit), half, soft]]) into an RGB image over
+## Bakes `feet` ([[centre, half, round, across (unit)]] in the ground's space)
+## and `casts` ([[centre, along (unit), half, soft]]) into an RGB image over
 ## `rect` (see ground_shade.gdshader). Returns {image, tiles: [Rect2]} or {}
-## when nothing shows.
+## when nothing shows. Every input is snapped first (SNAP), and the stamps
+## keep the darkest, so the image is the same on any platform, in any order.
 static func bake(rect: Rect2, feet_list: Array, casts: Array, worn: bool) -> Dictionary:
 	var width := maxi(1, ceili(rect.size.x / TEXEL))
 	var height := maxi(1, ceili(rect.size.y / TEXEL))
@@ -342,14 +404,15 @@ static func bake(rect: Rect2, feet_list: Array, casts: Array, worn: bool) -> Dic
 	var tiles_across := ceili(float(width) / per_tile)
 	var marked: Dictionary = {}
 	for foot: Array in feet_list:
-		var half: Vector2 = foot[1]
-		var turn: float = foot[3]
+		var half := _snapped2(foot[1])
 		var fade := fade_for(half)
 		var reach := worn_for(half) if worn else fade
-		var box := _stamp(data, width, height, rect, foot[0], Vector2(cos(turn), sin(turn)), half, float(foot[2]) * minf(half.x, half.y), fade, reach, 0 if worn else -1)
+		var box := _stamp(data, width, height, rect, _snapped2(foot[0]), _snapped2(foot[3]), half, _snapped(float(foot[2])) * minf(half.x, half.y), fade, reach, 0 if worn else -1)
 		_mark_tiles(box, per_tile, tiles_across, marked)
 	for cast: Array in casts:
-		_mark_tiles(_stamp(data, width, height, rect, cast[0], cast[1], cast[2], minf((cast[2] as Vector2).x, (cast[2] as Vector2).y), cast[3], cast[3], -2), per_tile, tiles_across, marked)
+		var cast_half := _snapped2(cast[2])
+		var soft := _snapped(float(cast[3]))
+		_mark_tiles(_stamp(data, width, height, rect, _snapped2(cast[0]), _snapped2(cast[1]), cast_half, minf(cast_half.x, cast_half.y), soft, soft, -2), per_tile, tiles_across, marked)
 	if marked.is_empty(): return {}
 	var tiles: Array[Rect2] = []
 	for key: int in marked:
@@ -438,10 +501,10 @@ var _shown: Array = []
 ## Per still root baked: [root, its ground, its transform in the ground's
 ## space last seen].
 var _still: Array = []
-## Per ground node: {signature, overlay (MeshInstance3D or null)}.
+## Per ground node: {signature, image (null when it holds no shade)}.
 var _baked: Dictionary = {}
-## Grounds waiting to bake: ground -> [feet, casts].
-var _to_bake: Dictionary = {}
+## Grounds waiting to bake, in a fixed order: [ground, feet, casts, signature].
+var _to_bake: Array = []
 var _poll := 0
 ## Live shadow index -> frames left watching it every frame.
 var _hot: Dictionary = {}
@@ -476,12 +539,17 @@ func set_quality(quality: String) -> void:
 	if _draw == null: return
 	_draw.set_instance_shader_parameter("shadow_strength", GraphicsPolicy.contact_shadow_strength(_quality))
 	for ground: Variant in _baked:
-		var overlay: Variant = _baked[ground].overlay
-		if is_instance_valid(overlay): _shade_quality((overlay as MeshInstance3D).material_override as ShaderMaterial)
+		if is_instance_valid(ground): _shade_quality(ground as Node3D)
 
-func _shade_quality(look: ShaderMaterial) -> void:
-	look.set_shader_parameter("detail", GraphicsPolicy.ground_detail(_quality))
-	look.set_shader_parameter("contact_strength", 0.62 * GraphicsPolicy.contact_shadow_strength(_quality) / GraphicsPolicy.contact_shadow_strength("balanced"))
+## A floor's overlay in this quality's look, whether or not it holds shade.
+func _shade_quality(ground: Node3D) -> void:
+	var overlay := overlay_of(ground)
+	if overlay == null: return
+	var look := overlay.material_override as ShaderMaterial
+	var detail := GraphicsPolicy.ground_detail(_quality)
+	var strength := 0.62 * GraphicsPolicy.contact_shadow_strength(_quality) / GraphicsPolicy.contact_shadow_strength("balanced")
+	if look.get_shader_parameter("detail") != detail: look.set_shader_parameter("detail", detail)
+	if look.get_shader_parameter("contact_strength") != strength: look.set_shader_parameter("contact_strength", strength)
 
 ## How many live shadows the layer draws now.
 func shown() -> int:
@@ -510,7 +578,7 @@ func baked_roots() -> Array:
 func overlays() -> Array:
 	var found: Array = []
 	for ground: Variant in _baked:
-		if is_instance_valid(ground) and is_instance_valid(_baked[ground].overlay): found.append({"ground": ground, "overlay": _baked[ground].overlay, "image": _baked[ground].image})
+		if is_instance_valid(ground) and _baked[ground].image != null: found.append({"ground": ground, "overlay": overlay_of(ground as Node3D), "image": _baked[ground].image})
 	return found
 
 ## Whether every floor waiting to bake has baked.
@@ -549,6 +617,16 @@ func _gather(members: int, grounds_count: int) -> void:
 			var ground := found as Node3D
 			if not ground.visibility_changed.is_connected(_on_member_shown): ground.visibility_changed.connect(_on_member_shown)
 			if ground.is_visible_in_tree(): grounds.append(ground)
+	# In a fixed order (where each floor lies), never the order they were made.
+	var ground_keys: Dictionary = {}
+	for ground: Node3D in grounds:
+		var rect: Rect2 = ground.get_meta(GROUND_RECT_META)
+		var at := ground.global_position
+		ground_keys[ground] = [_q(at.y), _q(at.x + rect.position.x), _q(at.z + rect.position.y), _q(rect.size.x), _q(rect.size.y)]
+	grounds.sort_custom(func(a: Node3D, b: Node3D) -> bool: return _before(ground_keys[a], ground_keys[b]))
+	# Feet not measured yet are measured past what the world keeps whole, as
+	# its fold measures them (static_batch.gd start()).
+	var kept: Variant = null
 	var on_ground: Dictionary = {}
 	for ground: Node3D in grounds: on_ground[ground] = [[], [], []]
 	var live: Array = []
@@ -559,7 +637,8 @@ func _gather(members: int, grounds_count: int) -> void:
 		var root := found as Node3D
 		if not root.visibility_changed.is_connected(_on_member_shown): root.visibility_changed.connect(_on_member_shown)
 		if not root.is_visible_in_tree() or root.has_meta(OFF_META): continue
-		var its_feet := feet(root)
+		if not root.has_meta(FEET_META) and kept == null: kept = _kept_by(world)
+		var its_feet := feet(root, kept if kept != null else {})
 		if root.has_meta(LIVE_META):
 			for foot: Array in its_feet: live.append([root, foot, (foot[1] as Vector2).x * (foot[1] as Vector2).y])
 			continue
@@ -586,17 +665,19 @@ func _gather(members: int, grounds_count: int) -> void:
 			if not cast.is_empty(): (on_ground[stood][1] as Array).append(cast)
 		still.append([root, stood, to_stood])
 	_still = still
-	# Bake only the floors whose feet changed; forget floors that went.
+	# Bake only the floors whose feet changed; a floor that went or hid is
+	# emptied (its overlay stays with it, holding nothing).
 	for ground: Variant in _baked.keys():
 		if not on_ground.has(ground):
-			if is_instance_valid(_baked[ground].overlay): (_baked[ground].overlay as Node).queue_free()
+			if is_instance_valid(ground): _clear(ground as Node3D)
 			_baked.erase(ground)
 	_to_bake.clear()
-	for ground: Node3D in on_ground:
+	for ground: Node3D in grounds:
+		_shade_quality(ground)
 		var entry: Array = on_ground[ground]
 		var signature := hash([entry[2], entry[1], ground.get_meta(GROUND_RECT_META), ground.get_meta(GROUND_WORN_META)])
 		if _baked.has(ground) and int(_baked[ground].signature) == signature: continue
-		_to_bake[ground] = [entry[0], entry[1], signature]
+		_to_bake.append([ground, entry[0], entry[1], signature])
 	_place_live(live)
 
 ## The floor top a foot of root stands on: the one whose rect holds its
@@ -614,15 +695,15 @@ func _ground_for(root: Node3D, foot: Array, grounds: Array[Node3D]) -> Node3D:
 			best = ground
 	return best
 
-## A foot of a root in its ground's space: [centre, half, round, turn].
+## A foot of a root in its ground's space: [centre, half, round, across].
 static func _ground_foot(foot: Array, to_ground: Transform3D) -> Array:
-	var turn: float = foot[4]
+	var turn: Vector2 = foot[4]
 	var centre := to_ground * Vector3((foot[0] as Vector2).x, float(foot[2]), (foot[0] as Vector2).y)
-	var across := to_ground.basis * Vector3(cos(turn), 0, sin(turn))
-	var deep := to_ground.basis * Vector3(-sin(turn), 0, cos(turn))
+	var across := to_ground.basis * Vector3(turn.x, 0, turn.y)
+	var deep := to_ground.basis * Vector3(-turn.y, 0, turn.x)
 	var flat_across := Vector2(across.x, across.z)
 	var half := (foot[1] as Vector2) * Vector2(flat_across.length(), Vector2(deep.x, deep.z).length())
-	return [Vector2(centre.x, centre.z), half, foot[3], atan2(flat_across.y, flat_across.x)]
+	return [Vector2(centre.x, centre.z), half, foot[3], _unit(flat_across)]
 
 ## A caster's soft shadow on its ground, cast along `sun` (the floor offset
 ## per metre of height, in the ground's space): [centre, along, half, soft].
@@ -650,53 +731,52 @@ func _sun_offset() -> Vector3:
 	var offset := Vector3(ray.x, 0, ray.z) / -ray.y
 	return offset.limit_length(SUN_REACH)
 
-## Bakes waiting floors, at most BAKE_BUDGET_USEC a frame once one has begun.
+## Bakes waiting floors in their order: whole floors, until BAKE_STAMPS
+## stamps have baked this frame (at least one floor). Work, never time, so
+## every machine bakes the same floors in the same frames.
 func _bake_some() -> void:
 	var started := Time.get_ticks_usec()
-	for ground: Variant in _to_bake.keys():
-		if Time.get_ticks_usec() - started > BAKE_BUDGET_USEC: return
-		var job: Array = _to_bake[ground]
-		_to_bake.erase(ground)
-		if not is_instance_valid(ground): continue
-		_bake_ground(ground as Node3D, job[0], job[1], int(job[2]))
+	var stamps := 0
+	while not _to_bake.is_empty() and stamps < BAKE_STAMPS:
+		var job: Array = _to_bake.pop_front()
+		if not is_instance_valid(job[0]): continue
+		stamps += maxi(1, (job[1] as Array).size() + (job[2] as Array).size())
+		_bake_ground(job[0] as Node3D, job[1], job[2], int(job[3]))
 	bake_usec += Time.get_ticks_usec() - started
 
 func _bake_ground(ground: Node3D, feet_list: Array, casts: Array, signature: int) -> void:
 	var rect: Rect2 = ground.get_meta(GROUND_RECT_META)
 	var baked := bake(rect, feet_list, casts if GraphicsPolicy.cast_shadows(_quality) else [], bool(ground.get_meta(GROUND_WORN_META)))
-	var entry: Dictionary = _baked.get(ground, {"overlay": null, "image": null})
-	entry.signature = signature
-	_baked[ground] = entry
+	_baked[ground] = {"signature": signature, "image": null}
 	if baked.is_empty():
-		if is_instance_valid(entry.overlay): (entry.overlay as Node).queue_free()
-		entry.overlay = null
-		entry.image = null
+		_clear(ground)
 		return
-	var overlay: MeshInstance3D = entry.overlay if is_instance_valid(entry.overlay) else null
-	if overlay == null:
-		overlay = MeshInstance3D.new()
-		overlay.name = "Shade"
-		overlay.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		overlay.set_meta(Cutaway.HIDE, true)
-		var look := ShaderMaterial.new()
-		look.shader = SHADE_SHADER
-		look.set_shader_parameter("dark_tint", Vector3(TINT.r, TINT.g, TINT.b))
-		overlay.material_override = look
-		_shade_quality(look)
-		ground.add_child(overlay)
-		entry.overlay = overlay
+	var overlay := overlay_of(ground)
+	if overlay == null: return
 	overlay.mesh = overlay_mesh(rect, baked.tiles)
 	(overlay.material_override as ShaderMaterial).set_shader_parameter("shade", ImageTexture.create_from_image(baked.image))
-	entry.image = baked.image
+	_baked[ground].image = baked.image
 
-## Draws the live shadows: the biggest first.
+## Empties a floor's overlay: it draws nothing until it bakes again.
+func _clear(ground: Node3D) -> void:
+	var overlay := overlay_of(ground)
+	if overlay == null: return
+	overlay.mesh = null
+	(overlay.material_override as ShaderMaterial).set_shader_parameter("shade", null)
+
+## Draws the live shadows: the biggest first, equal ones by where they stand
+## (never by the order they were found).
 func _place_live(entries: Array) -> void:
-	entries.sort_custom(func(a: Array, b: Array) -> bool: return a[2] > b[2])
+	var to_layer := global_transform.affine_inverse()
+	for entry: Array in entries:
+		var foot: Array = entry[1]
+		var at := to_layer * (entry[0] as Node3D).global_transform * Vector3((foot[0] as Vector2).x, float(foot[2]), (foot[0] as Vector2).y)
+		entry.append([-_q(float(entry[2])), _q(at.x), _q(at.z), _q(at.y)])
+	entries.sort_custom(func(a: Array, b: Array) -> bool: return _before(a[3], b[3]))
 	var many := _draw.multimesh
 	many.instance_count = 0
 	many.instance_count = entries.size()
 	_shown = []
-	var to_layer := global_transform.affine_inverse()
 	for index in range(entries.size()):
 		var entry: Array = entries[index]
 		var root: Node3D = entry[0]
@@ -721,7 +801,9 @@ func _place(index: int, seen: Transform3D) -> void:
 	if centre.y < float(shown_one[3]): shown_one[3] = centre.y
 	var ground: float = shown_one[3]
 	var outer := half + Vector2.ONE * fade
-	var placed := Transform3D(Basis(Vector3.UP, -float(ground_foot[3])) * Basis.from_scale(Vector3(outer.x, 1.0, outer.y)), Vector3(centre.x, ground + SHADE_TOP, centre.z))
+	var across: Vector2 = ground_foot[3]
+	var turned := Basis(Vector3(across.x, 0, across.y), Vector3.UP, Vector3(-across.y, 0, across.x))
+	var placed := Transform3D(turned * Basis.from_scale(Vector3(outer.x, 1.0, outer.y)), Vector3(centre.x, ground + SHADE_TOP, centre.z))
 	var strength := clampf(1.0 - (centre.y - ground) / LIFT_FADE, 0.0, 1.0)
 	shown_one[4] = {"transform": placed, "strength": strength, "half": half}
 	var many := _draw.multimesh

@@ -85,7 +85,7 @@ func _stage(world: Node3D, shots: RefCounted, stage: Dictionary, folder: String)
 		return []
 	world.present(base, true)
 	var guard := 0
-	while world.scenery_folding() and guard < 600:
+	while world.scenery_settling() and guard < 600:
 		await process_frame
 		guard += 1
 	var groups: Array = []

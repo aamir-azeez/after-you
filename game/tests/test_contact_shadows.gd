@@ -153,8 +153,8 @@ func _box(parent: Node3D, size: Vector3, at: Vector3) -> MeshInstance3D:
 ## space between two feet left clear, and drawn only over tiles that hold some.
 func _check_bake() -> void:
 	var rect := Rect2(0, 0, 4, 2)
-	var round_foot := [Vector2(0.6, 0.6), Vector2(0.2, 0.2), 1.0, 0.0]
-	var square_foot := [Vector2(1.4, 0.6), Vector2(0.2, 0.2), 0.0, 0.0]
+	var round_foot := [Vector2(0.6, 0.6), Vector2(0.2, 0.2), 1.0, Vector2.RIGHT]
+	var square_foot := [Vector2(1.4, 0.6), Vector2(0.2, 0.2), 0.0, Vector2.RIGHT]
 	var baked := ContactShadows.bake(rect, [round_foot, square_foot], [], true)
 	var image: Image = baked.image
 	var at := func(x: float, z: float) -> Color: return image.get_pixel(int(x / ContactShadows.TEXEL), int(z / ContactShadows.TEXEL))
@@ -163,6 +163,12 @@ func _check_bake() -> void:
 	_check(at.call(1.4 + 0.19, 0.6 + 0.19).r > 0.9, "A square foot's shade fills its corners")
 	_check(at.call(1.0, 0.6).r == 0.0 and at.call(1.0, 0.6).g > 0.0, "Between two feet a little apart the grass is worn, not dark")
 	_check(at.call(3.5, 1.5) == Color.BLACK, "Far from any foot the floor is untouched")
+	var turned_foot := [Vector2(2.6, 1.1), Vector2(0.3, 0.12), 0.4, Vector2(0.6, 0.8)]
+	var sun := [Vector2(3.0, 1.0), Vector2(0.8, 0.6), Vector2(0.4, 0.15), 0.1]
+	var forward := ContactShadows.bake(rect, [round_foot, square_foot, turned_foot], [sun], true)
+	_check((forward.image as Image).get_data() == (ContactShadows.bake(rect, [turned_foot, square_foot, round_foot], [sun], true).image as Image).get_data(), "A floor bakes the same in any order")
+	var nudged := [turned_foot[0] + Vector2(1e-6, -1e-6), turned_foot[1], turned_foot[2], (turned_foot[3] as Vector2) + Vector2(1e-6, 0)]
+	_check((forward.image as Image).get_data() == (ContactShadows.bake(rect, [round_foot, square_foot, nudged], [sun], true).image as Image).get_data(), "A last-bit difference in a foot changes no texel (inputs snap to a grid)")
 	var twice := ContactShadows.bake(rect, [round_foot, round_foot], [], true)
 	_check((twice.image as Image).get_data() == ContactShadows.bake(rect, [round_foot], [], true).image.get_data(), "Two feet in one place shade like one: no doubled layers")
 	var bare := ContactShadows.bake(rect, [round_foot], [], false)
@@ -171,7 +177,7 @@ func _check_bake() -> void:
 	var covered := 0.0
 	for tile: Rect2 in tiles: covered += tile.get_area()
 	_check(covered < rect.get_area() * 0.5 and tiles.all(func(tile: Rect2) -> bool: return rect.encloses(tile)), "The overlay covers only tiles with shade, inside the floor: %.2f of %.2f m2" % [covered, rect.get_area()])
-	_check(ContactShadows.bake(rect, [[Vector2(9, 9), Vector2(0.2, 0.2), 1.0, 0.0]], [], true).is_empty(), "A floor with nothing on it bakes nothing")
+	_check(ContactShadows.bake(rect, [[Vector2(9, 9), Vector2(0.2, 0.2), 1.0, Vector2.RIGHT]], [], true).is_empty(), "A floor with nothing on it bakes nothing")
 	var cast := ContactShadows.bake(rect, [], [[Vector2(2, 1), Vector2(1, 0), Vector2(0.5, 0.2), 0.1]], true)
 	_check((cast.image as Image).get_pixel(int(2.4 / ContactShadows.TEXEL), int(1.0 / ContactShadows.TEXEL)).b > 0.9 and (cast.image as Image).get_pixel(int(2.4 / ContactShadows.TEXEL), int(1.0 / ContactShadows.TEXEL)).r == 0.0, "The sun's shadow has its own channel")
 	var look := FileAccess.get_file_as_string(ContactShadows.SHADE_SHADER.resource_path)
@@ -187,6 +193,8 @@ func _check_layer() -> void:
 	var layer: Node3D = ContactShadows.new()
 	world.add_child(layer)
 	var lawn := ContactShadows.ground(world, Rect2(-3, -3, 6, 6), 0.0, true)
+	var lawn_nodes := lawn.find_children("*", "", true, false).size()
+	_check(ContactShadows.overlay_of(lawn) != null and ContactShadows.overlay_of(lawn).get_parent() == lawn and ContactShadows.overlay_of(lawn).mesh == null, "A floor comes with its overlay, empty until it bakes")
 	var lamp := Props.build({"kind": "lantern", "at": [100, 0]}, world, 0.0, false)
 	var crate := Props.build({"kind": "crate", "at": [-100, 0]}, world, 0.0, false)
 	var lever: RefCounted = Lever.build("plain", Vector3(0, 0, 1), world)
@@ -204,6 +212,7 @@ func _check_layer() -> void:
 	_check(lamp in baked and crate in baked and lever.root in baked and baked.size() == 3, "Still things on the floor are baked into it: %s" % [baked])
 	var overlays: Array = layer.overlays()
 	_check(overlays.size() == 1 and overlays[0].ground == lawn and (overlays[0].overlay as Node).get_parent() == lawn, "One overlay for the floor, under its ground (so it moves and hides with it)")
+	_check(lawn.find_children("*", "", true, false).size() == lawn_nodes and overlays[0].overlay == ContactShadows.overlay_of(lawn), "Baking fills the floor's own overlay and adds no node")
 	var overlay: MeshInstance3D = overlays[0].overlay
 	_check((overlay.material_override as ShaderMaterial).shader == ContactShadows.SHADE_SHADER and is_equal_approx(overlay.mesh.get_aabb().position.y, ContactShadows.SHADE_TOP), "The overlay lies at the shadows' height in the floor's look")
 	var image: Image = overlays[0].image

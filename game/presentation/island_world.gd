@@ -1170,6 +1170,12 @@ func _fold_static_scenery_once() -> void:
 func scenery_folding() -> bool:
 	return not _fold_job.is_empty() or (is_instance_valid(terrain) and not terrain.has_meta(StaticBatch.FOLDED_META) and _folds_static_scenery())
 
+## Whether this world's scenery is still being finished behind the card: its
+## fold, or its floors' grounding (kit/contact_shadows.gd) still to bake. Two
+## worlds compared node for node wait for this.
+func scenery_settling() -> bool:
+	return scenery_folding() or (is_instance_valid(contact_shadows) and not contact_shadows.settled())
+
 ## Starts or continues folding the current terrain. Returns the fold's job
 ## ({} when there is nothing to fold); its "done" says whether it finished.
 func _fold_static_scenery() -> Dictionary:

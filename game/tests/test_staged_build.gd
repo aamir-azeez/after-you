@@ -315,7 +315,7 @@ func _screen(key: String, saved: bool = false) -> void:
 	_check(staged.world.process_mode == direct.world.process_mode, key + " screen: the world runs again once whole")
 	# Both screens fold their scenery behind the ready card, a little a frame.
 	guard = 0
-	while (staged.world.scenery_folding() or direct.world.scenery_folding()) and guard < 600:
+	while (staged.world.scenery_settling() or direct.world.scenery_settling()) and guard < 600:
 		await process_frame
 		guard += 1
 	var expected := _fingerprint(direct.world, key, true, "screen")
@@ -356,7 +356,7 @@ func _finished_screen(key: String) -> void:
 		views.append(view)
 		screens.append(screen)
 	var guard := 0
-	while (screens[0].world.scenery_folding() or screens[1].world.scenery_folding()) and guard < 600:
+	while (screens[0].world.scenery_settling() or screens[1].world.scenery_settling()) and guard < 600:
 		await process_frame
 		guard += 1
 	_check(_fingerprint(screens[1].world, key, true, "finished").hash == _fingerprint(screens[0].world, key, true, "finished").hash, label + ": the same world as a screen built at once")
