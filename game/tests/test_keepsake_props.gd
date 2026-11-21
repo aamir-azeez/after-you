@@ -18,9 +18,11 @@ const Bell = preload("res://presentation/kit/pieces/bell.gd")
 const Reach = preload("res://tests/keepsake_reach.gd")
 ## Round 2's keepsakes are bigger: the README budget for all eleven with every
 ## upgrade is 45,000 triangles (Home's isles included, counted by the layer suite).
+## The Mill Wheel and the Fog Lantern add about 6,500 more before folding, the
+## cost their board showed (approved 2026-11-20).
 const MAX_PARTS := 90
 const MAX_TRIANGLES := 6000
-const ALL_TRIANGLES := 40000
+const ALL_TRIANGLES := 42000
 const MAX_MOVING := 6
 ## Kit bells (kit/pieces/bell.gd) move apart from that: each keeps its swing,
 ## hammer and clapper whole (Bell.hold), and a keepsake hangs at most this many.
@@ -32,9 +34,11 @@ const TOUCH := 0.02
 ## Every beat, then the ease back to rest.
 const TOTAL_MAX := 5.65
 ## The owner let the Relay Masts take longer (2026-11-02), so its flag keeps
-## its old, unhurried pace out and back; every other keepsake keeps the
-## first limits: a base beat of at most USUAL_BASE, a tap of USUAL_TOTAL.
-const LONG_TAPS := ["relay-isles"]
+## its old, unhurried pace out and back, and approved the Mill Wheel's ride and
+## the Fog Lantern's walk out and back at their boards' pace (2026-11-20);
+## every other keepsake keeps the first limits: a base beat of at most
+## USUAL_BASE, a tap of USUAL_TOTAL.
+const LONG_TAPS := ["relay-isles", "the-falls", "fog-marsh"]
 const USUAL_BASE := 2.5
 const USUAL_TOTAL := 4.5
 var checks := 0
@@ -98,8 +102,8 @@ func _run() -> void:
 		outline_root.free()
 	_check_giant_steps_ride()
 	_check_relay_flag()
-	print("KEEPSAKE PROPS: all eleven with every upgrade: %d parts, %d triangles before folding" % [all_parts, all_triangles])
-	_check(all_triangles <= ALL_TRIANGLES, "All eleven with every upgrade stay under %d triangles: %d" % [ALL_TRIANGLES, all_triangles])
+	print("KEEPSAKE PROPS: all of them with every upgrade: %d parts, %d triangles before folding" % [all_parts, all_triangles])
+	_check(all_triangles <= ALL_TRIANGLES, "All of them with every upgrade stay under %d triangles: %d" % [ALL_TRIANGLES, all_triangles])
 	_check(Primitives.changed_shared_looks().is_empty(), "No keepsake changes a shared look in place: %s" % [Primitives.changed_shared_looks()])
 	stage.free()
 	print("KEEPSAKE PROPS: %d checks, %d failures" % [checks, failures])
