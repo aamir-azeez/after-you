@@ -27,6 +27,8 @@ const DEFINITIONS := {
 	# A turn ending's card (turn_endings.gd): trying again is the way on.
 	"try_again": {"label": "Retry", "icon": "retry", "primary": true, "hint": PlayerCopy.ACTION_BUTTONS_E434AB682F32},
 	"retry_save": {"label": "Retry save", "icon": "retry", "primary": true, "hint": PlayerCopy.ACTION_BUTTONS_DCBA5AB65E41},
+	# A chapter save that could not be verified (relay_preview.gd _show_error).
+	"start_over": {"label": "Start over", "icon": "retry", "primary": true, "hint": PlayerCopy.START_OVER_HINT},
 	"leave_unsaved": {"label": "Leave without saving", "icon": "back", "primary": false, "hint": PlayerCopy.ACTION_BUTTONS_46C4ED81FF3A},
 	"refresh": {"label": "Refresh", "icon": "retry", "primary": false, "hint": "Check for updates."},
 	"check_saved": {"label": "Check status", "icon": "retry", "primary": true, "hint": PlayerCopy.ACTION_BUTTONS_2C04AA881C37},

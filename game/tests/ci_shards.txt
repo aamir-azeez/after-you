@@ -418,6 +418,7 @@ stage_blocks 1
 staged_build 3
 staged_build_tide 3
 staged_build_water 3
+start_over 1
 static_batch 1
 step_seats 3
 store_loading_feedback 2
