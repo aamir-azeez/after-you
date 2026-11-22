@@ -784,11 +784,11 @@ func _pulls(world: Node3D, where: String, _view: Dictionary, base: Dictionary) -
 		_check(deck.is_visible_in_tree() and back, "%s: the open crossing %s is pulled taut, every part as laid" % [where, id])
 	world.present(base, true)
 
-## The lowest middle (global m) of the meshes shown under `deck`.
+## The lowest underside (global m) of the meshes shown under `deck` (a standing deck is merged meshes).
 static func _lowest_shown(deck: Node3D) -> float:
 	var lowest := INF
 	for mesh: Node in deck.find_children("*", "MeshInstance3D", true, false):
-		if (mesh as MeshInstance3D).is_visible_in_tree(): lowest = minf(lowest, (mesh as MeshInstance3D).global_position.y)
+		if (mesh as MeshInstance3D).is_visible_in_tree(): lowest = minf(lowest, ((mesh as MeshInstance3D).global_transform * (mesh as MeshInstance3D).get_aabb()).position.y)
 	return lowest
 
 func _stones(world: Node3D, where: String, base: Dictionary) -> void:

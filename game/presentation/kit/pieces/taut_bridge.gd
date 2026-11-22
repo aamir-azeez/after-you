@@ -58,6 +58,11 @@ var _bends: Node3D
 ## The deck's child count when its parts were found: a part laid on it later
 ## (a hand rope) finds them again.
 var _children := -1
+## The deck's parts drawn as a few merged meshes while it stands still (taut or hung): _bake()
+## folds every plank, rail and rope into one mesh (a surface per look), so a deck costs a draw per
+## look, not one per plank; any change unbakes it first. `_hidden` are the parts it hid.
+var _merged: Array = []
+var _hidden: Array = []
 ## The sag the parts were last put at (NAN: as laid, unplaced), so a
 ## snapshot that changes nothing moves nothing.
 var _shown := NAN
@@ -132,7 +137,10 @@ func _apply() -> void:
 	_find_parts()
 	var depth := sag()
 	var laid := is_zero_approx(depth)
-	if (laid and is_nan(_shown)) or depth == _shown: return
+	if (laid and is_nan(_shown)) or depth == _shown:
+		if not _is_baked() and not moving(): _bake()
+		return
+	unbake()
 	_shown = NAN if laid else depth
 	for long: Dictionary in _long:
 		(long.node as Node3D).visible = laid
@@ -140,9 +148,57 @@ func _apply() -> void:
 	for part: Dictionary in _parts:
 		var node: Node3D = part.node
 		node.transform = part.rest if laid else (part.to_deck as Transform3D).affine_inverse() * _hung(part.pivot, depth, false, float(part.squeeze), float(part.lift)) * (part.to_deck as Transform3D) * (part.rest as Transform3D)
-	if laid: return
+	if not laid:
+		for long: Dictionary in _long:
+			for length: Dictionary in long.lengths: (length.node as Node3D).transform = _hung(length.pivot, depth, true, float(length.squeeze)) * (length.rest as Transform3D)
+	if not moving(): _bake()
+
+func _is_baked() -> bool:
+	return not _hidden.is_empty()
+
+## Every visible part of the deck, merged into one mesh per look, in place of its own nodes.
+func _bake() -> void:
+	unbake()
+	var groups: Dictionary = {}
+	var sources: Array = []
+	for part: Dictionary in _parts: sources.append(part.node)
 	for long: Dictionary in _long:
-		for length: Dictionary in long.lengths: (length.node as Node3D).transform = _hung(length.pivot, depth, true, float(length.squeeze)) * (length.rest as Transform3D)
+		sources.append(long.node)
+		for length: Dictionary in long.lengths: sources.append(length.node)
+	for node: Node in sources:
+		var mesh := node as MeshInstance3D
+		if mesh == null or not is_instance_valid(mesh) or not mesh.visible or mesh.mesh == null: continue
+		if mesh.mesh.get_surface_count() != 1 or mesh.material_override == null or mesh.material_overlay != null: continue
+		var key := mesh.material_override.get_instance_id()
+		if not groups.has(key):
+			var tool := SurfaceTool.new()
+			tool.begin(Mesh.PRIMITIVE_TRIANGLES)
+			groups[key] = {"tool": tool, "material": mesh.material_override, "shadow": mesh.cast_shadow}
+		var placed := _to_deck(mesh.get_parent()) * mesh.transform
+		(groups[key].tool as SurfaceTool).append_from(mesh.mesh, 0, placed)
+		_hidden.append(mesh)
+	if groups.is_empty(): return
+	var merged_mesh := ArrayMesh.new()
+	var shadow := GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	for group: Dictionary in groups.values():
+		(group.tool as SurfaceTool).set_material(group.material)
+		(group.tool as SurfaceTool).commit(merged_mesh)
+		shadow = group.shadow
+	var merged := MeshInstance3D.new()
+	merged.name = "Baked"
+	merged.mesh = merged_mesh
+	merged.cast_shadow = shadow
+	_bends.add_child(merged)
+	_merged.append(merged)
+	for mesh: Node3D in _hidden: mesh.visible = false
+
+## Gives the deck its own parts back.
+func unbake() -> void:
+	for mesh: Node3D in _hidden:
+		if is_instance_valid(mesh): mesh.visible = true
+	_hidden.clear()
+	for merged: Node in _merged: merged.free()
+	_merged.clear()
 
 ## The move (deck space) that hangs a part whose middle is `pivot` on the
 ## curve: dropped, tilted to the slope about its middle and, for a bent length
@@ -173,7 +229,9 @@ func _find_parts() -> void:
 		if is_instance_valid(part.node): (part.node as Node3D).transform = part.rest
 	for long: Dictionary in _long:
 		if is_instance_valid(long.node): (long.node as Node3D).visible = true
-	for length: Node in _bends.get_children(): length.free()
+	unbake()
+	for length: Node in _bends.get_children():
+		length.free()
 	var known: Dictionary = {}
 	for part: Dictionary in _parts: known[part.node] = part.rest
 	_parts.clear()

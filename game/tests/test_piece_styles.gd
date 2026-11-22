@@ -354,9 +354,13 @@ func _check_taut(holder: Node3D) -> void:
 		var where := "along x" if across_x else "along z"
 		var middle: MeshInstance3D = planks[4]
 		var end: MeshInstance3D = planks[0]
-		var lengths: Array = (piece.root as Node3D).get_children()
+		var lengths: Array = (piece.root as Node3D).get_children().filter(func(length: Node) -> bool: return not String(length.name).begins_with("Baked"))
 		var lowest := func() -> float: return lengths.map(func(length: Node3D) -> float: return length.position.y).min()
 		piece.set_open(false, true)
+		# Standing still, the deck is a few merged meshes; its own parts come back to be read.
+		var drawn := deck.find_children("*", "MeshInstance3D", true, false).filter(func(mesh: Node) -> bool: return (mesh as MeshInstance3D).is_visible_in_tree()).size()
+		_check(drawn <= 2, "Shut %s: a deck standing still draws a mesh per look, not one per plank (%d)" % [where, drawn])
+		piece.unbake()
 		var tilt: float = absf(end.basis.get_euler().z if across_x else end.basis.get_euler().x)
 		_check(deck.visible and absf(middle.position.y - (-0.05 - piece.slack() * 0.984375)) < 0.01 and end.position.y > middle.position.y + 0.2 and tilt > 0.2 and absf(middle.basis.get_euler().length()) < 0.3, "Shut %s: the deck hangs slack, its middle under the banks (%.2f m) and its end planks higher and tilted to the curve" % [where, middle.position.y])
 		_check(not rail.visible and lengths.size() == TautBridge.BENDS and lengths.all(func(length: Node3D) -> bool: return length.visible) and lowest.call() < 0.5 - piece.slack() * 0.8, "Shut %s: its rail bends along the curve in short lengths" % where)
@@ -369,6 +373,7 @@ func _check_taut(holder: Node3D) -> void:
 			frames += 1
 			if frames == int(TautBridge.SECONDS * 30.0): halfway = middle.position.y < -0.1 and middle.position.y > -0.05 - piece.slack() + 0.05
 			if middle.position.y > -0.05 + 0.005: bowed = true
+		piece.unbake()
 		var laid := range(8).all(func(index: int) -> bool: return planks[index].transform == rests[index])
 		_check(halfway and bowed and absf(frames - (TautBridge.SECONDS + Motion.ARRIVAL_SECONDS) * 60.0) <= 2.0, "Opening %s: the sag eases out over %.1f s and the deck bows past level and settles (%d frames)" % [where, TautBridge.SECONDS, frames])
 		_check(laid and rail.visible and lengths.all(func(length: Node3D) -> bool: return not length.visible), "Open %s: every part stands exactly as laid and the rail is whole" % where)
@@ -378,9 +383,11 @@ func _check_taut(holder: Node3D) -> void:
 		piece.set_open(true, true)
 		var rope := Parts.box(Vector3(2.0, 0.02, 0.02) if across_x else Vector3(0.02, 0.02, 2.0), Parts.CREAM, Vector3(0.0, 0.5, -0.45) if across_x else Vector3(-0.45, 0.5, 0.0), deck)
 		piece.set_open(false, true)
-		_check(not rope.visible and (piece.root as Node3D).get_child_count() > lengths.size(), "A rope laid on the deck %s later bends with it too" % where)
+		piece.unbake()
+		_check(not rope.visible and (piece.root as Node3D).get_child_count() - (piece.root as Node3D).get_children().filter(func(length: Node) -> bool: return String(length.name).begins_with("Baked")).size() > lengths.size(), "A rope laid on the deck %s later bends with it too" % where)
 		piece.reduced_motion = true
 		piece.set_open(true)
+		piece.unbake()
 		_check(not piece.moving() and range(8).all(func(index: int) -> bool: return planks[index].transform == rests[index]), "With reduce motion %s, the deck is pulled taut at once" % where)
 		deck.free()
 
@@ -390,12 +397,7 @@ func _check_taut(holder: Node3D) -> void:
 ## motion, and every mesh back to its own transparency once it is held again.
 func _check_closing_fade(holder: Node3D) -> void:
 	var host := GDScript.new()
-	host.source_code = "extends Node3D
-var reduced_motion := false
-var parts: Array = []
-func closing_parts(_id: String) -> Array:
-	return parts
-"
+	host.source_code = "extends Node3D\nvar reduced_motion := false\nvar parts: Array = []\nfunc closing_parts(_id: String) -> Array:\n\treturn parts\n"
 	host.reload()
 	var world := Node3D.new()
 	world.set_script(host)
