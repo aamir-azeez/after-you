@@ -4293,6 +4293,8 @@ const FOG_MARSH_STAGE_2_HINT_B := "TODO copy: Fog Marsh, stage 2, second turn"
 const FOG_MARSH_STAGE_3_TITLE := "TODO copy: Fog Marsh, stage 3"
 const FOG_MARSH_STAGE_3_HINT_A := "TODO copy: Fog Marsh, stage 3, first turn"
 const FOG_MARSH_STAGE_3_HINT_B := "TODO copy: Fog Marsh, stage 3, second turn"
+# The rope wheel's stop across from the boat steps, as its bubble names it.
+const FOG_MARSH_ROPE_DOCK := "Dock"
 const FOG_MARSH_KEEPSAKE_NAME := "Fog Lantern"
 const FOG_MARSH_KEEPSAKE_ACTION := "Light the lantern"
 const FOG_MARSH_KEEPSAKE_TOGETHER := "mint raft"

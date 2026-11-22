@@ -35,6 +35,8 @@ const DATA := {
 			"hint_b": PlayerCopy.FOG_MARSH_STAGE_3_HINT_B,
 		},
 	},
+	# The rope wheel's bubble: the catalog keeps "JETTY" (a hashed value).
+	"selector_names": {"rope": {"JETTY": PlayerCopy.FOG_MARSH_ROPE_DOCK}},
 	"thumbnail": "res://assets/chapter_thumbnails/fog-marsh.png",
 	"keepsakes": [
 		{"stage_id": "where-the-stream-went", "title": PlayerCopy.FOG_MARSH_STAGE_1_TITLE},
