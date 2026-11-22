@@ -4,7 +4,7 @@
 	"completed": true,
 	"definition_hash": "6bfce669f541bea4fb0978ad80019b0388c8009f8769379a54706dbb20bfc1ab",
 	"duration_ticks": 335,
-	"final_state_hash": "a723eba1c6d9da2f7527e03f0e2054803ad4e5bc05b005433ec76872e0454dc7",
+	"final_state_hash": "814551baf12827559828305d973422dc5c26da4879afb1a2319da0bac71cf4a5",
 	"handoff_hash": "",
 	"handoff_tick": 105,
 	"level_id": "first-steps",
@@ -13,15 +13,15 @@
 		"objective_complete": true,
 		"source_ready": true
 	},
-	"packed": "AQlQAAAWAGQCABl8ZAAyAAAKAGToAWQACgCcjAEAAIFKyizN6QPiFwlMLOPsMk33o+WGWYwaM9jxnZe3sTlAtjUXBwweOhHb5Oy5fheBw9KkXDAB4HYiLe3OWFLQx7iFLNEfHNMFfH1IslZAYjA/ecIRVpjdkfBZ/ISea4+VPGk0F7m8vok0d9ftHwMIbAXc9wLn76smdtSJGeyinMgIfX/X++qLhhA=",
+	"packed": "AQlQAAAWAGQCABl8ZAAyAAAKAGToAWQACgCcjAEAAP8hYoXED67EJORkTpN3qVzsqnRFGMkaX2YjpXZ3gEP9qjN4Pot/6ePEK7WsMPKnpjH/Rqhft+aigGGH2hppO9nk/gcnxG3eKfbOLtpihj16boh//JVAe9j8BAIupmTOVQrzrh8/MSysfxM3pb24z4xnJovUDrVBg+yImG6SpYuIQXAjvhjg6Wk=",
 	"player_slot": "p0",
-	"recording_hash": "e580cf0ac6de1d63b727cf796c7c37921279aa5b0504790c3ada833cd03b937f",
+	"recording_hash": "291e6c2a56bdc03f94202dc05795471b08cf5938d4e7f164d7ad7a27a0ebfb04",
 	"role": "b",
 	"schema_version": 7,
 	"simulation_version": 20,
-	"source_recording_hash": "cb25746c23282e7de1619f48d476ad4c7b005595d42f8b2854ea74d4352e1c34",
+	"source_recording_hash": "3bfb4ed88b62d804ac7197acb6ed0ecd4d451acccb79e78b1c6922a1ddc1fe9e",
 	"stage_id": "a-little-lift",
 	"stage_version": 1,
-	"start_hash": "1d5fbdf6ab4b7bad2768c0bc07ecb3a84659bf43e00039d774550fdcab619713",
+	"start_hash": "8cfba0bb8af8f7aed75aab9c6c1d62f34a876db1a41270589ff84d21b628f5c8",
 	"tick_rate": 30
 }

@@ -1,10 +1,12 @@
 {
 	"catch_assistance": true,
-	"checkpoint_hash": "2de6b79cb150f898289b0a3ecd3496783593a5e9885c6c0edbb7fc6400c0297e",
+	"checkpoint_hash": "39bea62e8508f14de6bd0883dfc88359eb0011f63f6ba1e8ce0a2df9261535ad",
 	"completed": false,
-	"definition_hash": "037322be4ec939f2986a063735c2471589dd87482f717db520af8ed7b1039f3b",
+	"definition_hash": "f99b1dbf05ec73274773822eee85e2a7eb7f56b674a18201221f6396ff319dda",
 	"duration_ticks": 8,
-	"final_state_hash": "0efe2c8f15595e3a949ffec0fd8f990284f08e50a3ebc152d96a68de98f21b46",
+	"final_state_hash": "317160ab287cf4707c1acac9b75ae856ae7a3be86324fbd9ae0aa1faea61e37a",
+	"handoff_hash": "e01f016ff2d1c35868632eb8518debcdc4ea1d80043efafa7d1b7d9a6174c1f0",
+	"handoff_tick": 0,
 	"level_id": "the-wishing-well",
 	"level_version": 2,
 	"outcome": {
@@ -13,12 +15,13 @@
 	},
 	"packed": "AQEQAGQ=",
 	"player_slot": "p1",
-	"recording_hash": "5999c73c34ad3a625b9a93fc68577395f849f676b8eeb921fe333814fc7d6897",
+	"recording_hash": "41f807a1982bb678844b6df2d166e50d8a3a999e8caf7d7fe3496b12cd17bf1b",
 	"role": "a",
 	"schema_version": 6,
-	"simulation_version": 14,
+	"simulation_version": 18,
 	"source_recording_hash": "",
 	"stage_id": "back-for-you",
 	"stage_version": 1,
+	"start_hash": "e01f016ff2d1c35868632eb8518debcdc4ea1d80043efafa7d1b7d9a6174c1f0",
 	"tick_rate": 30
 }

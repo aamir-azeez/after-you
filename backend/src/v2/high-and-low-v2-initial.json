@@ -1,9 +1,9 @@
 {
 	"a_recording_hash": "",
 	"b_recording_hash": "",
-	"checkpoint_hash": "34b258e76e33da29d4dde7962954b6fe79d569e80035af817332e86cc1749170",
+	"checkpoint_hash": "bf6bc6dbbad22b24b9c4d597e08b385850f7703d9871f5d082479ca696c2bb2c",
 	"completed_stage_id": "",
-	"definition_hash": "fbb692198e561d0944358bb4d6635ff2d5e178df82e0881f70941d64db5ed3a2",
+	"definition_hash": "79593b0e7e0b2a8fb055643dafb74734e332d26c8814e33415e233d186e80a58",
 	"level_id": "high-and-low",
 	"level_version": 2,
 	"mechanisms": {
