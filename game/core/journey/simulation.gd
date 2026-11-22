@@ -4,7 +4,7 @@ extends "res://core/physical/runtime.gd"
 const Catalog = preload("res://core/journey/stage_catalog.gd")
 const Proof = preload("res://core/physical/two_pair_proof.gd")
 const Seven = preload("res://core/journey/seven_mechanisms.gd")
-const BeamField = preload("res://core/beam_field.gd")
+const LightPieces = preload("res://core/physical/light_pieces.gd")
 const PiecesRules = preload("res://core/physical/pieces_rules.gd")
 const CarriedItems = preload("res://core/physical/carried_items.gd")
 const Swings = preload("res://core/physical/swings.gd")
@@ -443,10 +443,9 @@ func _refresh_optics() -> void:
 	if not stage.has("optical_field"):
 		_optics={"segments":[],"signals":{}}
 		return
-	var overrides: Dictionary={}
-	for control: Dictionary in stage.get("controls",[]):
-		if control.kind=="mirror": overrides[control.id]={"orientation":str(_mechanisms.controls[control.id])}
-	_optics=BeamField.evaluate(stage.optical_field,overrides)
+	# Light pieces (core/physical/light_pieces.gd): mirrors, selectors that
+	# steer light and lamps lit only while their lit_when holds.
+	_optics=LightPieces.optics(stage,_players,_mechanisms,_open_controls())
 	if not _optics.valid: error=str(_optics.error)
 
 ## `slot`: the pip that walked; open turns latch for either pip in every turn.
