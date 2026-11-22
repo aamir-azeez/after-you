@@ -128,8 +128,8 @@ const SLOTS := {
 	"carried_item": {"parcel": {}, "pipsport": {}, "raft": {}, "seed": {}, "winch_handle": {}, "lens": {}},
 	# Where an item rests (kit/pieces/socket.gd item_spot): nothing drawn, a
 	# stone pedestal, a garden planter, the relay nest, a winch a handle fits
-	# or a lens cradle.
-	"item_spot": {"none": {}, "pedestal": {}, "planter": {}, "nest": {}, "winch": {}, "cradle": {}},
+	# or a lens cradle, or a ring round a desk (a solid spot a pip sets things on).
+	"item_spot": {"none": {}, "pedestal": {}, "planter": {}, "nest": {}, "winch": {}, "cradle": {}, "desk": {}},
 	"current": {"ripples": {}, "chevrons": {}},
 	# A swing (core/physical/swings.gd, kit/pieces/swing.gd): what hangs and
 	# swings across its lane, and what it hangs from.

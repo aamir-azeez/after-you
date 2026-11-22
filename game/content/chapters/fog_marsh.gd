@@ -67,6 +67,6 @@ const DATA := {
 	# Each block's own looks (content/blocks/defaults.gd), and the pieces no
 	# block styles: the stepping stones, and the post office lantern.
 	"block_source": ["res://core/journey/fog_marsh_catalog.gd", "source"],
-	"piece_styles": {"reed-stones": "stones", "swirl-stones": "stones", "home-lantern": "lantern"},
+	"piece_styles": {"reed-stones": "stones", "swirl-stones": "stones", "home-lantern": "lantern", "desk": "desk"},
 	"server": {"flag": "FOG_MARSH_CHAPTER_ENABLED", "max_branches": 7},
 }

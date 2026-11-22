@@ -41,6 +41,10 @@ const HANDLE_LIE := Transform3D(Basis(Vector3.BACK, PI / 2.0), Vector3(0.12, 0.0
 const LENS_RADIUS := 0.18
 const LENS_GLASS := Color("99dfd9")
 const LENS_RING := Color("d5b876")
+## What each style covers lying on a floor (m): a rectangle's width (x) and
+## depth (z), or a disc's radius. A spot wanting that item outlines it
+## (socket.gd outline); a style missing here has no outline.
+const FOOTPRINTS := {"pipsport": Vector2(0.16, 0.22), "parcel": Vector2(0.232, 0.192), "raft": Vector2(0.8, 0.72)}
 ## How long a pick-up or a set-down takes between the ground and the head (s).
 const HANDOFF := 0.2
 const NAVY := Color("2f3e66")
