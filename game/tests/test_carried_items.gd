@@ -1,31 +1,33 @@
 extends SceneTree
-## Rules 16's carried items and currents (core/physical/carried_items.gd) on
+## Rules 20's carried items and currents (core/physical/carried_items.gd) on
 ## the witness level (tests/carried_items_level.gd), through the real journey
 ## engine and its proof:
 ## - the rules number, the shapes, the predicate terms, and published
 ##   checkpoints that keep their four mechanisms;
 ## - pick up, put down, and a carrier refused at the both-hands ladder while an
 ##   empty pip climbs it;
-## - stage 1 over four turns: the memory carries what it carried, the live pip
-##   hands it up the ladder to the memory, the stage closes with it carried, and
-##   the closing checkpoint verifies again (and fails with the holder changed);
-## - the replay sees it gone (the live pip took it first), a same tick tie (the
-##   memory goes first), a memory's give in reach and out of reach, a memory
-##   handed the item that climbs the ladder (it puts it down first), and a take
-##   on a memory's last tick never repeated after it ends;
-## - every turn replays exactly, and plays the same from its kept trace as
-##   simulated;
+## - stage 1 over four turns on the shared timeline: the friend's replay
+##   carries what it carried, turn 3 takes over at the ladder's foot still
+##   carrying it and hands it up, turn 4 takes it from turn 3's replay at the
+##   top and the stage closes with it carried; the closing checkpoint verifies
+##   again (and fails with the holder changed);
+## - the replay sees it gone (the live pip took it first), a same tick tie (p0
+##   goes first), a replay's give in reach and out of reach, a replay handed
+##   the item that never climbs the ladder loaded, and a take on a replay's
+##   last tick never repeated after it ends;
+## - every turn replays exactly, and plays the same from its kept start world
+##   as with the turns before it played again;
 ## - the item rides into the next stage unless the stage places it;
 ## - the current: a live wheel turn moves each float one leg (the raft opens
-##   the ferry), a held board stops a leg, the memory's turn moves it in the
+##   the ferry), a held board stops a leg, the replay's turn moves it in the
 ##   live world, and an item set down on a leg's start with the wheel right
 ##   moves at once;
 ## - items ride platforms (tests/item_ride_witness.gd): put down on a raft by
-##   the memory, the live pip's pull carries it over the water and it is picked
+##   the replay, the live pip's pull carries it over the water and it is picked
 ##   up at the far stop; put down in the lift's pan it alone sends the lift
 ##   up; put down on the lift, the pan sends it up (it weighs no pan itself),
 ##   it is picked up at the top, put back and rides down again;
-##   both turns replay exactly, from a trace or simulated, and the stage's
+##   both turns replay exactly, from a kept start world or played again, and the stage's
 ##   checkpoint (the pipsport resting on the lift) derives and verifies;
 ## - the server's witness files (tests/fixtures/carried_items/ and
 ##   tests/fixtures/item_rides/, read by backend/test/carried-items.test.ts) are
@@ -78,27 +80,27 @@ func _run() -> void:
 # --- Rules and shapes -------------------------------------------------------------
 
 func _rules() -> void:
-	_check(CarriedItems.on(RULES) and OpenTurns.rules(RULES) and OpenControls.pinned(level) and RULES in OpenControls.TIDE_RULES, "Rules 16 play the new pieces on open turns, open controls and the tide")
-	_check(Simulation._record_version({"simulation_version": RULES}) == RULES and Simulation.rules_allowed(level, RULES) and not Simulation.rules_allowed(level, 15), "A rules 16 record reads as 16, and the witness plays only 16")
+	_check(CarriedItems.on(RULES) and OpenTurns.rules(RULES) and OpenControls.pinned(level) and RULES in OpenControls.TIDE_RULES, "Rules 20 play the new pieces on open turns, open controls and the tide")
+	_check(Simulation._record_version({"simulation_version": RULES}) == RULES and Simulation.rules_allowed(level, RULES) and not Simulation.rules_allowed(level, 19), "A rules 20 record reads as 20, and the witness plays only 20")
 	_check(CarriedItems.problems(level).is_empty(), "The witness level is sound (%s)" % str(CarriedItems.problems(level)))
 	var bad := level.duplicate(true)
 	bad.items[0].at = "nowhere"
 	bad.stages[1].current_legs[0].value = "east"
-	bad.simulation_version = 15
+	bad.simulation_version = 19
 	var found := CarriedItems.problems(bad)
-	_check(found.size() == 3, "Problems name a start at no spot, a leg on a value no selector shows, and items off rules 16 (%s)" % str(found))
+	_check(found.size() == 3, "Problems name a start at no spot, a leg on a value no selector shows, and items off rules 20 (%s)" % str(found))
 	_check(start.mechanisms.items.pipsport == {"holder": "", "spot": "post", "x": -350, "z": 80, "height": 0, "surface_id": "dock"} and start.mechanisms.items.raft.spot == "mooring", "The first checkpoint holds each item where it starts")
 	for key: String in ["long-way-home@3", "turn-of-the-tide@3"]:
 		_check(not Registry.initial_checkpoint(key).mechanisms.has("items"), "%s keeps its four mechanisms" % key)
 	var mechanisms := {"items": {"pipsport": CarriedItems.held("p1"), "raft": CarriedItems.at_spot(CarriedItems.spot(level, "berth"))}}
 	_check(Seven.predicate({"item_id": "pipsport", "carried": true}, {}, {}, mechanisms) and not Seven.predicate({"item_id": "pipsport", "spot_id": "post"}, {}, {}, mechanisms), "Carried holds while a pip has it, not a spot")
 	_check(Seven.predicate({"item_id": "raft", "spot_id": "berth"}, {}, {}, mechanisms) and not Seven.predicate({"item_id": "raft", "carried": true}, {}, {}, mechanisms) and not Seven.predicate({"item_id": "lost", "carried": true}, {}, {}, mechanisms), "A float at its spot holds; an unknown item never does")
-	# A rules 15 level that lists items plays without them.
+	# A rules 19 level that lists items plays without them.
 	var older := level.duplicate(true)
-	older.simulation_version = 15
+	older.simulation_version = 19
 	var sim := _sim(older, "hand-up", start)
 	_go(sim, POST)
-	_check(str(sim.context_action().id) == "", "On rules 15 an item offers nothing")
+	_check(str(sim.context_action().id) == "", "On rules 19 an item offers nothing")
 
 func _hands() -> void:
 	var sim := _sim(level, "hand-up", start)
@@ -124,8 +126,11 @@ func _hands() -> void:
 # --- Stage 1 over four turns ---------------------------------------------------------
 
 ## A: p0 fetches the pipsport and waits at the ladder's foot. B: p1 waits at
-## the top, then walks to the goal and passes. C: p0 fetches it again, hands it
-## up to the memory and climbs after it; both at the goal close the stage.
+## the top and passes as A's replay ends. C takes over there: p0 at the foot,
+## still carrying it, waits, hands it up to p1 standing at the top, climbs
+## after it to the goal and passes. D takes over at C's start with all of C
+## replaying: p1 is handed the pipsport and carries it to the goal, closing
+## the stage.
 func _hand_up() -> Dictionary:
 	var a_sim := _sim(level, "hand-up", start)
 	_go(a_sim, POST)
@@ -138,59 +143,61 @@ func _hand_up() -> Dictionary:
 	var b_sim := _sim(level, "hand-up", start, a)
 	_go(b_sim, TOP)
 	_until(b_sim, take_a + 1)
-	_check(b_sim._mechanisms.items.pipsport.holder == "p0" and b_sim.snapshot().players.p0.carrying == "pipsport", "The memory carries what it carried")
-	_check(str(b_sim.context_action().id) == "", "The live pip cannot take the item from the memory")
-	_until(b_sim, 200)
-	_go(b_sim, [250, 0])
+	_check(b_sim._mechanisms.items.pipsport.holder == "p0" and b_sim.snapshot().players.p0.carrying == "pipsport", "The replay carries what it carried")
+	_check(str(b_sim.context_action().id) == "", "The live pip cannot take the item from the replay")
 	_until(b_sim, int(a.duration_ticks))
-	_check(b_sim.can_pass(), "Turn 2 passes once its memory is over (%s)" % b_sim.commit_reason())
+	_check(b_sim.can_pass(), "Turn 2 passes once its replay is over (%s)" % b_sim.commit_reason())
 	b_sim.pass_turn()
 	var b := _record(b_sim)
 	var c_sim := _sim(level, "hand-up", start, b, [a])
-	_go(c_sim, POST)
-	_tap(c_sim)
-	_go(c_sim, [-350, 0])
-	_go(c_sim, FOOT)
-	_check(c_sim.context_action().id == "give" and int(c_sim.tick) < 200, "At the foot the carrier may hand it up to the memory at the top (tick %d)" % c_sim.tick)
+	_check(c_sim.handoff_tick == int(a.duration_ticks) and c_sim.replay_ticks() == 0 and c_sim._mechanisms.items.pipsport.holder == "p0" and str(c_sim._players.p1.surface_id) == "loft", "Turn 3 takes over at the foot still carrying the pipsport, p1 at the top")
+	_still(c_sim, 30)
+	_check(c_sim.context_action().id == "give", "At the foot the carrier may hand it up to the pip at the top")
 	var give_c := _tap(c_sim)
-	_check(c_sim._mechanisms.items.pipsport.holder == "p1" and "item_given:pipsport" in c_sim.snapshot().events, "Handed up, the memory holds it")
+	_check(c_sim._mechanisms.items.pipsport.holder == "p1" and "item_given:pipsport" in c_sim.snapshot().events, "Handed up, p1 holds it")
 	_go(c_sim, TOP)
 	_go(c_sim, [220, 0])
-	_check(str(c_sim._players.p0.surface_id) == "loft", "With empty hands the pip climbs after it")
-	_settle(c_sim)
-	_check(c_sim.complete, "Both pips at the goal with the pipsport carried close the stage (%s)" % c_sim.commit_reason())
+	_check(str(c_sim._players.p0.surface_id) == "loft" and not c_sim.complete, "With empty hands the pip climbs after it; p1 still at the top, the stage goes on")
+	_check(c_sim.can_pass(), "Turn 3 passes (%s)" % c_sim.commit_reason())
+	c_sim.pass_turn()
 	var c := _record(c_sim)
-	for pair: Array in [[a, {}, []], [b, a, []], [c, b, [a]]]:
-		var checked: Dictionary = proof._verify_raw(level, pair[0], start, pair[1], pair[2])
-		_check(checked.valid, "Turn %s replays exactly (%s)" % [pair[0].role, checked.get("error", "")])
-	# The same turn, its memories simulated rather than played from their traces.
+	var d_sim := _sim(level, "hand-up", start, c, [a, b])
+	_check(d_sim.handoff_tick == 0 and d_sim.replay_ticks() == int(c.duration_ticks), "Turn 4 takes over at turn 3's start with all of it replaying")
+	_until(d_sim, give_c + 1)
+	_check(d_sim._mechanisms.items.pipsport.holder == "p1", "Turn 3's replay hands the pipsport up to p1 at the top")
+	_go(d_sim, [250, 0])
+	_settle(d_sim)
+	_check(d_sim.complete, "Both pips at the goal with the pipsport carried close the stage (%s)" % d_sim.commit_reason())
+	var d := _record(d_sim)
+	for turn: Array in [[a, {}, []], [b, a, []], [c, b, [a]], [d, c, [a, b]]]:
+		var checked: Dictionary = proof._verify_raw(level, turn[0], start, turn[1], turn[2])
+		_check(checked.valid, "Turn %d replays exactly (%s)" % [turn[2].size() + (1 if turn[1].is_empty() else 2), checked.get("error", "")])
+	# The same turn with the turns before it played again rather than from a kept start world.
 	MemoryTrace.enabled = false
-	var again := _sim(level, "hand-up", start, b, [a])
-	_replay(again, c)
+	var again := _sim(level, "hand-up", start, c, [a, b])
+	_replay(again, d)
 	MemoryTrace.enabled = true
-	_check(Canonical.same(_record(again), c), "A turn plays the same from its memory's trace as simulated")
-	var derived: Dictionary = proof.derive_checkpoint(level, start, a, c, [b])
+	_check(Canonical.same(_record(again), d), "A turn plays the same from its kept start world as with the turns before played again")
+	var derived: Dictionary = proof.derive_checkpoint(level, start, a, d, [b, c])
 	_check(derived.valid, "The stage's checkpoint derives (%s)" % derived.get("error", ""))
 	if not derived.valid: return {}
 	var checkpoint: Dictionary = _json(derived.checkpoint)
-	_check(checkpoint.mechanisms.items.pipsport.holder == "p1" and proof.verify_checkpoint(level, checkpoint).valid, "The closing checkpoint holds the pipsport on p1's back and verifies again")
+	_check(checkpoint.mechanisms.items.pipsport.holder == "p1" and checkpoint.next_first_slot == "p0" and proof.verify_checkpoint(level, checkpoint).valid, "The closing checkpoint holds the pipsport on p1's back, p0 starts the next stage, and it verifies again")
 	var tampered: Dictionary = checkpoint.duplicate(true)
 	tampered.mechanisms.items.pipsport.holder = "p0"
 	tampered.checkpoint_hash = Level.checkpoint_hash(tampered)
 	_check(not proof.verify_checkpoint(level, tampered).valid, "A checkpoint with the holder changed does not verify")
 	_memory_gives(a, b, c, give_c)
-	return {"a": a, "b": b, "c": c, "checkpoint": checkpoint}
+	return {"a": a, "b": b, "c": c, "d": d, "checkpoint": checkpoint}
 
-## Turn 4 over C: p1 out of reach at the give, then within it.
+## Turn 4 over C: p1 walks away from the top before C's replay gives, so the
+## replay's press finds no one in reach and puts the pipsport down at its feet.
 func _memory_gives(a: Dictionary, b: Dictionary, c: Dictionary, give_c: int) -> void:
 	var away := _sim(level, "hand-up", start, c, [a, b])
+	_go(away, [250, 0])
 	_until(away, give_c + 1)
 	var state: Dictionary = away._mechanisms.items.pipsport
-	_check(state.holder == "" and state.surface_id == "dock" and state.spot == "", "A memory's give with nobody in reach puts the item down at its feet")
-	var near := _sim(level, "hand-up", start, c, [a, b])
-	_go(near, TOP)
-	_until(near, give_c + 1)
-	_check(near._mechanisms.items.pipsport.holder == "p1", "A memory's give with the live pip at the top hands it over")
+	_check(state.holder == "" and state.surface_id == "dock" and state.spot == "", "A replay's give with nobody in reach puts the item down at its feet")
 
 # --- The replay sees it gone --------------------------------------------------------
 
@@ -213,7 +220,7 @@ func _gone_and_tie() -> void:
 	_check(int(sim.tick) < int(late.take), "The live pip reaches the post box first (%d < %d)" % [sim.tick, late.take])
 	_tap(sim)
 	_until(sim, int(a.duration_ticks))
-	_check(sim._mechanisms.items.pipsport.holder == "p1" and sim.snapshot().players.p0.carrying == "", "The live pip took it first, so the memory's pick up finds nothing")
+	_check(sim._mechanisms.items.pipsport.holder == "p1" and sim.snapshot().players.p0.carrying == "", "The live pip took it first, so the replay's pick up finds nothing")
 	_go(sim, FOOT)
 	_go(sim, TOP)
 	_check(str(sim._players.p1.surface_id) == "dock", "Loaded, the live pip cannot climb back up")
@@ -224,13 +231,13 @@ func _gone_and_tie() -> void:
 	_go(tie, POST)
 	_until(tie, int(late.take))
 	tie.step({"interact": true})
-	_check(tie._mechanisms.items.pipsport.holder == "p0", "On the same tick the memory's pick up lands first")
+	_check(tie._mechanisms.items.pipsport.holder == "p0", "On the same tick p0's (the replay's) pick up lands first")
 	_until(tie, int(a.duration_ticks))
 	var tied: Dictionary = proof._verify_raw(level, _record(tie), start, a)
 	_check(tied.valid, "The tie replays exactly (%s)" % tied.get("error", ""))
 
 ## A: p0 waits, then climbs. B: p1 fetches the pipsport and hands it to the
-## waiting memory, which then reaches the ladder loaded and puts it down first.
+## waiting replay, which then reaches the ladder loaded and never climbs it.
 func _ladder_drop() -> void:
 	var a_sim := _sim(level, "hand-up", start)
 	_go(a_sim, [-200, 0])
@@ -247,18 +254,15 @@ func _ladder_drop() -> void:
 	_tap(sim)
 	_go(sim, [-350, 0])
 	_go(sim, [-240, 0])
-	_check(sim.context_action().id == "give" and int(sim.tick) < 170, "The live pip may hand it to the waiting memory (tick %d)" % sim.tick)
+	_check(sim.context_action().id == "give" and int(sim.tick) < 170, "The live pip may hand it to the waiting replay (tick %d)" % sim.tick)
 	_tap(sim)
-	_check(sim._mechanisms.items.pipsport.holder == "p0", "The memory now holds it")
-	var dropped := false
-	while int(sim.tick) < int(a.duration_ticks) and not sim.finished:
-		sim.step({})
-		if "item_dropped:pipsport" in sim.snapshot().events: dropped = true
+	_check(sim._mechanisms.items.pipsport.holder == "p0", "The replay now holds it")
+	_until(sim, int(a.duration_ticks))
 	var state: Dictionary = sim._mechanisms.items.pipsport
-	_check(dropped and state.holder == "" and state.surface_id == "dock" and int(state.x) < -90 and str(sim._players.p0.surface_id) == "loft", "A loaded memory puts it down before it climbs the ladder (%s)" % str(state))
+	_check(state.holder == "p0" and str(sim._players.p0.surface_id) == "dock" and int(sim._players.p0.x) < -90, "Loaded, the replay never climbs the ladder: it stops at the foot, still carrying it (%s)" % str(sim._players.p0))
 
 ## A ends with a put on its last tick. Once it is over, the live pip hands
-## the item back to the still memory, which keeps it: a memory's last act
+## the item back to the still replay, which keeps it: a replay's last act
 ## never repeats.
 func _last_tick() -> void:
 	var a_sim := _sim(level, "hand-up", start)
@@ -275,13 +279,13 @@ func _last_tick() -> void:
 	_go(sim, FOOT)
 	_go(sim, [-250, 0])
 	_until(sim, int(a.duration_ticks) + 2)
-	_check(sim._mechanisms.items.pipsport.holder == "" and sim._mechanisms.items.pipsport.surface_id == "dock", "The memory's own put lands in the live world")
+	_check(sim._mechanisms.items.pipsport.holder == "" and sim._mechanisms.items.pipsport.surface_id == "dock", "The replay's own put lands in the live world")
 	_go(sim, [-300, 30])
 	_tap(sim)
-	_check(sim._mechanisms.items.pipsport.holder == "p1" and sim.context_action().id == "give", "The live pip picks it up beside the still memory")
+	_check(sim._mechanisms.items.pipsport.holder == "p1" and sim.context_action().id == "give", "The live pip picks it up beside the still replay")
 	_tap(sim)
 	_still(sim, 20)
-	_check(sim._mechanisms.items.pipsport.holder == "p0", "Handed to the finished memory, it keeps it: a memory's last put never repeats")
+	_check(sim._mechanisms.items.pipsport.holder == "p0", "Handed to the finished replay, it keeps it: a replay's last put never repeats")
 
 # --- Stage 2: the item rides on, and the current -----------------------------------
 
@@ -317,9 +321,9 @@ func _current(one: Dictionary) -> void:
 	var a := _record(a_sim)
 	var b_sim := _sim(level, "drift", checkpoint, a)
 	_until(b_sim, turn)
-	_check(b_sim._mechanisms.items.pipsport.spot == "eddy", "Before the memory turns the wheel the pipsport bobs in the eddy")
+	_check(b_sim._mechanisms.items.pipsport.spot == "eddy", "Before the replay turns the wheel the pipsport bobs in the eddy")
 	_until(b_sim, turn + 1)
-	_check(b_sim._mechanisms.items.pipsport.spot == "landing" and b_sim._mechanisms.items.raft.spot == "berth", "The memory's turn of the wheel moves both in the live world")
+	_check(b_sim._mechanisms.items.pipsport.spot == "landing" and b_sim._mechanisms.items.raft.spot == "berth", "The replay's turn of the wheel moves both in the live world")
 	_check(proof._verify_raw(level, a, checkpoint, {}).valid, "The current's turn replays exactly")
 	# The sluice board, held, stops the pipsport's leg; the raft still goes.
 	var held: Dictionary = checkpoint.duplicate(true)
@@ -333,11 +337,11 @@ func _current(one: Dictionary) -> void:
 	_tap(stop)
 	_tap(stop)
 	_check(stop._mechanisms.items.pipsport.spot == "eddy", "And keeps stopping it while held")
-	# Turn 2: the live pip on the board lets go once the memory has turned the wheel north.
+	# Turn 2: the live pip on the board lets go once the replay has turned the wheel north.
 	var stop_a := _record(stop)
 	var release := _sim(level, "drift", held, stop_a)
 	_until(release, int(stop_a.duration_ticks))
-	_check(release._mechanisms.controls.current == "north" and release._mechanisms.items.pipsport.spot == "eddy", "The live pip holds the board through the memory's turns")
+	_check(release._mechanisms.controls.current == "north" and release._mechanisms.items.pipsport.spot == "eddy", "The live pip holds the board through the replay's turns")
 	_go(release, [-250, 300])
 	_check(release._mechanisms.items.pipsport.spot == "landing", "Let go of the board, the pipsport drifts on with the water still running north")
 	# A leg that needs the raft at its berth waits for it, then goes.
@@ -453,7 +457,7 @@ func _hatch() -> void:
 
 # --- Items ride platforms (core/journey/simulation.gd _move_platforms) -------------
 
-## The memory puts the pipsport down on the raft; the live pip's pull carries it over.
+## The replay puts the pipsport down on the raft; the live pip's pull carries it over.
 func _raft_ride() -> void:
 	var ride := RideWitness.definition()
 	var shore := RideWitness.initial_checkpoint(ride)
@@ -468,7 +472,7 @@ func _raft_ride() -> void:
 	_still(a_sim, 10)
 	var b_sim := _sim(ride, "home", shore, _record(a_sim))
 	_until(b_sim, put + 2)
-	_check(b_sim._mechanisms.items.pipsport.surface_id == "raft-north", "The memory puts it down on the raft in the live world")
+	_check(b_sim._mechanisms.items.pipsport.surface_id == "raft-north", "The replay puts it down on the raft in the live world")
 	_tap(b_sim)
 	state = b_sim._mechanisms.items.pipsport
 	_check(b_sim._mechanisms.controls.rope == "SOUTH" and state.surface_id == "raft-south" and int(state.z) == 660 and int(state.x) == 200 and "rode:raft" in b_sim._events, "The live pip's pull carries it over the water: %s" % [state])
@@ -477,8 +481,8 @@ func _raft_ride() -> void:
 	_tap(b_sim)
 	_check(b_sim._mechanisms.items.pipsport.holder == "p1", "And it is")
 
-## The lift witness through the real proof: the memory's put rides up, is
-## taken at the top, put back, and rides down when the memory leaves the pan.
+## The lift witness through the real proof: the replay's put rides up, is
+## taken at the top, put back, and rides down when the replay leaves the pan.
 func _lift_ride() -> void:
 	var ride := RideWitness.definition()
 	var begin := RideWitness.initial_checkpoint(ride)
@@ -511,7 +515,7 @@ func _lift_ride() -> void:
 	_go(b_sim, [700, 200])
 	_until(b_sim, 150)
 	_go(b_sim, [460, 200])
-	_check(b_sim._players.p1.surface_id == "lift-high" and b_sim.context_action().id == "take", "The memory's put rode up: the live pip may pick it up at the top")
+	_check(b_sim._players.p1.surface_id == "lift-high" and b_sim.context_action().id == "take", "The replay's put rode up: the live pip may pick it up at the top")
 	_tap(b_sim)
 	_check(b_sim._mechanisms.items.pipsport.holder == "p1", "And takes it")
 	_go(b_sim, [600, 200])
@@ -521,7 +525,7 @@ func _lift_ride() -> void:
 	_go(b_sim, RideWitness.LAMP)
 	_until(b_sim, 420)
 	state = b_sim._mechanisms.items.pipsport
-	_check(state.surface_id == "lift-low" and int(state.height) == 0 and int(state.x) == 460 and int(state.z) == 200, "The memory leaves the pan and the lift takes the pipsport down: %s" % [state])
+	_check(state.surface_id == "lift-low" and int(state.height) == 0 and int(state.x) == 460 and int(state.z) == 200, "The replay leaves the pan and the lift takes the pipsport down: %s" % [state])
 	_settle(b_sim)
 	_check(b_sim.complete, "Both pips at the lamp close the stage (%s)" % b_sim.commit_reason())
 	var b := _record(b_sim)
@@ -532,7 +536,7 @@ func _lift_ride() -> void:
 	var again := _sim(ride, "home", begin, a)
 	_replay(again, b)
 	MemoryTrace.enabled = true
-	_check(Canonical.same(_record(again), b), "Item ride turn 2 plays the same from its memory's trace as simulated")
+	_check(Canonical.same(_record(again), b), "Item ride turn 2 plays the same from its kept start world as with turn 1 played again")
 	var derived: Dictionary = ride_proof.derive_checkpoint(ride, begin, a, b, [])
 	_check(derived.valid, "The item ride checkpoint derives (%s)" % derived.get("error", ""))
 	if not derived.valid: return
@@ -543,7 +547,7 @@ func _lift_ride() -> void:
 # --- The server's witness ----------------------------------------------------------
 
 func _server_files(one: Dictionary) -> void:
-	_write_files(SERVER_FIXTURES, {"definition.json": level, "initial.json": start, "a.json": one.a, "b.json": one.b, "c.json": one.c, "checkpoint.json": one.checkpoint})
+	_write_files(SERVER_FIXTURES, {"definition.json": level, "initial.json": start, "a.json": one.a, "b.json": one.b, "c.json": one.c, "d.json": one.d, "checkpoint.json": one.checkpoint})
 
 ## Checks the server's copy in `dir` is `files`; `-- --write` writes it first.
 func _write_files(dir: String, files: Dictionary) -> void:

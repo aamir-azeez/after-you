@@ -1,24 +1,27 @@
 {
   "catch_assistance": true,
-  "checkpoint_hash": "212618d582a3126d5d876f37c7ba0b2fa810a239109beef7e4d861809d910f74",
+  "checkpoint_hash": "1cb4d54fc919cf0d27a0cae01dd06521ec083d4b453809bf63a6ff6d494a374f",
   "completed": false,
-  "definition_hash": "79dabe1c8cd60e4dd19f98f20bbc0dd15d0790481ea5609bb9f219ca0ae07101",
+  "definition_hash": "5238c802550cf3d29e461f79f4890cf3790d3e33d3d28d426da0ec62bc2a21bf",
   "duration_ticks": 229.0,
-  "final_state_hash": "14c959e1b1ab466e81060d753cc2abf8d6da919fa9f1d8aaefcb8ef56a6ad070",
+  "final_state_hash": "4287daa44df0b1eb896ab892cec59b8a5d23c807adb206e593dc4d664c87bd90",
+  "handoff_hash": "d706a66362e2dc1dd7bbfdc6661a168e4fb16673e2d8720368c0cfc5db800b91",
+  "handoff_tick": 0.0,
   "level_id": "ride-witness",
   "level_version": 1.0,
   "outcome": {
     "objective_complete": false,
     "source_ready": true
   },
-  "packed": "AQU+ZAACGQDQAgAAJmQAFAAA0s5+r+r/DoFXSYXdkmylV5Paakwft9YG7Ovibe2ocaS2fxZWo7NTP/sFEdUvpaebQQ0dUOh19xaFFSMwJN90/cJa37qMXg9rwmYNmGVhWOM=",
+  "packed": "AQU+ZAACGQDQAgAAJmQAFAAAZibe2Z0lEtN9VHYOA8Ny0lVLDujG89CSb0VAvv816xi9y0JoIqbSdg9R27QePIS/h32ZNoiKTjx2R+6ZZw1X5FkYZlz6Nyct8DWnz/AXGPg=",
   "player_slot": "p0",
-  "recording_hash": "c57b8e7ec1bab40eebeb1df53fe20e626e2213587bd62db4e20f6536a1890efa",
+  "recording_hash": "df26e8df436631be6a68644ba4cb92609c7efe28a930878ad56cf9386a84eb52",
   "role": "a",
   "schema_version": 7.0,
-  "simulation_version": 16.0,
+  "simulation_version": 20.0,
   "source_recording_hash": "",
   "stage_id": "lift",
   "stage_version": 1.0,
+  "start_hash": "d706a66362e2dc1dd7bbfdc6661a168e4fb16673e2d8720368c0cfc5db800b91",
   "tick_rate": 30.0
 }

@@ -1,6 +1,6 @@
 extends RefCounted
-## A small witness level for rules 16's memory riding a platform
-## (core/journey/simulation.gd _move_platforms and _place_memory). Never
+## A small witness level for rules 20's friend's replay riding a platform
+## (core/journey/simulation.gd _move_platforms). Never
 ## registered: tests/test_pieces.gd plays it through the journey engine and
 ## its proof with this script as its catalog, and keeps the server's copy
 ## (tests/fixtures/memory_rides/, read by backend/test/pieces-rules.test.ts).

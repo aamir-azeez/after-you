@@ -1,7 +1,7 @@
 extends RefCounted
-## The new pieces of The Falls and Fog Marsh (rules 16, open_controls.gd
+## The new pieces of The Falls and Fog Marsh (rules 20, open_controls.gd
 ## PIECES_RULES_VERSION): the tide rules with open controls and open turns
-## (15) plus these, all read from the stage or its crossings, none adding state
+## (19) plus these, all read from the stage or its crossings, none adding state
 ## of its own (the server's checkpoint keeps its four mechanisms):
 ## - "not" in a gate's `when` (core/journey/seven_mechanisms.gd), so a lit fog
 ##   lantern's pump can flood a low path.
@@ -9,10 +9,8 @@ extends RefCounted
 ##   Each stop is a crossing of one size opened by its own gate; the platform
 ##   stands at the stop whose gate holds (where it stood when none or several
 ##   do). When it moves, whoever stands on the old stop rides to the same spot
-##   on the new one, the live pip and the memory alike. A memory rides what
-##   moves in the live world, not what moved in its own: once the two part,
-##   it walks its recorded input from where it stands, and works only what it
-##   stands by (core/journey/simulation.gd _place_memory). A carried item put
+##   on the new one, the live pip and the friend's replay alike (both walk one
+##   world, runtime.gd). A carried item put
 ##   down on the stop a platform stands at rides the same way, and is picked
 ##   up again at whichever stop it reaches (carried_items.gd). Stops never
 ##   close slowly. The weight lift and the raft on a rope wheel are platforms
