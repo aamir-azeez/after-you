@@ -6,8 +6,8 @@ const BEAM_HEIGHT := 1.12
 const LIGHT_COLOR := Parts.LIGHT
 const SLEEP_COLOR := Color("536979")
 const StageCatalog = preload("res://core/lighthouse/stage_catalog.gd")
-## A held or toggled crossing's deck rolls up on its near bank while shut.
-const BridgeRoll = preload("res://presentation/kit/pieces/bridge_roll.gd")
+## A held or toggled crossing's deck hangs slack while shut.
+const TautBridge = preload("res://presentation/kit/pieces/taut_bridge.gd")
 ## The kit bell, for an earlier stage's rung bell left resting (present_history).
 const Bell = preload("res://presentation/kit/pieces/bell.gd")
 ## Two lights, two receivers or two mirrors this close (cm) overlap: their
@@ -373,46 +373,16 @@ func _build_bridge(definition: Dictionary) -> void:
 	memories.visible = false
 	_memory_markers[definition.id] = memories
 	_deck.visible = false
-	# A crossing that opens and shuts rolls its deck up on its near bank
-	# (kit/pieces/bridge_roll.gd), so it never just shows up.
-	if _rolls_deck(definition):
-		var look := _roll_look(definition)
-		var near_high := _roll_near_high(definition, across_x, low, high)
-		crossing_pieces[str(definition.id)] = BridgeRoll.build(_deck, terrain, _deck.position, (depth if across_x else width) * float(look.share), across_x, low, high, near_high, look.colors)
+	# A crossing that opens and shuts hangs slack while shut and is pulled
+	# taut as it opens (kit/pieces/taut_bridge.gd), so it never just shows up.
+	if _pulls_deck(definition):
+		crossing_pieces[str(definition.id)] = TautBridge.build(_deck, across_x, low, high)
 
-## Whether crossing `definition`'s deck rolls up while shut and unrolls as it
-## opens (kit/pieces/bridge_roll.gd). The Lighthouse's beam-lit decks do not;
-## the cooperative worlds' held and toggled crossings do.
-func _rolls_deck(_definition: Dictionary) -> bool:
+## Whether crossing `definition`'s deck hangs slack while shut and is pulled
+## taut as it opens (kit/pieces/taut_bridge.gd). The Lighthouse's beam-lit
+## decks do not; the cooperative worlds' held and toggled crossings do.
+func _pulls_deck(_definition: Dictionary) -> bool:
 	return false
-
-## The rolled deck's look: its roll's slot colours and how much of the
-## crossing's width it spans.
-func _roll_look(_definition: Dictionary) -> Dictionary:
-	var timber := str(dressing.get("bridges", "")) == "timber"
-	var plank := Props.TIMBER_LIGHT if timber else Color("bdc9c1")
-	return {"colors": {"slat": plank, "slat_dark": plank.darkened(0.12), "rope": Props.TIMBER_DARK if timber else Color("637886"), "log": Props.TIMBER_DARK}, "share": 0.94}
-
-## Whether crossing `definition` rolls up at its high end: the end more of
-## the controls that open it (its gates' pads, plates, cranks and levers)
-## stand nearer, so the roll lies on the bank it is worked from; the low end
-## (west or north) when as many stand at each end, or none.
-func _roll_near_high(definition: Dictionary, across_x: bool, low: float, high: float) -> bool:
-	var axis := 0 if across_x else 1
-	var centre := Vector2(_decks[definition.id].position.x, _decks[definition.id].position.z) * 100.0
-	var low_end := centre
-	var high_end := centre
-	low_end[axis] += low * 100.0
-	high_end[axis] += high * 100.0
-	var lean := 0
-	for spot: Dictionary in _roll_controls(definition):
-		var at := Vector2(float(spot.position_cm[0]), float(spot.position_cm[1]))
-		lean += signi(int(at.distance_to(low_end) - at.distance_to(high_end)))
-	return lean > 0
-
-## The controls that open crossing `definition` on the shown stage.
-func _roll_controls(_definition: Dictionary) -> Array:
-	return []
 
 ## Whether a floor of the shown plan is drawn within `margin` cm of `at` (cm).
 func _over_floor(at: Vector2, margin: float) -> bool:
@@ -798,7 +768,7 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 		_badges[slot].text = _role_badge_text(state, slot)
 	# Discrete orientation and beam redirect change together. Interpolating the
 	# mirror would temporarily depict a reflection the simulation never made.
-	# A rolled deck unrolls and rolls up itself (_present_crossings).
+	# A pulled deck pulls taut and sags itself (_present_crossings).
 	_present_crossings(state.bridges, immediate)
 	for id: String in _decks:
 		var open := bool(state.bridges.get(id, false))
@@ -984,7 +954,7 @@ func _fold_key() -> String:
 ## Beams resize their parts by child index (_present_beams).
 func _static_keep() -> Array:
 	var keep := super._static_keep()
-	# A rolled deck grows and its roll runs across as the crossing opens.
+	# A pulled deck's planks and ropes move as the crossing opens and shuts.
 	for piece: RefCounted in crossing_pieces.values(): keep.append_array(piece.moving_parts())
 	keep.append_array(_beam_roots)
 	return keep

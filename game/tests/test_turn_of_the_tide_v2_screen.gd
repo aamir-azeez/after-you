@@ -17,6 +17,7 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const V2 = preload("res://tests/turn_of_the_tide_v2_witness.gd")
 const SpiritLook = preload("res://presentation/spirit_look.gd")
 const Drowning = preload("res://presentation/kit/drowning.gd")
+const ClosingWarning = preload("res://presentation/kit/closing_warning.gd")
 const TurnEndings = preload("res://presentation/turn_endings.gd")
 var checks := 0
 var failures := 0
@@ -67,18 +68,25 @@ func _run() -> void:
 	screen.world.set_process(false)
 	screen._begin()
 	var warned := false
+	# The most the sand bar's deck fades while it closes (kit/closing_warning.gd).
+	var faded := 0.0
+	var meshes: Array = []
 	for frame: Dictionary in frames:
 		if screen.mode != "play": break
 		screen.advance_input(frame)
 		if not warned and not screen.sim.snapshot().route_progress.closing.is_empty():
 			warned = true
+			var deck: Node3D = screen.world._decks.get("sand-1")
+			if deck != null: meshes = deck.find_children("*", "GeometryInstance3D", true, false)
 			var closing: Dictionary = screen.sim.snapshot().route_progress.closing
-			var rims: Array = screen.world.closing_warning.moving_nodes().filter(func(rim: Node3D) -> bool: return rim.visible)
-			_check(closing.has("sand-1") and rims.size() == closing.size() and rims.any(func(rim: Node3D) -> bool: return rim.name == "ClosingWarning_sand-1"), "A closing crossing's rim flashes (kit/closing_warning.gd)")
+			_check(closing.has("sand-1") and meshes.size() > 3 and meshes.all(func(mesh: GeometryInstance3D) -> bool: return mesh.transparency == 0.0), "A closing crossing's warning starts from solid (kit/closing_warning.gd)")
 			# The rising harbour is slowed to reach the sand bar's deck as it shuts.
 			var water: Node3D = screen.world.waters.bodies.harbour
 			_check(water.has_meta("rate") and float(water.get_meta("rate")) < float(screen.world.waters.water.rate), "The water rising over the closing bar slows to meet its deck as it shuts")
+		if screen.sim.snapshot().route_progress.closing.has("sand-1"):
+			for mesh: GeometryInstance3D in meshes: faded = maxf(faded, mesh.transparency)
 	_check(warned, "The sand bar closes while the spirit stands on it")
+	_check(faded > ClosingWarning.FADED * 0.6, "The whole closing sand bar fades out and in while it closes (%.2f)" % faded)
 	_check(screen.mode == "drowning" and not screen.running, "A drowning ends the turn on the drown beat, not straight on a card")
 	var harbour: Node3D = screen.world.waters.bodies.harbour
 	_check(screen.world.actor_targets["p1"].y < float(harbour.get_meta("shown")) - 0.4 and is_instance_valid(screen.world.drowning.ring), "The drowned spirit heads under the water and a ring spreads")

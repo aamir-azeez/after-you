@@ -235,6 +235,11 @@ func present(state: Dictionary, immediate: bool, reduced: bool) -> void:
 	needs.present(state)
 	present_missing(state, reduced)
 
+## How hard the missing red glows while lit, dim and steady (Reduce motion).
+const MISSING_LIT := 1.6
+const MISSING_DIM := 0.5
+const MISSING_STEADY := 1.1
+
 ## While a pip stands on the plate and the goal is not lit, what is still
 ## missing blinks Parts.MISSING with the closing warning's beat on the
 ## snapshot's tick (kit/closing_warning.gd; steady under Reduce motion): a
@@ -248,7 +253,7 @@ func present_missing(state: Dictionary, reduced: bool) -> void:
 		for player: Variant in players.values(): anyone = anyone or _over(pad, player)
 	_missing = anyone and not _lit
 	var beat := int(state.get("tick", 0)) % (ClosingWarning.BLINK * 2) < ClosingWarning.BLINK
-	var energy := ClosingWarning.STEADY if reduced else (ClosingWarning.LIT if beat else ClosingWarning.DIM)
+	var energy := MISSING_STEADY if reduced else (MISSING_LIT if beat else MISSING_DIM)
 	for pad: RefCounted in pads.values():
 		if _missing and not pad.held(): Parts.glow(pad.rim, Parts.MISSING, energy)
 		else: Parts.glow(pad.rim, Parts.LIGHT, 1.0 if pad.held() else 0.0)

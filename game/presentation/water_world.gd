@@ -130,9 +130,9 @@ func _standing_routes(stage: Dictionary) -> Array:
 	return standing
 
 ## A crossing standing in the water is a row of stones that sink and rise:
-## never rolled up.
-func _rolls_deck(definition: Dictionary) -> bool:
-	return str(definition.id) not in _standing_routes(current_level) and super._rolls_deck(definition)
+## never pulled taut.
+func _pulls_deck(definition: Dictionary) -> bool:
+	return str(definition.id) not in _standing_routes(current_level) and super._pulls_deck(definition)
 
 # --- Boats: every one by the float rule ---
 

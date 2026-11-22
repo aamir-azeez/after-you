@@ -219,8 +219,8 @@ func _route(id: String) -> Dictionary:
 # --- Crossings: decks at their own height ---
 
 ## The tide's decks show the water: dry and laid, or flooded with their ghost
-## (_present_water). None rolls up.
-func _rolls_deck(_definition: Dictionary) -> bool:
+## (_present_water). None hangs slack.
+func _pulls_deck(_definition: Dictionary) -> bool:
 	return false
 
 func _build_bridge(definition: Dictionary) -> void:
@@ -328,8 +328,10 @@ func _lay_deck(route: Dictionary, deck: Node3D, full_width: float, full_depth: f
 	var shift := Vector3((low + high) * 0.5, 0, 0) if across_x else Vector3(0, 0, (low + high) * 0.5)
 	for index in range(before, deck.get_child_count()): (deck.get_child(index) as Node3D).position += shift
 
-## A shut crossing stays in view as a faint outline at its own height (sunk
-## under the water when the tide covers it), so the other ways can be read.
+## A shut crossing the tide covers stays in view as a faint outline under the
+## water, so the other ways can be read. One standing over the water shows
+## nothing in its gap (_under_water): an outline in the air reads as a glass
+## bridge to walk on; a jetty's piles still show where it goes.
 func _ghost(route: Dictionary) -> void:
 	var id := str(route.id)
 	var deck: Node3D = _decks.get(id)
@@ -357,6 +359,16 @@ func _ghost(route: Dictionary) -> void:
 	terrain.add_child(ghost)
 	ghost.visible = not deck.visible
 	_ghosts[id] = ghost
+
+## Whether crossing `id`'s outline lies under its water at the level
+## `controls` set (its body's rest level while no control moves it).
+func _under_water(id: String, controls: Dictionary) -> bool:
+	var body := waters.body_of(_route_rect(id))
+	if body.is_empty(): return false
+	var data: Dictionary = waters.body_data(body)
+	var levels: Dictionary = data.get("levels", {})
+	var level := float(levels.get(str(controls.get(str(data.get("selector", "")), data.get("rest", ""))), waters.rest_level(body)))
+	return float((_ghosts[id] as Node3D).position.y) < level
 
 ## A mooring post with a pennant, and a gold edge along both sides of the deck,
 ## show a crossing kept for good. They belong to the deck's remembered-footsteps
@@ -999,10 +1011,10 @@ func _present_water(state: Dictionary, immediate: bool) -> void:
 		var at_value: bool = basin == _post_marks[id].value
 		for band: MeshInstance3D in _post_marks[id].bands: _glow(band, TEAL, 0.9 if at_value else 0.0)
 	for id: String in _ghosts:
-		if is_instance_valid(_ghosts[id]) and _decks.has(id): _ghosts[id].visible = not _decks[id].visible
+		if is_instance_valid(_ghosts[id]) and _decks.has(id): _ghosts[id].visible = not _decks[id].visible and _under_water(id, controls)
 	waters.show_floods(_decks)
 	# Water rising past a closing crossing's deck reaches it as the crossing
-	# shuts, then goes on at its usual rate (its rim flashes: kit/closing_warning.gd).
+	# shuts, then goes on at its usual rate (it blinks: kit/closing_warning.gd).
 	waters.pace_closing(state.get("route_progress", {}).get("closing", {}))
 	_occupy_water(state, immediate)
 	if is_instance_valid(_bell) and bool(state.get("complete", false)): _glow(_bell, LIGHT_COLOR, 1.6)
