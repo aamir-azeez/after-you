@@ -644,7 +644,8 @@ func _memories() -> void:
 	var started := Time.get_ticks_msec()
 	var checked := Simulation.verify_recording(level, short[-1], start, short[-2], short.slice(0, short.size() - 2))
 	print("OPEN TURNS: turn 10's check, playing the nine turns before it once each, took %d ms (%d ticks a turn)" % [Time.get_ticks_msec() - started, length])
-	_check(checked.valid and checked.get("ready", false) and MemoryTrace.simulated == 10, "Turn 10's pass checks, each turn simulated once (%s, %d)" % [str(checked.get("error", "")), MemoryTrace.simulated])
+	# Turn 10 is the stage's cap: it checks, but can be no pass (only finishing the stage keeps it).
+	_check(checked.valid and not checked.get("ready", false) and MemoryTrace.simulated == 10, "Turn 10 checks, each turn simulated once, and on the cap is no pass (%s, %d)" % [str(checked.get("error", "")), MemoryTrace.simulated])
 	MemoryTrace.clear()
 	MemoryTrace.enabled = false
 	var again := _passes(level, start, a, 6, length)
@@ -696,7 +697,7 @@ func _long_turns() -> void:
 	started = Time.get_ticks_msec()
 	var ten_checked := Simulation.verify_recording(level, long[-1], start, memory, before)
 	print("OPEN TURNS: 100 s turns (%d ticks), turn 10 starts in %d ms and checks in %d ms with its start world kept" % [long_ticks, reset_ms, Time.get_ticks_msec() - started])
-	_check(ten_started and ten_checked.valid and ten_checked.get("ready", false), "Turn 10 of 100 s turns starts and checks (%s)" % ten.error)
+	_check(ten_started and ten_checked.valid and not ten_checked.get("ready", false), "Turn 10 of 100 s turns starts and checks, the cap's turn no pass (%s)" % ten.error)
 	# After a restart: nothing in memory, the kept turns read back from their files.
 	MemoryTrace.clear()
 	started = Time.get_ticks_msec()
@@ -706,7 +707,7 @@ func _long_turns() -> void:
 	started = Time.get_ticks_msec()
 	var again_checked := Simulation.verify_recording(level, long[-1], start, memory, before)
 	print("OPEN TURNS: after a restart turn 10 starts in %d ms and checks in %d ms from the kept files" % [reset_ms, Time.get_ticks_msec() - started])
-	_check(again_started and again_checked.valid and again_checked.get("ready", false) and MemoryTrace.simulated == 0, "After a restart turn 10 starts and checks from its kept files, simulating nothing")
+	_check(again_started and again_checked.valid and not again_checked.get("ready", false) and MemoryTrace.simulated == 0, "After a restart turn 10 starts and checks from its kept files, simulating nothing")
 	var frames: Array = Simulation.expand_recording_inputs(long[-1])
 	for frame: Dictionary in frames: again._tick(frame)
 	again.pass_turn()

@@ -56,7 +56,7 @@ static func source() -> Dictionary:
 		"items": [{"id": "pipsport", "at": "channel"}],
 		"item_spots": [
 			_spot("channel", "", [6300, 56], 0), _spot("bend", "bend", [6750, 70], 0), _spot("landing", "landing", [7910, -574], 0), _spot("reeds", "reeds", [8740, 266], 0),
-			_spot("pan", "landing-3", [8560, -126], 0), _spot("top-pan", "stilts", [9990, -126], 192), _spot("desk", "office", [11110, 574], 192)],
+			_spot("pan", "landing-3", [8560, -126], 0), _spot("top-pan", "stilts", [9990, -126], 192), _desk()],
 		"islands": [
 			_island("path", [0, -630, 450, 210], 0), _island("middle", [1950, -280, 2400, 140], 0), _island("boat-steps", [1950, 350, 2400, 630], 0), _island("jetty", [3900, -630, 4350, 210], 0),
 			_island("dock", [5350, -630, 5950, 630], 0), _island("north", [6450, -630, 7050, -280], 0), _island("bend", [6525, -70, 6975, 140], 0), _island("landing", [7550, -630, 8000, -210], 0),
@@ -134,6 +134,12 @@ static func _goal(id: String, at: Array, surface: String, height: int, when: Dic
 
 static func _thing(id: String, at: Array, surface: String, height: int) -> Dictionary:
 	return {"id": id, "at": at, "surface": surface, "owner": "p0", "height": height}
+
+## The stamp desk the post office keeps in its middle: solid, so a pip walks
+## round it and sets the pipsport down from beside it (its look is the dressing's
+## stamp desk prop at this spot, the ring round it the "desk" item spot style).
+static func _desk() -> Dictionary:
+	return {"id": "desk", "surface_id": "office", "position_cm": [11160, 540], "height_cm": 192, "radius_cm": 68, "solid": {"radius_cm": 36, "reach_cm": 20}}
 
 static func _spot(id: String, surface: String, at: Array, height: int) -> Dictionary:
 	return {"id": id, "surface_id": surface, "position_cm": at, "height_cm": height}

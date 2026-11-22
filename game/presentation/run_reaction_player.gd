@@ -16,7 +16,7 @@ extends RefCounted
 ##
 ## The screen sets world, hud, soundscape and settings, then per turn:
 ##   begin(live_slot)                 a live turn on tick zero (or "" for none)
-##   play(recording, track, caption)  a recorded turn stepped alongside it
+##   play(recording, track, caption, from)  a recorded turn stepped alongside it
 ##   step(tick)                       after each shown tick
 ##   react(tick, face)                the player's own reaction now
 ##   show_pill(pill, tick)            the React pill's cooldown on that tick
@@ -37,7 +37,7 @@ var live_slot := ""
 ## A world that keys its pips by role (Home's island: "a", "b") maps each slot
 ## to its key in world.actors; a chapter world keys them by slot.
 var actor_keys: Dictionary = {}
-## Recorded turns being played: {slot, track, cursor, caption}.
+## Recorded turns being played: {slot, track, cursor, caption, from}.
 var _runs: Array = []
 
 ## A turn starts on tick zero: what was recorded or played before is dropped.
@@ -48,16 +48,23 @@ func begin(slot: String = "") -> void:
 	_runs.clear()
 
 ## A recorded turn (its `player_slot` names its spirit) plays `track` back as the
-## turn is stepped. `caption` goes over each bubble (a friend's turn).
-func play(recording: Dictionary, track: Array, caption: String = "") -> void:
+## turn is stepped. `caption` goes over each bubble (a friend's turn). `from`:
+## the tick of the recorded turn the stepped one starts at. A carry-over turn
+## takes over the friend's turn at its hand-off tick (core/physical/open_turns.gd),
+## so the friend's reactions go on from there, each on its own tick, and the
+## ones up to it were shown before the hand-off; 0 for a turn stepped from its start.
+func play(recording: Dictionary, track: Array, caption: String = "", from: int = 0) -> void:
 	var slot := str(recording.get("player_slot", ""))
 	if track.is_empty() or not Look.SLOT_COLOR_NAMES.has(slot): return
-	_runs.append({"slot": slot, "track": track, "cursor": Track.Cursor.new(track), "caption": caption})
+	var cursor := Track.Cursor.new(track)
+	if from > 0: cursor.due(from)
+	_runs.append({"slot": slot, "track": track, "cursor": cursor, "caption": caption, "from": maxi(0, from)})
 
-## After each tick that is shown: every recorded reaction that falls on it.
+## After each tick that is shown: every recorded reaction that falls on it,
+## each on its own turn's clock.
 func step(tick: int) -> void:
 	for run: Dictionary in _runs:
-		for index: int in run.cursor.due(tick): show_reaction(run.slot, run.track, index, run.caption)
+		for index: int in run.cursor.due(tick + int(run.from)): show_reaction(run.slot, run.track, index, run.caption)
 
 ## The player's own reaction on `tick`: recorded in the live track and shown.
 ## False when the rules refuse it (the cooldown, the cap, no live spirit).

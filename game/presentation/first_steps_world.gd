@@ -141,7 +141,7 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	var rung := bool(state.mechanisms.loft_open) and not bool(state.get("ring_held", false))
 	var planted: bool = bool(state.complete) and state.seed.status == "planted"
 	for piece: RefCounted in goal_pieces.values(): piece.set_lit(planted if piece.root == garden else rung, immediate or reduced_motion)
-	_present_goal_pips(state.players, immediate or reduced_motion)
+	_present_goal_pips(state, immediate or reduced_motion)
 	_present_seed(state.seed, immediate)
 	_present_garden(bool(state.mechanisms.garden_open), planted, immediate)
 	_present_stage_marks(state)

@@ -73,9 +73,9 @@ const DATA := {
 		{"kind": "light_pool", "floor": "jetty-3", "edge": "back", "along": 0.3, "out": -55, "radius": 52},
 		{"slot": "lamp", "floor": "office", "edge": "left", "along": 0.25, "size": 1.7},
 		{"kind": "light_pool", "floor": "office", "edge": "left", "along": 0.25, "out": -55, "radius": 52},
-		# The post office's stamp desk on a little landing by its door side.
-		{"slot": "bank", "floor": "office", "edge": "left", "depth": 70, "height": 4, "gap": 12, "span": [0.45, 1.0]},
-		{"kind": "stamp_desk", "floor": "office", "edge": "left", "along": 0.82, "rot": 90, "anchor": "stamp_desk"},
+		# The post office's stamp desk, on the floor where the desk item spot
+		# counts a put down (the catalog's _desk).
+		{"kind": "stamp_desk", "at": [11160, 540], "surface": "office", "y": 0, "rot": 90, "anchor": "stamp_desk"},
 		{"slot": "clutter", "floor": "dock", "edge": "left", "spacing": 150},
 		# Lived in: a little boat tied up off the dock, someone's fishing rod
 		# out over the water off the jetty, coils of rope left on the landings.

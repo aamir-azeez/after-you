@@ -1015,7 +1015,7 @@ static func _verify_entry_proof(entry: Dictionary) -> bool:
 
 static func summary(entry: Dictionary, cached: bool = true) -> Dictionary:
 	var pair: Dictionary = entry.pair
-	return {"id": pair.pair_id, "title": _stage_title(entry.room.chapter_key, int(pair.stage_index)), "stage_index": pair.stage_index, "a_hash": pair.a.recording_hash, "b_hash": pair.b.recording_hash, "checkpoint_hash": pair.checkpoint.checkpoint_hash, "cached": cached}
+	return {"id": pair.pair_id, "title": _stage_title(entry.room.chapter_key, int(pair.stage_index)), "stage_index": pair.stage_index, "a_hash": pair.a.recording_hash, "b_hash": pair.b.recording_hash, "turns": OpenTurns.pair_turns(pair).map(func(turn: Dictionary) -> Array: return [str(turn.get("recording_hash", "")), str(turn.get("player_slot", ""))]), "checkpoint_hash": pair.checkpoint.checkpoint_hash, "cached": cached}
 
 static func _stage_title(key: String, index: int) -> String:
 	var definition := Registry.definition(key)
@@ -1031,9 +1031,4 @@ static func photo_turns(entry: Dictionary, owner: String) -> Array:
 static func _verified_photo_turns(entry: Dictionary, owner: String) -> Array:
 	# Internal view path: its frozen sequence was native-verified on a worker.
 	if entry.room.family != "chapter": return []
-	var result: Array = []
-	for role: String in ["a", "b"]:
-		var record: Dictionary = entry.pair[role]
-		var player: String = entry.room.host_id if record.player_slot == "p0" else entry.room.guest_id
-		result.append({"room_id": entry.room.room_id, "turn_id": "t" + entry.pair.pair_id.substr(1) + "-" + role, "recording_hash": record.recording_hash, "owner_player_id": player, "own": player == owner, "role": role, "player_slot": record.player_slot})
-	return result
+	return OpenTurnStore.photo_turns(entry.room, str(entry.pair.pair_id), entry.pair, owner)

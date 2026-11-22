@@ -861,7 +861,7 @@ func snapshot() -> Dictionary:
 		"objective_done":_objective_done(),"route_progress":{"kept_bridges":_mechanisms.latched_bridges.duplicate()},"source_hold_ticks":_hold_ticks,"offer_tick":_offer_tick,
 		"outcome":_outcome(),"events":_events.duplicate(),"context_action":context_action(),"objective_display":_objective_display(),"optics":{"segments":[],"signals":{}},"beacon":_objective}
 	# Open turns only, so a published chapter's snapshot stays byte for byte as it was.
-	if _open_turns(): state.merge({"drowned":_drowned.duplicate(),"turn_number":turn_number,"can_pass":can_pass(),"can_end_early":can_end_early(),"passed":passed,"handoff_tick":handoff_tick,"replay_ticks":replay_ticks()})
+	if _open_turns(): state.merge({"drowned":_drowned.duplicate(),"turn_number":turn_number,"can_pass":can_pass(),"can_end_early":can_end_early(),"passed":passed,"must_finish":not pass_allowed,"handoff_tick":handoff_tick,"replay_ticks":replay_ticks()})
 	return state
 
 func _objective_display() -> Dictionary:
