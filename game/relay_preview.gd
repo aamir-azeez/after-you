@@ -2353,7 +2353,7 @@ func _begin_drown_beat() -> void:
 	action_pressed = false
 	if not _persist_draft("review"): return
 	mode = "drowning"
-	_ending = TurnEndings.of(sim.snapshot(), online_session == null)
+	_ending = TurnEndings.of(sim.snapshot(), online_session == null, world)
 	_drown_frames = DROWN_BEAT_FRAMES + int(_ending.get("beat", 0))
 	_update_hud(sim.snapshot())
 
@@ -2796,7 +2796,7 @@ func _show_review() -> void:
 	var verified: Dictionary = _verify_review()
 	# A hard run ends on a turn it cannot keep (presentation/hard_run_flow.gd).
 	if hard_flow.verdict(verified, review): return
-	var ending := TurnEndings.of(verified.get("snapshot", {}), online_session == null)
+	var ending := TurnEndings.of(verified.get("snapshot", {}), online_session == null, world)
 	if not ending.is_empty():
 		_show_ending_card(ending)
 		return

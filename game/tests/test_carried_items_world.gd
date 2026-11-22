@@ -8,7 +8,7 @@ extends SceneTree
 ##   spirit's carry point as the seed and the lens are; put down, it rests at its
 ##   place; a float rests on the water by the float rule (kit/floats.gd): its
 ##   keel its draft under the surface, its deck clear of it;
-## - the both-hands ladder wears rungs, so a carrier's stop has its cause;
+## - the both-hands ladder wears rungs, so a carrier's drop there has its cause;
 ## - the current's legs are bright while their wheel shows their value;
 ## - set down on a pad (a pan, a board, a floor button), the item rests on top
 ##   of it, sunk with it while held, never hidden inside it; every pad style

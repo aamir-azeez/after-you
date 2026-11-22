@@ -8,7 +8,7 @@ import { CHAPTERS } from "../src/v2/chapters";
 import { MAX_ROW_BYTES, MAX_REPLAY_ARCHIVE_BYTES } from "../src/v2/row-bound";
 import { CARRY_RECORD_KEYS, DEFAULT_TURN_CAP, MAX_OPEN_TURN_TICKS, OPEN_CHECKPOINT_KEYS, OPEN_CHECKPOINT_SCHEMA, OPEN_TURN_ID_PATTERN, PACKED_RECORDING_VALUES, carryFits, fingerprint, handoffTick, isFingerprint, mustFinish, openAccepted, openTurnLimits, packedRecordingBytes, recordingBytes, timelineShares, turnId, turnNumber, turnSlot } from "../src/v2/open-turns";
 import { MAX_PACKED_CHARS, checkTicks, packRecording, unpackRecording } from "../src/v2/recording-codec";
-import { conservatoryV2, firstStepsV2, fogMarsh, longWayHomeV2, longWayHomeV3, relayIslesV3, theFalls, turnOfTheTideV2, turnOfTheTideV3, wishingWellV2 } from "../src/v2/protocol-journey";
+import { conservatoryV2, firstStepsV2, fogMarsh, longWayHomeV2, longWayHomeV3, relayIslesV3, sleepingLighthouseV3, theFalls, turnOfTheTideV2, turnOfTheTideV3, wishingWellV2 } from "../src/v2/protocol-journey";
 import { highAndLowV2, houseForTwoV2, rollingHomeV2 } from "../src/v2/protocol-cooperative";
 import { comfortRules, openControls, openTurns, piecesRules, sharedBall, tideRules, type ChapterCheckpoint, type ChapterRecording } from "../src/v2/chapter-types";
 import type { MutationV2, RoomSnapshotV2 } from "../src/v2/room";
@@ -144,7 +144,7 @@ describe("open turns: rules and bounds", () => {
   it("gives only the open controls chapters open turns, with a cap a stage and bounds that never grow with the stages", () => {
     for (const row of CHAPTERS) {
       const open = row.adapter.open_turns;
-      expect(open !== undefined, row.adapter.key.level_id + "@" + row.adapter.key.level_version).toBe([longWayHomeV3, turnOfTheTideV3, conservatoryV2, highAndLowV2, wishingWellV2, firstStepsV2, rollingHomeV2, houseForTwoV2, theFalls, fogMarsh, relayIslesV3].includes(row.adapter));
+      expect(open !== undefined, row.adapter.key.level_id + "@" + row.adapter.key.level_version).toBe([longWayHomeV3, turnOfTheTideV3, conservatoryV2, highAndLowV2, wishingWellV2, firstStepsV2, rollingHomeV2, houseForTwoV2, theFalls, fogMarsh, relayIslesV3, sleepingLighthouseV3].includes(row.adapter));
       if (!open) continue;
       expect(open.caps).toEqual(row.adapter.stages.map(stage => (stage as { turn_cap?: number }).turn_cap ?? DEFAULT_TURN_CAP));
       expect(row.adapter.max_branches).toBe(open.branches);
@@ -596,9 +596,9 @@ describe("open turns: a hard room", () => {
     return { room: joined, first: host, second: guest };
   }
   /** A slip's reset; under open turns a slip over a pass brings the turns under its memory from the phone's copy (`chain`). */
-  const reset = (room: RoomSnapshotV2, who: Account, slip: Rec, chain?: Rec[]) => call(`/v2/rooms/${room.room_id}/hard-reset`, "POST", who,
-    { base_revision: room.revision, branch: room.branch, idempotency_key: key(), reason: "failed_turn", stage_index: room.stage_index, role: room.active_role, slip, ...(chain ? { chain } : {}) });
-  const slipped = (room: RoomSnapshotV2, who: Account, slip: Rec, chain?: Rec[]) => json<Reset>(reset(room, who, slip, chain));
+  const reset = (room: RoomSnapshotV2, who: Account, slip: Rec, chain?: Rec[], reason = "failed_turn") => call(`/v2/rooms/${room.room_id}/hard-reset`, "POST", who,
+    { base_revision: room.revision, branch: room.branch, idempotency_key: key(), reason, stage_index: room.stage_index, role: room.active_role, slip, ...(chain ? { chain } : {}) });
+  const slipped = (room: RoomSnapshotV2, who: Account, slip: Rec, chain?: Rec[], reason?: string) => json<Reset>(reset(room, who, slip, chain, reason));
   const slips = (room: RoomSnapshotV2, who: Account, seen = 0) => json<Slips>(call(`/v2/rooms/${room.room_id}/hard/${seen}`, "GET", who));
   /** Stage one's first three turns from `room`: two passes over turn 1, so turns 1 and 2 are fingerprints and turn 3 is full. */
   async function threeTurns(room: RoomSnapshotV2, first: Account, second: Account, turns: Rec[]): Promise<RoomSnapshotV2> {
@@ -639,6 +639,18 @@ describe("open turns: a hard room", () => {
     current = (await send(current, slackFirst, next.turns[0])).room;
     current = (await send(current, slackFirst === first ? second : first, next.turns[1], next.checkpoint)).room;
     expect(current.active_role).toBe("complete");
+  });
+  it("takes a turn ended by the friend's replay falling or drowning as that turn's end: a drowned slip, kept whole, and the run starts again", async () => {
+    // The phone decides the fall (a replay walking where the live pip took its floor away); the room never runs
+    // physics, so the turn reaches it as a slip with the drowning reason, one request like any other slip.
+    const { room: joined, first, second } = await hardRoom();
+    const { turns } = await chain(0, initial(), 2);
+    const three = await threeTurns(joined, first, second, turns);
+    const slip = await later(setB, "p0", turns.slice(0, 3), false, initial().checkpoint_hash, 9);
+    const done = await slipped(three, second, slip, [turns[0], turns[1]], "drowned");
+    expect(done.room).toMatchObject({ branch: 1, stage_index: 0, active_role: "a", hard: { failures: 1, over: false, last: { by: second.player_id, role: "b", reason: "drowned" } } });
+    expect(done.room.open_turns).toMatchObject({ turn: 1, turn_hashes: [], newest: null });
+    expect((await slips(joined, first)).list[0]).toMatchObject({ reason: "drowned", slip: { recording: slip, prior: turns[2], chain: [turns[0], turns[1]] } });
   });
   it("drops a slip whose turns under its memory are not the room's, and still starts the run again", async () => {
     const { room: joined, first, second } = await hardRoom();

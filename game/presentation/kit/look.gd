@@ -44,7 +44,7 @@ const PRESETS := {
 	# how thick it lies and how much it thickens at the edges. Its sky is the
 	# fog's own pale blue-grey, so no dark shows past the marsh. Lamp light on
 	# the ground draws under the cover ("glow_order", kit/soft_mist.gd).
-	"fog": {"cover": {"color": Color("d4e4e0"), "deep": Color("86aaa8"), "density": 0.8, "edge": 0.6}, "glow_order": -2, "sky": Color("c3d4d2"), "ambient": Color("dfe7e3"), "ambient_energy": 0.46, "sun": Color("f2eedc"), "sun_energy": 0.54, "bounce": Color("b0c6c2"), "bounce_energy": 0.30, "stars": Color("eef4ec"), "accent": "dust", "accent_color": Color("eef4ec")},
+	"fog": {"cover": {"color": Color("f2f6f4"), "deep": Color("c4d4d1"), "density": 0.95, "edge": 0.6}, "glow_order": -2, "sky": Color("c3d4d2"), "ambient": Color("dfe7e3"), "ambient_energy": 0.46, "sun": Color("f2eedc"), "sun_energy": 0.54, "bounce": Color("b0c6c2"), "bounce_energy": 0.30, "stars": Color("eef4ec"), "accent": "dust", "accent_color": Color("eef4ec")},
 }
 
 static func preset(name: String) -> Dictionary:

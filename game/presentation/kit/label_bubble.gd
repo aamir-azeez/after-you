@@ -23,6 +23,13 @@ extends Node3D
 ##   hint.build_sentence(terrain, lever_top, "Not quite yet…")
 ##   hint.set_sentence("Hmm, this crossing needs the sluice running…")
 ##
+## Icon mode shows one small UI icon (a white svg from assets/ui) inked like
+## letters instead, in the same body and tail: the both-hands sign
+## (kit/hands_signs.gd).
+##
+##   var sign := LabelBubble.new()
+##   sign.build_icon(terrain, ladder_foot, HANDS_ICON)
+##
 ## The tail's tip never leaves its anchor. A lift, a lean or the bob moves the
 ## body, pills and letters; the tail stretches (and leans, when its tip lies
 ## beyond the body's straight edge) so its tip stays on the anchor on the fixed
@@ -270,6 +277,18 @@ func set_sentence(text: String) -> void:
 	var rise := _up * ((shape.size.y - before) * 0.5)
 	pill.position += rise
 	label.position += rise
+	sync()
+
+## Icon mode: `icon` (a white UI svg) inked INK on a square pill the height
+## of a line, in the same body and tail. `values` holds one "" and labels one
+## empty Label3D whose backing pill draws the icon; never highlight it.
+func build_icon(parent: Node3D, at: Vector3, icon: Texture2D, shift: float = 0.0) -> void:
+	_build(parent, at, [""], [""], shift)
+	var pill: MeshInstance3D = labels[0].get_meta("backing")
+	(pill.mesh as QuadMesh).size = Vector2(PILL_HEIGHT, PILL_HEIGHT)
+	var look := pill.material_override as StandardMaterial3D
+	look.albedo_texture = icon
+	look.albedo_color = INK
 	sync()
 
 ## A sentence wider than SENTENCE_WIDTH on one line, broken at the space that

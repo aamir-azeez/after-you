@@ -794,6 +794,8 @@ const HARD_YOU_WENT_UNDER := "You went under on stage %d."
 const HARD_YOU_STARTED_OVER := "You started stage %d over."
 const HARD_FRIEND_SLIPPED := "%s slipped on stage %d."
 const HARD_FRIEND_WENT_UNDER := "%s went under on stage %d."
+const HARD_YOU_DROPPED := "You dropped it on stage %d."
+const HARD_FRIEND_DROPPED := "%s dropped it on stage %d."
 const HARD_FRIEND_STARTED_OVER := "%s started stage %d over."
 const HARD_FRIEND_FALLBACK := "Your friend"
 const HARD_FAILED_SOLO := "No retries in Hard, so it's back to stage 1."
@@ -1720,6 +1722,18 @@ const JOURNEY_DROWNED_MEMORY := "Oh no, your memory drowned! Try again?"
 const JOURNEY_FELL_YOU := "Your pip fell! Try again?"
 const JOURNEY_FELL_FRIEND := "Your friend fell! Try again?"
 const JOURNEY_FELL_MEMORY := "Your memory fell! Try again?"
+# A turn that ends with a pip stepping onto a ladder, a rope ladder, the wheel
+# or a rope bridge while it carries something: it drops it (the item's name
+# and the crossing's word below fill the line; owner-approved 2026-11-22), the
+# same three ways.
+const JOURNEY_DROPPED_YOU := "You dropped the %s. It's hard to hold onto it on a %s."
+const JOURNEY_DROPPED_FRIEND := "Your friend dropped the %s. It's hard to hold onto it on a %s."
+const JOURNEY_DROPPED_MEMORY := "Your memory dropped the %s. It's hard to hold onto it on a %s."
+# Carried items by id, as the dropped line names them (an id not listed shows
+# as itself, dashes as spaces).
+const CARRIED_ITEM_NAMES := {"pipsport": "pipsport", "seed": "seed", "handle": "handle"}
+# Crossings that need both hands, by kind, as the dropped line names them.
+const HANDS_CROSSING_NAMES := {"ladder": "ladder", "rope_ladder": "rope ladder", "wheel": "wheel", "rope_bridge": "rope bridge"}
 const JOURNEY_LEFT_HIGH := "A pip is stuck up on the stones."
 # Finish is held while a spirit stands on a crossing that is closing.
 const JOURNEY_ON_CLOSING := "Step off the crossing before it shuts."
@@ -3383,6 +3397,9 @@ const TEXT := {
 	"journey.fell_you": JOURNEY_FELL_YOU,
 	"journey.fell_friend": JOURNEY_FELL_FRIEND,
 	"journey.fell_friend" + SOLO: JOURNEY_FELL_MEMORY,
+	"journey.dropped_you": JOURNEY_DROPPED_YOU,
+	"journey.dropped_friend": JOURNEY_DROPPED_FRIEND,
+	"journey.dropped_friend" + SOLO: JOURNEY_DROPPED_MEMORY,
 	"journey.left_high": JOURNEY_LEFT_HIGH,
 	"journey.on_closing": JOURNEY_ON_CLOSING,
 	"cooperative.high_summary": COOPERATIVE_HIGH_SUMMARY,
@@ -4242,6 +4259,14 @@ static func text(key: String) -> String:
 ## their own memory, so a line with a SOLO wording reads that instead. A value
 ## that is already the player's line (a chapter's stage copy) reads its SOLO
 ## wording too.
+## The line a turn ended by a dropped item says: `yours` the player's own pip,
+## else the friend's (the memory's in solo play); `item` the item's id and
+## `crossing` a HANDS_CROSSING_NAMES kind.
+static func dropped_line(yours: bool, solo: bool, item: String, crossing: String) -> String:
+	var key := "journey.dropped_you" if yours else "journey.dropped_friend" + (SOLO if solo else "")
+	var name: String = CARRIED_ITEM_NAMES.get(item, item.replace("-", " "))
+	return text(key) % [name, str(HANDS_CROSSING_NAMES.get(crossing, HANDS_CROSSING_NAMES.ladder))]
+
 static func from_canonical(value: String, solo: bool = false) -> String:
 	var key: String = CANONICAL_KEYS.get(value, "")
 	if key.is_empty(): return str(_solo_lines().get(value, value)) if solo else value
@@ -4258,6 +4283,9 @@ static func _solo_lines() -> Dictionary:
 
 # Ordered formatting tokens are part of the call-site contract.
 const FORMAT_TOKENS := {
+	"journey.dropped_you": ["%s", "%s"],
+	"journey.dropped_friend": ["%s", "%s"],
+	"journey.dropped_friend" + SOLO: ["%s", "%s"],
 	"subscription.monthly": ["%s"],
 	"subscription.yearly": ["%s"],
 	"objective_panel.e08ff54fb4f9": ["%d", "%d"],
@@ -4320,3 +4348,24 @@ const FOG_MARSH_KEEPSAKE_ACTION := "Light the lantern"
 const FOG_MARSH_KEEPSAKE_TOGETHER := "mint raft"
 const FOG_MARSH_KEEPSAKE_HARD := "firefly jar"
 const FOG_MARSH_KEEPSAKE_TOP := "gold moon"
+# sleeping-lighthouse@3 (open turns, the shared rules, light pieces). Its
+# summary, completion and stage titles are the Lighthouse's; the hints are
+# drafts awaiting the owner.
+const SLEEPING_LIGHTHOUSE_TITLE := "Sleeping Lighthouse"
+const SLEEPING_LIGHTHOUSE_BORROWED_TITLE := "Borrowed Light"
+const SLEEPING_LIGHTHOUSE_BORROWED_HINT_A := "The lamp shines while someone stands on the light pad."
+const SLEEPING_LIGHTHOUSE_BORROWED_HINT_B := "Turn the mirrors toward the bridge. Leave a light on for your friend."
+const SLEEPING_LIGHTHOUSE_MISSING_TITLE := "The Missing Piece"
+const SLEEPING_LIGHTHOUSE_MISSING_HINT_A := "The court lamp shines while someone stands on its pad."
+const SLEEPING_LIGHTHOUSE_MISSING_HINT_B := "Bring the lens over the lit bridge and set it in its cradle."
+const SLEEPING_LIGHTHOUSE_PROMISES_TITLE := "Two Promises"
+const SLEEPING_LIGHTHOUSE_PROMISES_HINT_A := "Send the lens's light north, then hold the pad on the north isle."
+const SLEEPING_LIGHTHOUSE_PROMISES_HINT_B := "Cross south while the bridge is lit and turn the mirror to the south promise."
+const SLEEPING_LIGHTHOUSE_BELL_TITLE := "After the First Bell"
+const SLEEPING_LIGHTHOUSE_BELL_HINT_A := "Hold the path pad and turn the selector: the first path, then the second."
+const SLEEPING_LIGHTHOUSE_BELL_HINT_B := "Cross each path as it lights, and turn the mirrors to keep it lit."
+const SLEEPING_LIGHTHOUSE_CARRIED_HINT_A := "Hold the tower pad so the tower bridge stays lit."
+const SLEEPING_LIGHTHOUSE_CARRIED_HINT_B := "Taking the lens darkens its path. Throw it from the court's edge to Rest Rock."
+const SLEEPING_LIGHTHOUSE_WELCOME_TITLE := "A Welcome, Left On"
+const SLEEPING_LIGHTHOUSE_WELCOME_HINT_A := "Hold the tower pad while your friend is on Rest Rock."
+const SLEEPING_LIGHTHOUSE_WELCOME_HINT_B := "Turn both mirrors so the welcome and the beacon shine. Come back while the bridge is lit."

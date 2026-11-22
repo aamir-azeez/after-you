@@ -11,15 +11,17 @@ extends SceneTree
 ##   colour, lit by the same rule as its tiles, from the snapshot alone;
 ## - every tile lies on its floor, clear of controls, ownership marks, decks,
 ##   the world's own scenery and every other row, and no two rows touch;
-##   nothing the world draws lies over a tile (a floor cap above its walking
-##   surface would hide it);
+##   nothing the world draws lies over any of a tile or a hair under its top
+##   (a floor's planks or trims, a cap above its walking surface would hide
+##   it), and no floor or crossing deck a pip walks on lies over it;
 ## - one mesh draws them all, and the states follow the snapshot alone:
 ##   faint, clear while either spirit is near one of the pair's inputs,
 ##   glowing while active, the same whatever came before (a replay shows what
 ##   play showed), a lit tile's pool of light never under another tile;
 ##   a selector's tile at a gate glows only at a value that gate
 ##   asks, and a receiver's plaque only while one of its gates is open;
-## - a receiver lit through turnable mirrors has those mirrors as its inputs.
+## - a receiver has what a pip works to light it as its inputs: the mirrors
+##   and selectors on its paths, the pads and levers that light its lamps.
 ## The same sweep checks every goal of every stage of every chapter and
 ## version (its family's layout "goal") is drawn by the goal kit
 ## (kit/pieces/goal.gd, the world's goal_pieces) at its exact spot, two pip
@@ -55,6 +57,8 @@ const PLAQUE_FAINT_LETTER := 12.0
 const FLOORS := [Color("e9dcc0"), Color("6b5240"), Color("9cb86a"), Color("f2a07a"), Color("b4c5bd")]
 ## The light a floor tile meets, about, in the chapters' sun.
 const LIGHT := 0.9
+## How near two layers may lie before the depth buffer cannot tell them apart (COPLANAR).
+const Lint = preload("res://tests/test_dressing_lint.gd")
 ## Laying out a stage's tiles stays under this (headless, the whole stage).
 const BUILD_BUDGET_USEC := 150000
 var checks := 0
@@ -325,6 +329,18 @@ func _pure() -> void:
 	var kinds := PairTags.pairs_of({"bridges": [{"id": "r"}], "pressure_pads": [{"id": "p", "position_cm": [0, 0]}], "ball_pads": [{"id": "b", "position_cm": [0, 0]}], "controls": [{"id": "s", "position_cm": [0, 0]}], "optical_field": {"receivers": [{"id": "e", "position_cm": [0, 0]}]}, "gates": [{"route_id": "r", "pad_id": "p", "ball_pad_id": "b", "when": {"all": [{"control_id": "s", "value": "x"}, {"signal_id": "e"}]}}]})
 	var read := kinds.map(func(pair: Dictionary) -> Array: return [pair.control, pair.group, pair.prompted])
 	_check(read == [["p", "pressure_pads", true], ["b", "ball_pads", false], ["s", "controls", true], ["e", "receivers", false]], "Pads and selectors are named in the pop-up; ball pads keep a floor tile and receivers a plaque: %s" % [read])
+	# A lamp a pad lights, steered by a selector to either receiver; another lamp shines on its own.
+	var steered := {"bridges": [{"id": "r"}], "pressure_pads": [{"id": "pad", "position_cm": [0, 100]}],
+		"controls": [{"id": "sel", "position_cm": [100, 100], "kind": "selector", "values": ["off", "a", "b"], "initial": "off",
+			"optics": {"off": {"lamp": {"enabled": false}}, "a": {"m": {"orientation": "slash"}}, "b": {"m": {"orientation": "backslash"}}}}],
+		"lit_when": {"lamp": {"pad_id": "pad"}},
+		"optical_field": {"schema_version": 1, "bounds_cm": [-500, -500, 500, 500], "blockers": [],
+			"emitters": [{"id": "lamp", "position_cm": [0, 0], "enabled": true, "direction": "east"}, {"id": "glow", "position_cm": [-100, 300], "enabled": true, "direction": "west"}],
+			"mirrors": [{"id": "m", "position_cm": [200, 0], "enabled": true, "orientation": "slash"}],
+			"receivers": [{"id": "r1", "position_cm": [200, 200], "enabled": true}, {"id": "r2", "position_cm": [200, -200], "enabled": true}, {"id": "r3", "position_cm": [-300, 300], "enabled": true}]},
+		"gates": [{"route_id": "r", "when": {"any": [{"signal_id": "r1"}, {"signal_id": "r2"}, {"signal_id": "r3"}]}}]}
+	var lit_by := PairTags.pairs_of(steered).map(func(pair: Dictionary) -> Array: return [pair.control, pair.inputs.map(func(input: Dictionary) -> String: return input.id)])
+	_check(lit_by == [["r1", ["sel", "pad"]], ["r2", ["sel", "pad"]], ["r3", ["r3"]]], "A receiver's inputs are the selector that steers its light and the pad that lights the lamp; a lamp nobody works leaves it read at itself: %s" % [lit_by])
 	_check(pairs.size() == 25, "Twenty-five wired levers make twenty-five pairs; a missing control makes none: %d" % pairs.size())
 	_check(pairs[0].gates.map(func(r: Dictionary) -> String: return r.id) == ["route-0", "route-1"] and pairs[2].gates.size() == 2, "A control that works two gates shows at both; a `when` tree is read through all and any")
 	var seen := {}
@@ -370,6 +386,9 @@ func _stage(world: Node3D, key: String, view: Dictionary) -> int:
 		# Nothing the world draws lies over a tile on its floor (a raised cap, a rug).
 		var over := layers.filter(func(layer: Array) -> bool: return _buries(layer[1], tile.at)).map(func(layer: Array) -> String: return str(layer[0]))
 		_check(over.is_empty(), "%s: %s's tile (%s) at %s shows over its floor; it lies under %s" % [where, tile.control, tile.letter, tile.at, ", ".join(over)])
+		# No deck or other walkable top lies over it.
+		var decks := _walked_over(view, tile.at)
+		_check(decks.is_empty(), "%s: %s's tile (%s) at %s lies on top of what a pip stands on there; it is under %s" % [where, tile.control, tile.letter, tile.at, ", ".join(decks)])
 	var rows: Array = []
 	for tile: Dictionary in placed:
 		if tile.row not in rows: rows.append(tile.row)
@@ -422,7 +441,7 @@ func _stage(world: Node3D, key: String, view: Dictionary) -> int:
 	var turnable: Array = view.get("controls", []).filter(func(control: Dictionary) -> bool: return str(control.get("kind", "")) == "mirror")
 	for pair: Dictionary in wired:
 		if pair.group == "receivers" and not turnable.is_empty():
-			_check(pair.inputs.all(func(input: Dictionary) -> bool: return input.group == "controls") and not pair.inputs.is_empty(), "%s: the receiver %s has the mirrors that light it as its inputs: %s" % [where, pair.control, pair.inputs.map(func(input: Dictionary) -> String: return input.id)])
+			_check(pair.inputs.all(func(input: Dictionary) -> bool: return input.group in PairTags.PROMPTED) and not pair.inputs.is_empty(), "%s: the receiver %s has what a pip works to light it as its inputs: %s" % [where, pair.control, pair.inputs.map(func(input: Dictionary) -> String: return input.id)])
 	_states(world, where, wired)
 	return placed.size()
 
@@ -439,12 +458,23 @@ static func _floor_layers(world: Node3D) -> Array:
 		else: found.append([world.terrain.get_path_to(node), at * node.get_aabb()])
 	return found
 
-## Whether `box` lies over a tile on the floor at `at`: across its centre,
-## reaching down past the tile and topping out just over it, as a floor layer
-## drawn over the walking surface does (taller scenery the layout keeps clear of).
+## Whether `box` lies over any of the tile on the floor at `at`, reaching
+## down past the tile and topping out over it or under it by less than the
+## depth buffer tells apart (Lint.COPLANAR), as a layer drawn on the walking surface
+## does (a plank, a trim, a raised cap; taller scenery the layout keeps clear of).
 static func _buries(box: AABB, at: Vector3) -> bool:
 	var tile_top := at.y + PairTags.LIFT
-	return box.position.y <= tile_top and box.end.y > tile_top + 0.0005 and box.end.y < at.y + 0.03 and Rect2(box.position.x, box.position.z, box.size.x, box.size.z).has_point(Vector2(at.x, at.z))
+	return box.position.y <= tile_top and box.end.y > tile_top - Lint.COPLANAR and box.end.y < at.y + 0.03 and Rect2(box.position.x, box.position.z, box.size.x, box.size.z).intersects(_square(at))
+
+## The tile at `at` across the floor, a millimetre in.
+static func _square(at: Vector3) -> Rect2:
+	return Rect2(at.x - PairTags.TAG * 0.5, at.z - PairTags.TAG * 0.5, PairTags.TAG, PairTags.TAG).grow(-0.001)
+
+## The walkable tops over the tile at `at` (FloorSpots.tops: a floor or a
+## crossing at its highest), over any of it: a tile under one is hidden where
+## a pip walks over it.
+static func _walked_over(view: Dictionary, at: Vector3) -> Array:
+	return PairTags.FloorSpots.tops(view).filter(func(top: Dictionary) -> bool: return float(top.above) > at.y + 0.06 and (top.rect as Rect2).intersects(_square(at))).map(func(top: Dictionary) -> String: return str(top.what))
 
 ## Faint, near (either spirit), lit, and the same states whatever came before.
 func _states(world: Node3D, where: String, wired: Array[Dictionary]) -> void:

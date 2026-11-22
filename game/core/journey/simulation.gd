@@ -4,7 +4,7 @@ extends "res://core/physical/runtime.gd"
 const Catalog = preload("res://core/journey/stage_catalog.gd")
 const Proof = preload("res://core/physical/two_pair_proof.gd")
 const Seven = preload("res://core/journey/seven_mechanisms.gd")
-const BeamField = preload("res://core/beam_field.gd")
+const LightPieces = preload("res://core/physical/light_pieces.gd")
 const PiecesRules = preload("res://core/physical/pieces_rules.gd")
 const CarriedItems = preload("res://core/physical/carried_items.gd")
 const Swings = preload("res://core/physical/swings.gd")
@@ -30,8 +30,8 @@ const TIDE_RULES_VERSION := 10
 const OPEN_TIDE_RULES_VERSION := OpenControls.OPEN_TIDE_RULES_VERSION
 const TIDE_RULES := OpenControls.TIDE_RULES
 const OPEN_RULES := OpenControls.OPEN_RULES
-## What a drowned or fallen turn says is runtime.gd's DROWNED_YOU, DROWNED_FRIEND,
-## FELL_YOU and FELL_FRIEND.
+## What a drowned, fallen or dropped turn says is runtime.gd's DROWNED_YOU,
+## DROWNED_FRIEND, FELL_YOU, FELL_FRIEND, DROPPED_YOU and DROPPED_FRIEND.
 ## A turn that would end with a spirit left high on a stone.
 const LEFT_HIGH := "A pip is stuck up on the stones."
 ## A turn that would end with a spirit on a closing crossing.
@@ -318,9 +318,11 @@ func _close_slowly(was: Dictionary) -> void:
 ## Tide rules: a spirit standing on a crossing that is now shut drowns, the
 ## player's own or the memory's, and the turn ends. On a stone left high it
 ## stays up there; walking off it, or onto it, it falls where it stood, and
-## the turn ends the same way.
+## the turn ends the same way. The pieces rules first: a carrier on a
+## both-hands crossing drops its item (_drop_on_hands).
 func _check_hazards() -> void:
 	if not _swing_plan.is_empty(): _advance_swings()
+	if _carrying and not _hands.is_empty() and _drowned.is_empty(): _drop_on_hands()
 	if not _tide_rules() or not _drowned.is_empty(): return
 	for slot: String in ["p0", "p1"]:
 		var surface := str(_players[slot].surface_id)
@@ -443,10 +445,9 @@ func _refresh_optics() -> void:
 	if not stage.has("optical_field"):
 		_optics={"segments":[],"signals":{}}
 		return
-	var overrides: Dictionary={}
-	for control: Dictionary in stage.get("controls",[]):
-		if control.kind=="mirror": overrides[control.id]={"orientation":str(_mechanisms.controls[control.id])}
-	_optics=BeamField.evaluate(stage.optical_field,overrides)
+	# Light pieces (core/physical/light_pieces.gd): mirrors, selectors that
+	# steer light and lamps lit only while their lit_when holds.
+	_optics=LightPieces.optics(stage,_players,_mechanisms,_open_controls())
 	if not _optics.valid: error=str(_optics.error)
 
 ## `slot`: the pip that walked; open turns latch for either pip in every turn.
@@ -669,12 +670,23 @@ func _reset_items() -> void:
 	_item_order.sort()
 	_hands = CarriedItems.hands_routes(level)
 
-## A pip carrying an item never steps onto a crossing that needs both hands.
-func _walk_routes(slot: String) -> Dictionary:
-	if _hands.is_empty() or CarriedItems.held_by(_mechanisms.items, slot).is_empty(): return _routes
-	var routes := _routes.duplicate()
-	for id: String in _hands: routes[id] = false
-	return routes
+## The pieces rules: a pip that steps onto a crossing needing both hands
+## while it carries an item drops it, and the turn ends ("dropped" on the
+## drowned record: the item's id), the live pip or the friend's replay, p0
+## first. The item lands at the crossing's foot it stepped on from, loose on
+## that floor (CarriedItems.dropped_at). Decided here, so live play, the
+## friend's replay, memories and replays all agree.
+func _drop_on_hands() -> void:
+	for slot: String in ["p0", "p1"]:
+		var route := str(_players[slot].surface_id)
+		if not _hands.has(route): continue
+		var id := CarriedItems.held_by(_mechanisms.items, slot)
+		if id.is_empty(): continue
+		_mechanisms.items[id] = CarriedItems.dropped_at(level, route, _players[slot], str(_surfaces_before.get(slot, "")))
+		_drowned = {"slot": slot, "route": route, "tick": tick, "dropped": id}
+		finished = true
+		_events.append("dropped:" + slot)
+		return
 
 ## What an item offers `slot`'s pip here: hand over, put down or pick up.
 func _item_action(slot: String) -> Dictionary:
