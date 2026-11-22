@@ -146,6 +146,9 @@ static func _glows(node: MeshInstance3D) -> bool:
 func _sim(stage_id: String, players: Dictionary, controls: Dictionary = {}) -> Simulation:
 	var checkpoint := Catalog.initial_checkpoint(level)
 	checkpoint.next_stage_id = stage_id
+	# The stage's own first pip plays: on open turns the checkpoint names it.
+	for stage: Dictionary in level.stages:
+		if stage.id == stage_id: checkpoint.next_first_slot = stage.first_player_slot
 	for slot: String in players: checkpoint.players[slot] = players[slot]
 	for id: String in controls: checkpoint.mechanisms.controls[id] = controls[id]
 	var sim := Simulation.new()

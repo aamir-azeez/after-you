@@ -208,7 +208,7 @@
 					"initial": "slash",
 					"kind": "mirror",
 					"position_cm": [
-						-160,
+						-60,
 						60
 					],
 					"radius_cm": 28,
@@ -305,7 +305,7 @@
 						"id": "court-mirror",
 						"orientation": "slash",
 						"position_cm": [
-							-160,
+							-60,
 							60
 						]
 					}
@@ -323,7 +323,7 @@
 						"enabled": true,
 						"id": "court-eye",
 						"position_cm": [
-							-160,
+							-60,
 							-100
 						]
 					}
@@ -858,7 +858,7 @@
 				"owner_slot": "p1",
 				"position_cm": [
 					700,
-					60
+					80
 				],
 				"radius_cm": 36,
 				"surface_id": "tower"
@@ -992,7 +992,7 @@
 			"receiver_route_cm": [
 				[
 					700,
-					60
+					80
 				]
 			],
 			"source_policy": {
@@ -1218,7 +1218,7 @@
 					"kind": "mirror",
 					"position_cm": [
 						290,
-						30
+						-20
 					],
 					"radius_cm": 28,
 					"surface_id": "rest-rock",
@@ -1322,7 +1322,7 @@
 						"id": "projector-west",
 						"position_cm": [
 							610,
-							30
+							-20
 						]
 					},
 					{
@@ -1342,7 +1342,7 @@
 						"orientation": "backslash",
 						"position_cm": [
 							290,
-							30
+							-20
 						]
 					},
 					{
