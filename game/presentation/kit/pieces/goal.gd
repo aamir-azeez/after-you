@@ -51,11 +51,14 @@ const PAD_SLOTS := ["p0", "p1"]
 ## or below the goal's floor (m).
 const PAD_SLACK := 0.02
 const PAD_HEIGHT := 0.3
+## The planter style's drum: lower than a socket planter's (socket.gd
+## PLANTER), so its pads' rims, on the soil, stay low enough to stand in.
+const PLANTER_DRUM := 0.04
 ## The top of each style's disc (the bell frame's step). Its pads stand
 ## PAD_SINK into it, so a pad's rim stays low enough to stand in (kit/
 ## prop_rules.gd STEP_ON) and a pressed board's top stays above the disc.
-## A planter's is its soil's top (socket.gd PLANTER + 0.0325).
-const DISC_TOPS := {"bell": 0.065, "harbour_lantern": 0.05, "crest": 0.044, "window": 0.0475, "walled_window": 0.0475, "planter": 0.1225}
+## A planter's is its soil's top (PLANTER_DRUM + 0.0325).
+const DISC_TOPS := {"bell": 0.065, "harbour_lantern": 0.05, "crest": 0.044, "window": 0.0475, "walled_window": 0.0475, "planter": PLANTER_DRUM + 0.0325}
 const PAD_SINK := 0.02
 ## The bell style's frame, modelled in Blender (tools/blender/models/bell_frame.py).
 const FRAME := "res://assets/models/bell_frame.glb"
@@ -251,6 +254,6 @@ func _make_window(radius_m: float) -> void:
 ## The planter's soil reaches past the pads' outer edges (PAD_OUT + PAD_SHARE),
 ## inside its drum; its ring lies over the drum's rim, where a garden's does.
 func _make_planter(radius_m: float) -> void:
-	bell = SocketKit.planter(root, radius_m, minf(radius_m * (PAD_OUT + PAD_SHARE) + 0.01, radius_m - 0.04))
-	ring = Parts.ring(radius_m, Parts.CREAM, Vector3(0, SocketKit.PLANTER + 0.03, 0), root)
+	bell = SocketKit.planter(root, radius_m, minf(radius_m * (PAD_OUT + PAD_SHARE) + 0.01, radius_m - 0.04), PLANTER_DRUM)
+	ring = Parts.ring(radius_m, Parts.CREAM, Vector3(0, PLANTER_DRUM + 0.03, 0), root)
 	_light(Parts.GOLD, 4.0, Vector3(0, 0.8, 0))

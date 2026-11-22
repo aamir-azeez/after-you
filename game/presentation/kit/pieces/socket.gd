@@ -117,13 +117,13 @@ static func garden(root: Node3D, radius: float, ring_color: Color) -> MeshInstan
 	ring.name = "GoalRing"
 	return ring
 
-## A planter's drum `radius` across and its soil `soil_radius` across under
-## `root`, with no ring (a goal's planter rings itself, kit/pieces/goal.gd).
-## Returns the soil.
-static func planter(root: Node3D, radius: float, soil_radius: float) -> MeshInstance3D:
-	var drum := Parts.cylinder(radius, PLANTER, BASE, Vector3(0, PLANTER * 0.5, 0), root)
+## A planter's drum `radius` across and `height` tall and its soil
+## `soil_radius` across under `root`, with no ring (a goal's planter rings
+## itself, kit/pieces/goal.gd). Returns the soil.
+static func planter(root: Node3D, radius: float, soil_radius: float, height: float = PLANTER) -> MeshInstance3D:
+	var drum := Parts.cylinder(radius, height, BASE, Vector3(0, height * 0.5, 0), root)
 	drum.name = "Planter"
-	var soil := Parts.cylinder(soil_radius, 0.035, SOIL, Vector3(0, PLANTER + 0.015, 0), root)
+	var soil := Parts.cylinder(soil_radius, 0.035, SOIL, Vector3(0, height + 0.015, 0), root)
 	soil.name = "Soil"
 	return soil
 

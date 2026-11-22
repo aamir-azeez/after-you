@@ -60,7 +60,7 @@ func _versions(level: Dictionary, start: Dictionary) -> void:
 	var old_cradle: Node = old_world.find_child("ArrivalWindowGoal", true, false)
 	var new_cradle: Node = new_world.find_child("ArrivalWindowGoal", true, false)
 	_check(old_world.find_child("ArchLantern", true, false) == null and not old_world.has_method("_lamp_post"), "The @1 world has none of the @2 props")
-	_check(new_cradle.get_child_count() == old_cradle.get_child_count() and old_cradle.get_child_count() > 8, "Both versions stand the second window in a wall")
+	_check(_window_parts(new_cradle) == _window_parts(old_cradle) and _window_parts(old_cradle) > 8, "Both versions stand the second window in a wall")
 	_check(old_world.garden.position.is_equal_approx(Vector3(13.65, 0, 4.00)) and old_world.garden.position == new_world.garden.position, "Both versions grow the garden outdoors in the front planter")
 	old_world.queue_free()
 	new_world.queue_free()
@@ -96,6 +96,15 @@ func _world(script: Script, level: Dictionary, previous: Dictionary, index: int 
 	world.present_history(previous)
 	world.set_process(false)
 	return world
+
+## The window goal's own parts: its children before its pads, which the goal
+## kit adds after its style, with a stage's need tokens after them.
+func _window_parts(cradle: Node) -> int:
+	var count := 0
+	for child: Node in cradle.get_children():
+		if str(child.name).begins_with("Pad_"): break
+		count += 1
+	return count
 
 func _fixture(name: String) -> Dictionary:
 	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/journey/" + name + ".json"))

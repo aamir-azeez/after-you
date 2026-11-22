@@ -20,6 +20,7 @@ const DATA := {
 	# a bell for a goal (the mole's lantern is pinned).
 	"lever": "brass",
 	"selector": "brass",
+	"pad": "board",
 	"goal": "bell",
 	"lift": "plain",
 	"deck": "plank",

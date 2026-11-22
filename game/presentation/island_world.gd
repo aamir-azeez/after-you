@@ -682,7 +682,8 @@ func _create_spirit(color: Color, slot_id: String = "") -> Node3D:
 	return spirit
 
 ## `leaf_height`: where the four leaves sit, just over the planter's drum
-## (a SocketKit planter's is SocketKit.PLANTER).
+## (a SocketKit planter's is SocketKit.PLANTER, a goal planter's
+## GoalPiece.PLANTER_DRUM).
 func _create_garden(leaf_height: float = 0.16) -> void:
 	# Four leaves make availability readable without relying on color or bloom.
 	# Everything stays under the existing planter root, including on a lift.

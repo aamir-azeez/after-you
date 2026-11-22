@@ -48,7 +48,7 @@ func load_level(definition: Dictionary) -> void:
 			socket = _build_goal(str(item.id), at, float(item.radius_cm) / 100.0).root
 			socket.name = str(item.id)
 			garden = socket
-			_create_garden(SocketKit.PLANTER + 0.02)
+			_create_garden(GoalPiece.PLANTER_DRUM + 0.02)
 			# Relay's garden socket has no gate or lift condition in simulation.
 			_present_garden(true, false, true)
 		else:

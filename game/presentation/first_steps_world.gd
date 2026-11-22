@@ -57,7 +57,7 @@ func load_level(definition: Dictionary) -> void:
 			# The planting finds the planter by the socket's name.
 			garden = _build_goal(str(socket.id), at, float(socket.radius_cm) / 100.0).root
 			garden.name = str(socket.id)
-			_create_garden(SocketKit.PLANTER + 0.02)
+			_create_garden(GoalPiece.PLANTER_DRUM + 0.02)
 		else:
 			var root := Node3D.new()
 			root.name = str(socket.id)
