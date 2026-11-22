@@ -222,7 +222,7 @@ func _run() -> void:
 	_check(_water_edges >= int(least.get("water_edges", 0)), "The water edge check reads the water worlds' edges at every level (%d spots)" % _water_edges)
 	for prefix: String in KNOWN:
 		# Each suite answers for its own chapters' entries.
-		if not _keys().any(func(key: String) -> bool: return key.get_slice("@", 0) == prefix.get_slice(" ", 0)): continue
+		if not _answers(prefix): continue
 		_check(_found.has(prefix), "Known failure still fails, or comes off the list: %s (%s)" % [prefix, KNOWN[prefix]])
 	print("LEVEL VIEW: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -238,6 +238,11 @@ func _keys() -> Array[String]:
 ## test_level_view_water the rest).
 func _runs(key: String) -> bool:
 	return not FoldPresent._on_water(key)
+
+## Whether this suite answers for KNOWN entry `prefix`: by default, when it
+## walks a version of the chapter the entry names.
+func _answers(prefix: String) -> bool:
+	return _keys().any(func(key: String) -> bool: return key.get_slice("@", 0) == prefix.get_slice(" ", 0))
 
 ## Whether this suite runs the checks no chapter owns (bubbles, refusals).
 func _runs_shared() -> bool:
