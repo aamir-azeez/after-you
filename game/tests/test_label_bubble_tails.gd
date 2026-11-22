@@ -279,8 +279,10 @@ func _tips(bubbles: Array, label: String) -> void:
 		_check(drawn.distance_to(target) < EPSILON, "%s: the %s tail's tip lands on its anchor (lift %.2f, off by %.4f m)" % [label, _name(bubble), bubble.lift, drawn.distance_to(target)])
 		_check(bubble.plane_tail().distance_to(drawn) < EPSILON, "%s: plane_tail reports the drawn tip of %s" % [label, _name(bubble)])
 		_check(length <= LabelBubble.MAX_TAIL + 0.0001, "%s: the %s tail stays under the cap (%.2f m)" % [label, _name(bubble), length])
-		var span := bubble.plane_span()
-		_check(span.encloses(bubble.plane_rect()) and span.grow(0.0005).has_point(drawn), "%s: the %s span holds its body and its whole tail" % [label, _name(bubble)])
+		# Within half a millimetre: a tip beside the body (a far lean) moves the
+		# span's edge, and float rounding may leave the body's far edge a hair out.
+		var span := bubble.plane_span().grow(0.0005)
+		_check(span.encloses(bubble.plane_rect()) and span.has_point(drawn), "%s: the %s span holds its body and its whole tail" % [label, _name(bubble)])
 
 ## No drawn tail is seen across a spirit's head or torso (see the top).
 func _faces(world: Node3D, bubbles: Array, label: String) -> void:

@@ -1,0 +1,27 @@
+{
+	"catch_assistance": true,
+	"checkpoint_hash": "f786d53ffa1ba2a15b979462395488ac2de053aa1270eacfcd595e587475e0ad",
+	"completed": true,
+	"definition_hash": "eacf9ea619842f9dacad39f42535e352b2b21a30b3c0dbf5e11d342c95effc7e",
+	"duration_ticks": 365,
+	"final_state_hash": "e8c6a618a9678ec5a6670e59db3091a17a90d7afa72eed0048da33d3060eebb0",
+	"handoff_hash": "42b48b0c8c5bae9816fd2e5de8fafb054f9ed0663baadd086e584c533d301658",
+	"handoff_tick": 42,
+	"level_id": "sleeping-lighthouse",
+	"level_version": 3,
+	"outcome": {
+		"objective_complete": true,
+		"source_ready": true
+	},
+	"packed": "AQSUBQAADpwAAs4ANgCczrIDptfTmG+HlPVnyaG92entfHpvl6M++fUKNpDO3G+HzAVL8oMSJdmHrmC4Yvmo6zu+lMiK/+sc14nHH3ttrDy8wpK0NfhYLIBS0ffMTNEpBg7tpR44qyn1iqJ0sSkpk0oWzxA8iW8KQdwTWK1BSGPbqVp6WcdtSplPP1/dhsTys4lYuOT0SD+nbIh7sE9c",
+	"player_slot": "p0",
+	"recording_hash": "f0d9bd4e0db2694b1d2219dec1a6a900dd13a3adc4be7425fbd3c28654d3dec4",
+	"role": "b",
+	"schema_version": 7,
+	"simulation_version": 20,
+	"source_recording_hash": "6faed5e873661c27bd1478edbba2dbc2d30a9ae715461956003f3ed144315e17",
+	"stage_id": "what-carried-you",
+	"stage_version": 1,
+	"start_hash": "c803b908a8e7fbfda61cfeb37eb614f5d811090b9ce1a4f79400947e59f5c648",
+	"tick_rate": 30
+}

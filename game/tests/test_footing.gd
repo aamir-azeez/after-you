@@ -15,7 +15,13 @@ extends SceneTree
 ## - in every open turns journey chapter, a pip that steps off a pad never
 ##   reaches the far side of the crossing that pad holds before the grace runs
 ##   out (a walk on the real floors, every crossing open, stepping back
-##   included), so the grace lets no pip cross alone.
+##   included), so the grace lets no pip cross alone;
+## - turn three, the friend's replay walking onto the bridge the live pip let
+##   shut by stepping off the plate (held all through the friend's own turn)
+##   walks off where it was and falls, or drowns in a water chapter, with the
+##   friend's card, the same from its inputs again; a replay that pushed at the
+##   shut bridge in its own turn keeps to the shore as it did; and one whose
+##   bridge the live pip still holds while moving crosses as it did.
 const Simulation = preload("res://core/journey/simulation.gd")
 const Catalog = preload("res://core/journey/stage_catalog.gd")
 const Relay = preload("res://core/journey/relay_isles_v3_catalog.gd")
@@ -28,6 +34,8 @@ const OpenTurns = preload("res://core/physical/open_turns.gd")
 const Navigation = preload("res://core/cooperative/navigation.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const TurnEndings = preload("res://presentation/turn_endings.gd")
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 ## The west bridge runs from x -260 (the shore's edge) to -140; the shore's
 ## plate is at (-500, -60).
 const EDGE := -260
@@ -48,6 +56,7 @@ func _run() -> void:
 	_water_chapters()
 	_grace()
 	_lone_crossings()
+	_replay_walks_off()
 	print("FOOTING: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -257,6 +266,59 @@ static func _pop(heap: Array) -> Array:
 		index = child
 	heap[index] = last
 	return top
+
+## Turn one: p0 holds the plate a moment and ends there, so the bridge holds
+## all through turn two, where p1 waits on the shore past the hand-off, then
+## crosses (`push`: the bridge never held, p1 pushes at its shut edge instead).
+## Turn three hands off at turn one's end, with p1's replay still waiting.
+func _replay_walks_off() -> void:
+	for wet: bool in [false, true]:
+		var definition := level.duplicate(true)
+		if wet: definition.id = "fog-marsh"
+		var turns := _crossing_turns(definition, false)
+		var c := _turn_three(definition, turns)
+		_walk(c, [-500, 150])
+		_idle(c, 400)
+		var fell := c._drowned
+		_check(c.finished and fell.get("slot") == "p1" and fell.get("route") == "west-relay" and fell.has("fell") != wet and fell.has("sky") != wet and ("drowned:p1" if wet else "fell:p1") in c._events, "The friend's replay walks off where the bridge was and %s: %s" % ["drowns" if wet else "falls", fell])
+		_check(int(c._players.p1.x) > EDGE - Runtime.PLAYER_RADIUS and int(c._players.p1.x) < EDGE + Runtime.PLAYER_RADIUS , "It went out over the edge: %s" % [c._players.p1])
+		_check(c.commit_reason() == (Runtime.DROWNED_FRIEND if wet else Runtime.FELL_FRIEND) and not c.can_commit() and not c.keeps_draft(), "The turn ends with the friend's card and keeps nothing")
+		var ending := TurnEndings.of(c.snapshot(), true)
+		_check(ending.get("kind") == ("drowned" if wet else "fell") and ending.get("slot") == "p1" and ending.get("line") == PlayerCopy.from_canonical(c.commit_reason(), true), "The card shows it, in Solo as the memory: %s" % [ending.get("line")])
+		var again := _turn_three(definition, turns)
+		for input: Dictionary in Simulation.expand_recording_inputs(c.export_recording()): again.step(input)
+		_check(again._drowned == fell and again._players == c._players, "Played again from its inputs, it falls at the same tick")
+	# The bridge never held: p1 pushed at its shut edge in its own turn, so its replay keeps to the shore.
+	var pushed := _crossing_turns(level, true)
+	var stays := _turn_three(level, pushed)
+	_walk(stays, [-500, 150])
+	_idle(stays, 400)
+	_check(not stays.finished and stays._drowned.is_empty() and stays._players.p1.surface_id == "west" and int(stays._players.p1.x) <= EDGE and stays._friend_world != null, "A replay that met the shut edge in its own turn keeps to the shore: %s" % [stays._players.p1])
+	# The live pip moves but keeps the plate: the replay crosses as it did.
+	var turns := _crossing_turns(level, false)
+	var holds := _turn_three(level, turns)
+	for input: Dictionary in [{"move_z": -1.0}, {"move_z": 1.0}]: holds.step(input)
+	_idle(holds, 400)
+	_check(holds._live_moved and not holds.finished and holds._players.p1 == turns[2], "With the bridge still held, the replay crosses as it did: %s" % [holds._players.p1])
+
+## Turns one and two of _replay_walks_off, and where p1 ended turn two.
+func _crossing_turns(definition: Dictionary, push: bool) -> Array:
+	var a := _turn_one(definition, {"p0": _at(-600, 150) if push else _at(PLATE[0], PLATE[1]), "p1": _at(-400, 150)})
+	_idle(a, 30)
+	var first := a.export_recording()
+	var b := _turn_two(definition, first)
+	_walk(b, [-300, 0])
+	_idle(b, 150 - b.tick)
+	for tick in range(60): b.step({"move_x": 1.0})
+	_check(push == (b._players.p1.surface_id == "west"), "Turn two: p1 %s: %s" % ["pushes at the shut edge" if push else "crosses the held bridge", b._players.p1])
+	return [first, b.export_recording(), b._players.p1.duplicate()]
+
+func _turn_three(definition: Dictionary, turns: Array) -> Simulation:
+	var sim := Simulation.new()
+	sim.simulation_version = int(definition.simulation_version)
+	sim._reset_trusted(definition, "relay", _last_checkpoint, turns[1], "b", [turns[0]])
+	_check(sim.error.is_empty() and sim.turn_number == 3 and sim.active_slot == "p0" and sim.handoff_tick == 30, "Turn three hands off at turn one's end: %s" % [sim.error])
+	return sim
 
 static func _key(at: Dictionary) -> int:
 	return (int(at.x) + 50000) * 100000 + (int(at.z) + 50000) + int(at.height) * 10000000000
