@@ -120,6 +120,43 @@ func _hud() -> void:
 	var button := controls.action_button
 	_check(chip.visible and chip.chip.get("letter", "") == PairTags.letter_of(lever.index) and button.visible and button.icon != null, "At %s the action button shows its letter %s: %s" % [lever.control, PairTags.letter_of(lever.index), chip.chip])
 	_check(Rect2(button.position, button.size).encloses(Rect2(chip.position, chip.size)), "The chip sits inside the action button: %s in %s" % [Rect2(chip.position, chip.size), Rect2(button.position, button.size)])
+	# One shared padding: the chip stands the plain button's edge padding from the left, the label the button's icon gap after it, the label the same padding from the right, and the chip is centred.
+	var plain := Button.new()
+	plain.text = button.text
+	controls.ui.add_child(plain)
+	var pad_edge := float(button.get_theme_stylebox("normal").get_margin(SIDE_LEFT))
+	var gap := float(button.get_theme_constant("h_separation"))
+	_check(is_equal_approx(pad_edge, float(plain.get_theme_stylebox("normal").get_margin(SIDE_LEFT))), "The tagged button has the plain button's edge padding")
+	_check(is_equal_approx(chip.position.x - button.position.x, pad_edge), "The chip stands the edge padding %s from the button's left: %s" % [pad_edge, chip.position.x - button.position.x])
+	_check(gap >= 10.0, "The label keeps a gap of at least 10 after the chip: %s" % gap)
+	_check(is_equal_approx(chip.position.y - button.position.y, (button.size.y - chip.size.y) * 0.5), "The chip is centred on the button")
+	# One line grows to fit tag, gap, label and padding on both sides, until it would reach the React button; past that it wraps, text unshrunk.
+	var react := Control.new()
+	controls.dock_beside_finish(react, Vector2(120.0, 54.0))
+	var room := -30.0 - (react.offset_left - controls.DOCK_GAP)
+	var font := button.get_theme_font("font")
+	var font_size := button.get_theme_font_size("font_size")
+	var words := "Stand on power pad near the big old stone wall by the river bank today".split(" ")
+	var label := ""
+	var flipped := false
+	for word in words:
+		label = (label + " " + word).strip_edges()
+		var cue := near.duplicate(true)
+		cue["context_action"] = {"id": "lever", "label": label, "enabled": true, "target_id": lever.control}
+		controls.update_state("", 10.0, cue, true)
+		var need := pad_edge * 2.0 + chip.size.x + gap + font.get_string_size(button.text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+		var wraps := button.autowrap_mode != TextServer.AUTOWRAP_OFF
+		_check(wraps == (need > room), "'%s' wraps exactly when one line would reach React: need %s room %s" % [label, need, room])
+		_check(button.size.x <= room + 0.01 and button.size.x >= pad_edge * 2.0, "'%s' stays short of React: %s of %s" % [label, button.size.x, room])
+		if wraps:
+			flipped = true
+			_check(is_equal_approx(button.size.x, room) and button.size.y > 64.0 - 0.01, "A wrapped label fills the room on a taller button: %s" % button.size)
+		else:
+			_check(is_equal_approx(button.size.x, maxf(210.0, need)), "A one-line label's button fits its content: %s vs %s" % [button.size.x, need])
+	_check(flipped, "A long enough label wraps")
+	react.visible = false
+	controls.update_state("", 10.0, near, true)
+	plain.free()
 	var on := near.duplicate(true)
 	on.levers[lever.control] = true
 	controls.update_state("", 10.0, on, true)
