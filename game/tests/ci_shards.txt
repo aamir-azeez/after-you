@@ -198,6 +198,7 @@ level_unlocks 2
 level_view 2
 level_view_falls 2
 level_view_tide 1
+level_view_tide_3 3
 level_view_water 3
 license_catalog 2
 licenses 3

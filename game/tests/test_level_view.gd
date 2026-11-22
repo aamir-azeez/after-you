@@ -244,7 +244,7 @@ func _run() -> void:
 	_check(_water_edges >= int(least.get("water_edges", 0)), "The water edge check reads the water worlds' edges at every level (%d spots)" % _water_edges)
 	for prefix: String in KNOWN:
 		# Each suite answers for its own chapters' entries.
-		if not _keys().any(func(key: String) -> bool: return key.get_slice("@", 0) == prefix.get_slice(" ", 0)): continue
+		if not _answers(prefix): continue
 		_check(_found.has(prefix), "Known failure still fails, or comes off the list: %s (%s)" % [prefix, KNOWN[prefix]])
 	print("LEVEL VIEW: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -260,6 +260,11 @@ func _keys() -> Array[String]:
 ## test_level_view_water the rest).
 func _runs(key: String) -> bool:
 	return not FoldPresent._on_water(key)
+
+## Whether this suite answers for KNOWN entry `prefix`: by default, when it
+## walks a version of the chapter the entry names.
+func _answers(prefix: String) -> bool:
+	return _keys().any(func(key: String) -> bool: return key.get_slice("@", 0) == prefix.get_slice(" ", 0))
 
 ## Whether this suite runs the checks no chapter owns (bubbles, refusals).
 func _runs_shared() -> bool:
@@ -647,6 +652,13 @@ func _meets_stone(world: Node3D, where: String) -> void:
 				var normal := Vector2(0, -1) if side == 0 else Vector2(0, 1) if side == 1 else Vector2(-1, 0) if side == 2 else Vector2(1, 0)
 				var from := rect.position + (Vector2(0, rect.size.y) if side == 1 else Vector2(rect.size.x, 0) if side == 3 else Vector2.ZERO)
 				var length := rect.size.x if along_x else rect.size.y
+				# Only what lies near this side can hold it or skip a spot on it.
+				var near := Rect2(from, Vector2(length, 0) if along_x else Vector2(0, length)).grow(CORNER_MEET + EDGE_MEET + 0.07)
+				var near_solids := solids.filter(func(box: AABB) -> bool: return Rect2(box.position.x, box.position.z, box.size.x, box.size.z).intersects(near, true))
+				var near_decks := decks.filter(func(deck: Array) -> bool: return (deck[0] as Rect2).intersects(near, true))
+				var near_others := others.filter(func(other: Rect2) -> bool: return other.grow(0.001).intersects(near, true))
+				var near_wet := (wet[id] as Array).filter(func(other: Rect2) -> bool: return other.intersects(near, true))
+				var near_landings := landings.filter(func(landing: Rect2) -> bool: return landing.intersects(near, true))
 				var t := WATER_EDGE_STEP * 0.5
 				while t < length:
 					var at := from + (Vector2(t, 0) if along_x else Vector2(0, t))
@@ -654,24 +666,24 @@ func _meets_stone(world: Node3D, where: String) -> void:
 					t += WATER_EDGE_STEP
 					var past := at + normal * EDGE_MEET
 					# Inside its own water: not an edge.
-					if (wet[id] as Array).any(func(other: Rect2) -> bool: return other.has_point(past)): continue
+					if near_wet.any(func(other: Rect2) -> bool: return other.has_point(past)): continue
 					if not window.grow(-0.001).has_point(past): continue
-					if others.any(func(other: Rect2) -> bool: return other.grow(0.001).has_point(past)): continue
-					if landings.any(func(landing: Rect2) -> bool: return landing.has_point(at)): continue
+					if near_others.any(func(other: Rect2) -> bool: return other.grow(0.001).has_point(past)): continue
+					if near_landings.any(func(landing: Rect2) -> bool: return landing.has_point(at)): continue
 					for level: float in kit.levels_of(id).values():
-						if decks.any(func(deck: Array) -> bool: return deck[1] < level and (deck[0] as Rect2).has_point(past)): continue
+						if near_decks.any(func(deck: Array) -> bool: return deck[1] < level and (deck[0] as Rect2).has_point(past)): continue
 						_water_edges += 1
 						var held := false
 						# Along the line through the edge, from `reach` inside the water to
 						# `reach` past it, half a reach at a time.
 						for step in range(-2, 3):
 							var spot := Vector3(at.x + normal.x * reach * step * 0.5, level, at.y + normal.y * reach * step * 0.5)
-							if solids.any(func(box: AABB) -> bool: return box.grow(EDGE_MEET).has_point(spot)): held = true
+							if near_solids.any(func(box: AABB) -> bool: return box.grow(EDGE_MEET).has_point(spot)): held = true
 						if held: continue
 						var key := "%s %s %s" % [where, id, ["north", "south", "west", "east"][side]]
 						if not short.has(key):
 							# Named by the floor it stops short of, when it is a floor's edge, as KNOWN names it.
-							var beside: Array = decks.filter(func(deck: Array) -> bool: return (deck[0] as Rect2).grow(0.06).has_point(past))
+							var beside: Array = near_decks.filter(func(deck: Array) -> bool: return (deck[0] as Rect2).grow(0.06).has_point(past))
 							short[key] = [0, at, level, "%s %s water edge" % [where.get_slice(" ", 0).get_slice("@", 0), beside[0][2] if not beside.is_empty() else id]]
 						short[key][0] += 1
 	for key: String in short:
