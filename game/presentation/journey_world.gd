@@ -126,6 +126,7 @@ func show_stage(stage: Dictionary) -> void:
 	for piece: RefCounted in _item_pieces.values():
 		if piece.throw_look != null: drop_throw_look(piece.throw_look)
 	_item_pieces.clear()
+	_spot_outlines.clear()
 	_item_decks.clear()
 	_current_piece = null
 	hands_signs = HandsSigns.new()
@@ -867,12 +868,14 @@ func _build_items(stage: Dictionary) -> void:
 		root.name = "ItemSpot_" + str(spot.id)
 		root.position = _at(spot)
 		terrain.add_child(root)
-		SocketKit.item_spot(look, root, spot)
+		var wanted := CarriedItems.wanted(view, str(spot.id))
+		var wanted_style := "" if wanted.is_empty() else _item_style(wanted)
+		var outline := SocketKit.item_spot(look, root, spot, wanted_style)
+		if outline != null: _spot_outlines[str(spot.id)] = outline
 	var start: Dictionary = CarriedItems.initial(view)
 	for item: Dictionary in view.items:
 		var id := str(item.id)
-		var pin := PieceStyles.pinned_style("carried_item", id, _descriptor())
-		var look := pin if not pin.is_empty() else _piece_style("carried_item", id) if CarriedItems.carriable(item) else "raft"
+		var look := _item_style(id)
 		var at := _item_point(start.get(id, {})) if str(start.get(id, {}).get("holder", "")).is_empty() else Vector3.ZERO
 		_item_pieces[id] = CarriedItemKit.build(look, at, terrain, {"id": id})
 		# Where it can be thrown it flies with the one throw look, at its own size.
@@ -1002,6 +1005,17 @@ func _ladder_rungs(route: Dictionary) -> void:
 			var post := Vector3(float(end.x) / 100.0, float(end.height) / 100.0 + 0.2, middle + side * (across / 2.0 - RUNG_POST_IN)) if axis == 0 else Vector3(middle + side * (across / 2.0 - RUNG_POST_IN), float(end.height) / 100.0 + 0.2, float(end.z) / 100.0)
 			ItemParts.box(Vector3(0.04, 0.4, 0.04), ItemParts.TIMBER, post, terrain)
 
+## Item `id`'s look: a pin by id, else the dressing's "carried_item" pick; a
+## float nobody carries is a raft unless pinned.
+func _item_style(id: String) -> String:
+	var pin := PieceStyles.pinned_style("carried_item", id, _descriptor())
+	if not pin.is_empty(): return pin
+	return _piece_style("carried_item", id) if CarriedItems.carriable(CarriedItems.item(chapter_definition, id)) else "raft"
+
+## Item spot id -> the dotted outline of the item it wants (socket.gd outline),
+## shown only while nothing rests there.
+var _spot_outlines: Dictionary = {}
+
 ## Each item where the snapshot has it: held over its holder's head the way a
 ## seed or a lens is, resting at its place, or bobbing on the water; the
 ## current's legs lit by their wheels. A pip that lets an item go throws it
@@ -1034,6 +1048,8 @@ func _present_items(state: Dictionary, immediate: bool = false) -> void:
 		if seat is Vector3: piece.place(seat)
 		# Resting in a solid spot (a winch, a nest) it sits fitted; anywhere else as it lies.
 		piece.fit(holder.is_empty() and Solid.solids(chapter_definition.get("item_spots", [])).any(func(spot: Dictionary) -> bool: return str(spot.id) == str(item_state.spot)))
+	for spot_id: String in _spot_outlines:
+		_spot_outlines[spot_id].visible = not items.values().any(func(held: Dictionary) -> bool: return str(held.holder).is_empty() and str(held.spot) == spot_id)
 	_ride_items()
 
 ## The platforms move first, then the items resting on their decks with them.

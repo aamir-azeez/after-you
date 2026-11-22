@@ -58,8 +58,9 @@ func verify_recording(definition: Dictionary, record: Dictionary, checkpoint: Di
 ## A turn replayed over its memory (`prior_a`, after the stage's turns in `chain`).
 ## "ready": whether it may be a memory: a first turn that can be saved, or an
 ## open turns pass that waited out the friend's replay and did not finish the
-## stage. Open turns play each turn once from the world the turn before handed
-## off (turn_start), its own pip by its inputs and the friend's replay by
+## stage, on any turn but the stage's last (its cap). Open turns play each
+## turn once from the world the turn before handed off (turn_start), its own
+## pip by its inputs and the friend's replay by
 ## prior_a's from H on; the record's handoff_tick, start_hash and handoff_hash
 ## replay with it. They keep each exact replay's result and hand-off world
 ## (memory_trace.gd): a turn checked once is not simulated again, and
@@ -106,7 +107,8 @@ func _verify_raw(definition: Dictionary, record: Dictionary, checkpoint: Diction
 		else: simulation.step(input)
 	if not Canonical.same(simulation.export_recording(), record): return _invalid("The recording did not replay exactly.")
 	var state: Dictionary = simulation.snapshot()
-	var ready: bool = state.can_commit if record.role == "a" else open and not state.complete and int(record.duration_ticks) >= int(simulation.replay_ticks())
+	# A pass may not be the stage's last turn (its cap): that turn must finish the stage.
+	var ready: bool = state.can_commit if record.role == "a" else open and not state.complete and not bool(state.get("must_finish", false)) and int(record.duration_ticks) >= int(simulation.replay_ticks())
 	var result := {"valid":true,"error":"","snapshot":state,"ready":ready}
 	if open:
 		var handoff: Dictionary = simulation.handoff_world()

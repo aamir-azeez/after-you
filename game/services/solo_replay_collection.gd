@@ -5,6 +5,7 @@ extends RefCounted
 ## takes captured sources from a queue, so a source with a recorded check costs
 ## only its parse, not a thread start and a frame. This service never loads a
 ## journey through its recovery-writing load_data() path.
+const OpenTurns = preload("res://core/physical/open_turns.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const AtomicFile = preload("res://services/atomic_file.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
@@ -539,7 +540,7 @@ static func _rows_for(job: Dictionary, pairs: Variant) -> Array[Dictionary]:
 			stages.append(LighthouseStages.definition(stage_id))
 	for index in range(mini(pairs.size(), stages.size())):
 		var pair: Variant = pairs[index]
-		if not pair is Dictionary or not pair.get("a") is Dictionary or not pair.get("b") is Dictionary: continue
+		if not OpenTurns.record_valid(pair): continue
 		var stage_id := str(stages[index].get("stage_id", stages[index].get("id", ""))) if stages[index] is Dictionary else str(stages[index])
 		var presentation := Registry.stage_presentation(str(job.chapter), stages[index]) if stages[index] is Dictionary and job.kind != "lighthouse" else {}
 		var stage_title := str(presentation.get("title", stages[index].get("title", stage_id))) if stages[index] is Dictionary else stage_id

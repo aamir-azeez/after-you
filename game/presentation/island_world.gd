@@ -1883,9 +1883,10 @@ func _build_goal(id: String, at: Vector3, radius_m: float) -> RefCounted:
 	goal_pieces[id] = piece
 	return piece
 
-## Presses each goal's pad its own pip stands on in `players` (the snapshot's).
-func _present_goal_pips(players: Dictionary, immediate: bool) -> void:
-	for piece: RefCounted in goal_pieces.values(): piece.present_pips(players, immediate)
+## Each goal's plate from the snapshot `state` (kit/pieces/goal.gd present):
+## the halves its pips stand on, its tokens, what is still missing.
+func _present_goal_pips(state: Dictionary, immediate: bool) -> void:
+	for piece: RefCounted in goal_pieces.values(): piece.present(state, immediate, reduced_motion)
 
 ## A piece's style here (content/dressing/piece_styles.gd); a world with its
 ## own descriptor pins asks with them.
@@ -1896,8 +1897,9 @@ func _piece_style(slot: String, id: String) -> String:
 func piece_style(slot: String, id: String) -> String:
 	return _piece_style(slot, id)
 
-## Each pad and each goal's two: {id, at (its floor point, terrain space, m),
-## radius (m), held (as shown)}, for the control haptics (control_feels.gd).
+## Each pad and each goal's two halves: {id, at (its floor point, terrain
+## space, m), radius (m), held (as shown), and for a goal's half its half
+## extents "half"}, for the control haptics (control_feels.gd).
 func pad_spots() -> Array:
 	var spots: Array = []
 	for id: Variant in pad_pieces:

@@ -312,6 +312,33 @@ describe("open turns: a friend room", () => {
     const pass = await hashed({ ...turns[cap - 1], completed: false, outcome: { ...turns[cap - 1].outcome, objective_complete: false } });
     await failure(call(`/v2/rooms/${joined.room_id}/turns`, "POST", cap % 2 ? first : second, { base_revision: current.revision, branch: current.branch, idempotency_key: key(), recording: pass }), 409, "turn_must_finish");
   });
+  it("takes a room on its cap's turn back by a redo, and again by starting over", async () => {
+    const { room: joined, first, second } = await room();
+    const cap = adapter.open_turns!.caps[0], { turns } = await chain(0, initial(), cap - 1);
+    const pass = (n: number) => hashed({ ...turns[n - 1], completed: false, outcome: { ...turns[n - 1].outcome, objective_complete: false } });
+    async function toCap(start: RoomSnapshotV2): Promise<RoomSnapshotV2> {
+      let current = (await send(start, first, turns[0])).room;
+      for (let n = 2; n < cap; n++) current = (await send(current, n % 2 ? first : second, await pass(n))).room;
+      expect(current.open_turns).toMatchObject({ turn: cap, must_finish: true });
+      return current;
+    }
+    const capped = await toCap(joined);
+    const [mover, friend] = cap % 2 ? [first, second] : [second, first];
+    // The pip on the cap's turn asks to redo the friend's turn before it; the friend agrees.
+    const path = `/v2/rooms/${joined.room_id}/redo`, headers = { "X-AfterYou-Poll-Redo": "1", "X-AfterYou-Redo-Extras": "1" };
+    const state = await json<RedoStateV2>(call(path, "GET", mover, undefined, headers));
+    expect(state.source).toMatchObject({ a_hash: (await pass(cap - 1)).recording_hash, stage_index: 0 });
+    const asked = await json<RedoStateV2>(call(path, "POST", mover, { action: "request", source: state.source }));
+    const redone = await json<MutationV2>(call(`/v2/rooms/${joined.room_id}/fork`, "POST", friend, { base_revision: capped.revision, branch: capped.branch, stage_index: 0, idempotency_key: key(), redo_request_id: asked.request!.request_id }));
+    expect(redone.room.open_turns).toMatchObject({ turn: 1, must_finish: false, turn_hashes: [] });
+    // Played to the cap again, then started over by agreement: the stage opens on its first turn.
+    const again = await toCap(redone.room);
+    const over = { room_id: joined.room_id, revision: again.revision, branch: again.branch, stage_index: 0, a_hash: again.checkpoint.checkpoint_hash, first_player_id: second.player_id, second_player_id: first.player_id };
+    const request = await json<RedoStateV2>(call(path, "POST", first, { action: "request", source: over }));
+    const wiped = await json<MutationV2>(call(`/v2/rooms/${joined.room_id}/fork`, "POST", second, { base_revision: again.revision, branch: again.branch, stage_index: 0, idempotency_key: key(), redo_request_id: request.request!.request_id }));
+    expect(wiped.room).toMatchObject({ stage_index: 0, a_turn_id: null });
+    expect(wiped.room.open_turns).toMatchObject({ turn: 1, must_finish: false, turn_hashes: [], newest: null });
+  });
   it("shows whose turn it is in the room list after each pass", async () => {
     const { room: joined, first, second } = await room();
     const { turns } = await chain(0, initial(), 2);

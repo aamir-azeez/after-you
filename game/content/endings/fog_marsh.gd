@@ -26,8 +26,8 @@ const DATA := {
 	"steps": [
 		{"do": "prop", "id": "pipsport", "follow": "carrier"},
 		{"do": "camera", "at": [1.17, 0.5, 0.05], "size": 5.5, "time": 1.0},
-		{"do": "move", "who": "carrier", "to": [0.62, -0.055, 0.25], "time": 1.0},
-		{"do": "move", "who": "other", "to": [1.72, -0.055, 0.25], "time": 1.0},
+		{"do": "move", "who": "carrier", "to": [0.62, 0.0, 0.25], "time": 1.0},
+		{"do": "move", "who": "other", "to": [1.72, 0.0, 0.25], "time": 1.0},
 		{"do": "wait", "time": 1.1},
 		# The soggy pipsport, set on the stamp desk.
 		{"do": "face", "who": "carrier", "toward": [0.0, 0.0, 0.0]},
@@ -49,8 +49,8 @@ const DATA := {
 		{"do": "wait", "time": 0.6},
 		{"do": "prop", "id": "stamp", "show": false},
 		# Both hold it up, and the fog lifts off the marsh.
-		{"do": "move", "who": "carrier", "to": [0.77, -0.055, 0.25], "time": 0.5},
-		{"do": "move", "who": "other", "to": [1.57, -0.055, 0.25], "time": 0.5},
+		{"do": "move", "who": "carrier", "to": [0.77, 0.0, 0.25], "time": 0.5},
+		{"do": "move", "who": "other", "to": [1.57, 0.0, 0.25], "time": 0.5},
 		{"do": "prop", "id": "pipsport", "to": [1.17, 1.3, 0.25], "time": 0.6, "arc": 0.15},
 		{"do": "prop", "id": "mark", "to": [1.17, 1.325, 0.25], "time": 0.6, "arc": 0.15},
 		{"do": "wait", "time": 0.6},

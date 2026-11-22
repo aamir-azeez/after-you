@@ -192,6 +192,9 @@ const SHARED_REPLAY_DELETE_CONFIRM := "Delete this replay from Shared Replays on
 const TRY_PILL := "Try %d"
 ## Open turns (core/physical/open_turns.gd): the coral pill under the turn dots on the turn that must finish the stage.
 const OPEN_TURNS_LAST_TURN := "Last turn"
+## The card when the stage's last turn ends with the stage not finished (presentation/turn_endings.gd).
+## Draft line, waiting for the owner's words.
+const OPEN_TURNS_OUT_OF_TURNS := "That was the last turn! Try again?"
 ## The room page's line under its heading while the friend plays: "Maya's turn", with the turn dots under it.
 const OPEN_TURNS_PARTNER_TURN := "%s's turn"
 ## The room list's chip beside the turn dots while the friend plays.
@@ -202,6 +205,8 @@ const TRY_FIRST := "%s · First try"
 const TRY_YOU := "You"
 const TRY_FIRST_TURN := "First turn"
 const TRY_SECOND_TURN := "Second turn"
+## An open turns part's turns, numbered.
+const TRY_TURN := "Turn %d"
 
 # Pollen after a turn (presentation/pollen_result_line.gd). Plain words; the
 # numbers come from the server's receipt.
