@@ -192,6 +192,10 @@ const DECAL_TOP := TRIM_TOP + 0.006
 ## rise to the height of the pieces laid on the floor (an ownership mark).
 const PLANK_TOP := 0.010
 const JOINT_TOP := 0.006
+## The highest a floor's own layers (seams, planks, joints, trims) rise over
+## its walking surface: anything laid flat on a floor (kit/pair_tags.gd) lies
+## over this, or the planks and trims cover it.
+const RELIEF_TOP := TRIM_TOP
 
 static func _planks(style: Dictionary, r: Array, origin: Vector2, parent: Node3D) -> void:
 	var spacing := float(style.spacing)
