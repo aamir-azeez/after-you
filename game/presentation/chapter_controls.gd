@@ -23,6 +23,7 @@ const ButtonTicks = preload("res://presentation/button_ticks.gd")
 const TurnDots = preload("res://presentation/kit/turn_dots.gd")
 const PairChip = preload("res://presentation/kit/pair_chip.gd")
 const Icons = preload("res://presentation/kit/icons.gd")
+const SpiritLook = preload("res://presentation/spirit_look.gd")
 const CREAM := Color("eceddb")
 const MUTED := Color("afc7bd")
 var settings: Dictionary = {}
@@ -104,6 +105,7 @@ func show_moment(action_id: String) -> void:
 	# The solved world stays visible until the player chooses to move on.
 	show_play()
 	hide_memory_wait()
+	hide_watching()
 	stick.release()
 	stick.visible = false
 	action_button.visible = false
@@ -124,12 +126,34 @@ func update_state(title: String, remaining: float, state: Dictionary, interactiv
 	action_button.disabled = not bool(action.get("enabled", false))
 	# Open turns (core/physical/open_turns.gd): a later turn may end at any time; it passes once its memory is over.
 	finish_button.disabled = not (bool(state.get("can_commit", false)) or bool(state.get("can_pass", false)) or bool(state.get("can_end_early", false)))
-	stick.visible = interactive and not _playback
+	stick.visible = interactive or _watching
 	action_button.visible = interactive and not action_button.text.is_empty() and not _memory_wait
 	finish_button.visible = interactive and not _memory_wait
 	fast_forward_button.visible = interactive and _memory_wait
 	skip_wait_button.visible = interactive and _memory_wait
 	_show_pair_chip(state, interactive)
+	_show_replay_mark(state)
+
+## Open turns: where the friend's replay ends in this turn (the snapshot's
+## replay_ticks, M) as a notch on the timer in the friend's pip colour, filled
+## once it has gone by, so a friend standing still still shows when their
+## turn ended. Hidden with no replay (a first turn, a chapter without open turns).
+func _show_replay_mark(state: Dictionary) -> void:
+	var replay := int(state.get("replay_ticks", 0))
+	var friend := _friend_slot(state)
+	if replay <= 0 or friend.is_empty():
+		turn_progress.clear_replay_mark()
+		return
+	var duration := maxf(1.0, float(state.get("duration_ticks", 600)))
+	turn_progress.set_replay_mark(float(replay) / duration, SpiritLook.MINT if friend == "p1" else SpiritLook.PEACH, int(state.get("tick", 0)) >= replay)
+
+## The slot of the friend's pip in `state` (the one marked ghost), "" for none.
+static func _friend_slot(state: Dictionary) -> String:
+	var players: Variant = state.get("players", {})
+	if not players is Dictionary: return ""
+	for key: Variant in players:
+		if players[key] is Dictionary and bool(players[key].get("ghost", false)): return str(key)
+	return ""
 
 ## The letter of the input the live pip is at, asked of the shown world's pair
 ## tags (kit/pair_tags.gd prompt()): inside the action button's left end, or
@@ -165,16 +189,36 @@ func show_memory_wait(text: String, ratio: float, skipping: bool = false) -> voi
 	_memory_wait = true
 
 ## Carry-over turns: the friend's turn plays before this turn's hand-off. The
-## wait row shows with Fast-forward and Skip as in a wait; the clock and the
-## stick come at the hand-off (hide_memory_wait), with nothing said.
+## wait row shows with Fast-forward and Skip as in a wait, and the stick's
+## spot shows the watch (show_watching); the clock and the stick come at the
+## hand-off (hide_memory_wait), with nothing said.
 var _playback := false
 func show_playback(text: String, ratio: float, skipping: bool = false) -> void:
 	show_memory_wait(text, ratio, skipping)
+	show_watching(1.0 - ratio)
 	if _playback: return
 	_playback = true
-	stick.release()
-	stick.visible = false
 	turn_progress.visible = false
+
+## Watching (a friend's turn before the hand-off, a stage's closing turn, a
+## replay): the stick's spot shows the camera in a ring that fills toward the
+## hand-off (`progress`, 0 to 1), and the stick takes no movement. Cheap to
+## call every tick; nothing runs while not watching.
+var _watching := false
+func show_watching(progress: float) -> void:
+	stick.watch(progress)
+	if _watching: return
+	_watching = true
+	stick.visible = true
+
+## The watch is over: the spot turns back into the stick with a short pop.
+func hide_watching() -> void:
+	if not _watching: return
+	_watching = false
+	stick.end_watch(bool(settings.get("reduced_motion", false)))
+
+func watching() -> bool:
+	return _watching
 
 ## True while the fast-forward mark shows (a skipped or fast-forwarded wait).
 func fast_forwarding() -> bool:
@@ -186,6 +230,7 @@ func hide_memory_wait() -> void:
 	if _playback:
 		_playback = false
 		turn_progress.visible = true
+		hide_watching()
 	if not _memory_wait and not wait_row.visible: return
 	_memory_wait = false
 	wait_row.visible = false

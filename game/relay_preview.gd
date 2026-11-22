@@ -2495,6 +2495,9 @@ func _update_memory_wait_hud() -> void:
 	if mode == "play" and memory_wait.waiting(): controls.show_memory_wait(_memory_wait_label(), memory_wait.remaining_ratio(), memory_wait.skipping)
 	elif mode == "watch" and controls.has_method("show_playback"): controls.show_playback(_memory_wait_label(), memory_wait.remaining_ratio(), memory_wait.skipping)
 	else: controls.hide_memory_wait()
+	# A replay is watched too: the stick's spot fills toward its end.
+	if mode == "replay" and controls.has_method("show_watching"): controls.show_watching(float(replay_cursor) / maxf(1.0, replay_frames.size()))
+	elif mode != "watch" and controls.has_method("hide_watching"): controls.hide_watching()
 	# Wait hints step aside for the fast-forward mark.
 	if is_instance_valid(world) and world.has_method("hush_wait_hints"): world.hush_wait_hints(controls.has_method("fast_forwarding") and controls.fast_forwarding())
 

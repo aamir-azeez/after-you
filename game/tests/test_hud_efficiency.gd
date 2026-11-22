@@ -122,7 +122,7 @@ func _observe(case: Dictionary, controls: CanvasLayer, benchmark: bool) -> void:
 	screen.mode="replay"
 	screen._update_hud(states[-1])
 	var replay_output := _visible(controls)
-	_check("Replay" in controls.chapter_label.text and not controls.action_button.visible and not controls.finish_button.visible and not controls.stick.visible,case.id+" replay displays no live input controls")
+	_check("Replay" in controls.chapter_label.text and not controls.action_button.visible and not controls.finish_button.visible and (not controls.stick.visible or controls.stick.watching),case.id+" replay displays no live input controls, only the watch in the stick's spot")
 	screen.mode="play"
 	screen._update_hud(states[-1])
 	await process_frame

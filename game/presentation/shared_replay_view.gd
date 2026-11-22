@@ -379,8 +379,10 @@ func _update_hud(snapshot: Dictionary = {}) -> void:
 	var state: Dictionary = (sim.snapshot() if snapshot.is_empty() else snapshot).duplicate()
 	state.context_action = {"label": "Replay", "enabled": false}
 	state.message = _words.message
+	# The stick's spot shows the replay being watched, filling toward its end.
+	if mode == "replay": controls.show_watching(float(cursor) / maxf(1.0, _end))
+	else: controls.hide_watching()
 	controls.update_state(_words.hud + _display_title, float(_end - cursor) / 30.0, state, false)
-	controls.stick.hide()
 	controls.action_button.hide()
 	controls.finish_button.hide()
 
