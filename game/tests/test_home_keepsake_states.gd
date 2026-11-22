@@ -8,7 +8,7 @@ const States = preload("res://services/home_keepsake_states.gd")
 const Catalog = preload("res://services/home_keepsake_catalog.gd")
 const HardMode = preload("res://services/hard_mode.gd")
 const ChapterCompletion = preload("res://presentation/chapter_completion.gd")
-const ORDER := ["first-steps", "relay-isles", "high-and-low", "the-wishing-well", "turn-of-the-tide", "sleeping-lighthouse", "rolling-home", "a-house-for-two", "conservatory", "long-way-home"]
+const ORDER := ["first-steps", "relay-isles", "high-and-low", "the-wishing-well", "sleeping-lighthouse", "rolling-home", "a-house-for-two", "conservatory", "long-way-home", "turn-of-the-tide"]
 var checks := 0
 var failures := 0
 
@@ -53,7 +53,7 @@ func _check_entries() -> void:
 	var entries := States.entries()
 	_check(entries.map(func(entry: Dictionary) -> String: return entry.id) == ORDER, "Home order: the free chapters, then the Full Journey chapters: %s" % [entries.map(func(entry: Dictionary) -> String: return entry.id)])
 	var free := States.entries(true)
-	_check(free.map(func(entry: Dictionary) -> String: return entry.id) == ORDER.slice(0, 5), "A build that sells nothing stands the five free chapters")
+	_check(free.map(func(entry: Dictionary) -> String: return entry.id) == ORDER.slice(0, 4), "A build that sells nothing stands the four free chapters")
 	var keys := {}
 	for entry: Dictionary in entries: keys[entry.id] = entry.key
 	_check(keys["sleeping-lighthouse"] == "sleeping-lighthouse@2" and keys["turn-of-the-tide"] == "turn-of-the-tide@2" and keys["long-way-home"] == "long-way-home@2", "A keepsake lives on its chapter's offered version: %s" % [keys])
@@ -123,7 +123,7 @@ func _check_counts() -> void:
 		_cleared(entry.id, true, true, everything)
 		if entry.hard: hard[entry.key] = {"solo": true, "together": true}
 	var together := 10 if Catalog.lighthouse_together() else 9
-	for build: Array in [[false, true, 10, together + 20, 10], [false, false, 10, together + 10, 10], [true, true, 5, 15, 5], [true, false, 5, 10, 5]]:
+	for build: Array in [[false, true, 10, together + 20, 10], [false, false, 10, together + 10, 10], [true, true, 4, 12, 4], [true, false, 4, 8, 4]]:
 		var result := _state(everything, hard, build[1], build[0])
 		_check(result.keepsakes == [build[2], build[2]] and result.upgrades == [build[3], build[3]] and result.hard == [build[4], build[4]] and result.hard_open,
 			"Everything earned, free_only %s, together Hard %s: %s %s %s" % [build[0], build[1], result.keepsakes, result.upgrades, result.hard])

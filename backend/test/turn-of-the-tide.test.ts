@@ -3,6 +3,7 @@ import { reset } from "cloudflare:test";
 import { afterEach, describe, expect, it } from "vitest";
 import worker from "../src/index";
 import { withConfig } from "./config";
+import { grantFullJourney } from "./full-journey";
 import { canonicalJson, digest } from "../src/protocol";
 import { chapter, checkpointV2, initialCheckpoint, recordingV2, acceptedRecording, boundedTurnValue, boundedValue, MAX_CHECKPOINT_BYTES, MAX_V2_BODY_BYTES } from "../src/v2/protocol";
 import { physicalRecording, scaledLimits } from "../src/v2/protocol-physical-recording";
@@ -80,7 +81,7 @@ async function stageOne(): Promise<ChapterCheckpoint> {
 }
 afterEach(async () => { await reset(); });
 
-describe("Turn of the Tide (free, rules 9, behind its own flag)", () => {
+describe("Turn of the Tide (Full Journey, rules 9, behind its own flag)", () => {
   it("bundles the exact native definition and initial checkpoint", async () => {
     expect(bundledDefinition).toEqual(definition); expect(bundledInitial).toEqual(initial);
     expect(await digest(canonicalJson(definition))).toBe(TURN_OF_THE_TIDE_HASH);
@@ -203,7 +204,7 @@ describe("Turn of the Tide (free, rules 9, behind its own flag)", () => {
     expect(() => boundedTurnValue(body)).toThrow(/too_large/);
   });
   it("lets a tide receiver turn past the published body bound reach the proof over HTTP", async () => {
-    const host = await account(), guest = await account();
+    const host = await account(), guest = await account(); await grantFullJourney(host);
     const created = await call("/v2/rooms", "POST", host, { ...turnOfTheTide.key, idempotency_key: key() }, ON); expect(created.status).toBe(200);
     const room = await created.json<RoomSnapshotV2>();
     const joined = await call("/v2/rooms/join", "POST", guest, { invite_code: room.invite_code, supported_simulation_versions: NEW_CLIENT }, ON); expect(joined.status).toBe(200);
@@ -242,7 +243,7 @@ describe("Turn of the Tide (free, rules 9, behind its own flag)", () => {
     await expect(checkpointV2(await rehash(sluiceOff), first, a, b)).rejects.toMatchObject({ code: "checkpoint_mechanism_mismatch" });
   });
   it("refuses a 0.5.x guest before the seat is taken, and plays both stages to completion", async () => {
-    const host = await account(), oldGuest = await account(), guest = await account();
+    const host = await account(), oldGuest = await account(), guest = await account(); await grantFullJourney(host);
     const created = await call("/v2/rooms", "POST", host, { ...turnOfTheTide.key, idempotency_key: key() }, ON);
     expect(created.status).toBe(200);
     const room = await created.json<RoomSnapshotV2>();

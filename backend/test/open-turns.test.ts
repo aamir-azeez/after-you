@@ -22,11 +22,12 @@ import slackEnd from "../../game/tests/fixtures/journey/turn-of-the-tide-v3-slac
 import { physicalAccepted, scaledLimits, turnLimits } from "../src/v2/protocol-physical-recording";
 import tideV2Definition from "../src/v2/turn-of-the-tide-v2.json";
 import { withConfig } from "./config";
+import { grantFullJourney } from "./full-journey";
 import { decodeBlob } from "../src/blob-codec";
 import { countingEnv, meterRows } from "./meter";
 
 /**
- * Open turns (v2/open-turns.ts) on Turn of the Tide@3 (rules 15, free). The server never simulates, so the chains
+ * Open turns (v2/open-turns.ts) on Turn of the Tide@3 (rules 15, Full Journey: the hosts hold a tester grant). The server never simulates, so the chains
  * here are built from the native two-turn fixtures: a pass is the fixture's second turn not finished, a later turn
  * swaps the pip and chains its source, and every record and checkpoint is hashed again. Every turn goes packed
  * (v2/recording-codec.ts), as an open turns room takes no other form.
@@ -114,7 +115,7 @@ const validate = (checkpoint: Rec, previous: Rec, turns: Rec[]) =>
   checkpointV2(checkpoint, previous as ChapterCheckpoint, turns[0] as ChapterRecording, turns.at(-1) as ChapterRecording, turns.slice(1, -1) as ChapterRecording[]);
 
 async function room(): Promise<{ host: Account; guest: Account; room: RoomSnapshotV2; first: Account; second: Account }> {
-  const host = await account(), guest = await account();
+  const host = await account(), guest = await account(); await grantFullJourney(host);
   const made = await json<RoomSnapshotV2>(call("/v2/rooms", "POST", host, { ...adapter.key, idempotency_key: key() }));
   const joined = await json<RoomSnapshotV2>(call("/v2/rooms/join", "POST", guest, { invite_code: made.invite_code, supported_simulation_versions: NEW_CLIENT }));
   const first = setA.player_slot === "p0" ? host : guest;
@@ -384,12 +385,12 @@ describe("open turns: a friend room", () => {
     expect([one, pass, poll, close, quiet, ack, after].map(step => step.rows.written)).toEqual([7, 11, 1, 10, 0, 1, 0]);
   });
   it("is refused to old apps", async () => {
-    const host = await account(), oldGuest = await account();
+    const host = await account(), oldGuest = await account(); await grantFullJourney(host);
     const made = await json<RoomSnapshotV2>(call("/v2/rooms", "POST", host, { ...adapter.key, idempotency_key: key() }));
     await failure(call("/v2/rooms/join", "POST", oldGuest, { invite_code: made.invite_code, supported_simulation_versions: [2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13] }), 422, "unsupported_simulation_version");
   });
   it("keeps a published room's replies and stored room free of open turns fields", async () => {
-    const host = await account();
+    const host = await account(); await grantFullJourney(host);
     const made = await json<RoomSnapshotV2>(call("/v2/rooms", "POST", host, { ...turnOfTheTideV2.key, idempotency_key: key() }));
     expect(made).not.toHaveProperty("open_turns");
     await runInDurableObject(env.ROOMS_V2.getByName(made.room_id), (_, ctx) => {
@@ -501,7 +502,8 @@ describe("open turns: fingerprints, history and replays", () => {
     expect(await rows()).toEqual({ wants: 0, copies: 0 });
     // Only turns of this room, and only in an open turns room.
     await failure(call(path + "/want", "POST", first, { schema_version: 1, recording_hashes: ["0".repeat(64)] }), 422, "turn_not_in_room");
-    const host = await account(), published = await json<RoomSnapshotV2>(call("/v2/rooms", "POST", host, { ...turnOfTheTideV2.key, idempotency_key: key() }));
+    const host = await account(); await grantFullJourney(host);
+    const published = await json<RoomSnapshotV2>(call("/v2/rooms", "POST", host, { ...turnOfTheTideV2.key, idempotency_key: key() }));
     await failure(call(`/v2/rooms/${published.room_id}/turn-copies/want`, "POST", host, { schema_version: 1, recording_hashes: hashes }), 409, "open_turns_only");
   });
   it("keeps a finished room's history: fingerprints in its attempt, offloaded and sent back, then a fork from its pair row", async () => {
@@ -549,7 +551,7 @@ describe("open turns: a hard room", () => {
   type Reset = { room: RoomSnapshotV2; failure: Rec };
   type Slips = { failures: number; list: (Rec & { slip: Rec | null })[] };
   async function hardRoom(): Promise<{ room: RoomSnapshotV2; first: Account; second: Account }> {
-    const host = await account(), guest = await account();
+    const host = await account(), guest = await account(); await grantFullJourney(host);
     const made = await json<RoomSnapshotV2>(call("/v2/rooms", "POST", host, { ...adapter.key, idempotency_key: key(), mode: "hard" }));
     const joined = await json<RoomSnapshotV2>(call("/v2/rooms/join", "POST", guest, { invite_code: made.invite_code, supported_simulation_versions: NEW_CLIENT }, HARD));
     const first = setA.player_slot === "p0" ? host : guest;

@@ -7,7 +7,7 @@ import { roomLinkVersion, type RoomLink } from "../room-links";
 import { reserveWithinRoomLimit } from "../room-limit";
 import { indexedRelayRooms, pageOffset, settleFromRoomIndex, withNext } from "../room-index-lists";
 import { MAX_V2_BODY_BYTES, exact, boundedTurnValue } from "./protocol";
-import { advertisedChapters, chapter, creatable } from "./chapters";
+import { advertisedChapters, chapter, creatable, paid } from "./chapters";
 import { MAX_ROOM_STAGES } from "./chapter-types";
 import { stageWithin } from "./room-stage";
 import type { Beside, KnownRoom, PolledRoomV2 } from "./room";
@@ -178,9 +178,9 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     // without another purchase check. The intent is read only when a check
     // below would otherwise refuse or charge.
     const chapterOff = !creatable(selected, env);
-    const previous = chapterOff || selected.premium ? unwrap(await player.chapterCreation(key, selected.key, input.simulation_version as number | undefined)) : null;
+    const previous = chapterOff || paid(selected) ? unwrap(await player.chapterCreation(key, selected.key, input.simulation_version as number | undefined)) : null;
     if (chapterOff && !previous) throw new ApiError(503, "chapter_creation_disabled");
-    if (selected.premium && !previous) {
+    if (paid(selected) && !previous) {
       const { until } = await checkedWithEnd(onGrant => requireHostAccess(playerId, env, onGrant), pollen !== undefined);
       if (until !== undefined) pollen = { fj_until: until };
       await reauthorize(request, playerId, env, until);
@@ -390,7 +390,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
   if (operation === "fork" && object(input).redo_request_id !== undefined) await reauthorize(request, playerId, env);
   const snapshot = unwrap(await room.snapshot(playerId, context, context === undefined ? historySupport(request) : undefined));
   const storyGuard = context ? await room.campaignWriteAvailability() : null;
-  if (chapter(snapshot).premium || storyGuard) {
+  if (paid(chapter(snapshot)) || storyGuard) {
     boundedTurnValue(input, operation === "turns" ? chapter(snapshot).limits : undefined);
     const body = object(input);
     if (operation === "fork") exact(body, ["base_revision", "idempotency_key", "branch", "stage_index", ...(body.redo_request_id === undefined ? [] : ["redo_request_id"])]);

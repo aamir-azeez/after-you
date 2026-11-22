@@ -83,5 +83,7 @@ const DATA := {
 		},
 		"sounds": {"base": "water_rise", "together": "water_fall", "hard": "crossing_closing", "top": "bell_rung"},
 	},
+	# Full Journey, played last in it; its published definitions stay free.
+	"full_journey": true,
 	"server": {"flag": "TURN_OF_THE_TIDE_V2_CHAPTER_ENABLED", "max_branches": 7},
 }

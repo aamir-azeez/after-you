@@ -3,14 +3,14 @@ import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { RETIRED_FLAGS } from "../src/flags";
 import { canonicalJson, digest } from "../src/protocol";
-import { CHAPTERS, RELAY_KEY, advertisedChapters, chapter, chapterFlag } from "../src/v2/chapters";
+import { CHAPTERS, RELAY_KEY, advertisedChapters, chapter, chapterFlag, paid } from "../src/v2/chapters";
 import manifest from "../../game/tests/fixtures/golden/chapter_manifest.json";
 import { withConfig } from "./config";
 
 // The game writes this manifest from its chapter registry (game/tests/test_chapter_manifest.gd).
 // Every server chapter must agree with it, or the game drops the chapter from Play with a friend.
 type Row = {
-  key: string; level_id: string; level_version: number; definition_hash: string; premium: boolean; stage_count: number; family: string;
+  key: string; level_id: string; level_version: number; definition_hash: string; premium: boolean; full_journey: boolean; stage_count: number; family: string;
   recording_version: number; simulation_version: number; supported_simulation_versions: number[]; initial_checkpoint_hash: string;
   flag: string; max_branches: number; definition_fixture: string; initial_fixture: string;
 };
@@ -38,6 +38,7 @@ describe("chapter manifest shared with the game", () => {
   it.each(rows.map(row => [row.key, row] as const))("%s matches its server adapter", async (_key, row) => {
     const adapter = chapter(row);
     expect(adapter.premium).toBe(row.premium);
+    expect(paid(adapter)).toBe(row.premium || row.full_journey);
     expect(adapter.stages.length).toBe(row.stage_count);
     expect(adapter.recording_version).toBe(row.recording_version);
     expect(adapter.simulation_version).toBe(row.simulation_version);

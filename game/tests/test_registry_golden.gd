@@ -321,7 +321,8 @@ func _caps() -> Dictionary:
 	for key: String in Golden.GOLDEN_KEYS:
 		var d := Registry.descriptor(key)
 		var item := {"level_id": d.level_id, "level_version": d.level_version, "definition_hash": d.definition_hash,
-			"premium": d.premium, "recording_version": d.recording_version, "simulation_version": d.simulation_version}
+			# The server advertises the published definition's flag, so a full_journey chapter answers false.
+			"premium": bool(Registry.definition(key).get("premium", false)), "recording_version": d.recording_version, "simulation_version": d.simulation_version}
 		if key == "first-steps@1":
 			item.simulation_version = 4
 			item["supported_simulation_versions"] = [4, 5]

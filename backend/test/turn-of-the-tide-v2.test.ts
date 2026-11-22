@@ -28,6 +28,7 @@ import bundledDefinition from "../src/v2/turn-of-the-tide-v2.json";
 import bundledInitial from "../src/v2/turn-of-the-tide-v2-initial.json";
 import { TIDE_CHAINS } from "./turn-of-the-tide-chains";
 import { withConfig } from "./config";
+import { grantFullJourney } from "./full-journey";
 
 type Account = { player_id: string; device_token: string };
 const key = () => crypto.randomUUID();
@@ -57,7 +58,7 @@ async function stageOne(): Promise<ChapterCheckpoint> {
 }
 afterEach(async () => { await reset(); });
 
-describe("Turn of the Tide version 2 (free, tide rules 10)", () => {
+describe("Turn of the Tide version 2 (Full Journey, tide rules 10)", () => {
   it("bundles the exact native definition and initial checkpoint beside @1", async () => {
     expect(bundledDefinition).toEqual(definition); expect(bundledInitial).toEqual(initial);
     expect(await digest(canonicalJson(definition))).toBe(TURN_OF_THE_TIDE_V2_HASH);
@@ -153,7 +154,7 @@ describe("Turn of the Tide version 2 (free, tide rules 10)", () => {
     await expect(checkpointV2(await rehash(unlatched), start, ha, hb)).rejects.toMatchObject({ code: "checkpoint_surface_mismatch" });
   });
   it("refuses a guest whose client never offered rules 10, and plays both stages to completion", async () => {
-    const host = await account(), oldGuest = await account(), guest = await account();
+    const host = await account(), oldGuest = await account(), guest = await account(); await grantFullJourney(host);
     const created = await call("/v2/rooms", "POST", host, { ...turnOfTheTideV2.key, idempotency_key: key() });
     expect(created.status).toBe(200);
     const room = await created.json<RoomSnapshotV2>();

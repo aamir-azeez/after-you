@@ -75,6 +75,7 @@ func _order() -> void:
 		var earned := Fixture.cleared(chain[index])
 		_check(Unlocks.reached(chain[index + 1] if index + 1 < chain.size() else chain[index], _from(earned)), "Clearing %s opens the chapter after it" % chain[index])
 	_check(first_paid > 0 and chain[first_paid] == Registry.LIGHTHOUSE_V2, "The Sleeping Lighthouse leads the Full Journey part of the chain")
+	_check(chain[-1].begins_with("turn-of-the-tide@"), "Turn of the Tide ends the chain, the last Full Journey chapter: %s" % chain[-1])
 	var fresh := _from([])
 	_check(Unlocks.chain_key("") == "" and Unlocks.reached("", fresh) and Unlocks.reached("no-such@1", fresh), "Keys outside the chain, such as the earlier islands, are never gated")
 
