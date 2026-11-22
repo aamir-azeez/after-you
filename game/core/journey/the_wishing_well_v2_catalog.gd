@@ -33,9 +33,10 @@ const PiecesRules = preload("res://core/physical/pieces_rules.gd")
 ## Turns a stage may take.
 const CAPS := {"go-on-ahead": 10, "back-for-you": 10}
 const CLIFF := 160
-## The lookout bell, and the ladder step just beside it (their rings touch).
+## The lookout bell, and the ladder step a metre west of it, so the step's
+## board and the bell's frame stand clear of each other.
 const LOOKOUT := [1160, -96]
-const LADDER_STEP := [1100, -96]
+const LADDER_STEP := [1060, -96]
 const REUNION := [1616, 16]
 ## The garden plank over the stream, which the crane's bucket sweeps.
 const PLANK := [150, 188, 250, 252]

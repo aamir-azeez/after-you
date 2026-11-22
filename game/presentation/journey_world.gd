@@ -534,7 +534,8 @@ func present_history(checkpoint: Dictionary) -> void:
 	for route: Dictionary in chapter_definition.bridges:
 		if route.id not in _latched_bridge_ids: continue
 		var r: Array = route.rect_cm
-		var at := point([r[0]+12,r[3]-12])+Vector3(0,0.02,0)
+		# On the crossing at its own height (a raised one's floor stands up there).
+		var at := point([r[0]+12,r[3]-12])+Vector3(0,float(route.get("height_cm",0))/100.0+0.02,0)
 		box(Vector3(0.20,0.035,0.14),CREAM,at,_remembered)
 		box(Vector3(0.04,0.035,0.20),GOLD,at+Vector3(0,0.02,0),_remembered)
 
