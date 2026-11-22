@@ -31,6 +31,8 @@ const DROP_FALL_CM := 2 * Runtime.MOVE_PER_TICK
 ## lies down: heard as the crossing's own cues when it is seen to move.
 const RampRules = preload("res://presentation/kit/ramp_rules.gd")
 const BigChange = preload("res://presentation/kit/big_change.gd")
+## The refusal kinds (a teeter at a drop sounds unlike a barrier's rattle).
+const RouteBarriers = preload("res://presentation/kit/route_barriers.gd")
 
 ## Cues for the physical and journey chapters' own events.
 const PHYSICAL := {
@@ -42,6 +44,10 @@ const PHYSICAL := {
 	"handoff_offer": "handoff_offered",
 	"handoff_claim": "seed_caught",
 }
+## Cues for a thrown item (core/journey/simulation.gd "item_thrown:<id>"):
+## the seed's throw, catch and landing, named as the seed's, so every throw
+## sounds alike live, as the memory, on a retry and in a replay.
+const ITEM_THROWS := {"item_thrown": "seed_thrown", "item_caught": "seed_caught", "item_landed": "seed_landed"}
 ## Cues for First Steps' lift and loft.
 const FIRST_STEPS := {
 	"lift_arrived": "lift_ready",
@@ -109,15 +115,22 @@ static func cues(chapter_key: String, state: Dictionary, seen: Dictionary = {}) 
 		if overrides.has(event): cue = overrides[event]
 		elif event.begins_with("bridge_opened:"): cue = "bridge_opened"
 		# Tide rules: a crossing starts to close under rising water; a spirit
-		# caught on one as it shuts.
+		# caught on one as it shuts; a spirit falling off a stone left high
+		# lands in the water with the well's plunk, and one falling away into
+		# the sky (a chapter with no water) goes in a soft pop.
 		elif event.begins_with("closing:"): cue = "crossing_closing"
 		elif event.begins_with("drowned:"): cue = "spirit_drowned"
+		elif event.begins_with("fell:"): cue = "well_plunk" if not str(chapter.get("water", "")).is_empty() else "spirit_fell_away"
 		# A swing (core/physical/swings.gd) creaks on its rope as it draws back
 		# (the winch's pawl, low) and swishes across its lane (a throw's swish).
 		elif event.begins_with("swing_creak:"): cue = "winch_unwound"
 		elif event.begins_with("swing:"): cue = "seed_thrown"
 		elif event == "relay_filled": cue = "garden_opened"
 		elif event == "garden_bloomed": cue = "island_bloomed"
+		elif journey and ITEM_THROWS.has(event.get_slice(":", 0)):
+			cue = ITEM_THROWS[event.get_slice(":", 0)]
+			_add(out, cue, Soundscape.event_source(cue, role))
+			continue
 		elif cooperative and PHYSICAL.has(event): cue = PHYSICAL[event]
 		elif cooperative and event.begins_with("selector:"): cue = SoundCues.look_cue(PieceStyles.style("selector", event.trim_prefix("selector:"), chapter, dressing), "switch_set")
 		elif chapter_key == Registry.FIRST_STEPS and FIRST_STEPS.has(event): cue = FIRST_STEPS[event]
@@ -143,7 +156,10 @@ static func cues(chapter_key: String, state: Dictionary, seen: Dictionary = {}) 
 	# (a or b), so the memory's pushes keep the pitches of its own turn.
 	var first := str(state.get("first_player_slot", ""))
 	for event: Variant in refused:
-		if event is Dictionary: _add(out, "barrier_rattle", "rattle:%s:%s|rattle" % [str(event.get("id", "")), "a" if str(event.get("slot", "")) == first else "b"])
+		if not event is Dictionary: continue
+		var turn := "a" if str(event.get("slot", "")) == first else "b"
+		if event.get("kind") == RouteBarriers.EDGE: _add(out, "spirit_teeter", "teeter:%s:%s|teeter" % [str(event.get("id", "")), turn])
+		else: _add(out, "barrier_rattle", "rattle:%s:%s|rattle" % [str(event.get("id", "")), turn])
 	for event: Variant in locked:
 		if event is Dictionary: _add(out, "control_locked", "locked:%s:%s|locked" % [str(event.get("id", "")), "a" if str(event.get("slot", "")) == first else "b"])
 	# Crossings the water just covered go under with the water's own sound.

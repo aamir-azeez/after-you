@@ -117,6 +117,14 @@ static func pair_turns(pair: Dictionary) -> Array:
 		passes = nested.slice(1, nested.size() - 1) if nested.size() > 2 else []
 	return [pair.get("a")] + passes + [pair.get("b")]
 
+## A completed pair's closing turn set up again (a completion scene, a check):
+## the turn it played over ("prior") and the stage's turns before that
+## ("chain"), so it replays exactly as it was played and proved. Before open
+## turns that is {a, []}.
+static func closing_memory(pair: Dictionary) -> Dictionary:
+	var turns := pair_turns(pair)
+	return {"prior": turns[-2], "chain": turns.slice(0, turns.size() - 2)}
+
 ## Carry-over turns: a stage is
 ## one shared timeline that only moves forward. Turn k starts from turn k-1's
 ## world at its hand-off tick H(k), with the rest of turn k-1 (its pip's

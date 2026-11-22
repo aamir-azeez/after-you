@@ -20,6 +20,12 @@ extends SceneTree
 ##   a selector's tile at a gate glows only at a value that gate
 ##   asks, and a receiver's plaque only while one of its gates is open;
 ## - a receiver lit through turnable mirrors has those mirrors as its inputs.
+## The same sweep checks every goal of every stage of every chapter and
+## version (its family's layout "goal") is drawn by the goal kit
+## (kit/pieces/goal.gd, the world's goal_pieces) at its exact spot, two pip
+## pads and all. Not goals a pip stands at, so left out: a ball's home
+## (ball_home), a beacon the light wakes (activate_receivers) and the relay
+## nest the seed is handed through (a "relay" socket, an item spot).
 ## The pure parts are checked on small stages too: no pairs, past ten, a
 ## missing gate or control, a gate several controls work. A failure names the
 ## chapter, the stage and what clashed.
@@ -54,6 +60,10 @@ const BUILD_BUDGET_USEC := 150000
 var checks := 0
 var failures := 0
 var _slowest := [0, ""]
+## Goals the sweep found drawn by the goal kit.
+var _goals := 0
+## Goal kinds no pip stands at (see the header).
+const NOT_STOOD_AT := ["ball_home", "activate_receivers"]
 
 func _initialize() -> void: _run.call_deferred()
 
@@ -74,7 +84,9 @@ func _run() -> void:
 		world.load_level(level)
 		for stage: Dictionary in level.stages:
 			world.show_stage(stage)
-			tagged += _stage(world, key, Layout.for_key(key, str(stage.id), level))
+			var view := Layout.for_key(key, str(stage.id), level)
+			tagged += _stage(world, key, view)
+			_goal_drawn(world, key, view)
 			stages += 1
 		# The frame follows the level's tag style (the harbour's and the marsh's plaque).
 		var style := str(world.dressing.get("tag", PairTags.DEFAULT_FRAME))
@@ -83,6 +95,7 @@ func _run() -> void:
 		world.free()
 	_hud()
 	_check(stages > 10 and tagged > 30, "The sweep sees the chapters' pair tags: %d tiles on %d stages" % [tagged, stages])
+	_check(_goals > 30, "The sweep sees the chapters' goals: %d" % _goals)
 	print("PAIR TAGS: slowest layout %.1f ms (%s)" % [float(_slowest[0]) / 1000.0, _slowest[1]])
 	_check(PairTags.cached_letters() > 0, "Letters are cached once made")
 	_check(SessionRelease._releases.has(Callable(PairTags, "release_cached")), "The letter cache lets go at session end (SessionRelease)")
@@ -90,6 +103,18 @@ func _run() -> void:
 	_check(PairTags.cached_letters() == 0, "release_cached() lets every letter go")
 	print("PAIR TAGS: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
+
+## The stage's goal (its layout's "goal"), if a pip stands at it, is a goal
+## piece of the world's at its exact spot with both pips' pads.
+func _goal_drawn(world: Node3D, key: String, view: Dictionary) -> void:
+	var where := "%s %s" % [key, world.displayed_stage_id]
+	var goal: Dictionary = view.get("goal", {})
+	if goal.is_empty() or str(view.get("goal_policy", {}).get("kind", "")) in NOT_STOOD_AT or str(goal.get("kind", "")) == "relay": return
+	var spot := Vector2(float(goal.position_cm[0]), float(goal.position_cm[1])) / 100.0
+	var drawn: Array = world.goal_pieces.values().filter(func(piece: RefCounted) -> bool:
+		return is_instance_valid(piece.root) and piece.root.is_inside_tree() and Vector2(piece.root.position.x, piece.root.position.z).distance_to(spot) < 0.01)
+	_check(drawn.size() == 1 and drawn[0].pads.size() == 2, "%s: goal %s is drawn by the goal kit at its spot with both pads (%d found)" % [where, goal.get("id", ""), drawn.size()])
+	_goals += 1
 
 ## The play screen asks the shown world's pair tags for its chip: at a lever
 ## of Slack Water the action button carries its letter at its left end (room
@@ -120,6 +145,43 @@ func _hud() -> void:
 	var button := controls.action_button
 	_check(chip.visible and chip.chip.get("letter", "") == PairTags.letter_of(lever.index) and button.visible and button.icon != null, "At %s the action button shows its letter %s: %s" % [lever.control, PairTags.letter_of(lever.index), chip.chip])
 	_check(Rect2(button.position, button.size).encloses(Rect2(chip.position, chip.size)), "The chip sits inside the action button: %s in %s" % [Rect2(chip.position, chip.size), Rect2(button.position, button.size)])
+	# One shared padding: the chip stands the plain button's edge padding from the left, the label the button's icon gap after it, the label the same padding from the right, and the chip is centred.
+	var plain := Button.new()
+	plain.text = button.text
+	controls.ui.add_child(plain)
+	var pad_edge := float(button.get_theme_stylebox("normal").get_margin(SIDE_LEFT))
+	var gap := float(button.get_theme_constant("h_separation"))
+	_check(is_equal_approx(pad_edge, float(plain.get_theme_stylebox("normal").get_margin(SIDE_LEFT))), "The tagged button has the plain button's edge padding")
+	_check(is_equal_approx(chip.position.x - button.position.x, pad_edge), "The chip stands the edge padding %s from the button's left: %s" % [pad_edge, chip.position.x - button.position.x])
+	_check(gap >= 10.0, "The label keeps a gap of at least 10 after the chip: %s" % gap)
+	_check(is_equal_approx(chip.position.y - button.position.y, (button.size.y - chip.size.y) * 0.5), "The chip is centred on the button")
+	# One line grows to fit tag, gap, label and padding on both sides, until it would reach the React button; past that it wraps, text unshrunk.
+	var react := Control.new()
+	controls.dock_beside_finish(react, Vector2(120.0, 54.0))
+	var room := -30.0 - (react.offset_left - controls.DOCK_GAP)
+	var font := button.get_theme_font("font")
+	var font_size := button.get_theme_font_size("font_size")
+	var words := "Stand on power pad near the big old stone wall by the river bank today".split(" ")
+	var label := ""
+	var flipped := false
+	for word in words:
+		label = (label + " " + word).strip_edges()
+		var cue := near.duplicate(true)
+		cue["context_action"] = {"id": "lever", "label": label, "enabled": true, "target_id": lever.control}
+		controls.update_state("", 10.0, cue, true)
+		var need := pad_edge * 2.0 + chip.size.x + gap + font.get_string_size(button.text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+		var wraps := button.autowrap_mode != TextServer.AUTOWRAP_OFF
+		_check(wraps == (need > room), "'%s' wraps exactly when one line would reach React: need %s room %s" % [label, need, room])
+		_check(button.size.x <= room + 0.01 and button.size.x >= pad_edge * 2.0, "'%s' stays short of React: %s of %s" % [label, button.size.x, room])
+		if wraps:
+			flipped = true
+			_check(is_equal_approx(button.size.x, room) and button.size.y > 64.0 - 0.01, "A wrapped label fills the room on a taller button: %s" % button.size)
+		else:
+			_check(is_equal_approx(button.size.x, maxf(210.0, need)), "A one-line label's button fits its content: %s vs %s" % [button.size.x, need])
+	_check(flipped, "A long enough label wraps")
+	react.visible = false
+	controls.update_state("", 10.0, near, true)
+	plain.free()
 	var on := near.duplicate(true)
 	on.levers[lever.control] = true
 	controls.update_state("", 10.0, on, true)

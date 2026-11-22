@@ -19,7 +19,7 @@ extends RefCounted
 ##   oldest one's place.
 ## - At most OPACITY strong, unlit, flat on the floor just above it (LIFT),
 ##   writing no depth and drawn before the pair tags (RENDER_PRIORITY), so pads,
-##   floor letters, stand spots and tags stay on top of it.
+##   floor letters and tags stay on top of it.
 ## - Reduce motion: no trail at all.
 ## - The same walk makes the same marks: a mark is dropped each time the pip
 ##   has walked one spacing (LIVE_MARKS live behind a pip walking at
@@ -69,7 +69,7 @@ const OPACITY := 0.6
 ## spacing comes from its life, so every trail keeps this many.
 const LIVE_MARKS := 4
 ## Metres above the floor the pip stands on: over the floor's lines (6 mm),
-## under the pair tags (9.5 mm), stand spots and pads.
+## under the pair tags (9.5 mm) and pads.
 const LIFT := 0.0085
 ## Drawn before the pair tags (render priority -1).
 const RENDER_PRIORITY := -2

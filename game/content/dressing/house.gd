@@ -13,7 +13,7 @@ const DATA := {
 	# Plain pieces (content/dressing/piece_styles.gd).
 	"lever": "plain",
 	"selector": "plain",
-	"pad": "plain",
+	"pad": "board",
 	"goal": "bell",
 	"lift": "plain",
 	"deck": "plank",

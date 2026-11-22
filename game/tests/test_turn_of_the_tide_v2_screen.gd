@@ -72,8 +72,9 @@ func _run() -> void:
 		screen.advance_input(frame)
 		if not warned and not screen.sim.snapshot().route_progress.closing.is_empty():
 			warned = true
-			var edges: Array = screen.world._decks["sand-1"].get_children().filter(func(edge: Node) -> bool: return edge.has_meta("edge"))
-			_check(edges.size() == 2 and edges.all(func(edge: Node) -> bool: return edge.has_meta("warned")), "A closing crossing's edges flash")
+			var closing: Dictionary = screen.sim.snapshot().route_progress.closing
+			var rims: Array = screen.world.closing_warning.moving_nodes().filter(func(rim: Node3D) -> bool: return rim.visible)
+			_check(closing.has("sand-1") and rims.size() == closing.size() and rims.any(func(rim: Node3D) -> bool: return rim.name == "ClosingWarning_sand-1"), "A closing crossing's rim flashes (kit/closing_warning.gd)")
 			# The rising harbour is slowed to reach the sand bar's deck as it shuts.
 			var water: Node3D = screen.world.waters.bodies.harbour
 			_check(water.has_meta("rate") and float(water.get_meta("rate")) < float(screen.world.waters.water.rate), "The water rising over the closing bar slows to meet its deck as it shuts")
@@ -119,9 +120,10 @@ func _run() -> void:
 	print("REVIEW CARD ", texts)
 	var title: Node = screen.find_child("EndingTitle", true, false)
 	_check(title is Label and (title as Label).text == PlayerCopy.JOURNEY_DROWNED_YOU and screen.find_child("EndingBand", true, false) != null, "The card's title is the line, in its band: " + PlayerCopy.JOURNEY_DROWNED_YOU)
-	for want: String in ["Retry", "Preview", PlayerCopy.REDO_PLAY_AGAIN, "Back"]:
+	for want: String in ["Try again", "Preview", PlayerCopy.REDO_PLAY_AGAIN]:
 		_check(texts.has(want), "The drowned turn's card offers " + want)
-	var retry := _button(screen, "Retry")
+	_check(not texts.has("Back") and screen.find_child("CardHome", true, false) is Button, "The drowned turn's card goes home from its Home square, with no Back row")
+	var retry := _button(screen, "Try again")
 	_check(retry != null and retry.get_meta("action_id", "") == "try_again", "Retry is the card's primary button")
 	_check(_button(screen, "Save turn") == null and not texts.has(PlayerCopy.RELAY_PREVIEW_93772D9A4DA5), "Save turn and the usual review title are not there")
 	var preview_row: Node = _button(screen, "Preview").get_parent() if _button(screen, "Preview") != null else null

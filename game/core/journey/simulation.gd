@@ -19,6 +19,9 @@ const COMFORT_ALIAS_VERSION := 9
 ## definition's "closing_ticks", then shuts; a spirit standing on a shut
 ## crossing then drowns and the turn ends there. A completed stage keeps no
 ## routes for the next one. Only a definition that pins 10 plays them.
+## A stepping stone its water leaves standing too tall (stage_catalog.gd
+## tall_stones) drowns no one: a spirit on it as it shuts stays up there, one
+## that walks off it or onto it falls, and the turn ends as a drowning does.
 const TIDE_RULES_VERSION := 10
 ## Open controls (core/physical/open_controls.gd): the comfort rules (9) with
 ## open controls are 12, the tide rules (10) with open controls 13. Only a
@@ -27,18 +30,19 @@ const TIDE_RULES_VERSION := 10
 const OPEN_TIDE_RULES_VERSION := OpenControls.OPEN_TIDE_RULES_VERSION
 const TIDE_RULES := OpenControls.TIDE_RULES
 const OPEN_RULES := OpenControls.OPEN_RULES
-## What a drowned turn says (snapshot text; PlayerCopy shows the editable
-## lines): the player's own spirit, or the friend's (the memory, or under
-## open turns the friend's replay, which fails the turn the same way).
-const DROWNED_YOU := "Oh no, you drowned! Try again?"
-const DROWNED_FRIEND := "Oh no, your friend drowned! Try again?"
+## What a drowned or fallen turn says is runtime.gd's DROWNED_YOU, DROWNED_FRIEND,
+## FELL_YOU and FELL_FRIEND.
+## A turn that would end with a spirit left high on a stone.
+const LEFT_HIGH := "A pip is stuck up on the stones."
 ## A turn that would end with a spirit on a closing crossing.
 const ON_CLOSING := "Step off the crossing before it shuts."
 var _entry_latches: Dictionary = {}
 ## Tide rules: route id -> the tick its crossing shuts, while it closes.
 var _closing: Dictionary = {}
-## Tide rules: {"slot", "route", "tick"} once a spirit has drowned.
-var _drowned: Dictionary = {}
+## Tide rules: slot -> where that spirit stood, left high on a stone, as the
+## last tick ended. (Who drowned or fell is runtime.gd's _drowned, with
+## "fell": true when it fell off a stone left high instead.)
+var _high: Dictionary = {}
 var _ready_branch := ""
 ## The pieces rules' carried items and currents (core/physical/carried_items.gd),
 ## set at reset: whether they play, the items in order, the crossings that
@@ -61,10 +65,16 @@ var _optics: Dictionary = {"segments":[],"signals":{}}
 var _route_defs: Array = []
 var _gate_plan: Array = []
 ## The pieces rules (core/physical/pieces_rules.gd), fixed at reset: the stage's
-## platforms as [platform, [stop bridges]], every stop id, the sinking stones,
-## and each pip's surface as the tick began (who stepped onto a stone last).
+## platforms as [platform, [stop bridges], whether it is a lift], every stop id
+## with its platform's place in that list, the sinking stones, and each pip's
+## surface as the tick began (who stepped onto a stone last).
 var _platforms: Array = []
 var _stops: Dictionary = {}
+## The pieces rules: each deck still on its way to the stop its platform
+## stands at, by platform id: {"from": [x, z, height] cm where it set off,
+## "done": ticks travelled, "ticks": the whole way} (PiecesRules.deck_ticks).
+## A deck at its stop has none.
+var _decks: Dictionary = {}
 var _sinking: Array = []
 var _surfaces_before: Dictionary = {}
 ## The pieces rules' swings (core/physical/swings.gd), set at reset: the
@@ -138,10 +148,12 @@ func _reset_mechanics() -> void:
 	_entry_latches = {}
 	_closing = {}
 	_drowned = {}
+	_high = {}
 	_ready_branch = ""
 	_optics = {"segments":[],"signals":{}}
 	_platforms = []
 	_stops = {}
+	_decks = {}
 	_sinking = []
 	_surfaces_before = {}
 	_swing_plan = []
@@ -156,13 +168,18 @@ func _reset_mechanics() -> void:
 			var stops: Array = []
 			for id: Variant in platform.stops:
 				stops.append(bridges[str(id)])
-				_stops[str(id)] = true
-			_platforms.append([platform, stops])
+				_stops[str(id)] = _platforms.size()
+			_platforms.append([platform, stops, stops.all(func(stop: Dictionary) -> bool: return stop.rect_cm == stops[0].rect_cm)])
 		for id: Variant in stage.get("sinking", []): _sinking.append(str(id))
 
-## The pieces rules: each pip's surface as the tick began (who stepped onto a stone last).
+## The pieces rules: each pip's surface as the tick began (who stepped onto a
+## stone last), and each travelling deck a tick further along.
 func _before_moves() -> void:
-	if _pieces_rules(): _surfaces_before = {"p0": str(_players.p0.surface_id), "p1": str(_players.p1.surface_id)}
+	if not _pieces_rules(): return
+	_surfaces_before = {"p0": str(_players.p0.surface_id), "p1": str(_players.p1.surface_id)}
+	for id: String in _decks.keys():
+		_decks[id].done = int(_decks[id].done) + 1
+		if int(_decks[id].done) >= int(_decks[id].ticks): _decks.erase(id)
 
 func _advance_source() -> void:
 	super._advance_source()
@@ -179,19 +196,20 @@ func _advance_source() -> void:
 
 func _refresh_routes() -> void:
 	_refresh_optics()
-	var was: Dictionary = _routes.duplicate() if _tide_rules() else {}
+	var was: Dictionary = _routes.duplicate() if _closes_slowly() else {}
 	for route: Dictionary in _route_defs:
 		_routes[route.id] = route.id in _mechanisms.latched_bridges or bool(_entry_latches.get(route.id, false))
 	var open := _open_controls()
 	for gate: Array in _gate_plan:
 		_routes[gate[0]] = bool(_routes.get(gate[0], false)) or gate[1] == null or Seven.predicate(gate[1], stage, _players, _mechanisms, _optics.signals, open)
 	if not _platforms.is_empty(): _move_platforms(was)
-	if _tide_rules(): _close_slowly(was)
+	if _closes_slowly(): _close_slowly(was)
 
 ## The pieces rules: each platform stands at the one stop whose gate holds,
 ## or where it stood when none or several do (its first stop at the start).
 ## When it moves, every pip on the old stop rides along to the same spot on
-## the new one, both pips alike, and so does every item put down on it.
+## the new one, both pips alike, and so does every item put down on it, while
+## the deck sets off from wherever it is (_decks).
 func _move_platforms(was: Dictionary) -> void:
 	for entry: Array in _platforms:
 		var stops: Array = entry[1]
@@ -202,6 +220,10 @@ func _move_platforms(was: Dictionary) -> void:
 		var at: Dictionary = holding[0] if holding.size() == 1 else before if not before.is_empty() else holding[0] if not holding.is_empty() else stops[0]
 		for stop: Dictionary in stops: _routes[stop.id] = stop.id == at.id
 		if before.is_empty() or before.id == at.id: continue
+		var from := _deck_now(entry, before)
+		var ticks := PiecesRules.deck_ticks(from, _corner(at), bool(entry[2]))
+		if ticks > 0: _decks[str(entry[0].id)] = {"from": from, "done": 0, "ticks": ticks}
+		else: _decks.erase(str(entry[0].id))
 		var rode := false
 		for slot: String in ["p0", "p1"]:
 			if str(_players[slot].surface_id) != str(before.id): continue
@@ -213,6 +235,37 @@ func _move_platforms(was: Dictionary) -> void:
 			_mechanisms.items[id] = _shifted(item, before, at)
 			rode = true
 		if rode: _events.append("rode:" + str(entry[0].id))
+
+## Where the deck of platform `entry` stands now, [x, z, height] cm of its
+## corner: on its way to stop `at` (the stop it stands at), or there.
+func _deck_now(entry: Array, at: Dictionary) -> Array:
+	var deck: Dictionary = _decks.get(str(entry[0].id), {})
+	return _corner(at) if deck.is_empty() else PiecesRules.deck_at(deck.from, _corner(at), int(deck.done), int(deck.ticks))
+
+static func _corner(stop: Dictionary) -> Array:
+	return [int(stop.rect_cm[0]), int(stop.rect_cm[1]), int(stop.height_cm)]
+
+## The pieces rules: a pip steps between a platform's stop and anything else
+## only while the deck stands within a step (Navigation.STEP_CM, as at any
+## ledge) of the stop and of the floor it steps from or to, measured from
+## where the deck is this tick. So riders stay on until it gets there, and no
+## pip boards a deck still on its way, the live pip and the friend's replay
+## alike.
+func _may_step(previous: Dictionary, position: Dictionary) -> bool:
+	var left := str(previous.surface_id)
+	var reached := str(position.surface_id)
+	if _platforms.is_empty() or left == reached: return true
+	return _deck_meets(left, int(position.height)) and _deck_meets(reached, int(previous.height))
+
+## Whether `surface`, when it is a platform's stop, has its deck there, within a
+## step of `height`.
+func _deck_meets(surface: String, height: int) -> bool:
+	if not _stops.has(surface): return true
+	var entry: Array = _platforms[int(_stops[surface])]
+	var stop: Dictionary = entry[1].filter(func(each: Dictionary) -> bool: return str(each.id) == surface)[0]
+	var deck := _deck_now(entry, stop)
+	var corner := _corner(stop)
+	return absi(int(deck[0]) - int(corner[0])) <= Navigation.STEP_CM and absi(int(deck[1]) - int(corner[1])) <= Navigation.STEP_CM and absi(int(deck[2]) - height) <= Navigation.STEP_CM
 
 ## `player` (a pip, or an item resting loose) moved from platform stop `from`
 ## to the same spot on stop `to`.
@@ -233,9 +286,21 @@ func _open_controls() -> bool:
 func _pieces_rules() -> bool:
 	return PiecesRules.on(simulation_version)
 
-## Tide rules: a crossing that was open and whose gate no longer holds keeps
-## its floor until `closing_ticks` after the tick it started closing, then
-## shuts. Holding again in the meantime, it simply stays open.
+## Whether a crossing whose gate lets go keeps its floor a while first: the
+## tide rules, and every open turns level (runtime.gd CLOSING_GRACE_TICKS).
+func _closes_slowly() -> bool:
+	return _tide_rules() or _open_turns()
+
+## How long a closing crossing keeps its floor: under open turns the one
+## shared grace, else the definition's "closing_ticks".
+func _grace_ticks() -> int:
+	return CLOSING_GRACE_TICKS if _open_turns() else int(level.get("closing_ticks", 0))
+
+## A crossing that was open and whose gate no longer holds keeps its floor
+## until _grace_ticks() after the tick it started closing, then shuts; the
+## worlds flash its edges meanwhile (kit/closing_warning.gd, from the
+## snapshot's route_progress.closing). Holding again in the meantime, it
+## simply stays open.
 func _close_slowly(was: Dictionary) -> void:
 	for id: String in _routes:
 		# The pieces rules: a platform's stop is wherever the platform stands, at once.
@@ -245,19 +310,33 @@ func _close_slowly(was: Dictionary) -> void:
 		elif _closing.has(id):
 			if tick < int(_closing[id]): _routes[id] = true
 			else: _closing.erase(id)
-		elif bool(was.get(id, false)) and int(level.get("closing_ticks", 0)) > 0:
-			_closing[id] = tick + int(level.closing_ticks)
+		elif bool(was.get(id, false)) and _grace_ticks() > 0:
+			_closing[id] = tick + _grace_ticks()
 			_routes[id] = true
 			_events.append("closing:" + id)
 
 ## Tide rules: a spirit standing on a crossing that is now shut drowns, the
-## player's own or the memory's, and the turn ends.
+## player's own or the memory's, and the turn ends. On a stone left high it
+## stays up there; walking off it, or onto it, it falls where it stood, and
+## the turn ends the same way.
 func _check_hazards() -> void:
 	if not _swing_plan.is_empty(): _advance_swings()
 	if not _tide_rules() or not _drowned.is_empty(): return
 	for slot: String in ["p0", "p1"]:
 		var surface := str(_players[slot].surface_id)
-		if _routes.has(surface) and not bool(_routes[surface]):
+		var stood: Dictionary = _high.get(slot, {})
+		if not _walked(slot) or not (_left_high(surface) or (not stood.is_empty() and _left_high(str(stood.surface_id)))): continue
+		if not stood.is_empty(): _players[slot] = stood
+		_drowned = {"slot": slot, "route": str(_players[slot].surface_id), "tick": tick, "fell": true}
+		finished = true
+		_events.append("fell:" + slot)
+		return
+	_high = {}
+	for slot: String in ["p0", "p1"]:
+		var surface := str(_players[slot].surface_id)
+		if _left_high(surface):
+			_high[slot] = _players[slot].duplicate()
+		elif _routes.has(surface) and not bool(_routes[surface]):
 			_drowned = {"slot": slot, "route": surface, "tick": tick}
 			finished = true
 			_events.append("drowned:" + slot)
@@ -301,6 +380,29 @@ func _advance_swings() -> void:
 		if at == sweep_from: _events.append("swing:" + id)
 		elif int(swing.warn_ticks) > 0 and at == sweep_from - int(swing.warn_ticks): _events.append("swing_creak:" + id)
 
+## Tide rules: whether crossing `id` is a stepping stone shut and left standing
+## too tall by its water.
+func _left_high(id: String) -> bool:
+	return _routes.has(id) and not bool(_routes[id]) and Catalog.left_high(level, id, _mechanisms.controls)
+
+## Open turns: a pip on a stepping stone its water left standing too tall
+## stays up there as the stone shuts (_check_hazards decides what follows),
+## instead of stepping back or falling (runtime.gd _keep_footing).
+func _stands_fast(slot: String) -> bool:
+	return _tide_rules() and _left_high(str(_players[slot].surface_id))
+
+## Whether `slot` walks this tick: the live pip by its input, the friend's by
+## its recorded one (a step _move would take): on open turns the friend's
+## replay from the hand-off, before them the memory's own turn.
+func _walked(slot: String) -> bool:
+	var frame: Variant = null
+	if slot == active_slot: frame = _actions.back() if not _actions.is_empty() else null
+	elif role == "b" and _open_turns(): frame = _friend_frame()
+	elif role == "b" and tick < _prior_frames.size(): frame = quantize_input(_prior_frames[tick])
+	if not frame is Dictionary: return false
+	var direction := Vector2(float(frame.x), float(frame.z)).limit_length(100.0)
+	return Vector2i(roundi(direction.x * MOVE_PER_TICK / 100.0), roundi(direction.y * MOVE_PER_TICK / 100.0)) != Vector2i.ZERO
+
 func _keeps_routes_at_completion() -> bool:
 	return not _tide_rules()
 
@@ -309,15 +411,16 @@ func _keeps_routes_at_completion() -> bool:
 ## the crossing shuts (and the spirit drowns) or holds again, so every saved
 ## end has both spirits on open floor.
 func _on_closing() -> bool:
-	return _tide_rules() and (_closing.has(str(_players.p0.surface_id)) or _closing.has(str(_players.p1.surface_id)))
+	return _closes_slowly() and (_closing.has(str(_players.p0.surface_id)) or _closing.has(str(_players.p1.surface_id)))
 
 func _may_complete() -> bool:
 	# The pieces rules: never while an item flies, so a checkpoint never holds one.
-	return not _on_closing() and _source_holds() and _flights.is_empty()
+	return not _on_closing() and _high.is_empty() and _source_holds() and _flights.is_empty()
 
-## Open turns: a turn never passes with a spirit on a closing crossing or drowned.
+## Open turns: a turn never passes with a spirit on a closing crossing, left
+## high or drowned.
 func _may_pass() -> bool:
-	return not _on_closing() and _drowned.is_empty()
+	return not _on_closing() and _high.is_empty() and _drowned.is_empty()
 
 ## Open turns: the goal holds for a pip only while the goal's light holds.
 func _at_goal(slot: String) -> bool:
@@ -335,12 +438,6 @@ func _source_holds() -> bool:
 	if policy.kind in ["route_endpoint", "signal_route"]:
 		return Seven.predicate(policy.get("when", {}), stage, _players, _mechanisms, _optics.signals, true) and (not policy.has("endpoint") or Seven.near(_players[first_player_slot], policy.endpoint))
 	return true
-
-## Whether this turn may be kept anywhere: a draft, a replay or an upload. A
-## drowned turn is not (tide rules), whoever drowned; the screen still holds
-## it for Preview.
-func keeps_draft() -> bool:
-	return _drowned.is_empty()
 
 func _refresh_optics() -> void:
 	if not stage.has("optical_field"):
@@ -397,8 +494,10 @@ func _objective_display() -> Dictionary:
 ## Snapshot text only. A harbour hold that began too late to leave the partner
 ## their budget says so, instead of the generic "keep the crossing ready".
 func commit_reason() -> String:
-	if not _drowned.is_empty(): return DROWNED_YOU if _drowned.slot == active_slot else DROWNED_FRIEND
+	var lost := _lost_reason()
+	if not lost.is_empty(): return lost
 	if _on_closing(): return ON_CLOSING
+	if not _high.is_empty(): return LEFT_HIGH
 	if level.get("id", "") == "turn-of-the-tide" and error.is_empty() and role == "a" and not can_commit() and not _ready_branch.is_empty() and _hold_start >= 0 and _hold_start + source_budget_ticks() >= receiver_deadline():
 		return "Try again with more time left for your partner."
 	return super.commit_reason()
@@ -453,7 +552,7 @@ func source_budget_ticks() -> int:
 	return budget
 
 func can_commit() -> bool:
-	if level.is_empty() or not error.is_empty() or tick==0 or not _drowned.is_empty() or _on_closing(): return false
+	if level.is_empty() or not error.is_empty() or tick==0 or not _drowned.is_empty() or _on_closing() or not _high.is_empty(): return false
 	if role=="b": return complete
 	# Open turns: a first turn may end at any time (runtime.gd can_commit).
 	return _open_turns() or _source_ready()
@@ -468,7 +567,7 @@ func snapshot() -> Dictionary:
 		value.route_progress["entered_routes"]=_sorted_latches()
 		value["source_branch"]=_ready_branch
 		value["optics"]=_optics.duplicate(true)
-		if _tide_rules():
+		if _closes_slowly():
 			# Ticks left before each closing crossing shuts, and who drowned.
 			var closing: Dictionary = {}
 			for id: String in _closing: closing[id] = int(_closing[id]) - tick
@@ -491,26 +590,34 @@ func _state_body() -> Dictionary:
 	if _tide_rules():
 		value["closing"]=_closing.duplicate()
 		value["drowned"]=_drowned.duplicate()
-	# The pieces rules: a stage with throws hashes what is in flight.
+	# Open turns off the tide: only while something closes, so other hashes stay.
+	elif not _closing.is_empty(): value["closing"]=_closing.duplicate()
+	# The pieces rules: a stage with throws hashes what is in flight, and one
+	# with a deck on its way hashes the deck.
 	if not _throws.is_empty(): value["flights"]=_flights.duplicate(true)
 	# The pieces rules: a stage with swings hashes each beat counter.
 	if not _swing_plan.is_empty(): value["swings"]=_swing_counts.duplicate()
+	if not _decks.is_empty(): value["decks"]=_decks.duplicate(true)
 	return value
 
 ## Open turns: the journey's own world values (runtime.gd save_world): entry
-## latches, the closing crossings as ticks left, who drowned, each item's
-## last leg and what flies. The ready branch, holds and surfaces are a first
-## turn's own part or a tick's, so they stay out.
+## latches, the closing crossings as ticks left, who drowned or fell, who
+## stands left high on a stone (tide rules only), each item's last leg, what
+## flies and each deck on its way (none while every deck stands at its stop,
+## as before decks travelled). The ready branch, holds and surfaces are a
+## first turn's own part or a tick's, so they stay out.
 func _save_extra(world: Dictionary) -> void:
 	world["entry_latches"] = _sorted_latches()
 	var closing: Dictionary = {}
 	for id: String in _closing: closing[id] = int(_closing[id]) - tick
 	world["closing"] = closing
 	world["drowned"] = _drowned.duplicate()
+	if _tide_rules(): world["high"] = _high.duplicate(true)
 	world["legs_taken"] = _legs_taken.duplicate()
 	world["flights"] = _flights.duplicate(true)
 	# Only a stage with swings, so every other world hashes as before.
 	if not _swing_plan.is_empty(): world["swings"] = _swing_counts.duplicate()
+	if not _decks.is_empty(): world["decks"] = _decks.duplicate(true)
 
 func _load_extra(world: Dictionary) -> void:
 	_entry_latches = {}
@@ -518,9 +625,11 @@ func _load_extra(world: Dictionary) -> void:
 	_closing = {}
 	for id: Variant in world.closing: _closing[str(id)] = int(world.closing[id]) + tick
 	_drowned = world.drowned.duplicate()
+	_high = world.get("high", {}).duplicate(true)
 	_legs_taken = world.legs_taken.duplicate()
 	_flights = world.flights.duplicate(true)
 	for id: Variant in world.get("swings", {}): _swing_counts[str(id)] = int(world.swings[id])
+	_decks = world.get("decks", {}).duplicate(true)
 
 func _sorted_latches() -> Array:
 	var result:=_entry_latches.keys()

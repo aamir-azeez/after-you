@@ -1,11 +1,12 @@
 extends SceneTree
-## Every other physical chapter's whole run (tests/fixtures/whole_runs.json),
+## Every other physical chapter's whole run (tests/whole_runs.gd),
 ## its first stage played again packed (tests/packed_run_check.gd): the same
 ## runs, turn b's positions every tick, the stage's checkpoint made from the
 ## packed turns and the checks matching the JSON run's state hashes by prefix.
 ## test_recording_codec.gd plays one whole board with every check.
 const PackedRun = preload("res://tests/packed_run_check.gd")
 const FULL_BOARD := preload("res://tests/test_recording_codec.gd").FULL_BOARD
+const WholeRuns = preload("res://tests/whole_runs.gd")
 
 var checks := 0
 var failures := 0
@@ -19,7 +20,7 @@ func _check(okay: bool, message: String) -> void:
 
 func _run() -> void:
 	var played := 0
-	for row: Dictionary in JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/whole_runs.json")).ghosts:
+	for row: Dictionary in WholeRuns.rows():
 		if row.board != FULL_BOARD and PackedRun.run(row, _check, false): played += 1
 	_check(played >= 9, "every other physical chapter's run plays again packed: %d boards" % played)
 	print("AFTER YOU RECORDING CODEC RUNS: %d checks, %d failures" % [checks, failures])

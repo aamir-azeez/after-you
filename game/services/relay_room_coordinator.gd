@@ -275,7 +275,10 @@ func bind_room(room_id: String) -> bool:
 	var loaded: Variant = _load.call(_scope)
 	if not loaded is Dictionary or not loaded.get("ok", false):
 		return _hold("storage_unavailable", PlayerCopy.RELAY_ROOM_COORDINATOR_C4AFE12FC876)
-	if loaded.get("found", false):
+	# A room kept here from before its level's definition changed (Registry.retired)
+	# can never replay on this build: it binds as if never kept, so it holds no
+	# other room, and its bytes stay where they are, unread and unwritten.
+	if loaded.get("found", false) and not (loaded.get("value") is Dictionary and loaded.value.get("snapshot") is Dictionary and Registry.retired(loaded.value.snapshot)):
 		var value: Variant = loaded.get("value")
 		if not _valid_state(value):
 			return _hold("invalid_saved_room", PlayerCopy.RELAY_ROOM_COORDINATOR_604A0BACD534)

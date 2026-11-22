@@ -65,7 +65,7 @@ func _run() -> void:
 			_check(is_equal_approx(world.actors.p1.position.y,world.lift.position.y),"Receiver visibly rides the real deck at the same height")
 			await _capture("first-steps-midride")
 	_check(captured_midride and sim.complete,"Actual receiver boarded and completed upper goal")
-	_check(not world.bell_ring.visible and world.seed.visible and world.garden_state=="closed","Bell opens loft without blooming garden or consuming seed")
+	_check(world.goal_pieces["loft-bell"].bell.get_meta("lit") and not world.goal_pieces.garden.bell.get_meta("lit") and world.seed.visible and world.garden_state=="closed","Bell opens loft without blooming garden or consuming seed")
 	await _capture("first-steps-loft-open")
 	var derived := Simulation.derive_checkpoint(level,initial,a,_record(0,"b"))
 	_check(derived.valid,"Full exact pair checkpoint is verified")

@@ -583,9 +583,19 @@ func load_lobby() -> bool:
 	return true
 
 func _room_summary(room: Dictionary, chapter_key: String) -> Dictionary:
-	return {"room_id": room.room_id, "title": RoomChapterTitle.title(chapter_key),
+	var summary := {"room_id": room.room_id, "title": RoomChapterTitle.title(chapter_key),
 		"hosted": Typed.equal(room.get("host_id"), _owner), "active_role": str(room.get("active_role", "")),
 		"updated_at": str(room.get("updated_at", ""))}
+	# A room from before its level was updated keeps its level's name; it no longer opens here.
+	if Registry.retired(room):
+		summary.title = RoomChapterTitle.for_room(room)
+		summary.before_update = true
+	return summary
+
+## Whether the room list showed `room_id` as made under an earlier definition
+## of its level (Registry.retired): it opens on the app that made it, never here.
+func room_before_update(room_id: String) -> bool:
+	return bool(_room_summaries.get(room_id, {}).get("before_update", false))
 
 func _simulation_versions() -> Dictionary:
 	var result: Dictionary = {}
@@ -748,6 +758,16 @@ func retry_lobby() -> String:
 	if request.path == "/v2/rooms/join" and room.room_id != ("v2:" + str(request.body.invite_code)).sha256_text().substr(0,22):
 		last_error = PlayerCopy.RELAY_ONLINE_SESSION_22A1E8B58248
 		return ""
+	# A friend's room from an older app, on an earlier definition of its level
+	# (Registry.retired), never opens here, so the join settles now instead of
+	# holding every other room behind it.
+	if request.path == "/v2/rooms/join" and Registry.retired(room):
+		if not _ready() or not Typed.same(_index.pending, request): return ""
+		var settled := _index.duplicate(true)
+		settled.pending = {}
+		if not _write_index(settled): return ""
+		last_error = PlayerCopy.JOIN_BEFORE_UPDATE
+		return ""
 	# Creation/join acceptance alone cannot bypass the coordinator's full
 	# native checkpoint validation. Keep the pending key until that read passes.
 	if not await open_room(room.room_id):
@@ -782,6 +802,9 @@ func open_room(room_id: String) -> bool:
 	if not _ready() or busy() or not _id(room_id): return false
 	if archived_room_kind(room_id) == "story":
 		last_error = PlayerCopy.RELAY_ONLINE_SESSION_28632F597E2A
+		return false
+	if room_before_update(room_id):
+		last_error = PlayerCopy.ROOM_BEFORE_UPDATE
 		return false
 	if not _restore_previous_room(): return false
 	if coordinator != null and coordinator.read_only and room_id != _bound_room:
@@ -900,6 +923,9 @@ func prepare_archived_navigation() -> bool:
 	if not _ready() or busy(): return false
 	if _index.last_room.is_empty(): return true
 	var room_id: String = _index.last_room
+	# A room from before its level was updated (Registry.retired) never opens here:
+	# it stops being the room to go back to, and its kept bytes stay.
+	if room_before_update(room_id): return _forget_last_room(room_id)
 	if archived_room_kind(room_id) == "story" or standalone_room_proven(room_id):
 		var restored := _restore_previous_room()
 		if restored: last_error = ""
@@ -911,6 +937,9 @@ func prepare_archived_navigation() -> bool:
 	var response := await _call(HTTPClient.METHOD_GET,"/v2/rooms/"+room_id)
 	if lease.generation == _generation: _opening = false
 	if not _ready() or not Typed.same(lease,_ordinary_lease()): return false
+	# A room from before its level was updated (Registry.retired) never opens
+	# here: it stops being the room to go back to, and its kept bytes stay.
+	if response.get("ok") == true and Registry.retired(response.get("data")): return _forget_last_room(room_id)
 	var validator := Coordinator.new(Callable(),func(_scope: String) -> Dictionary: return {"ok":true,"found":false},
 		func(_scope: String,_value: Dictionary) -> Dictionary: return {"ok":false},_identity)
 	validator.supported_simulation_versions = _simulation_versions()
@@ -1041,6 +1070,9 @@ func _probe_standalone_owned(room_id: String, lease: Dictionary) -> bool:
 			return false
 		if response.get("code") == "player_blocked": _clear_terminal_redo(room_id)
 		return _failure(response)
+	if Registry.retired(response.get("data")):
+		last_error = PlayerCopy.ROOM_BEFORE_UPDATE
+		return false
 	if kind != "ordinary" and not candidate.verify_room_snapshot(response.get("data")):
 		last_error = PlayerCopy.RELAY_ONLINE_SESSION_C0AD24FCB05A
 		return false

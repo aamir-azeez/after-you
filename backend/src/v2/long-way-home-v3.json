@@ -254,6 +254,10 @@
 						64
 					],
 					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
 					"surface_id": "selector-landing",
 					"values": [
 						"home",
@@ -270,6 +274,10 @@
 						224
 					],
 					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
 					"surface_id": "selector-landing",
 					"values": [
 						"bank",
@@ -371,6 +379,10 @@
 						336
 					],
 					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
 					"surface_id": "partner-bank"
 				},
 				{
@@ -381,6 +393,10 @@
 						112
 					],
 					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
 					"surface_id": "source-court"
 				}
 			],
@@ -446,6 +462,10 @@
 						-96
 					],
 					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
 					"surface_id": "service-landing",
 					"values": [
 						"off",
@@ -463,6 +483,10 @@
 						224
 					],
 					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
 					"surface_id": "near-porch",
 					"values": [
 						"up",
@@ -479,6 +503,10 @@
 						448
 					],
 					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
 					"surface_id": "garden-walk",
 					"values": [
 						"shut",

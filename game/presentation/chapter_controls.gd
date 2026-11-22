@@ -23,6 +23,10 @@ const ButtonTicks = preload("res://presentation/button_ticks.gd")
 const TurnDots = preload("res://presentation/kit/turn_dots.gd")
 const PairChip = preload("res://presentation/kit/pair_chip.gd")
 const Icons = preload("res://presentation/kit/icons.gd")
+const SpiritLook = preload("res://presentation/spirit_look.gd")
+const HomeSquare = preload("res://presentation/kit/home_square.gd")
+## A card's Home square: as tall as the card's rows, so its touch target stays.
+const CARD_HOME_SIDE := 54.0
 const CREAM := Color("eceddb")
 const MUTED := Color("afc7bd")
 var settings: Dictionary = {}
@@ -54,6 +58,7 @@ var title_font: Font
 var modal_shade: ColorRect
 var modal_scroll: ScrollContainer
 var modal_stack: VBoxContainer
+var _card_title: Label
 ## Shown once the player has pinched or panned the chapter view, as on Home.
 var reset_view_button: Button
 ## "Waiting for Sam" and the memory still to play, under the chapter title.
@@ -78,6 +83,7 @@ var _memory_wait := false
 var _view_world: Node
 ## The room a control docked beside Finish takes (dock_beside_finish).
 var _docked_width := 0.0
+var _docked: Control
 ## A docked control keeps this far from the buttons.
 const DOCK_GAP := 20.0
 ## The turn dots' row under the timer: its top and height, the width its dots
@@ -104,6 +110,7 @@ func show_moment(action_id: String) -> void:
 	# The solved world stays visible until the player chooses to move on.
 	show_play()
 	hide_memory_wait()
+	hide_watching()
 	stick.release()
 	stick.visible = false
 	action_button.visible = false
@@ -124,12 +131,34 @@ func update_state(title: String, remaining: float, state: Dictionary, interactiv
 	action_button.disabled = not bool(action.get("enabled", false))
 	# Open turns (core/physical/open_turns.gd): a later turn may end at any time; it passes once its memory is over.
 	finish_button.disabled = not (bool(state.get("can_commit", false)) or bool(state.get("can_pass", false)) or bool(state.get("can_end_early", false)))
-	stick.visible = interactive and not _playback
+	stick.visible = interactive or _watching
 	action_button.visible = interactive and not action_button.text.is_empty() and not _memory_wait
 	finish_button.visible = interactive and not _memory_wait
 	fast_forward_button.visible = interactive and _memory_wait
 	skip_wait_button.visible = interactive and _memory_wait
 	_show_pair_chip(state, interactive)
+	_show_replay_mark(state)
+
+## Open turns: where the friend's replay ends in this turn (the snapshot's
+## replay_ticks, M) as a notch on the timer in the friend's pip colour, filled
+## once it has gone by, so a friend standing still still shows when their
+## turn ended. Hidden with no replay (a first turn, a chapter without open turns).
+func _show_replay_mark(state: Dictionary) -> void:
+	var replay := int(state.get("replay_ticks", 0))
+	var friend := _friend_slot(state)
+	if replay <= 0 or friend.is_empty():
+		turn_progress.clear_replay_mark()
+		return
+	var duration := maxf(1.0, float(state.get("duration_ticks", 600)))
+	turn_progress.set_replay_mark(float(replay) / duration, SpiritLook.MINT if friend == "p1" else SpiritLook.PEACH, int(state.get("tick", 0)) >= replay)
+
+## The slot of the friend's pip in `state` (the one marked ghost), "" for none.
+static func _friend_slot(state: Dictionary) -> String:
+	var players: Variant = state.get("players", {})
+	if not players is Dictionary: return ""
+	for key: Variant in players:
+		if players[key] is Dictionary and bool(players[key].get("ghost", false)): return str(key)
+	return ""
 
 ## The letter of the input the live pip is at, asked of the shown world's pair
 ## tags (kit/pair_tags.gd prompt()): inside the action button's left end, or
@@ -141,14 +170,48 @@ func _show_pair_chip(state: Dictionary, interactive: bool) -> void:
 	pair_chip.show_chip(chip)
 	var room: Texture2D = _chip_room if pair_chip.visible and action_button.visible else null
 	if action_button.icon != room: action_button.icon = room
+	_fit_action_button()
 	_place_pair_chip()
+
+## The action button grows to hold its tag, gap, full label and the edge padding
+## on one line, up to the room before the docked React button (its near edge
+## less DOCK_GAP, read at layout time) or, with none docked, the safe area. A
+## label wider than that wraps onto a second line at that width; the text is
+## never shrunk and nothing touches the edges.
+func _fit_action_button() -> void:
+	if not is_instance_valid(action_button) or not is_instance_valid(ui): return
+	var left_handed := bool(settings.get("left_handed", false))
+	var edge := 28.0 if left_handed else 30.0
+	var room := ui.size.x - edge * 2.0
+	if is_instance_valid(_docked) and _docked.visible:
+		room = (_docked.offset_right + DOCK_GAP - edge) if left_handed else (-edge - (_docked.offset_left - DOCK_GAP))
+	var margin := action_button.get_theme_stylebox("normal").get_margin(SIDE_LEFT) + action_button.get_theme_stylebox("normal").get_margin(SIDE_RIGHT)
+	var lead := _chip_room.size.x + float(action_button.get_theme_constant("h_separation")) if action_button.icon != null else 0.0
+	var font := action_button.get_theme_font("font")
+	var text_width := font.get_string_size(action_button.text, HORIZONTAL_ALIGNMENT_LEFT, -1, action_button.get_theme_font_size("font_size")).x
+	var need := margin + lead + text_width
+	var wrap := need > room
+	var width := maxf(210.0, room if wrap else need)
+	action_button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART if wrap else TextServer.AUTOWRAP_OFF
+	var height := 64.0
+	if wrap:
+		action_button.size = Vector2(width, 0.0)
+		height = maxf(64.0, action_button.get_combined_minimum_size().y)
+	action_button.offset_bottom = -114.0
+	action_button.offset_top = -114.0 - height
+	if left_handed:
+		action_button.offset_left = 28.0
+		action_button.offset_right = 28.0 + width
+	else:
+		action_button.offset_right = -edge
+		action_button.offset_left = -edge - width
 
 ## Puts the chip in the room the button leaves at its left end, again
 ## whenever the button moves or grows (a long prompt grows it).
 func _place_pair_chip() -> void:
 	if not pair_chip.visible: return
 	var left := action_button.get_theme_stylebox("normal").get_margin(SIDE_LEFT)
-	pair_chip.position = action_button.position + Vector2(left - 6.0, (action_button.size.y - pair_chip.size.y) * 0.5)
+	pair_chip.position = action_button.position + Vector2(left, (action_button.size.y - pair_chip.size.y) * 0.5)
 
 ## The live spirit is waiting for its friend's memory: `text` names the friend
 ## and `ratio` is how much of the memory is left (1 to 0); `skipping` is true
@@ -165,16 +228,36 @@ func show_memory_wait(text: String, ratio: float, skipping: bool = false) -> voi
 	_memory_wait = true
 
 ## Carry-over turns: the friend's turn plays before this turn's hand-off. The
-## wait row shows with Fast-forward and Skip as in a wait; the clock and the
-## stick come at the hand-off (hide_memory_wait), with nothing said.
+## wait row shows with Fast-forward and Skip as in a wait, and the stick's
+## spot shows the watch (show_watching); the clock and the stick come at the
+## hand-off (hide_memory_wait), with nothing said.
 var _playback := false
 func show_playback(text: String, ratio: float, skipping: bool = false) -> void:
 	show_memory_wait(text, ratio, skipping)
+	show_watching(1.0 - ratio)
 	if _playback: return
 	_playback = true
-	stick.release()
-	stick.visible = false
 	turn_progress.visible = false
+
+## Watching (a friend's turn before the hand-off, a stage's closing turn, a
+## replay): the stick's spot shows the camera in a ring that fills toward the
+## hand-off (`progress`, 0 to 1), and the stick takes no movement. Cheap to
+## call every tick; nothing runs while not watching.
+var _watching := false
+func show_watching(progress: float) -> void:
+	stick.watch(progress)
+	if _watching: return
+	_watching = true
+	stick.visible = true
+
+## The watch is over: the spot turns back into the stick with a short pop.
+func hide_watching() -> void:
+	if not _watching: return
+	_watching = false
+	stick.end_watch(bool(settings.get("reduced_motion", false)))
+
+func watching() -> bool:
+	return _watching
 
 ## True while the fast-forward mark shows (a skipped or fast-forwarded wait).
 func fast_forwarding() -> bool:
@@ -186,6 +269,7 @@ func hide_memory_wait() -> void:
 	if _playback:
 		_playback = false
 		turn_progress.visible = true
+		hide_watching()
 	if not _memory_wait and not wait_row.visible: return
 	_memory_wait = false
 	wait_row.visible = false
@@ -393,8 +477,10 @@ func _build_ui() -> void:
 	# The controls a run is played with make its own cues: no tick over them.
 	ButtonTicks.quiet(action_button)
 	hud.add_child(action_button)
-	_chip_room.size = Vector2(PairChip.PairTags.CHIP - 10.0, 1.0)
+	# The room is the whole chip, so the chip sits at the button's own edge padding and the label keeps the button's usual icon gap.
+	_chip_room.size = Vector2(PairChip.PairTags.CHIP, 1.0)
 	action_button.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	action_button.add_theme_constant_override("h_separation", Actions.ICON_GAP)
 	pair_chip = PairChip.new()
 	hud.add_child(pair_chip)
 	action_button.item_rect_changed.connect(_place_pair_chip)
@@ -446,6 +532,7 @@ func _build_ui() -> void:
 ## buttons in their places. The hint line keeps clear of it. One control at most.
 func dock_beside_finish(control: Control, size: Vector2) -> void:
 	_docked_width = size.x + DOCK_GAP
+	_docked = control
 	# A run's reactions pop their own sound.
 	ButtonTicks.quiet(control)
 	hud.add_child(control)
@@ -480,6 +567,7 @@ func _resize() -> void:
 	if not is_inside_tree() or not is_instance_valid(ui):
 		return
 	SafeArea.inset(ui, SafeArea.rect(get_viewport()))
+	_fit_action_button()
 	if is_instance_valid(hint_label):
 		_anchor_rect(hint_label, Control.PRESET_BOTTOM_LEFT, ControlTheme.hint_bounds(ui.size.x, bool(settings.get("left_handed", false)), _docked_width))
 	if is_instance_valid(chapter_label):
@@ -570,10 +658,13 @@ func card(title: String, body: String) -> VBoxContainer:
 	heading_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	heading_label.custom_minimum_size.x = 550
 	stack.add_child(heading_label)
+	_card_title = heading_label
 	var paragraph := _label(body, 20)
 	paragraph.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	paragraph.add_theme_color_override("font_color", MUTED)
 	paragraph.custom_minimum_size.x = 550
+	# A card with only its title (pause, save) leaves no empty line under it.
+	paragraph.visible = not body.is_empty()
 	stack.add_child(paragraph)
 	_layout_card.call_deferred()
 	return stack
@@ -610,20 +701,38 @@ func _open_overlay() -> void:
 ## Report or block on the current card: the shared flag button (kit/icons.gd)
 ## at the card's top right, beside its title. Returns the button.
 func card_report(action: Callable) -> Button:
-	var title: Label = modal_stack.get_child(0)
-	var line := HBoxContainer.new()
+	var flag := Icons.report_button(action, PlayerCopy.REPORT_OR_BLOCK)
+	flag.name = "CardReport"
+	flag.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	_card_title_line().add_child(flag)
+	return flag
+
+## The current card's way home, in place of a Back row: the Home square
+## (kit/home_square.gd) at its top left, beside its title. `action` is what
+## Back did; Android Back and Escape still do it. Returns the button.
+func card_home(action: Callable) -> Button:
+	var square := HomeSquare.make(action, Vector2(CARD_HOME_SIDE, CARD_HOME_SIDE))
+	square.name = "CardHome"
+	square.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	var line := _card_title_line()
+	line.add_child(square)
+	line.move_child(square, 0)
+	return square
+
+## The current card's top line: its title, with Home before it and Report after.
+func _card_title_line() -> HBoxContainer:
+	var line := modal_stack.get_node_or_null("CardTitleLine") as HBoxContainer
+	if line != null: return line
+	line = HBoxContainer.new()
 	line.name = "CardTitleLine"
 	line.add_theme_constant_override("separation", 12)
 	modal_stack.add_child(line)
 	modal_stack.move_child(line, 0)
-	title.reparent(line, false)
-	title.custom_minimum_size.x = 0
-	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var flag := Icons.report_button(action, PlayerCopy.REPORT_OR_BLOCK)
-	flag.name = "CardReport"
-	flag.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-	line.add_child(flag)
-	return flag
+	_card_title.reparent(line, false)
+	_card_title.custom_minimum_size.x = 0
+	_card_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_card_title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	return line
 
 func _layout_card() -> void:
 	if not is_instance_valid(modal_scroll) or not is_instance_valid(modal_stack): return

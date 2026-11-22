@@ -79,11 +79,11 @@ func _run() -> void:
 		if record.role == "b":
 			var completed_tick: int = app.sim.tick
 			var completed_review: Dictionary = app.review.duplicate(true)
-			_press(app,"Retry")
+			_press(app,"Try again")
 			_check(app.mode=="confirm_retry" and app.sim.tick==completed_tick,"Completed Relay B Retry asks before dropping its rehearsal")
 			_press(app,"Cancel")
 			_check(app.mode=="review" and app.review==completed_review and Canonical.same(_save_bytes(path),before_preview),"Relay Retry Cancel preserves the exact completed draft")
-			_press(app,"Retry")
+			_press(app,"Try again")
 			app._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
 			_check(app.mode=="review" and app.sim.tick==completed_tick,"Relay native Back uses the guarded Cancel route")
 		app._preview_turn()
@@ -94,10 +94,10 @@ func _run() -> void:
 		app._physics_process(1.0 / 30.0)
 		_check(app.sim.tick == interrupted_tick and Canonical.same(_save_bytes(path), before_preview), "Paused replay does not advance or write primary/backup/tmp bytes: " + name)
 		app._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
-		_check(_find_button(app.overlay, "Retry") != null, "A paused Preview offers the review card's Retry: " + name)
+		_check(_find_button(app.overlay, "Try again") != null, "A paused Preview offers the review card's Retry: " + name)
 		if record.role == "b":
 			var reviewed: Dictionary = app.review.duplicate(true)
-			_press(app, "Retry")
+			_press(app, "Try again")
 			_check(app.mode == "confirm_retry" and app.sim.tick == interrupted_tick, "Retry from a paused Preview asks before dropping the completed turn")
 			_press(app, "Cancel")
 			_check(app.mode == "paused" and app.review == reviewed and _find_button(app.overlay, "Resume") != null and Canonical.same(_save_bytes(path), before_preview), "Its Cancel goes back to the paused Preview with the draft untouched")
@@ -109,7 +109,7 @@ func _run() -> void:
 				# Paused in the Preview's closing bloom: Retry is offered there too.
 				paused_bloom = true
 				app._pause()
-				_check(app.mode == "paused" and _find_button(app.overlay, "Retry") != null, "A paused Preview's closing bloom offers Retry: " + name)
+				_check(app.mode == "paused" and _find_button(app.overlay, "Try again") != null, "A paused Preview's closing bloom offers Retry: " + name)
 				_press(app, "Resume")
 			if app.mode == "bloom": app._process(Preview.COMPLETION_DURATION)
 			else: app._physics_process(1.0 / 30.0)
@@ -133,7 +133,7 @@ func _run() -> void:
 	app._play_collection_pair()
 	app._physics_process(1.0 / 30.0)
 	app._pause()
-	_check(app.mode == "paused" and _find_button(app.overlay, "Retry") == null and _find_button(app.overlay, "Resume") != null, "Pausing a saved pair's replay offers no Retry: there is no turn to retry")
+	_check(app.mode == "paused" and _find_button(app.overlay, "Try again") == null and _find_button(app.overlay, "Resume") != null, "Pausing a saved pair's replay offers no Retry: there is no turn to retry")
 	_press(app, "Resume")
 	var replay_ticks := 0
 	while app.mode in ["replay", "bloom"] and replay_ticks < 1250:

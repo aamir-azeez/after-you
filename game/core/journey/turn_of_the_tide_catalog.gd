@@ -12,6 +12,13 @@ extends RefCounted
 ## Turns run longer than the published 30 and 40 seconds: 90 seconds for the
 ## first turn of each stage, 100 for the partner (runtime.gd turn_ticks).
 
+## The stepping stones stand in the harbour channels with their tops at the
+## terraces' height: at half tide the water stands just under them and they
+## open; at high tide it covers them; at low tide it has fallen away and they
+## stand too tall to step on (stage_catalog.gd tall_stones, every version).
+const LOW_TIDE := {"control_id": "tide", "value": "low"}
+const TALL_STONES := {"stones-1": LOW_TIDE, "stones-2": LOW_TIDE, "stones-3": LOW_TIDE}
+
 static func definition() -> Dictionary:
 	return {"schema_version":7,"simulation_version":9,"id":"turn-of-the-tide","version":1,"title":"Turn of the Tide","premium":false,"turn_limits":{"a_ticks":2700,"b_ticks":3000},
 		"starts":{"p0":{"position_cm":[-320,288],"height_cm":0,"surface_id":"w-beach"},"p1":{"position_cm":[-320,416],"height_cm":0,"surface_id":"w-beach"}},"props":[],

@@ -1,10 +1,10 @@
 {
   "catch_assistance": true,
-  "checkpoint_hash": "66b1caf937f98becbb978e07e78d63ad596bdc220deada46d2947aaedcc10028",
+  "checkpoint_hash": "b018a06d44be29cda3be5260e413b8e3a6a8fb2c57c09e65b4a5097d4922b8f2",
   "completed": true,
-  "definition_hash": "c49ed404594004fb46fe95efcbd8dcd26d239ec464632aac28da902cf9324347",
+  "definition_hash": "935a18346c505a7c810b91ebbe78ef4e4122b41275b95513b85861f8e8b7d3ec",
   "duration_ticks": 532.0,
-  "final_state_hash": "6ab3268143ae3f20ad2a2eb8bf2d1f901c23d1984297d92dc9390ff8d0b562c8",
+  "final_state_hash": "53d082d46f76306652d9736aaeff9440ebbfa4f0c5bebf9fabc56b9fceb51ad1",
   "handoff_hash": "",
   "handoff_tick": 0.0,
   "level_id": "item-ride-witness",
@@ -13,15 +13,15 @@
     "objective_complete": true,
     "source_ready": true
   },
-  "packed": "AQ4YAGQCADKSAgAAPJwAAgAAAwAAImQAAjIAIpwAAs4AAgAAAwAAPGQAtAQAADMUqzNg+TuHX/yIBjw9+fP69OG8BbAzzkOHuq3rizngAEW6sUF6SuoQ0IZS+o6ECTBy1hjayrnEdGFiiyQWiCRexKndTWjhYcf9nEUwjkKy8haf6gw3YGhCHKVOCuDCkGA+CC/obuVk57mLLysqsXo5R1+vzGN2eCMpeeRDiGLdpeHKz2za+u8rxunAa9oyMouiLBSNDyRz5neMkUHbI1DbJSbsVjlz6pF/4hKmKvs1BGRvauXcxveuzXH1x1gE3hBDBn5soVOAIVPjNYe2zxA=",
+  "packed": "AQ4YAGQCADKSAgAAPJwAAgAAAwAAImQAAjIAIpwAAs4AAgAAAwAAPGQAtAQAAL+ytTc1WmK6Wsyyz8kW0KcpXkmCOJ9CMgDIbMPoOk/a2rpBjf6Z0AYgfJ0ZQcVxTmXzEfV62x+cAYaT9VVbIwxUX/7trISNHA/LEknjcrWm1UXog4Forhl6FmmQoyhNIs0a0J7e9h6Ur0eie4xT+n6nzdZYsT6OrsKSpd0J1G+52yHMe49kKhLt+kXRHub2JuS2X6AF4pQKmbaF6gzRZ1eXQNNfF/kz+QwB+4lWnr0HXGYEW7+ijMfcoGJYkfqcHWJCzyTFvg0iM9RON0a6h98=",
   "player_slot": "p1",
-  "recording_hash": "bb386d53c261ff04ccf000c85cfee97e064c40d05339751f4f9012a7e4dcd586",
+  "recording_hash": "209e797010c660e7459d23de0e843dab7ce02c2933d6b462c321380d72eaff0d",
   "role": "b",
   "schema_version": 7.0,
   "simulation_version": 20.0,
-  "source_recording_hash": "8aa0d92340c56039c8379132bbb7a5562ff38f52f4359fccc226b2d7584f64c0",
+  "source_recording_hash": "bc103b4cf62e824c6edb6d87322d1be649ea3df41ab537890169bd4a4ca45483",
   "stage_id": "home",
   "stage_version": 1.0,
-  "start_hash": "562a25b7c516d6824a35e2ebf5ee0572273dc01d99b8c115c0093efaa3e13a4e",
+  "start_hash": "866f4825ab490705dda3c867104d4a564ba6cebef808bcfb85bdab70fbf89e75",
   "tick_rate": 30.0
 }

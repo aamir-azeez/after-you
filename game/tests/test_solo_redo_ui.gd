@@ -46,7 +46,7 @@ func _saved_turn() -> void:
 	_check(app.mode == "ready" and _panel(app) != null and _texts(app) == ["Record", OVER], "An older-rules chapter's first page has the panel with Record and Start over: " + str(_texts(app)))
 	_check(app.overlay.find_child("TurnNewsHeading", true, false) == null, "Nothing has happened yet, so no heading leads the panel")
 	await _play(app, _fixture("relay-a"))
-	_check(_texts(app).filter(func(text: String) -> bool: return text != "React") == ["Preview", "Retry", "Save turn", "Back"], "The review card matches the room's, Retry above Save turn: " + str(_texts(app)))
+	_check(_texts(app).filter(func(text: String) -> bool: return text != "React") == ["Preview", "Try again", "Save turn"] and _home_corner(app), "The review card matches the room's, Retry above Save turn, Home at its top left: " + str(_texts(app)))
 	await _tap(app, "Save turn")
 	_check(app.mode == "ready" and app.role == "b" and _heading(app) == SAVED, "After Save turn the panel says Your turn is saved")
 	_check(_texts(app) == ["Record", AGAIN, OVER], "Record, Play my turn again and Start over, in the room's order: " + str(_texts(app)))
@@ -90,13 +90,23 @@ func _stage_kept() -> void:
 	_check(app.mode == "ready" and app.stage.id == "garden" and app.journey.pairs().size() == 1 and app.journey.archived_attempts().size() == 1, "Saving it again keeps the old attempt in Replays")
 	await _close(app)
 
-## Pause matches the room's card; a turn played again is paused and resumed in
-## memory, writing nothing.
+## Pause matches the room's card and offers Redo last turn after a saved turn;
+## a turn played again is paused and resumed in memory, writing nothing.
 func _pause_and_review() -> void:
 	var path := _seeded("pause")
 	var app := _open(Registry.RELAY, path)
 	_check(app.journey.accept_recording(_fixture("relay-a")), "Pause fixture accepts the first turn")
 	app._show_ready()
+	# A turn paused after a saved one offers Redo last turn, as a turn ending's card does.
+	app._begin()
+	for input: Dictionary in app._simulation.expand_recording_inputs(_fixture("relay-b")).slice(0, 20): app.advance_input(input)
+	app._pause()
+	_check(app.mode == "paused" and _texts(app) == ["Resume", "Try again", AGAIN] and _home_corner(app), "Pause offers Redo last turn, and Home at its top left in place of Back: " + str(_texts(app)))
+	var paused := _save_bytes(path)
+	await _tap(app, AGAIN)
+	_check(app.mode == "ready" and app.role == "a" and app.journey.replacing() and _heading(app) == PlayerCopy.REDO_AGAIN_NOTE and Canonical.same(paused, _save_bytes(path)), "Redo last turn from Pause reopens the saved turn, writing nothing")
+	await _tap(app, KEEP)
+	_check(app.mode == "ready" and app.role == "b" and not app.journey.replacing() and app.journey.has_draft(), "Keep it as it is goes back to the paused turn")
 	var bytes := _save_bytes(path)
 	await _tap(app, AGAIN)
 	app._begin()
@@ -104,7 +114,7 @@ func _pause_and_review() -> void:
 	for input: Dictionary in inputs.slice(0, 20): app.advance_input(input)
 	var tick: int = app.sim.tick
 	app._pause()
-	_check(app.mode == "paused" and _texts(app) == ["Resume", "Retry", "Back"], "The pause card matches the room's: " + str(_texts(app)))
+	_check(app.mode == "paused" and _texts(app) == ["Resume", "Try again"] and _home_corner(app) and _card_text(app) == "Take your time.", "The pause card matches the room's, its title alone with no line under it: " + str(_texts(app)))
 	_check(app.journey.has_draft() and Canonical.same(bytes, _save_bytes(path)), "A turn played again keeps its draft in memory")
 	await _tap(app, "Resume")
 	_check(app.mode == "play" and app.sim.tick == tick, "Resume goes on from the paused turn")
@@ -265,6 +275,13 @@ func _panel(app: Node) -> Node:
 func _heading(app: Node) -> String:
 	var heading := app.overlay.find_child("TurnNewsHeading", true, false) as Label
 	return heading.text if heading != null and heading.is_visible_in_tree() else ""
+
+## The card's Home square: first on its title line, before the title, a full
+## touch target, named Home for screen readers.
+func _home_corner(app: Node) -> bool:
+	var home := app.overlay.find_child("CardHome", true, false) as Button
+	if home == null or home.get_parent().name != "CardTitleLine" or home.get_index() != 0: return false
+	return home.is_visible_in_tree() and home.get_parent().get_child(1) is Label and home.custom_minimum_size.x >= 48.0 and home.custom_minimum_size.y >= 48.0 and home.accessibility_name == PlayerCopy.MENU_HOME
 
 ## The page's buttons that show, in order, without the panel's Back.
 func _texts(app: Node) -> Array[String]:

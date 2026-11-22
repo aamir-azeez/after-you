@@ -6,11 +6,17 @@ shader_type spatial;
 //      shaped, the darkest of overlapping feet, never their sum);
 //   g: how worn the grass is round a base (a wider, browner patch);
 //   b: the sun's soft shadow of the static scenery standing on this floor.
-// One texture read; Balanced and High add a little flattened grass and grit
-// in the worn patch from the floor position alone.
+// The parts of a thing that move as it plays (a keepsake's arm) are baked in
+// a second texture of the same layout where they rest, so a play bakes only
+// them again; a floor with some reads both and keeps the darker.
+// One texture read (two under a resting moving part's floor); Balanced and
+// High add a little flattened grass and grit in the worn patch from the floor
+// position alone.
 render_mode unshaded, blend_mul, depth_draw_never, cull_back, shadows_disabled, fog_disabled;
 
 uniform sampler2D shade : filter_linear, repeat_disable, hint_default_black;
+uniform sampler2D moving : filter_linear, repeat_disable, hint_default_black;
+uniform bool has_moving = false;
 // What full shade multiplies the floor by: a warm dark, so a lawn stays green.
 uniform vec3 dark_tint = vec3(0.50, 0.47, 0.40);
 // What a fully worn patch multiplies the floor by: browner and a little darker.
@@ -36,6 +42,7 @@ float hash(vec2 p) {
 
 void fragment() {
 	vec3 s = texture(shade, UV).rgb;
+	if (has_moving) s = max(s, texture(moving, UV).rgb);
 	float worn = s.g * worn_strength;
 	if (detail && s.g > 0.01) {
 		// Flattened grass: short streaks a little more or less worn.

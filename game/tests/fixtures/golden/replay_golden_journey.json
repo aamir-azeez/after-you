@@ -3,39 +3,39 @@
 		"conservatory@1": {
 			"chains": {
 				"rules7": {
-					"final_checkpoint_hash": "7dbb12b5b1e94876a4bf2cdf94dfc11868fd5a0e8285c6302b8fce6e7c4e4e32",
-					"final_typed_digest": "c092a56bf1e5174ec6cabdf330753c9ab4100dc8d1b6ea8329bc85d917c689f3",
-					"initial_checkpoint_hash": "1c0fd08cb85e46316f37c818797aefad42935a67a1ed98b4dfcbe5e8acdf147b",
+					"final_checkpoint_hash": "3923ff0302632fc7c608ade06bcec8734af7d4e524ca9596c5b37a7d94a17042",
+					"final_typed_digest": "702063d4ff5c06950ed527c8a1fa649b1b19c0e95f49b104f5ce16c7456ff1ca",
+					"initial_checkpoint_hash": "2b9b23ff1a3bd9e6c33b4faae3236a2655338861896793b093e9b0c2833a0a38",
 					"stages": [
 						{
 							"a": {
 								"can_commit": true,
 								"completed": false,
-								"duration_ticks": 80,
+								"duration_ticks": 95,
 								"event_counts": {
 									"bridge_opened:high-stair": 1,
 									"selector:court-fork": 1,
 									"selector:high-return": 1
 								},
-								"events_digest": "a8a5efda894e907ac0979fa27b2dc586617d047a7f4ef465dcd83344d0a419a2",
+								"events_digest": "23103ce6724ea001e204f304604df41c1a61f6838c12078eba9170a1e8b139a1",
 								"exact_reexport": true,
-								"final_snapshot_digest": "013b04e215a2550b1677c2ce885735accbefcee57884c7c19f78d0b969376c60",
-								"final_snapshot_typed_digest": "e7602fe6d9fb4d597d8542ff5489a8fbe7d2f23e6d7d97ed604d5df7ae1ded64",
-								"final_state_hash": "cbe4f4f7578bff8f9d6bc7ce0c312df3a5b8dc3b082c427395ed6766fd2f7c1c",
+								"final_snapshot_digest": "4f93212e8b06fa6e5615a99e79967022eb9f37b9308b6d0823c439aac4302f06",
+								"final_snapshot_typed_digest": "595745e5de834579a095e2841b495aa6acf7e2e80ca6e7e07107da5b75c6125d",
+								"final_state_hash": "50ed0eef022040959df00bd4b74fced3e5bfab4b133471991df56f3473a421e9",
 								"finished": false,
-								"fixture_recording_hash": "623bb086b0e824a5dd3352f1f08b9a344fe2fc32250787f8cd199ddcf145b6b4",
+								"fixture_recording_hash": "f998bbe0d288ed4c184f1894825fb40c48cc9dfe0474fb637807cb9b71fe863c",
 								"outcome": {
 									"objective_complete": false,
 									"source_ready": true
 								},
-								"recording_hash": "623bb086b0e824a5dd3352f1f08b9a344fe2fc32250787f8cd199ddcf145b6b4",
-								"replay_checks": 3,
+								"recording_hash": "f998bbe0d288ed4c184f1894825fb40c48cc9dfe0474fb637807cb9b71fe863c",
+								"replay_checks": 4,
 								"simulation_version": 7
 							},
 							"b": {
 								"can_commit": true,
 								"completed": true,
-								"duration_ticks": 263,
+								"duration_ticks": 270,
 								"event_counts": {
 									"bell": 1,
 									"bridge_opened:garden-door": 1,
@@ -44,22 +44,22 @@
 									"selector:garden-return": 1,
 									"stage_complete": 1
 								},
-								"events_digest": "1356452a97acc2e97483de9d03bc5594b8aa25d1311c0f1cad32853032e39299",
+								"events_digest": "6b70307e2fd4af9ddea0f162672edb1cb1a474a17951e83bcc76ffbda1a3ed88",
 								"exact_reexport": true,
-								"final_snapshot_digest": "06ca7da853381c6939fc66a4dae068756ca6e7591f35ff94b0e75e8c190baa6c",
-								"final_snapshot_typed_digest": "6da17a1daaabced3f1af9de270046b714dac10be577acea8ad49ba50fd849295",
-								"final_state_hash": "81e64b6c47acab78174b97b52441a6f2b56eee55699b2c0d74734da7dabaa284",
+								"final_snapshot_digest": "a4101dc19cadbf896ffb7708753ee9bd5096061fc8c08b9fe245ffb64890e1cf",
+								"final_snapshot_typed_digest": "60d6cae735c85d786029d88e62226995d068da97515d85688852509096110ba1",
+								"final_state_hash": "6a989ea3933bd927b08fe13170c3788a69bca6694db7da5fa5d1b29d4279e8c9",
 								"finished": true,
-								"fixture_recording_hash": "af55e9a7b855c20b2fb5163d8b4b093d5c134498b8a717de449ed042f9c364d1",
+								"fixture_recording_hash": "a879b16f31880e42a4d08c3671c21e989e0a57c1ff6ca622764fcf2b9fd09841",
 								"outcome": {
 									"objective_complete": true,
 									"source_ready": true
 								},
-								"recording_hash": "af55e9a7b855c20b2fb5163d8b4b093d5c134498b8a717de449ed042f9c364d1",
+								"recording_hash": "a879b16f31880e42a4d08c3671c21e989e0a57c1ff6ca622764fcf2b9fd09841",
 								"replay_checks": 9,
 								"simulation_version": 7
 							},
-							"checkpoint_hash": "665c39a4e3134337fd0c34747e4f5b923de9f388f9287d1b15f8436ce5b5c32b",
+							"checkpoint_hash": "281f18bf13744dbab9dd8ea7f7dacab7364eb719a1167eec20215b13eacd71db",
 							"checkpoint_matches_fixture": true,
 							"checkpoint_stage_index": 1,
 							"next_stage_id": "the-way-light-returns",
@@ -69,30 +69,30 @@
 							"a": {
 								"can_commit": true,
 								"completed": false,
-								"duration_ticks": 66,
+								"duration_ticks": 73,
 								"event_counts": {
 									"bridge_opened:lower-crossing": 1,
 									"selector:crossing-return": 1
 								},
-								"events_digest": "566a87eba56a8db6f030a64b7e3ba3441aa7bcb075bab1845ec47d962af98f1e",
+								"events_digest": "61972cf6159675ffc2dc059f46a7b771651c4ae50205286b007359d9860219c6",
 								"exact_reexport": true,
-								"final_snapshot_digest": "d8e8d436641c9fed103c7636f219876c3eb746421cb13f90be5b967332f30aa9",
-								"final_snapshot_typed_digest": "457318ed4a9d9a025a98c01bc1e44cffea9b5a8e9ed7c388b134239f3a193dc5",
-								"final_state_hash": "08b051dab98a28b6d26d2373a91feca79961d74980357d33033644c085ee33af",
+								"final_snapshot_digest": "61f9b6c651236d4c854cd51edae22fc3a53968a58624a52d8d2a310b35f46a38",
+								"final_snapshot_typed_digest": "67c125f480244ed7884eed79e66fd062b1d96b417126084d5a3d02882d70123c",
+								"final_state_hash": "770bad75ab74d954b959335d75d4de6da681ce471b5274d46f6a8b5d2145638d",
 								"finished": false,
-								"fixture_recording_hash": "fa9d516c51cbbfa8b49b35cf67415cf1ad65df4e64ce4cd83b661d6f1a894665",
+								"fixture_recording_hash": "435fa94a944a27dc6d8fb81fdd98cc3ecc0e278232fb13fc532bb31bd7535c45",
 								"outcome": {
 									"objective_complete": false,
 									"source_ready": true
 								},
-								"recording_hash": "fa9d516c51cbbfa8b49b35cf67415cf1ad65df4e64ce4cd83b661d6f1a894665",
+								"recording_hash": "435fa94a944a27dc6d8fb81fdd98cc3ecc0e278232fb13fc532bb31bd7535c45",
 								"replay_checks": 3,
 								"simulation_version": 7
 							},
 							"b": {
 								"can_commit": true,
 								"completed": true,
-								"duration_ticks": 364,
+								"duration_ticks": 378,
 								"event_counts": {
 									"bell": 1,
 									"bridge_opened:court-return": 1,
@@ -102,22 +102,22 @@
 									"selector:final-mirror": 1,
 									"stage_complete": 1
 								},
-								"events_digest": "c0d7584af661b09171dcf7e736eea1f05d957287866be72894e495a2ea0ad2e5",
+								"events_digest": "69cc28d5a11226a8ebc7660de3d240820e6ab3ccfc024969f461f303db756b3c",
 								"exact_reexport": true,
-								"final_snapshot_digest": "bb384b04757224a9d4ee12d117c0c5ab8291b17146b3e0d0a92119878e433f9d",
-								"final_snapshot_typed_digest": "52536bab5656b6463f705c89fbc042cec3c9795d1789fe70d45e5ceb77f93d01",
-								"final_state_hash": "0fab2c6caeebac4064a9943c6a899295763809f05e5b5efb9e6c7b7010a3841c",
+								"final_snapshot_digest": "5fd982f5145dabefed8da3273756644cc389b2d9b6e5acc375e1551a987f8346",
+								"final_snapshot_typed_digest": "003d04d9cf16969d3a79c369fdc722eb8c481d5ccbe74b4be43396878ef17327",
+								"final_state_hash": "267ab16b0f2033ff2c9005e2c067e741a088cf77fcbb0d9c7f59d17aadbda791",
 								"finished": true,
-								"fixture_recording_hash": "ad20af22be8a535b09223ee93b2e213cf471ea6aecb873c20ed7e47394bfa9cc",
+								"fixture_recording_hash": "726240f1bc219c6fcac476396c50d6a70eb67b75b03275c03698e0277fcdea18",
 								"outcome": {
 									"objective_complete": true,
 									"source_ready": true
 								},
-								"recording_hash": "ad20af22be8a535b09223ee93b2e213cf471ea6aecb873c20ed7e47394bfa9cc",
+								"recording_hash": "726240f1bc219c6fcac476396c50d6a70eb67b75b03275c03698e0277fcdea18",
 								"replay_checks": 13,
 								"simulation_version": 7
 							},
-							"checkpoint_hash": "7dbb12b5b1e94876a4bf2cdf94dfc11868fd5a0e8285c6302b8fce6e7c4e4e32",
+							"checkpoint_hash": "3923ff0302632fc7c608ade06bcec8734af7d4e524ca9596c5b37a7d94a17042",
 							"checkpoint_matches_fixture": true,
 							"checkpoint_stage_index": 2,
 							"next_stage_id": "",
@@ -126,39 +126,39 @@
 					]
 				},
 				"rules8": {
-					"final_checkpoint_hash": "fece6a106105483cb0a8ad9efd67e1c6a8f3221a5ea15d11106f51efe3fef3cd",
-					"final_typed_digest": "b2cb72ac121563b645efc9e783ce3cd20cc707475130e5c0123eb0027dfb60bd",
-					"initial_checkpoint_hash": "1c0fd08cb85e46316f37c818797aefad42935a67a1ed98b4dfcbe5e8acdf147b",
+					"final_checkpoint_hash": "049c60448fd3728af40b01cc1715871d3d5e36cc3ba7ae6312e673d639040c6c",
+					"final_typed_digest": "69d3d7eb6081c617cbfd499e6c95cdb5e62b1d1470c7b0978836d2ac7540e77f",
+					"initial_checkpoint_hash": "2b9b23ff1a3bd9e6c33b4faae3236a2655338861896793b093e9b0c2833a0a38",
 					"stages": [
 						{
 							"a": {
 								"can_commit": true,
 								"completed": false,
-								"duration_ticks": 80,
+								"duration_ticks": 95,
 								"event_counts": {
 									"bridge_opened:high-stair": 1,
 									"selector:court-fork": 1,
 									"selector:high-return": 1
 								},
-								"events_digest": "a8a5efda894e907ac0979fa27b2dc586617d047a7f4ef465dcd83344d0a419a2",
+								"events_digest": "23103ce6724ea001e204f304604df41c1a61f6838c12078eba9170a1e8b139a1",
 								"exact_reexport": true,
-								"final_snapshot_digest": "013b04e215a2550b1677c2ce885735accbefcee57884c7c19f78d0b969376c60",
-								"final_snapshot_typed_digest": "e7602fe6d9fb4d597d8542ff5489a8fbe7d2f23e6d7d97ed604d5df7ae1ded64",
-								"final_state_hash": "161ed41861516f75077b68c9cb395ece44ae248b0c80214b9b8bd4532dacbed8",
+								"final_snapshot_digest": "4f93212e8b06fa6e5615a99e79967022eb9f37b9308b6d0823c439aac4302f06",
+								"final_snapshot_typed_digest": "595745e5de834579a095e2841b495aa6acf7e2e80ca6e7e07107da5b75c6125d",
+								"final_state_hash": "d588186cf03097298d1bd90374bb1be10033d998280f0f081028608a10bfd923",
 								"finished": false,
-								"fixture_recording_hash": "778923f3d2914bd2811818dc1331215583897fe731346d1e76872ca3038f1dbd",
+								"fixture_recording_hash": "e407d46acb536e52892ddbee92c6ec7407573fcfaebc22b9c8f0ff675c7d68b1",
 								"outcome": {
 									"objective_complete": false,
 									"source_ready": true
 								},
-								"recording_hash": "778923f3d2914bd2811818dc1331215583897fe731346d1e76872ca3038f1dbd",
-								"replay_checks": 3,
+								"recording_hash": "e407d46acb536e52892ddbee92c6ec7407573fcfaebc22b9c8f0ff675c7d68b1",
+								"replay_checks": 4,
 								"simulation_version": 8
 							},
 							"b": {
 								"can_commit": true,
 								"completed": true,
-								"duration_ticks": 263,
+								"duration_ticks": 270,
 								"event_counts": {
 									"bell": 1,
 									"bridge_opened:garden-door": 1,
@@ -167,22 +167,22 @@
 									"selector:garden-return": 1,
 									"stage_complete": 1
 								},
-								"events_digest": "1356452a97acc2e97483de9d03bc5594b8aa25d1311c0f1cad32853032e39299",
+								"events_digest": "6b70307e2fd4af9ddea0f162672edb1cb1a474a17951e83bcc76ffbda1a3ed88",
 								"exact_reexport": true,
-								"final_snapshot_digest": "d9f4533b59f73498b181bd7533e29e0567eb57242aa92265dd783af753bb6e17",
-								"final_snapshot_typed_digest": "3a4fb2084dff039014f3b7d5c4371355ae09dc9fb3edfd7c0991c7e82d508a2b",
-								"final_state_hash": "1ed9fde097b898408c0c7d11535e4345045363cba2593405b8663c4206f9b639",
+								"final_snapshot_digest": "39b7cfb3b7e2afb8793fe69193fdf0b7c1f07b88cfcec5f47273e049c0eb182f",
+								"final_snapshot_typed_digest": "533b3c45a4fd2f0def354f07a901eea13cdd53a3ceb8a2e2ba9bbf75a1618a46",
+								"final_state_hash": "b1550caa780dc9912cfabe7325ef1a379862dfbe118b0133e3c1f512d89d4edf",
 								"finished": true,
-								"fixture_recording_hash": "68bff9c5f20b62baf074927d9e13583d933ca0f89ad0d3d7631734b36489187c",
+								"fixture_recording_hash": "8c06b8badc2d1a22d3655db6c4860ae01e7a50ebaa4f26ac0ff910f40c22cd1e",
 								"outcome": {
 									"objective_complete": true,
 									"source_ready": true
 								},
-								"recording_hash": "68bff9c5f20b62baf074927d9e13583d933ca0f89ad0d3d7631734b36489187c",
+								"recording_hash": "8c06b8badc2d1a22d3655db6c4860ae01e7a50ebaa4f26ac0ff910f40c22cd1e",
 								"replay_checks": 9,
 								"simulation_version": 8
 							},
-							"checkpoint_hash": "6d0b1f1b252426ae203b7f7c03c3ee21273ad850be5a0486124afa7aaebd98d9",
+							"checkpoint_hash": "adba1f9a9120541af4cfa3d55b859c0f13385235025bf8bb9ca6f785865c8753",
 							"checkpoint_matches_fixture": true,
 							"checkpoint_stage_index": 1,
 							"next_stage_id": "the-way-light-returns",
@@ -192,30 +192,30 @@
 							"a": {
 								"can_commit": true,
 								"completed": false,
-								"duration_ticks": 66,
+								"duration_ticks": 73,
 								"event_counts": {
 									"bridge_opened:lower-crossing": 1,
 									"selector:crossing-return": 1
 								},
-								"events_digest": "566a87eba56a8db6f030a64b7e3ba3441aa7bcb075bab1845ec47d962af98f1e",
+								"events_digest": "61972cf6159675ffc2dc059f46a7b771651c4ae50205286b007359d9860219c6",
 								"exact_reexport": true,
-								"final_snapshot_digest": "d8e8d436641c9fed103c7636f219876c3eb746421cb13f90be5b967332f30aa9",
-								"final_snapshot_typed_digest": "457318ed4a9d9a025a98c01bc1e44cffea9b5a8e9ed7c388b134239f3a193dc5",
-								"final_state_hash": "de3c41883e6c75f0abf236c05b68cb7ec8ce4fc453d2fec1938baa2f32751663",
+								"final_snapshot_digest": "61f9b6c651236d4c854cd51edae22fc3a53968a58624a52d8d2a310b35f46a38",
+								"final_snapshot_typed_digest": "67c125f480244ed7884eed79e66fd062b1d96b417126084d5a3d02882d70123c",
+								"final_state_hash": "7de7662a5581fd217b067458cdf5fe2fd0a8c91c0c222f33f4af459e61c82604",
 								"finished": false,
-								"fixture_recording_hash": "0ef1bfe940119c18aa18935bf0513343af57bcb72bf9feb609e3bbf2ead5606c",
+								"fixture_recording_hash": "1ad54545bad8b52131e1e419e5fcd55aae3e5f7e192a170fa2c058b621a62769",
 								"outcome": {
 									"objective_complete": false,
 									"source_ready": true
 								},
-								"recording_hash": "0ef1bfe940119c18aa18935bf0513343af57bcb72bf9feb609e3bbf2ead5606c",
+								"recording_hash": "1ad54545bad8b52131e1e419e5fcd55aae3e5f7e192a170fa2c058b621a62769",
 								"replay_checks": 3,
 								"simulation_version": 8
 							},
 							"b": {
 								"can_commit": true,
 								"completed": true,
-								"duration_ticks": 364,
+								"duration_ticks": 378,
 								"event_counts": {
 									"bell": 1,
 									"bridge_opened:court-return": 1,
@@ -225,22 +225,22 @@
 									"selector:final-mirror": 1,
 									"stage_complete": 1
 								},
-								"events_digest": "c0d7584af661b09171dcf7e736eea1f05d957287866be72894e495a2ea0ad2e5",
+								"events_digest": "69cc28d5a11226a8ebc7660de3d240820e6ab3ccfc024969f461f303db756b3c",
 								"exact_reexport": true,
-								"final_snapshot_digest": "ec8f18ba4afa7eb6284480c1ec836e0d9430b6c09c9bc53914f0b2fd1718c913",
-								"final_snapshot_typed_digest": "6b845e971ddcad63c2c6d5a7f05fd7b7101dd56ee985328d00fa867a11ac865c",
-								"final_state_hash": "ee917f4697e61340d0b89012084c8cb7b0dfd959da8ad6de2c6dcdbbf8ce24d6",
+								"final_snapshot_digest": "49823e88fa72580beeac6d805530bab1f0c6562a0301e5a09d450de1ced7ba77",
+								"final_snapshot_typed_digest": "3be907c66f0e0e111593c5c65586a1f46429c777e5310ada806c00be2d6a9f3c",
+								"final_state_hash": "fc4a34fe56b6d47511e84eba7f94d36a16e39a8c1868ca58741597874965d19d",
 								"finished": true,
-								"fixture_recording_hash": "9e4c31db94674618d8b8f00f2b027ce50f9de4adb912e4b5beb789e833d8f2ef",
+								"fixture_recording_hash": "6481832562c0fdfcf0e386b3e86aa20284b66cfdb8d4114ae8012cf30879bbd1",
 								"outcome": {
 									"objective_complete": true,
 									"source_ready": true
 								},
-								"recording_hash": "9e4c31db94674618d8b8f00f2b027ce50f9de4adb912e4b5beb789e833d8f2ef",
+								"recording_hash": "6481832562c0fdfcf0e386b3e86aa20284b66cfdb8d4114ae8012cf30879bbd1",
 								"replay_checks": 13,
 								"simulation_version": 8
 							},
-							"checkpoint_hash": "fece6a106105483cb0a8ad9efd67e1c6a8f3221a5ea15d11106f51efe3fef3cd",
+							"checkpoint_hash": "049c60448fd3728af40b01cc1715871d3d5e36cc3ba7ae6312e673d639040c6c",
 							"checkpoint_matches_fixture": true,
 							"checkpoint_stage_index": 2,
 							"next_stage_id": "",
@@ -270,39 +270,39 @@
 		"long-way-home@1": {
 			"chains": {
 				"rules7": {
-					"final_checkpoint_hash": "ef4d371e3122b7d36d5d8fca3eb2c17c00c2f21118fe5541ec5c2df913c4af80",
-					"final_typed_digest": "21af95279630cdf2526efe423656eefd6335a8ba16c9f2ff27b7675239761692",
-					"initial_checkpoint_hash": "fc74e608708a07e7ea28794d245d1aa252c24189b95b13ec7f226fc5468a5c8a",
+					"final_checkpoint_hash": "ddce8f7c559f032f600bd52f9c8be643e35bf8525edb8ab5d9a0d5c29b383a06",
+					"final_typed_digest": "f3921ab3f6ad960075b1c03f572e8fefaa73614eeb5c9b29b294b529b3c54eeb",
+					"initial_checkpoint_hash": "13120093c52ffa4bafff220d965ad1e6a090e25478b0904e6c77363a3592ed92",
 					"stages": [
 						{
 							"a": {
 								"can_commit": true,
 								"completed": false,
-								"duration_ticks": 332,
+								"duration_ticks": 324,
 								"event_counts": {
 									"bridge_opened:friend-crossing": 1,
 									"drop": 1,
 									"selector:path-selector": 1
 								},
-								"events_digest": "9861e74012bc3e16d40039c09016e0899a6a21c73e9ca995f2cc05c5565bf13e",
+								"events_digest": "31b6cf0f27cde86205a72f7ad9ed364972b6ed1394c1387d4ca1b77b582490ab",
 								"exact_reexport": true,
-								"final_snapshot_digest": "2bef0fbda818eb95ca720ef5c26668aad2a8ef6ad1304186c33390617a5cc579",
-								"final_snapshot_typed_digest": "233832e2bb5a25ce16736f0896e2c7d29f22e9ada8fe36cdbfb74ea176bbf770",
-								"final_state_hash": "1e9b06cf8110f36872a1965995900942c92c4bec294290707d10f31436e44b46",
+								"final_snapshot_digest": "4d5cfe76eaef947cfea1d2909bd7454ffe022b696ce8db705857cdfb9d77c647",
+								"final_snapshot_typed_digest": "2464881ebfa38214e8f682c4d6e8742bfe4288a791cf2065b3a520218a7671cf",
+								"final_state_hash": "dfe25a539eb4c5319a8fd9747e9b82fc51ee796986f8525bef6602f2ec32e17b",
 								"finished": false,
-								"fixture_recording_hash": "2c26778fd7c9527b8814e999572dcf8f98201e138e0623c3351721fb2126a6fa",
+								"fixture_recording_hash": "69d220e9e867b007fd99538724e53a0b929dc85910c8f29f636c48d7251cf491",
 								"outcome": {
 									"objective_complete": false,
 									"source_ready": true
 								},
-								"recording_hash": "2c26778fd7c9527b8814e999572dcf8f98201e138e0623c3351721fb2126a6fa",
-								"replay_checks": 12,
+								"recording_hash": "69d220e9e867b007fd99538724e53a0b929dc85910c8f29f636c48d7251cf491",
+								"replay_checks": 11,
 								"simulation_version": 7
 							},
 							"b": {
 								"can_commit": true,
 								"completed": true,
-								"duration_ticks": 332,
+								"duration_ticks": 324,
 								"event_counts": {
 									"bell": 1,
 									"bridge_opened:friend-crossing": 1,
@@ -310,22 +310,22 @@
 									"selector:return-selector": 1,
 									"stage_complete": 1
 								},
-								"events_digest": "631ecd51c0c870b6f8bac2f318eb24a30b0d1dbc7d071a91cdcf99fcc9ad60fa",
+								"events_digest": "8abe61b4485a9e3892f2eaa2902f13d470c2f6c390706038e2c5c2628a669a5f",
 								"exact_reexport": true,
-								"final_snapshot_digest": "e677a31b95009b3023d491eb771b90457567e90d6fb9f7f97f13d517471f445a",
-								"final_snapshot_typed_digest": "a6add059ba5a6338cb74b7d7ecb36a1ab2afb385560fb7961e59e8faf45b1121",
-								"final_state_hash": "6c2ff7c328ae5dfc9389130e776d5b684e815c601685e42d7925f18b88576c02",
+								"final_snapshot_digest": "903e6ab7a03d2fca20da3d2c7eee70eabae7ecc9ce24fe97f66704352a9dec0b",
+								"final_snapshot_typed_digest": "1b514de19490fd1b0e25649e70df508d63d34d2385a571742f9f5029c00baf43",
+								"final_state_hash": "45be65695d978c3532e612fc9c79187104395982c30bbb91a896c12eb32c660e",
 								"finished": true,
-								"fixture_recording_hash": "814e740db06eeb8d9e85daf87bc834f923b239be94f485ccc79c51ec5bd3f646",
+								"fixture_recording_hash": "32dd601084d54cd9d0dacd4af8f5ed292111e1517390ae7d6ca5550bbab35e16",
 								"outcome": {
 									"objective_complete": true,
 									"source_ready": true
 								},
-								"recording_hash": "814e740db06eeb8d9e85daf87bc834f923b239be94f485ccc79c51ec5bd3f646",
-								"replay_checks": 12,
+								"recording_hash": "32dd601084d54cd9d0dacd4af8f5ed292111e1517390ae7d6ca5550bbab35e16",
+								"replay_checks": 11,
 								"simulation_version": 7
 							},
-							"checkpoint_hash": "14712a0f9b134a691b7af4cd12a39b792ce492a9452b63eca7a69f06016d309f",
+							"checkpoint_hash": "bafa20959ceaa5e451818b1763270d229154bbab240319b290289857dd3bcc95",
 							"checkpoint_matches_fixture": true,
 							"checkpoint_stage_index": 1,
 							"next_stage_id": "a-place-beside-you",
@@ -343,21 +343,21 @@
 								"exact_reexport": true,
 								"final_snapshot_digest": "c4015da4705798f07508f487262bb25c3849b7b2c5561d2fcbc408ec37b34c59",
 								"final_snapshot_typed_digest": "c1a5cee9849e4adb545823d6c29570b8d6c6e4b3a577be6af3794c339d21073c",
-								"final_state_hash": "83f15f51ded5745a9c9722aaa14bcb89b1511813677aba005bfd78d1b27f793b",
+								"final_state_hash": "24ab1244c6ca7bce697b94ee1e696e3760e9d065b336d61def49e65e2dcb9d9c",
 								"finished": false,
-								"fixture_recording_hash": "2f0978cf05fc947a00b20a6ef303d945ff90e140087489ecaa644452d03ff09b",
+								"fixture_recording_hash": "958098874850df421b347ee37826354ed6247e649f42789eeaa0211251de3a93",
 								"outcome": {
 									"objective_complete": false,
 									"source_ready": true
 								},
-								"recording_hash": "2f0978cf05fc947a00b20a6ef303d945ff90e140087489ecaa644452d03ff09b",
+								"recording_hash": "958098874850df421b347ee37826354ed6247e649f42789eeaa0211251de3a93",
 								"replay_checks": 4,
 								"simulation_version": 7
 							},
 							"b": {
 								"can_commit": true,
 								"completed": true,
-								"duration_ticks": 203,
+								"duration_ticks": 215,
 								"event_counts": {
 									"bell": 1,
 									"bridge_opened:near-crossing": 1,
@@ -365,22 +365,22 @@
 									"lever": 1,
 									"stage_complete": 1
 								},
-								"events_digest": "51354311ea47d3414f4bcec7bf80bd5fb4fc1c6732631b234a95072b05618f1e",
+								"events_digest": "a8e1a43066e9eccf766bc603d0c05c4c0db36b4ef313ede75ecbfc6d71263ed5",
 								"exact_reexport": true,
-								"final_snapshot_digest": "9cb5a99e20c92902774355183b93219eede149d0be33c3225fe6401881a67907",
-								"final_snapshot_typed_digest": "11a840c5afcb806dec6836e37a8f19975ba02183fca30f33a39ea414178acca4",
-								"final_state_hash": "602a283d129ea0caeddc3f45791bdd3fa80c05359e98532c791cadc29b32e038",
+								"final_snapshot_digest": "a1a6e6c1d66f9f44af00fd69db4c3b0ffbfc845c614ed7378ec1221ab71985f1",
+								"final_snapshot_typed_digest": "ab390b9bc0c010faa800eb44de91c92b0233ec96790292b256c258a5124b37b7",
+								"final_state_hash": "710c052434548082a4329371cf68267b86b5b6669c7ad6da0571d74dc7ef338e",
 								"finished": true,
-								"fixture_recording_hash": "94be37f03c89846379608fcd12c0d134ee0b10d2649281ab1a82186151d0b494",
+								"fixture_recording_hash": "995247ac1b9741183979bfacea474199af3c2117c5133d6964b64838c0e0ff19",
 								"outcome": {
 									"objective_complete": true,
 									"source_ready": true
 								},
-								"recording_hash": "94be37f03c89846379608fcd12c0d134ee0b10d2649281ab1a82186151d0b494",
-								"replay_checks": 7,
+								"recording_hash": "995247ac1b9741183979bfacea474199af3c2117c5133d6964b64838c0e0ff19",
+								"replay_checks": 8,
 								"simulation_version": 7
 							},
-							"checkpoint_hash": "ef4d371e3122b7d36d5d8fca3eb2c17c00c2f21118fe5541ec5c2df913c4af80",
+							"checkpoint_hash": "ddce8f7c559f032f600bd52f9c8be643e35bf8525edb8ab5d9a0d5c29b383a06",
 							"checkpoint_matches_fixture": true,
 							"checkpoint_stage_index": 2,
 							"next_stage_id": "",
@@ -389,39 +389,39 @@
 					]
 				},
 				"rules8": {
-					"final_checkpoint_hash": "30238ea81ef4144fe976320fb551c1668a1ac427e9267d0dbe0e09b53798a852",
-					"final_typed_digest": "45b219aa0c1e71929b8cfac8d8c7520abb6a50d9c42e77ec58f9a00be6a3352e",
-					"initial_checkpoint_hash": "fc74e608708a07e7ea28794d245d1aa252c24189b95b13ec7f226fc5468a5c8a",
+					"final_checkpoint_hash": "d8aed32647aebc5b610fdbb6e90ae2b3d60382f3f61e48d4e8626fc31a5a0b38",
+					"final_typed_digest": "a2e7eaa9d080178c3578be9d017325d2c3927ca367c12f0a06d63b4baf81a459",
+					"initial_checkpoint_hash": "13120093c52ffa4bafff220d965ad1e6a090e25478b0904e6c77363a3592ed92",
 					"stages": [
 						{
 							"a": {
 								"can_commit": true,
 								"completed": false,
-								"duration_ticks": 332,
+								"duration_ticks": 324,
 								"event_counts": {
 									"bridge_opened:friend-crossing": 1,
 									"drop": 1,
 									"selector:path-selector": 1
 								},
-								"events_digest": "9861e74012bc3e16d40039c09016e0899a6a21c73e9ca995f2cc05c5565bf13e",
+								"events_digest": "31b6cf0f27cde86205a72f7ad9ed364972b6ed1394c1387d4ca1b77b582490ab",
 								"exact_reexport": true,
-								"final_snapshot_digest": "2bef0fbda818eb95ca720ef5c26668aad2a8ef6ad1304186c33390617a5cc579",
-								"final_snapshot_typed_digest": "233832e2bb5a25ce16736f0896e2c7d29f22e9ada8fe36cdbfb74ea176bbf770",
-								"final_state_hash": "89aeb29bff25f1540bee3d62e416c083585e2fe86b465a4e66ebf4c9eec12643",
+								"final_snapshot_digest": "4d5cfe76eaef947cfea1d2909bd7454ffe022b696ce8db705857cdfb9d77c647",
+								"final_snapshot_typed_digest": "2464881ebfa38214e8f682c4d6e8742bfe4288a791cf2065b3a520218a7671cf",
+								"final_state_hash": "74cf6d4be9021e87faf93d2c0066ad3946380dc092f736f745195e7cbd817b00",
 								"finished": false,
-								"fixture_recording_hash": "bb70f318daf9ca64972669145004b14f773a1651ca63ab44f18a5db9aa511116",
+								"fixture_recording_hash": "adc3d967b59acb8e0b337d1eb8e46bdba095f10ff9b442149ad3bb89acb84f8c",
 								"outcome": {
 									"objective_complete": false,
 									"source_ready": true
 								},
-								"recording_hash": "bb70f318daf9ca64972669145004b14f773a1651ca63ab44f18a5db9aa511116",
-								"replay_checks": 12,
+								"recording_hash": "adc3d967b59acb8e0b337d1eb8e46bdba095f10ff9b442149ad3bb89acb84f8c",
+								"replay_checks": 11,
 								"simulation_version": 8
 							},
 							"b": {
 								"can_commit": true,
 								"completed": true,
-								"duration_ticks": 332,
+								"duration_ticks": 324,
 								"event_counts": {
 									"bell": 1,
 									"bridge_opened:friend-crossing": 1,
@@ -429,22 +429,22 @@
 									"selector:return-selector": 1,
 									"stage_complete": 1
 								},
-								"events_digest": "631ecd51c0c870b6f8bac2f318eb24a30b0d1dbc7d071a91cdcf99fcc9ad60fa",
+								"events_digest": "8abe61b4485a9e3892f2eaa2902f13d470c2f6c390706038e2c5c2628a669a5f",
 								"exact_reexport": true,
-								"final_snapshot_digest": "a785a82285976001ee1e4c5b41616a0a0f4b2204b662d3541f533adf7cc50fc4",
-								"final_snapshot_typed_digest": "983d63841b10cd4f5bb26e1b7ad7af669ba2f3b2ba6fdae31a7619e74f230ad7",
-								"final_state_hash": "701425487e4c851a12a07995ae4af994c846c87e7758d58cdd6f43065788446e",
+								"final_snapshot_digest": "6128a12a805be9930a87b3c94607fd66b483408873a48b868a74be1652ae995d",
+								"final_snapshot_typed_digest": "7e573df98177b5f63d5b9ae419f8d7612209263b72c60db146d10800f58f6654",
+								"final_state_hash": "eda064947fd77057a1fe065d68cb16a3d83782ab444862e8f703c149039be1a8",
 								"finished": true,
-								"fixture_recording_hash": "18771bcd6d5a60daa5ad5cb3c95b7d05060179948a38ffc004afb78465d61f16",
+								"fixture_recording_hash": "3bec72d3ed83ecd0a6a1c5cb9184e5f84a7a80f9c419ab2b11f17956ef0ad5a5",
 								"outcome": {
 									"objective_complete": true,
 									"source_ready": true
 								},
-								"recording_hash": "18771bcd6d5a60daa5ad5cb3c95b7d05060179948a38ffc004afb78465d61f16",
-								"replay_checks": 12,
+								"recording_hash": "3bec72d3ed83ecd0a6a1c5cb9184e5f84a7a80f9c419ab2b11f17956ef0ad5a5",
+								"replay_checks": 11,
 								"simulation_version": 8
 							},
-							"checkpoint_hash": "fc8e013322c22a8a793e7965020c673643f01c5aad397115282a16af02f23c2f",
+							"checkpoint_hash": "55d9469533d395e7cd77104cbb66dd3b5c81fc2b9db50b785a7491543f93bc81",
 							"checkpoint_matches_fixture": true,
 							"checkpoint_stage_index": 1,
 							"next_stage_id": "a-place-beside-you",
@@ -462,21 +462,21 @@
 								"exact_reexport": true,
 								"final_snapshot_digest": "c4015da4705798f07508f487262bb25c3849b7b2c5561d2fcbc408ec37b34c59",
 								"final_snapshot_typed_digest": "c1a5cee9849e4adb545823d6c29570b8d6c6e4b3a577be6af3794c339d21073c",
-								"final_state_hash": "fce5381a01bb1e63ae26ddadf45428f8d58f118580ee9b5d6bab5aa54999da48",
+								"final_state_hash": "cc3c092f1cae1c0208edc3f4853082f7403699055198972d47f7f973278beea0",
 								"finished": false,
-								"fixture_recording_hash": "a81c77e4e1f446e5d78d44a92da99742c85a21ca2c9271cb3c29af9ed010a38a",
+								"fixture_recording_hash": "891eb4f0648037353919212d2b17751c662e05a82b7fce4a28d74cf0c4ccf87a",
 								"outcome": {
 									"objective_complete": false,
 									"source_ready": true
 								},
-								"recording_hash": "a81c77e4e1f446e5d78d44a92da99742c85a21ca2c9271cb3c29af9ed010a38a",
+								"recording_hash": "891eb4f0648037353919212d2b17751c662e05a82b7fce4a28d74cf0c4ccf87a",
 								"replay_checks": 4,
 								"simulation_version": 8
 							},
 							"b": {
 								"can_commit": true,
 								"completed": true,
-								"duration_ticks": 203,
+								"duration_ticks": 215,
 								"event_counts": {
 									"bell": 1,
 									"bridge_opened:near-crossing": 1,
@@ -484,22 +484,22 @@
 									"lever": 1,
 									"stage_complete": 1
 								},
-								"events_digest": "51354311ea47d3414f4bcec7bf80bd5fb4fc1c6732631b234a95072b05618f1e",
+								"events_digest": "a8e1a43066e9eccf766bc603d0c05c4c0db36b4ef313ede75ecbfc6d71263ed5",
 								"exact_reexport": true,
-								"final_snapshot_digest": "e52c1169fc6934968cba98905677ab5b4f455391431675c612719025cf19d8d5",
-								"final_snapshot_typed_digest": "af1cc6fc98e9b754d5acfa97640cfdc9ed8ff915ceee011e76c1d962a7d54c54",
-								"final_state_hash": "f6136ff15a843acf022466a1ad5f7bd814f05c5baf3667085ecc1e1fde9b5fd1",
+								"final_snapshot_digest": "4cd8aacecaaa58d62044315d2680beb11b7859aa8dca57b31c094a18d2e82712",
+								"final_snapshot_typed_digest": "bd666213a73653ce7262e096b594129067729a3f429dcca59b685e0cb298a3d0",
+								"final_state_hash": "de96131169cf3d8de7a389180413069d0217c0022836c158b79802013a7d863c",
 								"finished": true,
-								"fixture_recording_hash": "929c2385e8da97069c1e0b6cb2a0d4cbd4480bc8297320ca75d410cf6ea6abaf",
+								"fixture_recording_hash": "04248c6ad9498f103e9a229b25b0d6000ef0b8dcca1229cc057510e56a2f7e8f",
 								"outcome": {
 									"objective_complete": true,
 									"source_ready": true
 								},
-								"recording_hash": "929c2385e8da97069c1e0b6cb2a0d4cbd4480bc8297320ca75d410cf6ea6abaf",
-								"replay_checks": 7,
+								"recording_hash": "04248c6ad9498f103e9a229b25b0d6000ef0b8dcca1229cc057510e56a2f7e8f",
+								"replay_checks": 8,
 								"simulation_version": 8
 							},
-							"checkpoint_hash": "30238ea81ef4144fe976320fb551c1668a1ac427e9267d0dbe0e09b53798a852",
+							"checkpoint_hash": "d8aed32647aebc5b610fdbb6e90ae2b3d60382f3f61e48d4e8626fc31a5a0b38",
 							"checkpoint_matches_fixture": true,
 							"checkpoint_stage_index": 2,
 							"next_stage_id": "",
@@ -529,31 +529,31 @@
 						"journey/long-way-home-v2-garden-a.json": {
 							"can_commit": true,
 							"completed": false,
-							"duration_ticks": 144,
+							"duration_ticks": 136,
 							"event_counts": {
 								"bridge_opened:garden-arch": 1,
 								"bridge_opened:near-crossing": 1,
 								"selector:hall-lamp": 2
 							},
-							"events_digest": "9265540d42bf3962e96e4aa763253366f8ad274ea68ffa996193e32337735ddf",
+							"events_digest": "9911a8214b2575a00fe2963fbba080803adfc8781299977cb3c4e849a2afbf97",
 							"exact_reexport": true,
-							"final_snapshot_digest": "2aad7206e5b9b8140acf6aa1c34c454097c4700032e7df728ddce3e63d6ecb3c",
-							"final_snapshot_typed_digest": "465029be743639571f668289b87e33cdf86df388b73b3d9cb89a61c7eb92a622",
-							"final_state_hash": "af2cc941157fe500b3af3a1c403b5fdc5aabbd440619597b45db9312f6bfe898",
+							"final_snapshot_digest": "122a43de9efc3640280c35ea7608140d04f6568e23a2deac12ce971d0d1f4345",
+							"final_snapshot_typed_digest": "bf34bcbaf1037261c648ecfafed1303d1011adc6daa41c4177908f1ca34afb4f",
+							"final_state_hash": "b5868e23c92ca712ae659698dc8f4135323501d0ed47a23be6ed3dc7eb9e0ef2",
 							"finished": false,
-							"fixture_recording_hash": "704eb42cf85b43f3d5999724b33cee54276d758cb90ecd07d7edbd5121fcc660",
+							"fixture_recording_hash": "9dfe730752e0903f2dd82631a2a0fe722b428ca5f2f074ab6a953190727b71a2",
 							"outcome": {
 								"objective_complete": false,
 								"source_ready": true
 							},
-							"recording_hash": "704eb42cf85b43f3d5999724b33cee54276d758cb90ecd07d7edbd5121fcc660",
+							"recording_hash": "9dfe730752e0903f2dd82631a2a0fe722b428ca5f2f074ab6a953190727b71a2",
 							"replay_checks": 5,
 							"simulation_version": 9
 						},
 						"journey/long-way-home-v2-garden-b.json": {
 							"can_commit": true,
 							"completed": true,
-							"duration_ticks": 231,
+							"duration_ticks": 246,
 							"event_counts": {
 								"bell": 1,
 								"bridge_opened:garden-arch": 1,
@@ -562,19 +562,19 @@
 								"selector:walk-gate": 2,
 								"stage_complete": 1
 							},
-							"events_digest": "9d35f1f93bd086737c6726948974c495262485dd0e5a8e2a245e19d9e1b70c95",
+							"events_digest": "0f82389c31352d5d7b909f877857ae07e0c171c4199cde1835af1a6339518790",
 							"exact_reexport": true,
-							"final_snapshot_digest": "de0162bb8a5126b78bf97b382fc9e1f1ab55114baaf2981c0492fd00688510d4",
-							"final_snapshot_typed_digest": "318942ed6991a8aa3eec895447ee115780c662b2d25d7b2b40ff93fd9dda8a2b",
-							"final_state_hash": "1c079bb5a7f546ef2814df9da66bdc5692548d1fe37b2aa9a01d13b0769777a8",
+							"final_snapshot_digest": "ee7faada5c44ef937231ba61dd2c347b7eefac94d70dbe17181bb16b4cf7139a",
+							"final_snapshot_typed_digest": "2829f8970abc3d00dbe7341d95a1c99bbb414f2755dc2da3588602071fe34783",
+							"final_state_hash": "bdb45caa8c954c1fe7b7ab8e3a6b546ef45d9fc0a7cc1a2406f2d7d791848c6d",
 							"finished": true,
-							"fixture_recording_hash": "acb9174707666b7a2eba73824cd6d88a8f991ca8d0802123cb41d8575683fccc",
+							"fixture_recording_hash": "6d6886e5cf63a2731e11191735c52e1e4fc25ce3a1878bcdcf09c69b5cd0a39f",
 							"outcome": {
 								"objective_complete": true,
 								"source_ready": true
 							},
-							"recording_hash": "acb9174707666b7a2eba73824cd6d88a8f991ca8d0802123cb41d8575683fccc",
-							"replay_checks": 8,
+							"recording_hash": "6d6886e5cf63a2731e11191735c52e1e4fc25ce3a1878bcdcf09c69b5cd0a39f",
+							"replay_checks": 9,
 							"simulation_version": 9
 						},
 						"journey/long-way-home-v2-latest-a.json": {
@@ -586,25 +586,25 @@
 								"bridge_opened:near-crossing": 1,
 								"selector:hall-lamp": 1
 							},
-							"events_digest": "ff6cd645cc007dadbf24b95e889ca5c7936cb09f416ed028e3ba3c3e296ad30c",
+							"events_digest": "ac599a4ce075000450875a8e6916867d35f2ea5bfc504f1c4656b5a01aae80da",
 							"exact_reexport": true,
 							"final_snapshot_digest": "fe710f522b93eb7eccbdf3e87d4ea5d6bff0079aba494c9a52e76814a3059e67",
 							"final_snapshot_typed_digest": "970df981935464de7d574df0d49b856c4ebc93d56d8ba13966f3b3a8321902d1",
-							"final_state_hash": "2c03266b2d2797d243f00c9cb6d11e31e2afc8bce4087879c56ee78eae8c9187",
+							"final_state_hash": "e5ec39b996d56537a96263197f5725907e65ac751216ee081912101b2b141191",
 							"finished": false,
-							"fixture_recording_hash": "bba6265c72eeb9b375222a16c3de2a5cce487bbb85cac5dab971c9ef9ddbb3b5",
+							"fixture_recording_hash": "b37f8fd99beb4226d93f0c48a6c6c6ccafa27a1ed66b05284f8db6690be74ea9",
 							"outcome": {
 								"objective_complete": false,
 								"source_ready": true
 							},
-							"recording_hash": "bba6265c72eeb9b375222a16c3de2a5cce487bbb85cac5dab971c9ef9ddbb3b5",
+							"recording_hash": "b37f8fd99beb4226d93f0c48a6c6c6ccafa27a1ed66b05284f8db6690be74ea9",
 							"replay_checks": 30,
 							"simulation_version": 9
 						},
 						"journey/long-way-home-v2-latest-b.json": {
 							"can_commit": true,
 							"completed": true,
-							"duration_ticks": 965,
+							"duration_ticks": 988,
 							"event_counts": {
 								"bell": 1,
 								"bridge_opened:garden-arch": 1,
@@ -613,55 +613,55 @@
 								"selector:walk-gate": 1,
 								"stage_complete": 1
 							},
-							"events_digest": "3caec86cde5b98834a84b134449e3bbbba316d4d29c11d3874020a9d0712cfb2",
+							"events_digest": "6503ad3511a15325190d4d6ae2f471e4bab859e81e8e94ba86a7d1c6555aaca4",
 							"exact_reexport": true,
-							"final_snapshot_digest": "eeb81d8cead234a04cffac0e5f2a16cd429faeb2e01fa3d1c61b3526d79e1f91",
-							"final_snapshot_typed_digest": "1faea42f0409a8f545cf0ce877c760e00deb3622b007446ae9d8f8f89018cbcb",
-							"final_state_hash": "cc70f727f7e34821623856812bd917e3699f0168a77547c5df5cdf59ec124144",
+							"final_snapshot_digest": "df296256b75f10c7545246016505dea48692c21c237bbdd4bb6811fb6b10802f",
+							"final_snapshot_typed_digest": "be11998fc7995c641c625dd695d3e6705b4dc2cf7a5ef36f3e36835be6165777",
+							"final_state_hash": "55d7f29334c212b966a41a40c232d5e5d8bcd8bede06e27bc2caf6f5c4529f35",
 							"finished": true,
-							"fixture_recording_hash": "2591c8ffe95ec0cbe3c65d69ffe8ba10052590bd6c327f4877076ebc8a170339",
+							"fixture_recording_hash": "0264a63e4b80fcfea7d149f9e056a0b07a17202ce8eb01d1fb71d6c055b0b186",
 							"outcome": {
 								"objective_complete": true,
 								"source_ready": true
 							},
-							"recording_hash": "2591c8ffe95ec0cbe3c65d69ffe8ba10052590bd6c327f4877076ebc8a170339",
+							"recording_hash": "0264a63e4b80fcfea7d149f9e056a0b07a17202ce8eb01d1fb71d6c055b0b186",
 							"replay_checks": 33,
 							"simulation_version": 9
 						}
 					},
-					"final_checkpoint_hash": "136138a7753ced7373afeea098d1f212fb727057bbf51bea711a84a75cbfdc5f",
-					"final_typed_digest": "1e4b2db32f6f0c9703909b74e81d4cf6aa93457dbde610173ffe421729f68ec8",
-					"initial_checkpoint_hash": "fe0c7aaf890b5da6e89683a2c3c3e4938537c69f038b11a814725225d72b6299",
+					"final_checkpoint_hash": "ddc13c472348cad953dc47f0ae788526233bb47b7b1a455961faf3e61d6da9ec",
+					"final_typed_digest": "29a3798cfe0020b5a264305f56cab3fb7500c0e2244a3bdbe8e6befcd3d2036a",
+					"initial_checkpoint_hash": "6cf0df22a2885dad6ba4aaacb94a72c8dc9fbb76adf8b272af626f0eb235f43d",
 					"stages": [
 						{
 							"a": {
 								"can_commit": true,
 								"completed": false,
-								"duration_ticks": 332,
+								"duration_ticks": 324,
 								"event_counts": {
 									"bridge_opened:friend-crossing": 1,
 									"drop": 1,
 									"selector:path-selector": 1
 								},
-								"events_digest": "9861e74012bc3e16d40039c09016e0899a6a21c73e9ca995f2cc05c5565bf13e",
+								"events_digest": "31b6cf0f27cde86205a72f7ad9ed364972b6ed1394c1387d4ca1b77b582490ab",
 								"exact_reexport": true,
-								"final_snapshot_digest": "5c95d8274bcf4b25954f4448ae7731ff18196cbf8682c57c1bffcc65b16af8c5",
-								"final_snapshot_typed_digest": "26e4a020e426522a090f5de86912a534f201aefed64e3d9bca3a0b64505f484f",
-								"final_state_hash": "1dd4ee29195c87b386ad1d8466beeaf59c72e9fb0c75094a3fcf0da3d05e4b93",
+								"final_snapshot_digest": "197abd8fd7e05a071d764b7d9742dfa698221e981ce8892860862fd52110e32b",
+								"final_snapshot_typed_digest": "0839aac2fc82937978b82a217092655c6242969ddbbeb798c5a1b3f17af01c3c",
+								"final_state_hash": "feb7223fb2298eea6e7c1f0c2f348091c2fa4ff9e918a2440c0cd2af37d76f12",
 								"finished": false,
-								"fixture_recording_hash": "43a91c69224ff6fe812150e79f3f05b942ce5058c2ffba9a9567f7484e2eb85d",
+								"fixture_recording_hash": "b56101255e4221dcd8fde39d1399a772ebd51b838fc3d77f28e43ee0c13b1dc2",
 								"outcome": {
 									"objective_complete": false,
 									"source_ready": true
 								},
-								"recording_hash": "43a91c69224ff6fe812150e79f3f05b942ce5058c2ffba9a9567f7484e2eb85d",
-								"replay_checks": 12,
+								"recording_hash": "b56101255e4221dcd8fde39d1399a772ebd51b838fc3d77f28e43ee0c13b1dc2",
+								"replay_checks": 11,
 								"simulation_version": 9
 							},
 							"b": {
 								"can_commit": true,
 								"completed": true,
-								"duration_ticks": 332,
+								"duration_ticks": 324,
 								"event_counts": {
 									"bell": 1,
 									"bridge_opened:friend-crossing": 1,
@@ -669,22 +669,22 @@
 									"selector:return-selector": 1,
 									"stage_complete": 1
 								},
-								"events_digest": "631ecd51c0c870b6f8bac2f318eb24a30b0d1dbc7d071a91cdcf99fcc9ad60fa",
+								"events_digest": "5be7d509e71341b16bc4c36d3ec836397d0f5aea2de240607398ac779d61e507",
 								"exact_reexport": true,
-								"final_snapshot_digest": "a0c7bb85c4c8914c2cc4707971e900c4eb0c87fc85734f835e90a13878202072",
-								"final_snapshot_typed_digest": "2013f38e879cbda27c243eddfad9dde3861107ee6d790b358c5b9c9f8e244a93",
-								"final_state_hash": "0d599c217da6c63413a771b4dc10a20c6ccb5ff9646bf1a5134f750250a18ee7",
+								"final_snapshot_digest": "ecc176d03c2a47234072c4ff0288f6ad9533850dc23c17bc807cc0fc5f24acdd",
+								"final_snapshot_typed_digest": "b1f212bbb137b11504d4ed8fad2f6be23f1b9ea3e098b12f7c6becd3da0bb303",
+								"final_state_hash": "404ac7054f612a09adb420b422c069b6a1d1672cd12ff891ce4532f3457b2161",
 								"finished": true,
-								"fixture_recording_hash": "81711813da756f4e7f5760de31a37e688d49ff808e63f7cdbfe474d23571a376",
+								"fixture_recording_hash": "6a960dcba488f82020100a7867218496218208c5fa75f40178071ee98734a0ce",
 								"outcome": {
 									"objective_complete": true,
 									"source_ready": true
 								},
-								"recording_hash": "81711813da756f4e7f5760de31a37e688d49ff808e63f7cdbfe474d23571a376",
-								"replay_checks": 12,
+								"recording_hash": "6a960dcba488f82020100a7867218496218208c5fa75f40178071ee98734a0ce",
+								"replay_checks": 11,
 								"simulation_version": 9
 							},
-							"checkpoint_hash": "81e064f8e8ae0602e0cc4412b7b3b2452fde44d31078ec535061f9218a5a97e0",
+							"checkpoint_hash": "780dd771ef8c9065f5e40656a35a73e553566b2555ab6b5bdca3976361a18c24",
 							"checkpoint_matches_fixture": true,
 							"checkpoint_stage_index": 1,
 							"next_stage_id": "a-place-beside-you",
@@ -702,21 +702,21 @@
 								"exact_reexport": true,
 								"final_snapshot_digest": "69b128190030efadecbc4277e9358ab615f05916a4f30b80c6b31b537901c3ae",
 								"final_snapshot_typed_digest": "31194ee77d6de3863bc1fac8ea603b7ad1229c1f810d4cd0a1e06f849729cec3",
-								"final_state_hash": "c6266d5d9dd0a26bd4402414636da5e9fcdc171513b506b09a8939f5e9eabf3e",
+								"final_state_hash": "c95cb7d77405bd2273bf12178fb7d0ae43eaee798d8a3778650eb2f4a8195899",
 								"finished": false,
-								"fixture_recording_hash": "9723a82c5709d38cb4b006f3f3b01af04f1c613504e9baa44d96632d95ac4b70",
+								"fixture_recording_hash": "6e63daa7d8fb78accd24fbe717e4485b1bb35a16c56d916e3797d3fc7462980d",
 								"outcome": {
 									"objective_complete": false,
 									"source_ready": true
 								},
-								"recording_hash": "9723a82c5709d38cb4b006f3f3b01af04f1c613504e9baa44d96632d95ac4b70",
+								"recording_hash": "6e63daa7d8fb78accd24fbe717e4485b1bb35a16c56d916e3797d3fc7462980d",
 								"replay_checks": 4,
 								"simulation_version": 9
 							},
 							"b": {
 								"can_commit": true,
 								"completed": true,
-								"duration_ticks": 219,
+								"duration_ticks": 223,
 								"event_counts": {
 									"bell": 1,
 									"bridge_opened:near-crossing": 1,
@@ -724,22 +724,22 @@
 									"selector:porch-shutter": 2,
 									"stage_complete": 1
 								},
-								"events_digest": "7e57b4c1766fd04567a2bca1b9e77dc73a77dfaa97fa8b4bb82302302fe4b7b6",
+								"events_digest": "7445c8dc93b1168d4505afa250a4310881178d9baf8581771c5a4873893dde8a",
 								"exact_reexport": true,
-								"final_snapshot_digest": "ce7206cfdbb2f17babc1fb1848dcfe6e7a6fa5097efa77291de51997559b3e90",
-								"final_snapshot_typed_digest": "f56a5afcb6379a15419c8ce1deb72929906a6e21b92ab7d36bab36854cf157ad",
-								"final_state_hash": "ac00eb7b6a7ff0b56eefdaf4f8736e9a9400f93b2353a076b41a37230dc93a98",
+								"final_snapshot_digest": "c747f13199ed542ba2a13c6ef690e6c3c5e8b4fe1ef60e6259146f19c59d6ef0",
+								"final_snapshot_typed_digest": "4aba9b551c515abb612a3fb2686b0ffe5eaff62de09290dfce35a37cd3e747de",
+								"final_state_hash": "b44252ed0b66c2eb0807e67195863687aabf3af4d5d0602063fc45ca0e291176",
 								"finished": true,
-								"fixture_recording_hash": "9027fd334413c7582a9d43a25971580b26f95eb44310ade1e385fdee28c756f3",
+								"fixture_recording_hash": "25165a7fc57c1cab492fdd7445c7c2df6016e4c033a912ff5801b4211ca811b9",
 								"outcome": {
 									"objective_complete": true,
 									"source_ready": true
 								},
-								"recording_hash": "9027fd334413c7582a9d43a25971580b26f95eb44310ade1e385fdee28c756f3",
+								"recording_hash": "25165a7fc57c1cab492fdd7445c7c2df6016e4c033a912ff5801b4211ca811b9",
 								"replay_checks": 8,
 								"simulation_version": 9
 							},
-							"checkpoint_hash": "136138a7753ced7373afeea098d1f212fb727057bbf51bea711a84a75cbfdc5f",
+							"checkpoint_hash": "ddc13c472348cad953dc47f0ae788526233bb47b7b1a455961faf3e61d6da9ec",
 							"checkpoint_matches_fixture": true,
 							"checkpoint_stage_index": 2,
 							"next_stage_id": "",
@@ -773,32 +773,32 @@
 						"journey/slack-water-boom-a.json": {
 							"can_commit": true,
 							"completed": false,
-							"duration_ticks": 381,
+							"duration_ticks": 398,
 							"event_counts": {
 								"bridge_opened:boom-post": 1,
 								"bridge_opened:gate-catwalk": 1,
 								"lever": 2,
 								"selector:basin": 2
 							},
-							"events_digest": "d61eabffb646da078a6b7b5c21adf6a1795b4058cb72c6d8fd666a3abef3c6ab",
+							"events_digest": "a1084b000aef19096d6976c17e782785d10c26d1418092d969d6321f552dcfcf",
 							"exact_reexport": true,
-							"final_snapshot_digest": "0eadd160caa7dd334ade1e56ee849c529668487de164132eb7e8d9204bd0312a",
-							"final_snapshot_typed_digest": "abb4722095657ab2e3dd5e0e235a402727f4d90717b9d1aaef50ce9f95731258",
-							"final_state_hash": "8e946005eeb72d1c24097a76a5248168d42a74347813231f5a7276a2dd04ba37",
+							"final_snapshot_digest": "c93e366c2c7bc59beebd3ec4e0c0ed30da04bbb1874e4d919f1cee9416426188",
+							"final_snapshot_typed_digest": "b83775877a1b244c5583d8a0c06767ee2d181ab98bd832f1814d55bb9b7befac",
+							"final_state_hash": "8ad6858df3e8f4e02dc938fa35a72c1c6fc5f8f21a4743401aaef131757b6e81",
 							"finished": false,
-							"fixture_recording_hash": "9276e1df5718b397ca7d05937b1495e91b390ccf7a136d70dc32d4a2d0dc93bc",
+							"fixture_recording_hash": "9f895f865010f3f553b9bbc5cf3ca8a26362dff569fa27bb169a7c7402a813da",
 							"outcome": {
 								"objective_complete": false,
 								"source_ready": true
 							},
-							"recording_hash": "9276e1df5718b397ca7d05937b1495e91b390ccf7a136d70dc32d4a2d0dc93bc",
-							"replay_checks": 13,
+							"recording_hash": "9f895f865010f3f553b9bbc5cf3ca8a26362dff569fa27bb169a7c7402a813da",
+							"replay_checks": 14,
 							"simulation_version": 9
 						},
 						"journey/slack-water-boom-b.json": {
 							"can_commit": true,
 							"completed": true,
-							"duration_ticks": 597,
+							"duration_ticks": 610,
 							"event_counts": {
 								"bell": 1,
 								"bridge_opened:bollard-step": 1,
@@ -815,50 +815,50 @@
 								"selector:tide": 3,
 								"stage_complete": 1
 							},
-							"events_digest": "7be391937216f70c3dec50667cd882ad0c0b21cfbae480f0a68e8946a0feed1a",
+							"events_digest": "737c6cce98d96d00be9bac26a92f1162aa7eaa90e0667b4840b19278f5bd749b",
 							"exact_reexport": true,
-							"final_snapshot_digest": "dda7b722aaca85065da239f4a48aeb40147422c3f46878b77b7ba2968dd31983",
-							"final_snapshot_typed_digest": "f392385488ff85dbd762691ea847a5bc3474739982261b5feb57b17abd11762a",
-							"final_state_hash": "1dc7b4ab79a1c71355577df9398ecb1662fbd9fbeb06e3b9a9f868c7e7689341",
+							"final_snapshot_digest": "7ca4c58c962b8c1048d0e76110f8f36b2afd3af4a95d5ade08723455a5440666",
+							"final_snapshot_typed_digest": "abf4a040e46406d349fc7f93d8469de42e500e33f151d32194c122ad6c2b2c93",
+							"final_state_hash": "b33f317cd94f93de4d6b59419b390e3f38e1fcf8bd301b884e18c0a64f565fac",
 							"finished": true,
-							"fixture_recording_hash": "a6950667057932de83dd4b4b7317cb0a4595068b11b8c83c0d91333039b3e225",
+							"fixture_recording_hash": "4563e8a86a82d79b03c7c86634d79b4572cab4ba9695b33f57a98af8500fe0f5",
 							"outcome": {
 								"objective_complete": true,
 								"source_ready": true
 							},
-							"recording_hash": "a6950667057932de83dd4b4b7317cb0a4595068b11b8c83c0d91333039b3e225",
-							"replay_checks": 20,
+							"recording_hash": "4563e8a86a82d79b03c7c86634d79b4572cab4ba9695b33f57a98af8500fe0f5",
+							"replay_checks": 21,
 							"simulation_version": 9
 						},
 						"journey/slack-water-latest-a.json": {
 							"can_commit": true,
 							"completed": false,
-							"duration_ticks": 2436,
+							"duration_ticks": 2437,
 							"event_counts": {
 								"bridge_opened:boom-post": 1,
 								"bridge_opened:gate-catwalk": 1,
 								"lever": 2,
 								"selector:basin": 2
 							},
-							"events_digest": "d1dc8b02d31c5198b78fb35c04251c4bc6385471aa25fb5d052dc91eaa82f003",
+							"events_digest": "b15677579cd5575da0c0c7033bac86a147dc5bd635ca16db498c63ce8bd395d4",
 							"exact_reexport": true,
-							"final_snapshot_digest": "475c27a5530805a0402edc3d62e884bd38e203f43edd2c5452aa2f85ed2e4c64",
-							"final_snapshot_typed_digest": "b0f415a0eb7983c85630e8e9b83c01587ebbb4b5003ae24d2458c1f3249dfb31",
-							"final_state_hash": "fa3fbe94cce1057f7e0e8980e04128ede5a5669860c4f27ecc8116909ff5b20c",
+							"final_snapshot_digest": "9a026003c965d5526c4f147c1ee89447dfd9ab7e5a68e10fc9573a9af2ebe566",
+							"final_snapshot_typed_digest": "45acbd5c0faeb85bca9ab479061a5978e59da620cdf4feff139d70e4bf36a295",
+							"final_state_hash": "3401628f9d5edb313d172d1e3cda96584147d9b4dfdab44eadb040fb5f459190",
 							"finished": false,
-							"fixture_recording_hash": "d873b11b086a5c4cd28ce35c705a339eb940e05b7afe58696c11b26d21bfa2b9",
+							"fixture_recording_hash": "d50fd1521743076bdd5977d15197fe430900c7ae1e3834728372d4b4f101cf94",
 							"outcome": {
 								"objective_complete": false,
 								"source_ready": true
 							},
-							"recording_hash": "d873b11b086a5c4cd28ce35c705a339eb940e05b7afe58696c11b26d21bfa2b9",
+							"recording_hash": "d50fd1521743076bdd5977d15197fe430900c7ae1e3834728372d4b4f101cf94",
 							"replay_checks": 82,
 							"simulation_version": 9
 						},
 						"journey/slack-water-latest-b.json": {
 							"can_commit": true,
 							"completed": true,
-							"duration_ticks": 2712,
+							"duration_ticks": 2709,
 							"event_counts": {
 								"bell": 1,
 								"bridge_opened:bollard-step": 1,
@@ -875,43 +875,43 @@
 								"selector:tide": 3,
 								"stage_complete": 1
 							},
-							"events_digest": "fc78f4bbbb52a7f40187b6ec28f4907b0822f34db789371421cc5c8c82ec9928",
+							"events_digest": "308e8e1909550682f5a0c48c82b91900b354aa3c20f29dfd54d3b6cb70dbbb03",
 							"exact_reexport": true,
-							"final_snapshot_digest": "ac216bcb1cfce4f51c4d7b6881fdc2967c31ef514a4ba871a9b59b2163b8251f",
-							"final_snapshot_typed_digest": "c465e0e30334c02f0421a82d60e72ff102be72c2f1f5a71a7b04ba7cee181d3b",
-							"final_state_hash": "08e1c3075d5a1de79b6c516b4c09577dbd2cadef9a4a04ae9dcacc7622b89f66",
+							"final_snapshot_digest": "90de7c1ca9b172dddbbff719744f5eaa7b823d03365d3a3f8ec1fb4d45ef853a",
+							"final_snapshot_typed_digest": "6c1fc0bb87cd18ab11302c11302275853e399d3bdf3a51f6f451961ff9de4e9e",
+							"final_state_hash": "f6a29b0b5ca3c6917ef6c24c42e200d1f7f475467d82cdc1b16a44e6c1e8bd15",
 							"finished": true,
-							"fixture_recording_hash": "1d856c14eb87e651141fadf24726b268657549f59d4fa614d8988610fd8dcd14",
+							"fixture_recording_hash": "bada8e451442760a045f20613f8fc9dd311a175adc084c504f885ae8222dd447",
 							"outcome": {
 								"objective_complete": true,
 								"source_ready": true
 							},
-							"recording_hash": "1d856c14eb87e651141fadf24726b268657549f59d4fa614d8988610fd8dcd14",
+							"recording_hash": "bada8e451442760a045f20613f8fc9dd311a175adc084c504f885ae8222dd447",
 							"replay_checks": 91,
 							"simulation_version": 9
 						},
 						"journey/slack-water-punt-a.json": {
 							"can_commit": true,
 							"completed": false,
-							"duration_ticks": 484,
+							"duration_ticks": 483,
 							"event_counts": {
 								"bridge_opened:gate-catwalk": 1,
 								"bridge_opened:punt-post": 1,
 								"lever": 2,
 								"selector:basin": 3
 							},
-							"events_digest": "1da92f8ac8d9aefdb8b60e2ddde972c46b555ad01d6927737a917ffaa86dbbca",
+							"events_digest": "fa9740e13d595480c05b1cccf95a93dfd0bb1d44fb038a24ba3a7f427eb73897",
 							"exact_reexport": true,
-							"final_snapshot_digest": "4a438ea330507ffa3d6eec1970fb9cfa5becb2e10c9ab0a84f72cae69b9806da",
-							"final_snapshot_typed_digest": "e33fc7263d7d4d1c051ae5d4ccfcdf839680b150bada943864629faea270ee93",
-							"final_state_hash": "d0b807f451685ba1f827eae29c40edb1e67dead49a4541654b27b90acf36eea2",
+							"final_snapshot_digest": "1a45ff88b73a0674cfc2256d7418a6a59df924d2614e4965f015bda0fc8fa2b3",
+							"final_snapshot_typed_digest": "c4df2f7db4fb372e1eb7a896d25a8b224dbccf5ddd1f2805e48b373f7a19e6f8",
+							"final_state_hash": "0f33b4330bd6cbab66da25c34ccd8f36004755d4d6f48488fc969fea5c881853",
 							"finished": false,
-							"fixture_recording_hash": "78e15e094a927796f0f6322d765b5007bb464a8b636a2fc508b5aee5b27e0c0e",
+							"fixture_recording_hash": "6ded40fb90c6fdd416732d666904fa252bb10cae09357ed8a7f0d452b5bcea69",
 							"outcome": {
 								"objective_complete": false,
 								"source_ready": true
 							},
-							"recording_hash": "78e15e094a927796f0f6322d765b5007bb464a8b636a2fc508b5aee5b27e0c0e",
+							"recording_hash": "6ded40fb90c6fdd416732d666904fa252bb10cae09357ed8a7f0d452b5bcea69",
 							"replay_checks": 17,
 							"simulation_version": 9
 						},
@@ -931,31 +931,31 @@
 								"selector:tide": 1,
 								"stage_complete": 1
 							},
-							"events_digest": "97ad57a5334698084d935d1cbb69f0bb61ac8a0110de146a4dffb0f2607ce95a",
+							"events_digest": "8414cc7e15b6f011fbde90ddc2e5b7db90bd9aee6267027106236b3f6868e29e",
 							"exact_reexport": true,
 							"final_snapshot_digest": "6f47114daef45a99597782d2fbc83e812fe0ba831d7f4d0a834a5a8996393345",
 							"final_snapshot_typed_digest": "0ebca0554f5de9e2e5961a6c82d5d0600792435e9abee7084a0e0bf963639779",
-							"final_state_hash": "91790562783e7d7490d46d739c569b1f12bb2b02728b3e28a658412e91d3c011",
+							"final_state_hash": "50c19065128f721edcfd58f0ca3ad2fa2e5ce03ea6037bfdacb53ba3d2db1ed6",
 							"finished": true,
-							"fixture_recording_hash": "a7256a629cb00fe06163098b2b71778aa591fb4c8f225ff0141ad233692d75e1",
+							"fixture_recording_hash": "469370d42267c77677a15a2a09fa448af2ef3f4226d06cb61e56cd5518fd4816",
 							"outcome": {
 								"objective_complete": true,
 								"source_ready": true
 							},
-							"recording_hash": "a7256a629cb00fe06163098b2b71778aa591fb4c8f225ff0141ad233692d75e1",
+							"recording_hash": "469370d42267c77677a15a2a09fa448af2ef3f4226d06cb61e56cd5518fd4816",
 							"replay_checks": 18,
 							"simulation_version": 9
 						}
 					},
-					"final_checkpoint_hash": "4d14c1b35c34266cd173b4f69b2ac40cb5df1bb53d5c7a99a2512c53ca259f8d",
-					"final_typed_digest": "8e5e660e05a5671bbcfcd03a3494488f33dafd722d5afbf6f3edf7d2d72dc4b9",
-					"initial_checkpoint_hash": "d3f696f9eaf0dbaddd2a1d4f571642e602d55a3999328526ca73c926fe92e51c",
+					"final_checkpoint_hash": "c6c7b1f1d2df726984f32d51aa9144e1049f3c52fb706020c5d096bf85e50e1b",
+					"final_typed_digest": "f5c4a70d1610e19fb43b7174c4a3b6ad4a5799daedd48504152c3cde75d00911",
+					"initial_checkpoint_hash": "9182eacc7db62f6f5462e6c9831c45dd7aa6e2863401cdeb668ca3dbcfed3039",
 					"stages": [
 						{
 							"a": {
 								"can_commit": true,
 								"completed": false,
-								"duration_ticks": 458,
+								"duration_ticks": 503,
 								"event_counts": {
 									"bridge_opened:jetty-1": 1,
 									"bridge_opened:jetty-2": 1,
@@ -968,25 +968,25 @@
 									"selector:tide": 3,
 									"selector:winch": 1
 								},
-								"events_digest": "1f28e953029db528f3ab384793e5bd51dacece97706ffe6d01b89a772f7fd047",
+								"events_digest": "0995b333469003dc10454931afad9d28653f04716145eb4e6a61419fbd4e3d93",
 								"exact_reexport": true,
-								"final_snapshot_digest": "eff189aa35a0817f34ca53850651dc409a49242cf67ce7a66d76c4db9a287110",
-								"final_snapshot_typed_digest": "98f143631ceb02d3dde5737c4869b5ff994d36217cf183fbeb6356cd9af1eafc",
-								"final_state_hash": "1360145547701af62abe0c9278d96bd6f95ac3aa49477fa3d7cc560aa9fa494f",
+								"final_snapshot_digest": "bb78fa6be5176893e5bdcc4ff497eb752eaa7a1aede6b5078f1000cf4e665ee4",
+								"final_snapshot_typed_digest": "3adba74bdac97cd432b4b7b5d1a6cd6f14b8218047cf5c91cacfef2f717b280b",
+								"final_state_hash": "eca37eca358e1c1946ad7d213da01a391f2f26ce6a419d9332631c248ac69c50",
 								"finished": false,
-								"fixture_recording_hash": "802be04b156199d940534981dcfbae9a9d67ca7ec9964e194b6827a0bccf9363",
+								"fixture_recording_hash": "59c2c6a77837f087e1aa6a54177de3fc543116f0eeb906f4ee4aace03bfae6d2",
 								"outcome": {
 									"objective_complete": false,
 									"source_ready": true
 								},
-								"recording_hash": "802be04b156199d940534981dcfbae9a9d67ca7ec9964e194b6827a0bccf9363",
-								"replay_checks": 16,
+								"recording_hash": "59c2c6a77837f087e1aa6a54177de3fc543116f0eeb906f4ee4aace03bfae6d2",
+								"replay_checks": 17,
 								"simulation_version": 9
 							},
 							"b": {
 								"can_commit": true,
 								"completed": true,
-								"duration_ticks": 580,
+								"duration_ticks": 598,
 								"event_counts": {
 									"bell": 1,
 									"bridge_opened:jetty-1": 1,
@@ -998,22 +998,22 @@
 									"drop": 1,
 									"stage_complete": 1
 								},
-								"events_digest": "97aa393844a2bf52765f8b865794bd0b03b38cde7b2c32e3391a046d32c0dbfb",
+								"events_digest": "c323972ef915dd6351f918c692178283ce3ada895d839f4e9d6328732c47cddb",
 								"exact_reexport": true,
-								"final_snapshot_digest": "28fe2bb616e1abf11c3409621cc46702b8db2bb66df9f470ab2b0cd61333a295",
-								"final_snapshot_typed_digest": "25475bb1e5326dbf69d6e58d1c6e6e48449d3937c5492c51ea98cdbfaa670449",
-								"final_state_hash": "1a45eb81ed429cd565a5598f8a58cc216328c6f76c0699caddf121743913c744",
+								"final_snapshot_digest": "f31f1400f2382c7e7168035e4b41f64ff2559bf07c0914c7f4dd6084fc5dfa78",
+								"final_snapshot_typed_digest": "6fb0c2956c19bba1a5b4fbb6046063b6dd3e1f29b87a81de9adad9c85c1a3bea",
+								"final_state_hash": "52a1c91d269b24a31ac5205568b1dd591021e01c0047849cee218ddea82e362d",
 								"finished": true,
-								"fixture_recording_hash": "7b226ab040cefdcd2dff5d9fcef87b0825b7c60b9b472864cf8b45955794b43e",
+								"fixture_recording_hash": "7771cb8bfa23da90ad137bd992946dbb639005afc010384f7b02057c0cd99c87",
 								"outcome": {
 									"objective_complete": true,
 									"source_ready": true
 								},
-								"recording_hash": "7b226ab040cefdcd2dff5d9fcef87b0825b7c60b9b472864cf8b45955794b43e",
+								"recording_hash": "7771cb8bfa23da90ad137bd992946dbb639005afc010384f7b02057c0cd99c87",
 								"replay_checks": 20,
 								"simulation_version": 9
 							},
-							"checkpoint_hash": "999b3275d1b95cb46734b536175dc7b2505dfe33c67a5ba26f41a6392cd01b6e",
+							"checkpoint_hash": "aaf41cc18efd4584f57a0db66a29537d0bc3a9b8bafb4c43a6a97e30edd06b38",
 							"checkpoint_matches_fixture": true,
 							"checkpoint_stage_index": 1,
 							"next_stage_id": "slack-water",
@@ -1023,32 +1023,32 @@
 							"a": {
 								"can_commit": true,
 								"completed": false,
-								"duration_ticks": 372,
+								"duration_ticks": 374,
 								"event_counts": {
 									"bridge_opened:gate-catwalk": 1,
 									"bridge_opened:gate-post": 1,
 									"lever": 2,
 									"selector:basin": 1
 								},
-								"events_digest": "3f86d91062505cb37d31d4aed13d26073d453a273bc056b9aed574a93500230d",
+								"events_digest": "57610f030afde0ee5a9b17a5920776324af2c14238a5b180ef6039a1588a8fba",
 								"exact_reexport": true,
-								"final_snapshot_digest": "50a4a301cac8f6c6472072c25d50fea83c0162b11f94d52455e6efc383870789",
-								"final_snapshot_typed_digest": "ae47274ccc381f7bd16ffa048791cd4f0292c9b3c662525badde62d6c83e3590",
-								"final_state_hash": "4978ad59616bafc7de74f13bcdf33d8c07b717d52023aafc8540d274d112a8f0",
+								"final_snapshot_digest": "be159dd5068e74492d9c1eb81e4ef2fc3f9bf3cf87c9ed7652a55aefa5dee62f",
+								"final_snapshot_typed_digest": "e1e0b2da0911a4c04600e31a4864114683ef44da0bec53d9fc7890c0a10f5ec6",
+								"final_state_hash": "f8746c8e88a344923f8fb3cdcf260ec5ecd070880a3d6089cb59d29d4230d495",
 								"finished": false,
-								"fixture_recording_hash": "b8cc3f3abc30f3f2746948d491f592bf98644cd68fa6a012e61e68e0f0fa1204",
+								"fixture_recording_hash": "7a31b26ae6139c8782dc2aa4e0e90d9fec338f839778a481fd758b52c41a2e37",
 								"outcome": {
 									"objective_complete": false,
 									"source_ready": true
 								},
-								"recording_hash": "b8cc3f3abc30f3f2746948d491f592bf98644cd68fa6a012e61e68e0f0fa1204",
+								"recording_hash": "7a31b26ae6139c8782dc2aa4e0e90d9fec338f839778a481fd758b52c41a2e37",
 								"replay_checks": 13,
 								"simulation_version": 9
 							},
 							"b": {
 								"can_commit": true,
 								"completed": true,
-								"duration_ticks": 626,
+								"duration_ticks": 630,
 								"event_counts": {
 									"bell": 1,
 									"bridge_opened:bollard-step": 1,
@@ -1064,22 +1064,22 @@
 									"selector:tide": 2,
 									"stage_complete": 1
 								},
-								"events_digest": "846f79c5d6f12497182e5d640b3b7adbeba0958461df1084a1e54ffb672f5d13",
+								"events_digest": "cfe645d9ee10102531c1ff4b15420fc14ae41d0669a0ae57ba5135c568e78396",
 								"exact_reexport": true,
-								"final_snapshot_digest": "e22fc8e27e9e7c7fe801f87613a1cc3f2a8f3bcb78bf62e3e24f61a737eed5d3",
-								"final_snapshot_typed_digest": "41fe9b65071b6118498c0ee02fece82049413506544ea8d55d7fbebcd2493dfd",
-								"final_state_hash": "b2a968edd6d853791a6eb1410cfb25ab36cb498a27d2979cef1e71dbee8a077a",
+								"final_snapshot_digest": "f462da447682a7e572e3377c4c6c21527a52ea5f4461f4dc8a7c7c7580c3a53b",
+								"final_snapshot_typed_digest": "fc1b711ef6377a3135917916bb7bb20c0bec5f5363df2fc47868322f790370b8",
+								"final_state_hash": "1f9a316df84f4541f0ba12d0ac8fc36f312b672f1ac9e338dd72b0b6afbd9c2c",
 								"finished": true,
-								"fixture_recording_hash": "6a8443049d4709830724b95c13f547c5505b294958bbae12cabb897c5d6fb685",
+								"fixture_recording_hash": "1e256d00c8982ec447cd92644725c6882d97fd9601eb7cd191bd8e4367c6ed2e",
 								"outcome": {
 									"objective_complete": true,
 									"source_ready": true
 								},
-								"recording_hash": "6a8443049d4709830724b95c13f547c5505b294958bbae12cabb897c5d6fb685",
+								"recording_hash": "1e256d00c8982ec447cd92644725c6882d97fd9601eb7cd191bd8e4367c6ed2e",
 								"replay_checks": 21,
 								"simulation_version": 9
 							},
-							"checkpoint_hash": "4d14c1b35c34266cd173b4f69b2ac40cb5df1bb53d5c7a99a2512c53ca259f8d",
+							"checkpoint_hash": "c6c7b1f1d2df726984f32d51aa9144e1049f3c52fb706020c5d096bf85e50e1b",
 							"checkpoint_matches_fixture": true,
 							"checkpoint_stage_index": 2,
 							"next_stage_id": "",

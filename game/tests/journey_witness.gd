@@ -76,11 +76,13 @@ static func receiver(level: Dictionary, stage_id: String, checkpoint: Dictionary
 			_route(sim,[[416,-192],[416,-240],[416,16],[752,16],[752,160+goal_offset]])
 			Walk.tap(sim)
 		"the-way-light-returns":
+			# The return shutter's lever is solid, so the way west to the mirror
+			# room passes south of it, along the crossing's free side.
 			_route(sim,[[-304,208],[384,208],[352,64]])
 			Walk.tap(sim)
-			_route(sim,[[0,64],[0,0]])
+			_route(sim,[[400,96],[400,28],[0,28],[0,0]])
 			Walk.tap(sim)
-			_route(sim,[[0,64],[384,64],[384,16],[752,16],[752,64]])
+			_route(sim,[[0,40],[0,28],[384,28],[384,16],[752,16],[752,64]])
 			Walk.tap(sim)
 	# The receiver may reach its goal before the independently recorded source.
 	# Drain real fixed ticks; don't accept a checkpoint from an unfinished ghost.

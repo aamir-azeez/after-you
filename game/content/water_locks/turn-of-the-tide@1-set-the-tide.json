@@ -1,5 +1,5 @@
 {
-	"digest": "9d7c797988aab4b00f679f46d5c1cde9a9e7d1ddbb58e71f8155fc727ab1cc5f",
+	"digest": "03f95b15ff3ae309b712e0389024503f0a2f201e2452c9d768e12c7ad8b64c47",
 	"runs": [
 		{
 			"a": "island:w-terrace",
@@ -82,13 +82,13 @@
 				true,
 				true
 			],
-			"from": 368.0,
+			"from": 354.0,
 			"kind": "door",
-			"line": 192.0,
+			"line": 214.0,
 			"mouth": "towpath",
 			"shift": -6.5,
 			"shut": 0.749999988079071,
-			"to": 448.0,
+			"to": 468.0,
 			"top": -0.7
 		},
 		{
@@ -96,12 +96,12 @@
 			"along_x": false,
 			"b": "island:aq-feeder",
 			"base": -0.269999998807907,
-			"from": 128.0,
+			"from": 150.0,
 			"kind": "wall",
-			"line": 288.0,
+			"line": 266.0,
 			"mouth": "",
 			"shift": -5.0,
-			"to": 320.0,
+			"to": 334.0,
 			"top": -0.7
 		},
 		{
@@ -109,12 +109,12 @@
 			"along_x": false,
 			"b": "harbour",
 			"base": -0.269999998807907,
-			"from": 128.0,
+			"from": 150.0,
 			"kind": "wall",
-			"line": 352.0,
+			"line": 374.0,
 			"mouth": "",
 			"shift": 5.0,
-			"to": 256.0,
+			"to": 234.0,
 			"top": -0.7
 		},
 		{
@@ -144,13 +144,13 @@
 				true,
 				true
 			],
-			"from": 368.0,
+			"from": 354.0,
 			"kind": "door",
-			"line": 576.0,
+			"line": 554.0,
 			"mouth": "towpath",
 			"shift": 6.5,
 			"shut": 0.749999988079071,
-			"to": 448.0,
+			"to": 468.0,
 			"top": -0.7
 		},
 		{
@@ -180,13 +180,13 @@
 				true,
 				true
 			],
-			"from": 192.0,
+			"from": 178.0,
 			"kind": "door",
-			"line": -128.0,
+			"line": -150.0,
 			"mouth": "race-stage",
 			"shift": 6.5,
 			"shut": 0.749999988079071,
-			"to": 256.0,
+			"to": 276.0,
 			"top": -0.7
 		},
 		{
@@ -195,12 +195,12 @@
 			"b": "island:w-terrace",
 			"base": 0.45,
 			"ends": [
-				false,
+				true,
 				true
 			],
 			"from": -512.0,
 			"kind": "door",
-			"line": -128.0,
+			"line": -150.0,
 			"mouth": "bar-catwalk",
 			"shift": 6.5,
 			"shut": 0.749999988079071,
@@ -218,11 +218,11 @@
 			],
 			"from": -368.0,
 			"kind": "door",
-			"line": -128.0,
+			"line": -150.0,
 			"mouth": "gate-catwalk",
 			"shift": 6.5,
 			"shut": 0.749999988079071,
-			"to": -312.0,
+			"to": -316.0,
 			"top": -0.7
 		},
 		{
@@ -236,7 +236,7 @@
 			],
 			"from": -296.0,
 			"kind": "door",
-			"line": -128.0,
+			"line": -150.0,
 			"mouth": "gate-post",
 			"shift": 6.5,
 			"shut": 0.749999988079071,
@@ -254,7 +254,7 @@
 			],
 			"from": -440.0,
 			"kind": "door",
-			"line": -128.0,
+			"line": -150.0,
 			"mouth": "punt-post",
 			"shift": 6.5,
 			"shut": 0.749999988079071,
@@ -270,9 +270,9 @@
 				true,
 				true
 			],
-			"from": -296.0,
+			"from": -312.0,
 			"kind": "door",
-			"line": 128.0,
+			"line": 150.0,
 			"mouth": "boom-post",
 			"shift": -6.5,
 			"shut": 0.749999988079071,
@@ -284,12 +284,12 @@
 			"along_x": true,
 			"b": "island:aq-span",
 			"base": -0.269999998807907,
-			"from": 352.0,
+			"from": 374.0,
 			"kind": "wall",
-			"line": 256.0,
+			"line": 234.0,
 			"mouth": "",
 			"shift": -5.0,
-			"to": 576.0,
+			"to": 554.0,
 			"top": -0.7
 		},
 		{
@@ -297,12 +297,12 @@
 			"along_x": true,
 			"b": "harbour",
 			"base": -0.269999998807907,
-			"from": 288.0,
+			"from": 266.0,
 			"kind": "wall",
-			"line": 320.0,
+			"line": 334.0,
 			"mouth": "",
 			"shift": 5.0,
-			"to": 576.0,
+			"to": 554.0,
 			"top": -0.7
 		}
 	]

@@ -78,6 +78,7 @@ extends RefCounted
 ## An item term ("items", carried items on train/new-pieces-carry) is
 ## {"item_id", "spot_id"} with the pan's own id as its spot.
 
+const Solid = preload("res://core/solid_footprint.gd")
 const COOPERATIVE := "cooperative"
 const JOURNEY := "journey"
 ## Default reach of each placed thing, cm.
@@ -111,7 +112,9 @@ const FAMILY_BLOCKS := {
 
 ## The definition with every stage's "blocks" expanded in place and removed.
 ## A block this family cannot play, or one missing what it needs, is left out;
-## problems() names it.
+## problems() names it. Hand controls get the one solid rule the chapter
+## catalogs apply (core/solid_footprint.gd with_hands), so a stage written
+## with blocks is the same definition as the stage written by hand.
 static func expand(source: Dictionary) -> Dictionary:
 	var level: Dictionary = source.duplicate(true)
 	var family := family_of(level)
@@ -121,7 +124,7 @@ static func expand(source: Dictionary) -> Dictionary:
 		stage.erase("blocks")
 		for block: Dictionary in blocks:
 			if _missing(block, family).is_empty(): _emit(level, stage, block, family)
-	return level
+	return Solid.with_hands(level)
 
 ## "cooperative" for the schema-6 physical rules, "journey" for schema 7.
 static func family_of(level: Dictionary) -> String:

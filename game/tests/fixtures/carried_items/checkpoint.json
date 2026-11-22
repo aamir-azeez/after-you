@@ -1,5 +1,5 @@
 {
-  "checkpoint_hash": "c3a639974dfc4619df1f9532521fa40591518dca0cb4cebede29b3ba486a3c6c",
+  "checkpoint_hash": "924f187181bc177be1a97ea9c95d0571f011aba1e96bb72f72096ce36fdbcbdc",
   "completed_stage_id": "hand-up",
   "definition_hash": "4cc28f4d6d0128d12f160737be979ed1479d47fe0a9ddc4d3fca44590bb8b8b7",
   "level_id": "carry-witness",
@@ -110,7 +110,7 @@
         "definition_hash": "4cc28f4d6d0128d12f160737be979ed1479d47fe0a9ddc4d3fca44590bb8b8b7",
         "duration_ticks": 63.0,
         "final_state_hash": "97505b7fbfc0e2308304856160b0a3e32b6985c266775de60462407a5d0ad206",
-        "handoff_hash": "d6f62989ec86e217fa6f9c7c84edece832293c7e37d1e9dd1e22837b5683c4dc",
+        "handoff_hash": "30aaa8e88032721ae4a68bb5c9fbeb096234e09e80f1f5a209ad21e422ce4c39",
         "handoff_tick": 0.0,
         "level_id": "carry-witness",
         "level_version": 1.0,
@@ -120,14 +120,14 @@
         },
         "packed": "AQsMnAAC5wAOAGQCADICAAADAAAOAJwCAM42ZAACMgAUAAAq5pzJBjj2f0rf4UCKZ4Jx",
         "player_slot": "p0",
-        "recording_hash": "b064d0c7f8d2e484277d45c9c20e1511ec5f164ababb62d67ddcd24e2ca027c4",
+        "recording_hash": "18c76448dfc2dff0d06dda0dff329b9fc2b7b9f1d4c01d974cbbdacadb79aec5",
         "role": "a",
         "schema_version": 7.0,
         "simulation_version": 20.0,
         "source_recording_hash": "",
         "stage_id": "hand-up",
         "stage_version": 1.0,
-        "start_hash": "d6f62989ec86e217fa6f9c7c84edece832293c7e37d1e9dd1e22837b5683c4dc",
+        "start_hash": "30aaa8e88032721ae4a68bb5c9fbeb096234e09e80f1f5a209ad21e422ce4c39",
         "tick_rate": 30.0
       },
       {
@@ -136,8 +136,8 @@
         "completed": false,
         "definition_hash": "4cc28f4d6d0128d12f160737be979ed1479d47fe0a9ddc4d3fca44590bb8b8b7",
         "duration_ticks": 63.0,
-        "final_state_hash": "e11f7a0f36b98e8cd6fcd9970ae40117bb97c319252fb9e913a627a7c271e34f",
-        "handoff_hash": "acc9939b43d16613bb5b5e30a030d23630a36225727f1b3d964c11d5420c7a37",
+        "final_state_hash": "78f73774767d215fca89fd3cfb3f6525c9d612644cbbe747d96cc78f86782c2f",
+        "handoff_hash": "60cc59b69d4b9f3e0712404a7ff7cbfb25f67e46c4545769e8f0eaa90463f940",
         "handoff_tick": 0.0,
         "level_id": "carry-witness",
         "level_version": 1.0,
@@ -145,16 +145,16 @@
           "objective_complete": false,
           "source_ready": true
         },
-        "packed": "AQM2nAACzgBGAABNB3dNGj+HHo3puRUnW5zZ",
+        "packed": "AQM2nAACzgBGAAAYvjRmowX4ZyfAJeRD1n4M",
         "player_slot": "p1",
-        "recording_hash": "4864e3171bd3890b6d1f6366a4ef76bd475dacfba0bb045c399b4a9df70ecfbe",
+        "recording_hash": "a5edd34554e4997ed11f824b5662ad136ff2f8ca814ddce7fb418681cb5ae730",
         "role": "b",
         "schema_version": 7.0,
         "simulation_version": 20.0,
-        "source_recording_hash": "b064d0c7f8d2e484277d45c9c20e1511ec5f164ababb62d67ddcd24e2ca027c4",
+        "source_recording_hash": "18c76448dfc2dff0d06dda0dff329b9fc2b7b9f1d4c01d974cbbdacadb79aec5",
         "stage_id": "hand-up",
         "stage_version": 1.0,
-        "start_hash": "d6f62989ec86e217fa6f9c7c84edece832293c7e37d1e9dd1e22837b5683c4dc",
+        "start_hash": "30aaa8e88032721ae4a68bb5c9fbeb096234e09e80f1f5a209ad21e422ce4c39",
         "tick_rate": 30.0
       },
       {
@@ -163,8 +163,8 @@
         "completed": false,
         "definition_hash": "4cc28f4d6d0128d12f160737be979ed1479d47fe0a9ddc4d3fca44590bb8b8b7",
         "duration_ticks": 76.0,
-        "final_state_hash": "7e23be342e3e3f359fb23215d223de666317b23cb47d9904ae65a02bdb64a5bd",
-        "handoff_hash": "acc9939b43d16613bb5b5e30a030d23630a36225727f1b3d964c11d5420c7a37",
+        "final_state_hash": "ed1abba7fb41d1b1a5a45c1eabcec5a7c129d7b39141406245749a0ecbac4fcc",
+        "handoff_hash": "60cc59b69d4b9f3e0712404a7ff7cbfb25f67e46c4545769e8f0eaa90463f940",
         "handoff_tick": 63.0,
         "level_id": "carry-witness",
         "level_version": 1.0,
@@ -172,16 +172,16 @@
           "objective_complete": false,
           "source_ready": true
         },
-        "packed": "AQQ+AAADAABWZAACSwAS/71Dn77lJmcGx2Bwk6QB",
+        "packed": "AQQ+AAADAABWZAACSwCZ/jg7ifglwT7+ZOoVJf5D",
         "player_slot": "p0",
-        "recording_hash": "7aa0a5b407e6e0f08b3f4e3d6d4278a208c8db910f42a7a206297918fb526412",
+        "recording_hash": "de103ac7a19f150bd0d9f316187d063860b7fa1b7858a61bc1c61cc80df82f1d",
         "role": "b",
         "schema_version": 7.0,
         "simulation_version": 20.0,
-        "source_recording_hash": "4864e3171bd3890b6d1f6366a4ef76bd475dacfba0bb045c399b4a9df70ecfbe",
+        "source_recording_hash": "a5edd34554e4997ed11f824b5662ad136ff2f8ca814ddce7fb418681cb5ae730",
         "stage_id": "hand-up",
         "stage_version": 1.0,
-        "start_hash": "acc9939b43d16613bb5b5e30a030d23630a36225727f1b3d964c11d5420c7a37",
+        "start_hash": "60cc59b69d4b9f3e0712404a7ff7cbfb25f67e46c4545769e8f0eaa90463f940",
         "tick_rate": 30.0
       },
       {
@@ -190,7 +190,7 @@
         "completed": true,
         "definition_hash": "4cc28f4d6d0128d12f160737be979ed1479d47fe0a9ddc4d3fca44590bb8b8b7",
         "duration_ticks": 74.0,
-        "final_state_hash": "13c2dc38632f0d072ffd3ee71acbba73e747cc4fb20116a5d7afbc8607afce31",
+        "final_state_hash": "f1dfce51007a864b944de0574a3ba441fe3afa23ee574d2c3078f9ff01ef2850",
         "handoff_hash": "",
         "handoff_tick": 0.0,
         "level_id": "carry-witness",
@@ -199,16 +199,16 @@
           "objective_complete": true,
           "source_ready": true
         },
-        "packed": "AQRAAAA2ZAACMgAcAACN+k/jtlG4DIni/693146+",
+        "packed": "AQRAAAA2ZAACMgAcAACWY/dQqj4MgebGjTnpmWtE",
         "player_slot": "p1",
-        "recording_hash": "2a8fcd30d6ea69d5785bf9d2ce309bb88d506bc835d0733e1b9942b8e506694b",
+        "recording_hash": "19eb58dde152f7ec284a8ea038da23d30728baeee48823e49e55aebcbf5e6305",
         "role": "b",
         "schema_version": 7.0,
         "simulation_version": 20.0,
-        "source_recording_hash": "7aa0a5b407e6e0f08b3f4e3d6d4278a208c8db910f42a7a206297918fb526412",
+        "source_recording_hash": "de103ac7a19f150bd0d9f316187d063860b7fa1b7858a61bc1c61cc80df82f1d",
         "stage_id": "hand-up",
         "stage_version": 1.0,
-        "start_hash": "acc9939b43d16613bb5b5e30a030d23630a36225727f1b3d964c11d5420c7a37",
+        "start_hash": "60cc59b69d4b9f3e0712404a7ff7cbfb25f67e46c4545769e8f0eaa90463f940",
         "tick_rate": 30.0
       }
     ]
@@ -216,9 +216,9 @@
   "schema_version": 9.0,
   "stage_index": 1.0,
   "turn_hashes": [
-    "b064d0c7f8d2e484277d45c9c20e1511ec5f164ababb62d67ddcd24e2ca027c4",
-    "4864e3171bd3890b6d1f6366a4ef76bd475dacfba0bb045c399b4a9df70ecfbe",
-    "7aa0a5b407e6e0f08b3f4e3d6d4278a208c8db910f42a7a206297918fb526412",
-    "2a8fcd30d6ea69d5785bf9d2ce309bb88d506bc835d0733e1b9942b8e506694b"
+    "18c76448dfc2dff0d06dda0dff329b9fc2b7b9f1d4c01d974cbbdacadb79aec5",
+    "a5edd34554e4997ed11f824b5662ad136ff2f8ca814ddce7fb418681cb5ae730",
+    "de103ac7a19f150bd0d9f316187d063860b7fa1b7858a61bc1c61cc80df82f1d",
+    "19eb58dde152f7ec284a8ea038da23d30728baeee48823e49e55aebcbf5e6305"
   ]
 }

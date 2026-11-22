@@ -14,6 +14,7 @@ const Primitives = preload("res://presentation/kit/primitives.gd")
 const OwnerMark = preload("res://presentation/kit/owner_mark.gd")
 const GraphicsPolicy = preload("res://services/graphics_policy.gd")
 const Look = preload("res://presentation/kit/look.gd")
+const WalkReach = preload("res://presentation/kit/walk_reach.gd")
 const STONE := Color("9a8d76")
 const STONE_DARK := Color("6d6656")
 const STONE_LIGHT := Color("bcae90")
@@ -197,31 +198,32 @@ func _build_rock(island: Dictionary, top_hole: Array, body_hole: Array, top_colo
 	raised.set_meta("bounds", island.rect_cm.duplicate())
 	if raised.position.y > 0.5: w._upper_islands.append(raised)
 	var height := raised.position.y
-	for piece: Array in _pieces(island.rect_cm, top_hole):
+	var drawn: Array = w.drawn_rect(island)
+	var shape: Array = w.drawn_pieces(island)
+	for piece: Array in _cut(shape, top_hole):
 		_slab(piece, -0.20, -0.012, top_color, raised)
 		# The lighter cap ends at the walking surface, so the pair tags and floor
 		# lines lying just over it show; its sides never lie on the slab's
 		# (coplanar faces flicker as the camera moves).
 		_slab(piece, -0.012, 0.0, top_color.lightened(0.12), raised)
-		ContactShadows.ground(raised, Rect2(Vector2(float(piece[0]), float(piece[1])) / 100.0, Vector2(float(piece[2] - piece[0]), float(piece[3] - piece[1])) / 100.0), 0.0, false)
-	for piece: Array in _pieces(island.rect_cm, body_hole):
+	ContactShadows.ground_cm(raised, _cut(shape, top_hole), 0.0, false)
+	for piece: Array in _cut(shape, body_hole):
 		_slab(piece, -height - 1.45, -0.20, body_color, raised)
-	var r: Array = island.rect_cm
+	var r := drawn
 	var front := float(r[3]) / 100.0
 	# Weathered courses across the visible face; none cross the shaft.
 	for course: float in [-0.45, -0.85, -1.25]:
-		for piece: Array in _pieces(island.rect_cm, body_hole):
+		for piece: Array in _cut(shape, body_hole):
 			if int(piece[3]) != int(r[3]): continue
 			var width := float(piece[2] - piece[0]) / 100.0
 			w.box(Vector3(width, 0.025, 0.012), STONE_DARK, Vector3(float(piece[0] + piece[2]) / 200.0, course, front + 0.004), raised)
 	w._surface_built(island, raised)
 
-static func _pieces(rect: Array, hole: Array) -> Array:
-	if hole.is_empty(): return [rect]
-	var result: Array = []
-	for cut: Array in [[rect[0], rect[1], hole[0], rect[3]], [hole[2], rect[1], rect[2], rect[3]], [hole[0], rect[1], hole[2], hole[1]], [hole[0], hole[3], hole[2], rect[3]]]:
-		if cut[2] > cut[0] and cut[3] > cut[1]: result.append(cut)
-	return result
+## Every piece of `shape` less `hole`.
+static func _cut(shape: Array, hole: Array) -> Array:
+	var found: Array = []
+	for piece: Array in shape: found.append_array(WalkReach.minus(piece, hole) if not hole.is_empty() else [piece])
+	return found
 
 func _slab(rect: Array, bottom: float, top: float, color: Color, parent: Node3D) -> MeshInstance3D:
 	var size := Vector3(float(rect[2] - rect[0]) / 100.0, top - bottom, float(rect[3] - rect[1]) / 100.0)
@@ -236,7 +238,8 @@ func _build_well() -> void:
 	var front := 0.48
 	# Low front rim and side kerbs; the east kerb leaves the ladder's gap open.
 	w.box(Vector3(right - left + 0.12, 0.22, 0.10), STONE_LIGHT, Vector3((left + right) * 0.5, 0.11, front + 0.05), well)
-	w.box(Vector3(0.10, 0.30, 0.64), STONE_LIGHT, Vector3(left - 0.05, 0.15, 0.16), well)
+	# The west kerb stops a centimetre short of the shaft, off the cliff's side there.
+	w.box(Vector3(0.09, 0.30, 0.64), STONE_LIGHT, Vector3(left - 0.055, 0.15, 0.16), well)
 	w.box(Vector3(0.10, 0.30, 0.08), STONE_LIGHT, Vector3(right + 0.05, 0.15, -0.12), well)
 	w.box(Vector3(0.10, 0.30, 0.08), STONE_LIGHT, Vector3(right + 0.05, 0.15, 0.44), well)
 	# A dark pool edge at the back makes the pit read as a well, not a ledge.
@@ -409,7 +412,7 @@ func dress_bridge(definition: Dictionary, before: int, raised_only: bool = false
 	# Rope-walks hang at the cliff height; lift everything this builder made.
 	for index in range(before, w.terrain.get_child_count()):
 		w.terrain.get_child(index).position.y += lift
-	var r: Array = definition.rect_cm
+	var r: Array = w.drawn_rect(definition)
 	var deck: Node3D = w._decks.get(definition.id)
 	for side: int in [-1, 1]:
 		var z := float(r[1] if side < 0 else r[3]) / 100.0
@@ -424,7 +427,7 @@ func build_stair(stair: Dictionary) -> void:
 	if stair.axis == "x":
 		_build_ladder(stair)
 		return
-	var r: Array = stair.rect_cm
+	var r: Array = w.drawn_rect(stair)
 	var width := float(r[2] - r[0]) / 100.0
 	var top_z := float(r[1]) / 100.0
 	var foot_z := float(r[3]) / 100.0
@@ -450,7 +453,7 @@ func build_stair(stair: Dictionary) -> void:
 ## The well ladder is a rope ladder that unrolls from the winch drum down into
 ## the pit. Its rungs follow the exact ramp the simulation walks.
 func _build_ladder(stair: Dictionary) -> void:
-	var r: Array = stair.rect_cm
+	var r: Array = w.drawn_rect(stair)
 	var low := Vector3(float(r[0]) / 100.0, float(stair.from_height_cm) / 100.0, float(r[1] + r[3]) / 200.0)
 	var high := Vector3(float(r[2]) / 100.0, float(stair.to_height_cm) / 100.0, low.z)
 	var width := float(r[3] - r[1]) / 100.0

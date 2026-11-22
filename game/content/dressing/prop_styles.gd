@@ -112,8 +112,8 @@ const SLOTS := {
 	# same in every style; only its look changes.
 	"lever": {"plain": {}, "brass": {}, "winch": {}, "bolt": {}, "lantern": {}},
 	"selector": {"plain": {}, "brass": {}, "valve": {}, "lamp_post": {}, "gate_arch": {}, "shutter": {}, "rope_wheel": {}},
-	"pad": {"plain": {}, "stand_spot": {}, "pan": {}, "board": {}, "crank_board": {}},
-	"goal": {"bell": {}, "harbour_lantern": {}, "crest": {}, "window": {}, "walled_window": {}},
+	"pad": {"board": {}, "crank_board": {}, "pan": {}},
+	"goal": {"bell": {}, "harbour_lantern": {}, "crest": {}, "window": {}, "walled_window": {}, "planter": {}},
 	"lift": {"plain": {}, "rope_tower": {}},
 	# The new pieces' looks (rules 16): a crossing's deck, a rope raft, a stair
 	# ridden up only (a pull-up rope ladder or a turning wheel), the fog round a
@@ -136,7 +136,7 @@ const SLOTS := {
 	# The post by a missing crossing (kit/pieces/pulley.gd): each style names the
 	# weight that hangs from it, down while the crossing is laid.
 	"pulley": {"lantern_hook": {"weight": "lantern"}, "theme_hanger": {"weight": "anchor"}, "little_roof": {"weight": "sack"}},
-	# The floor under the water (content/water/looks.gd SEABEDS): tiled sand,
+	# The floor under the water (content/water/looks.gd SEABEDS): rippled sand,
 	# a pebbly stream bed or dark mud.
 	"seabed": {"sand": {}, "pebbles": {}, "mud": {}},
 }
@@ -150,7 +150,7 @@ const DEFAULT_PICKS := {
 	"lamp": "lantern", "tree": "orchard", "shrub": "flowering", "trim": "flowers", "scatter": "tufts",
 	"bank": "meadow", "fence": "hedge", "railing": "picket", "bench": "bench", "path": "stones",
 	"clutter": "crates", "landmark": "cottage", "wall_hanging": "shelf", "tag": "painted_tile", "barrier": "rope",
-	"lever": "plain", "selector": "plain", "pad": "plain", "goal": "bell", "lift": "plain", "deck": "plank", "raft": "logs", "ladder": "rope", "fog": "mist", "spillway": "trickle", "carried_item": "parcel", "current": "ripples", "pulley": "lantern_hook", "seabed": "sand", "item_spot": "none", "swing": "crane_bucket",
+	"lever": "plain", "selector": "plain", "pad": "board", "goal": "bell", "lift": "plain", "deck": "plank", "raft": "logs", "ladder": "rope", "fog": "mist", "spillway": "trickle", "carried_item": "parcel", "current": "ripples", "pulley": "lantern_hook", "seabed": "sand", "item_spot": "none", "swing": "crane_bucket",
 }
 
 ## Kinds drawn along "from" to "to" by themselves; any other kind given a line

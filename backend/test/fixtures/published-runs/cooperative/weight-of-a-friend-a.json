@@ -1,0 +1,69 @@
+{
+	"actions": [
+		{
+			"action": false,
+			"ticks": 24,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 6,
+			"x": 0,
+			"z": -100
+		},
+		{
+			"action": false,
+			"ticks": 4,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 14,
+			"x": 0,
+			"z": 100
+		},
+		{
+			"action": false,
+			"ticks": 15,
+			"x": 0,
+			"z": 0
+		}
+	],
+	"catch_assistance": true,
+	"checkpoint_hash": "543c6afed01ec41e692ac9dadc37bdc0e6b63d57b8e6bb8e8764985934e9ae1e",
+	"completed": false,
+	"definition_hash": "d6aaa6006597dd5e4ce4dbc641d94c81c2ab17c55bd80b50c6a240e0e91cff87",
+	"duration_ticks": 63,
+	"final_state_hash": "9904b20e18737169ac775f8139fd4dd3a0453cabfd294324a84bda1d601c635b",
+	"level_id": "rolling-home",
+	"level_version": 1,
+	"outcome": {
+		"objective_complete": false,
+		"source_ready": true
+	},
+	"player_slot": "p0",
+	"recording_hash": "64afabd5df2e01a9870b1f7b7a5ecdb857b36feee58e905e24131c98e921d166",
+	"replay_checks": [
+		{
+			"state_hash": "1505f19479a2cfa5c70bbd6e7a6a2126312483bdd94d9106a7bf68e8b656e2c3",
+			"tick": 30
+		},
+		{
+			"state_hash": "3baf8cba01e3e0e46f07004baf346a0db1120ac44c8e02e93c154b2bbf347b35",
+			"tick": 60
+		},
+		{
+			"state_hash": "9904b20e18737169ac775f8139fd4dd3a0453cabfd294324a84bda1d601c635b",
+			"tick": 63
+		}
+	],
+	"role": "a",
+	"schema_version": 6,
+	"simulation_version": 6,
+	"source_recording_hash": "",
+	"stage_id": "weight-of-a-friend",
+	"stage_version": 1,
+	"tick_rate": 30
+}

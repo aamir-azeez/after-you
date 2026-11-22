@@ -70,7 +70,7 @@ func _seated() -> Dictionary:
 	descriptor["seats"] = {"bollard-pad": {"kind": "bollard", "size": 1.6}}
 	return descriptor
 
-## B's turn on the HIGH memory: the memory reaches the bollard step at t416
+## B's turn on the HIGH memory: the memory reaches the bollard step at t424
 ## and sits once it has stopped; the live spirit never sits on another's step.
 func _memory_sits() -> void:
 	var level := Registry.definition(KEY)
@@ -85,7 +85,7 @@ func _memory_sits() -> void:
 		var state: Dictionary = b.step({})
 		world.present(state, false)
 		if arrived < 0 and bool(state.hold_pads.get("bollard-pad", false)): arrived = int(state.tick)
-	_check(arrived == 416, "The memory reaches the bollard step at t416 (t%d)" % arrived)
+	_check(arrived == 424, "The memory reaches the bollard step at t424 (t%d)" % arrived)
 	_check(world.actors.p0.pose() == SpiritIdle.SIT, "The memory sits on the bollard once it has stopped there")
 	_check(world.actors.p1.pose() == SpiritIdle.REST, "The live spirit is not seated by another's step")
 	world.free()

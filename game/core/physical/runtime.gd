@@ -45,6 +45,38 @@ const OPEN_RULES_VERSION := OpenControls.OPEN_RULES_VERSION
 ## goal), in any turn, where it snaps in and stays. A ball home stage ends when
 ## the ball is in its cradle and both pips stand on the cradle's floor (_at_goal).
 const SHARED_BALL_RULES := OpenControls.SHARED_BALL_RULES
+## Open turns: a pip keeps its footing. When a crossing under it stops being
+## walkable (a held bridge or rope bridge let go, a crank bridge wound in, a
+## lift or raft leaving, a stone sinking), a pip that still touches floor at
+## its height (its centre, or its walk radius, over a bank) steps onto the
+## nearest spot it may stand and walks on; one that touches none falls. Over
+## water it drowns; anywhere else it falls into the sky ("fell" and "sky" on
+## the drowned record). Either ends the turn. Decided here, so live play, the
+## friend's replay, memories and replays all agree (_keep_footing).
+## The chapters whose crossings span water (their worlds draw it: a chapter
+## descriptor's "water"). Beside the definition, like stage_catalog.gd
+## tall_stones, so no definition hash moves; test_footing checks it against
+## the descriptors.
+const WATER_CHAPTERS := ["turn-of-the-tide", "the-falls", "fog-marsh"]
+## Open turns: how long (ticks) a crossing whose gate lets go keeps its floor
+## before it shuts, the same for every crossing in every level (the journey's
+## _close_slowly; the worlds flash its edges meanwhile, kit/closing_warning.gd):
+## 25 ticks, five sixths of a second, a little over half Turn of the Tide's old
+## 45 (the owner found that too forgiving). No pip stepping off a pad reaches
+## the far side of the crossing it holds in that time (test_footing). Then a
+## pip still on it steps off or falls (_keep_footing).
+const CLOSING_GRACE_TICKS := 25
+## How far (cm) a pip whose floor went steps back onto floor it touches: the
+## nearest spot whose whole footprint stands, at most two walk radii away.
+const FOOTING_REACH := PLAYER_RADIUS * 2 + 1
+## What a turn ended by a drowning or a fall says (snapshot text; PlayerCopy
+## shows the editable lines): the player's own pip, or the friend's (the
+## memory, or under open turns the friend's replay, which fails the turn the
+## same way).
+const DROWNED_YOU := "Oh no, you drowned! Try again?"
+const DROWNED_FRIEND := "Oh no, your friend drowned! Try again?"
+const FELL_YOU := "Your pip fell! Try again?"
+const FELL_FRIEND := "Your friend fell! Try again?"
 const RECORD_KEYS := Controls.RECORD_KEYS
 const OUTCOME_KEYS := ["source_ready", "objective_complete"]
 const CHECKPOINT_KEYS := ["schema_version", "level_id", "level_version", "definition_hash", "stage_index", "completed_stage_id", "next_stage_id", "players", "mechanisms", "previous_checkpoint_hash", "a_recording_hash", "b_recording_hash", "checkpoint_hash", "proof"]
@@ -58,6 +90,11 @@ var first_player_slot := "p0"
 var tick := 0
 var finished := false
 var complete := false
+## {"slot", "route", "tick"} once a pip has drowned (the journey's tide rules,
+## or under open turns a pip whose floor went from under it over water), with
+## "fell": true when it fell instead, and "sky": true when that fall was into
+## the sky. {} while nobody has; a turn with one is never kept (keeps_draft).
+var _drowned: Dictionary = {}
 var error := ""
 var catch_assistance := true
 ## Open turns (open_turns.gd): this turn's number in its stage (1 for a first
@@ -108,8 +145,9 @@ var _handoff_hash := ""
 ## hash, the recording and the navigation index read it instead of digesting
 ## the whole definition again. "" until first used.
 var _definition_hash := ""
-## The level's item spots that are solid (core/solid_footprint.gd), set at
-## reset: a pip walks round them. [] on every level without one.
+## The level's item spots and the stage's hand controls that are solid
+## (core/solid_footprint.gd), set at reset: a pip walks round them. [] on a
+## definition without one.
 var _solids: Array = []
 
 ## `chain`: open turns only, the stage's turns before `prior_a` (the friend's
@@ -155,8 +193,8 @@ func reset(definition: Dictionary, stage_id: String, checkpoint: Dictionary, pri
 func _reset_trusted(definition: Dictionary, stage_id: String, checkpoint: Dictionary, prior_a: Dictionary, current_role: String, chain: Array = [], start: Dictionary = {}) -> void:
 	level = definition.duplicate(true)
 	_definition_hash = ""
-	_solids = Solid.solids(level.get("item_spots", []))
 	stage = stage_by_id(level, stage_id)
+	_solids = Solid.solids(level.get("item_spots", []) + stage.get("levers", []) + stage.get("controls", []))
 	role = current_role
 	# Open turns: the stage's first pip comes from the checkpoint (the host's on a first stage).
 	first_player_slot = OpenTurns.first_slot(checkpoint) if _open_turns() else stage.first_player_slot
@@ -182,6 +220,7 @@ func _reset_trusted(definition: Dictionary, stage_id: String, checkpoint: Dictio
 	_claimed = false
 	_objective = false
 	_comfort_entries = {}
+	_drowned = {}
 	_source_toggles = {"levers": {}, "controls": {}}
 	_friend_held = false
 	handoff_tick = 0
@@ -240,6 +279,7 @@ func _tick(input: Dictionary = {}) -> void:
 		_refresh_routes()
 	for route_id: String in _routes:
 		if _routes[route_id] and not bool(previous_routes.get(route_id, false)): _events.append("bridge_opened:" + route_id)
+	if _open_turns(): _keep_footing(previous_routes)
 	_check_hazards()
 	if role == "a": _update_source_readiness()
 	if (role == "b" or _shared_ball()) and stage.goal_policy.kind == "ball_home": _check_ball_home()
@@ -328,6 +368,7 @@ func save_world() -> Dictionary:
 	entries.sort()
 	var world := {"players": _players.duplicate(true), "mechanisms": _mechanisms.duplicate(true), "routes": _routes.duplicate(),
 		"held": {active_slot: _held, memory_slot: _friend_held}, "entered_routes": entries}
+	if not _drowned.is_empty(): world["drowned"] = _drowned.duplicate()
 	_save_extra(world)
 	return world
 
@@ -345,6 +386,7 @@ func load_world(world: Dictionary, handoff: int) -> void:
 	_friend_held = bool(world.held.get(memory_slot, false))
 	_comfort_entries = {}
 	for id: Variant in world.entered_routes: _comfort_entries[str(id)] = true
+	_drowned = world.get("drowned", {}).duplicate()
 	_load_extra(world)
 
 func _advance_source() -> void:
@@ -404,7 +446,7 @@ func _try_move(delta: Vector2i, cells: Dictionary, routes: Dictionary, slot: Str
 	var x := int(previous.x) + delta.x
 	var z := int(previous.z) + delta.y
 	var position := Navigation.at(level, routes, _mechanisms.levers, previous, x, z, slot, PLAYER_RADIUS, true, cells)
-	if position.is_empty() or _in_solid(position): return false
+	if position.is_empty() or _in_solid(position, previous) or not _may_step(previous, position): return false
 	var pushed: Variant = _pushes(previous, x, z, int(position.height), delta, slot, slot == active_slot or _shared_ball(), cells)
 	if pushed == null: return false
 	for id: String in pushed: _mechanisms.props[id] = pushed[id]
@@ -449,11 +491,21 @@ func _holds_ball(route_id: String) -> bool:
 func _shared_ball() -> bool:
 	return simulation_version in SHARED_BALL_RULES
 
-## Whether `position` stands in a solid spot on its own floor.
-func _in_solid(position: Dictionary) -> bool:
+## Whether a pip may step from `previous` to `position` (a facade's own
+## floors that move: the journey's platforms). Always, here.
+func _may_step(_previous: Dictionary, _position: Dictionary) -> bool:
+	return true
+
+## Whether `position` stands in a solid spot on its own floor. With `from`
+## (the step's start), a step that leaves a footprint it already stands in
+## (a pip a checkpoint, a start or a ride left there) is let through.
+func _in_solid(position: Dictionary, from: Dictionary = {}) -> bool:
 	if _solids.is_empty(): return false
 	var floor := str(position.surface_id)
-	return Solid.blocked(_solids.filter(func(spot: Dictionary) -> bool: return str(spot.get("surface_id", "")) == floor), Vector2i(int(position.x), int(position.z)), PLAYER_RADIUS)
+	var here := _solids.filter(func(spot: Dictionary) -> bool: return str(spot.get("surface_id", "")) == floor)
+	var to := Vector2i(int(position.x), int(position.z))
+	if from.is_empty() or str(from.get("surface_id", "")) != floor: return Solid.blocked(here, to, PLAYER_RADIUS)
+	return Solid.blocks_step(here, Vector2i(int(from.x), int(from.z)), to, PLAYER_RADIUS)
 
 func _can_push(ball: Dictionary) -> bool:
 	if ball.status == "fitted" or ball.status == "offered": return false
@@ -579,7 +631,7 @@ func source_budget_ticks() -> int:
 	return budget
 
 func can_commit() -> bool:
-	if level.is_empty() or not error.is_empty() or tick == 0: return false
+	if level.is_empty() or not error.is_empty() or tick == 0 or not _drowned.is_empty(): return false
 	if role == "b": return complete
 	# Open turns: a first turn may end at any time, its own part done or not
 	# (owner, 2026-11-16); its outcome still says whether it was (_source_ready).
@@ -698,6 +750,8 @@ func _snap_ball(target: Dictionary, prop_id: String) -> bool:
 
 func commit_reason() -> String:
 	if not error.is_empty(): return error
+	var lost := _lost_reason()
+	if not lost.is_empty(): return lost
 	if can_commit(): return ""
 	if level.is_empty(): return "Choose a chapter."
 	if role == "b": return "Finish the route with your partner."
@@ -711,6 +765,19 @@ func commit_reason() -> String:
 	if ready_tick >= 0 and ready_tick + source_budget_ticks() >= MAX_TICKS: return "Try again with more time left for your partner."
 	if stage.source_policy.kind == "offer_ball": return "Leave the ball where your partner can take over."
 	return "Keep the crossing ready for your partner."
+
+## What a turn a pip drowned or fell in says, or "" when none did.
+func _lost_reason() -> String:
+	if _drowned.is_empty(): return ""
+	var yours := str(_drowned.get("slot", "")) == active_slot
+	if _drowned.has("fell"): return FELL_YOU if yours else FELL_FRIEND
+	return DROWNED_YOU if yours else DROWNED_FRIEND
+
+## Whether this turn may be kept anywhere: a draft, a replay or an upload. A
+## turn a pip drowned or fell in is not, whoever it was; the screen still holds
+## it for Preview.
+func keeps_draft() -> bool:
+	return _drowned.is_empty()
 
 func snapshot() -> Dictionary:
 	if level.is_empty(): return {"error":error,"can_commit":false,"finished":false,"complete":false}
@@ -745,7 +812,7 @@ func snapshot() -> Dictionary:
 		"objective_done":_objective_done(),"route_progress":{"kept_bridges":_mechanisms.latched_bridges.duplicate()},"source_hold_ticks":_hold_ticks,"offer_tick":_offer_tick,
 		"outcome":_outcome(),"events":_events.duplicate(),"context_action":context_action(),"objective_display":_objective_display(),"optics":{"segments":[],"signals":{}},"beacon":_objective}
 	# Open turns only, so a published chapter's snapshot stays byte for byte as it was.
-	if _open_turns(): state.merge({"turn_number":turn_number,"can_pass":can_pass(),"can_end_early":can_end_early(),"passed":passed,"handoff_tick":handoff_tick,"replay_ticks":replay_ticks()})
+	if _open_turns(): state.merge({"drowned":_drowned.duplicate(),"turn_number":turn_number,"can_pass":can_pass(),"can_end_early":can_end_early(),"passed":passed,"handoff_tick":handoff_tick,"replay_ticks":replay_ticks()})
 	return state
 
 func _objective_display() -> Dictionary:
@@ -770,7 +837,8 @@ func _part_done() -> bool:
 
 func walkable_at(x: int, z: int, slot: String = "") -> bool:
 	var selected := active_slot if slot.is_empty() else slot
-	return not Navigation.at(level, _walk_routes(selected), _mechanisms.levers, _players[selected], x, z, selected, PLAYER_RADIUS, true, _navigation_cells()).is_empty()
+	var found := Navigation.at(level, _walk_routes(selected), _mechanisms.levers, _players[selected], x, z, selected, PLAYER_RADIUS, true, _navigation_cells())
+	return not found.is_empty() and not _in_solid(found)
 
 func export_recording() -> Dictionary:
 	if tick == 0 or level.is_empty(): return {}
@@ -803,6 +871,8 @@ func _state_body() -> Dictionary:
 		"role":role,"tick":tick,"players":_players,"mechanisms":_mechanisms,"routes":_routes,"held":_held,"hold_ticks":_hold_ticks,"hold_start":_hold_start,
 		"offer_tick":_offer_tick,"claimed":_claimed,"objective":_objective,"complete":complete,"outcome":_outcome(),"source_recording_hash":str(_prior.get("recording_hash", ""))}
 	if _open_turns(): value["friend_held"] = _friend_held
+	# Only once someone drowned or fell, so every other hash stays as it was.
+	if not _drowned.is_empty(): value["drowned"] = _drowned.duplicate()
 	if _comfort_rules():
 		var entries := _comfort_entries.keys()
 		entries.sort()
@@ -837,8 +907,13 @@ static func _entity(entities: Array, id: String) -> Dictionary:
 static func _other(slot: String) -> String:
 	return "p1" if slot == "p0" else "p0"
 
+## Whether `player` is at `target` on its floor: within `radius`, or else
+## within its reach (Solid.within_reach: a solid control's reach beside its
+## footprint, any other spot's radius_cm).
 static func _near_entity(player: Dictionary, target: Dictionary, radius: int = -1) -> bool:
-	return player.surface_id == target.surface_id and Vector2i(player.x,player.z).distance_squared_to(Vector2i(target.position_cm[0],target.position_cm[1])) <= (int(target.radius_cm) if radius < 0 else radius) ** 2
+	if player.surface_id != target.surface_id: return false
+	if radius < 0: return Solid.within_reach(target, Vector2i(player.x,player.z), PLAYER_RADIUS)
+	return Vector2i(player.x,player.z).distance_squared_to(Vector2i(target.position_cm[0],target.position_cm[1])) <= radius ** 2
 
 static func _action(id: String, label: String, enabled: bool, target: String) -> Dictionary:
 	return {"id":id,"label":label,"enabled":enabled,"target_id":target}
@@ -893,6 +968,51 @@ func _after_interact() -> void:
 ## `finished` here. Published rules have none.
 func _check_hazards() -> void:
 	pass
+
+## Open turns, once a tick's routes are final: each pip whose floor went from
+## under it this tick keeps its footing (the rule by WATER_CHAPTERS above).
+## Only a crossing that stood at the tick's start and is shut now (`was`: the
+## routes then) can take a pip's floor, since every step a pip takes is onto
+## floor, so no other tick looks. p0 first; the first that falls ends the turn.
+## A facade may keep a pip up on its shut crossing (_stands_fast).
+func _keep_footing(was: Dictionary) -> void:
+	if not _drowned.is_empty(): return
+	var went := false
+	for id: String in _routes:
+		if not _routes[id] and bool(was.get(id, false)): went = true
+	if not went: return
+	var cells := _navigation_cells()
+	for slot: String in SLOTS:
+		var player: Dictionary = _players[slot]
+		var surface := str(player.surface_id)
+		var shut := _routes.has(surface) and not bool(_routes[surface])
+		var here := Navigation.at(level, _routes, _mechanisms.levers, player, int(player.x), int(player.z), slot, PLAYER_RADIUS, false, cells)
+		if (not shut and not here.is_empty()) or _stands_fast(slot): continue
+		var spot := _footing_near(player, slot, cells)
+		if not spot.is_empty():
+			_players[slot] = spot
+			_events.append("stepped_back:" + slot)
+			continue
+		_drowned = {"slot": slot, "route": surface, "tick": tick}
+		if str(level.get("id", "")) not in WATER_CHAPTERS: _drowned.merge({"fell": true, "sky": true})
+		finished = true
+		_events.append(("fell:" if _drowned.has("fell") else "drowned:") + slot)
+		return
+
+## The nearest spot within FOOTING_REACH a pip at `player` may stand on (its
+## whole footprint on floor at its height, off every solid), when its walk
+## radius still touches floor; else {}: nothing holds it.
+func _footing_near(player: Dictionary, slot: String, cells: Dictionary) -> Dictionary:
+	if not Navigation.touches(level, _routes, player, slot, PLAYER_RADIUS, cells): return {}
+	for offset: Vector2i in Navigation.offsets_by_distance(FOOTING_REACH):
+		var spot := Navigation.at(level, _routes, _mechanisms.levers, player, int(player.x) + offset.x, int(player.z) + offset.y, slot, PLAYER_RADIUS, false, cells)
+		if not spot.is_empty() and not _in_solid(spot): return spot
+	return {}
+
+## Whether `slot`'s pip stays where it stands though its crossing shut (a
+## facade's own rule: the tide's stone left high). None here.
+func _stands_fast(_slot: String) -> bool:
+	return false
 
 ## Whether this facade plays open controls (OPEN_RULES_VERSION). Published
 ## rules never do.

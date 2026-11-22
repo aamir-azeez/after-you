@@ -169,6 +169,10 @@
 						112
 					],
 					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
 					"surface_id": "middle"
 				}
 			],

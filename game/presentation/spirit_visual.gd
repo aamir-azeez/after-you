@@ -210,6 +210,22 @@ var _carried := false
 const BUMP_DURATION := 0.28
 const BUMP_FACE := 0.5
 var _bump_age := BUMP_DURATION
+## A teeter at a drop it may not walk off (play_teeter): it tips out over the
+## edge with a little stretch, rocks side to side with the leaf flailing, then
+## pulls back and plops steady. TEETER_TIP seconds to tip out, TEETER_LEAN
+## radians at most; TEETER_ROCK radians of rocking TEETER_RATE times a second.
+## Laid over whatever else it does, so it walks on mid-wobble. Reduce motion
+## keeps a tiny lean (TEETER_REDUCED of it) and the face.
+const TEETER_DURATION := 0.9
+const TEETER_FACE := 0.7
+const TEETER_TIP := 0.16
+const TEETER_LEAN := 0.3
+const TEETER_ROCK := 0.2
+const TEETER_RATE := 3.2
+const TEETER_REDUCED := 0.3
+var _teeter_age := TEETER_DURATION
+## The way to the drop, in the spirit's parent space (x, z), unit.
+var _teeter_toward := Vector2.ZERO
 
 func _init(color: Color=Look.PEACH) -> void:
 	facing.name="Facing"
@@ -324,6 +340,8 @@ func reset_motion() -> void:
 	reunion_age=REUNION_DURATION
 	celebration_age=CELEBRATION_DURATION
 	_celebration_complete=false
+	_bump_age=BUMP_DURATION
+	_teeter_age=TEETER_DURATION
 	end_ride()
 	_clear_reunion_sparkles()
 	_clear_reaction()
@@ -498,6 +516,7 @@ func advance_motion(displacement: Vector3, delta: float, reduced_motion: bool) -
 	celebration_age=minf(CELEBRATION_DURATION,celebration_age+delta)
 	_wake_age=minf(SpiritIdle.WAKE_DURATION,_wake_age+delta)
 	_bump_age=minf(BUMP_DURATION,_bump_age+delta)
+	_teeter_age=minf(TEETER_DURATION,_teeter_age+delta)
 	var landed := false
 	if _hop_age<_hop_duration:
 		_hop_age=minf(_hop_duration,_hop_age+delta)
@@ -660,6 +679,20 @@ func _apply_pose(amount: float) -> void:
 		upper_body.position.z-=jolt*0.04
 		upper_body.rotation.x-=jolt*0.3
 		squash+=jolt*0.1
+	var flail := 0.0
+	if _teeter_age<TEETER_DURATION:
+		var teeter := teeter_pose()
+		# x leans toward the drop, y rocks across it, both in the facing pivot.
+		var local := facing.basis.inverse()*Vector3(_teeter_toward.x,0.0,_teeter_toward.y)
+		var toward := Vector2(local.x,local.z).normalized()
+		var across := Vector2(-toward.y,toward.x)
+		var tip := toward*teeter.x+across*teeter.y
+		# Positive X pitch leans +Z; negative Z roll leans +X.
+		upper_body.rotation.x+=tip.y
+		upper_body.rotation.z-=tip.x
+		upper_body.position+=Vector3(toward.x,0.0,toward.y)*teeter.x*0.12
+		squash+=teeter.z
+		flail=teeter.y*2.4
 	var nod := 0.0
 	if not _reduced_motion:
 		squash+=Motion.kick(start_age,START_CROUCH)*0.1-Motion.kick(start_age-START_CROUCH,START_STRETCH)*0.06
@@ -695,7 +728,7 @@ func _apply_pose(amount: float) -> void:
 	face.rotation=Vector3(nod,rest.head_yaw,tilt)
 	sprout.position=HEAD_CENTER+rise+Basis(Vector3.UP,rest.head_yaw)*Basis(Vector3.RIGHT,nod)*Basis(Vector3.BACK,tilt)*(SPROUT_REST+_leaf_lift-HEAD_CENTER)
 	# The leaf swings on past the head's nod: it lags, then catches up.
-	sprout.rotation=Vector3(nod*1.6-(Motion.settle(stop_age-0.08,0.1,2.2,5.0) if stop_age<MOTION_EVENT_END and not _reduced_motion else 0.0),rest.head_yaw,SPROUT_LEAN+tilt+step*LEAF_STEP_ROLL*amount+settle*LEAF_SETTLE+rest.sprout_roll)
+	sprout.rotation=Vector3(nod*1.6-(Motion.settle(stop_age-0.08,0.1,2.2,5.0) if stop_age<MOTION_EVENT_END and not _reduced_motion else 0.0),rest.head_yaw,SPROUT_LEAN+tilt+step*LEAF_STEP_ROLL*amount+settle*LEAF_SETTLE+rest.sprout_roll+flail)
 	# A glance adds to the eyes' attention, up to the reach that attention has:
 	# glancing toward a partner off to one side turns the head, not the eyes.
 	var look := (_look+rest.look).clamp(-Vector2.ONE,Vector2.ONE)
@@ -812,6 +845,35 @@ func play_hop(duration: float, contact: float = 0.8) -> void:
 func play_bump(reduced: bool) -> void:
 	show_expression(Look.SURPRISED, BUMP_FACE)
 	if not reduced: _bump_age = 0.0
+
+## A wobble at a drop it may not walk off (water, a gap, the map's edge),
+## `toward` it (x, z, in the parent's space): it turns to face the drop, tips
+## out over it, rocks and steadies, startled (Reduce motion: a small lean). Called for a step cut at a drop
+## found from recorded input (barrier_refusals.gd), so a replay teeters alike.
+## Only the drawing moves: walking on turns it the way it walks, mid-wobble.
+func play_teeter(toward: Vector2, reduced: bool) -> void:
+	show_expression(Look.SURPRISED, TEETER_FACE)
+	if toward.is_zero_approx(): toward = Vector2(sin(facing.rotation.y), cos(facing.rotation.y))
+	_teeter_toward = toward.normalized()
+	# Reduce motion leans where it already faces, without turning.
+	if not reduced: facing_target = atan2(_teeter_toward.x, _teeter_toward.y)
+	_teeter_age = 0.0
+
+## The teeter now: x the lean out toward the drop and y the rock across it
+## (radians), z its squash (negative stretches). All 0 once it ends. Reduce
+## motion keeps only a small lean.
+func teeter_pose() -> Vector3:
+	if _teeter_age>=TEETER_DURATION: return Vector3.ZERO
+	var age := _teeter_age
+	var fade := 1.0-smoothstep(TEETER_DURATION*0.4,TEETER_DURATION,age)
+	var out := sin(minf(age/TEETER_TIP,1.0)*PI*0.5)*fade
+	if _reduced_motion: return Vector3(out*TEETER_LEAN*TEETER_REDUCED,0.0,0.0)
+	# Pulling back from the edge it overshoots a little before it steadies.
+	var lean := out*TEETER_LEAN-Motion.kick(age-TEETER_DURATION*0.5,TEETER_DURATION*0.4)*TEETER_LEAN*0.3
+	var rock := sin((age-TEETER_TIP)*TAU*TEETER_RATE)*TEETER_ROCK*smoothstep(0.0,TEETER_TIP,age-TEETER_TIP*0.5)*pow(1.0-age/TEETER_DURATION,1.5)
+	# A "whoa": a stretch up as it tips, and a little plop as it steadies.
+	var squash := -Motion.kick(age,TEETER_TIP*1.4)*0.09+Motion.kick(age-TEETER_DURATION*0.62,TEETER_DURATION*0.3)*0.07
+	return Vector3(lean,rock,squash)
 
 ## A ride's seated tuck (`sit` 0 to 1: the body drops and the feet come
 ## forward) and its lean (radians, in the facing pivot: +x leans forward).

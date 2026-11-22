@@ -273,13 +273,13 @@ func in_turn() -> bool:
 static func event_source(event: String, live_role: String) -> String:
 	# Named by what moved, whoever played it: the same crossing, spirit or control
 	# sounds the same live, in memory, on retry and in replay.
-	if event.begins_with("bridge_open") or event.begins_with("selector:") or event.begins_with("closing:") or event.begins_with("drowned:"): return event + "|" + event
+	if event.begins_with("bridge_open") or event.begins_with("selector:") or event.begins_with("closing:") or event.begins_with("drowned:") or event.begins_with("fell:"): return event + "|" + event
 	if event in FIRST_SPIRIT_EVENTS: return "a|" + event
 	if event in SECOND_SPIRIT_EVENTS: return "b|" + event
 	return live_role + "|" + event
 
 ## The piece a named cause sounds from (island_world sound_anchors): its
-## kind of anchor. Rattles and locked controls sound from the pip that pushed.
+## kind of anchor. Rattles, locked controls and teeters sound from the pip that pushed.
 const ANCHOR_KINDS := {"lever": "control", "selector": "control", "route": "control", "water": "control",
 	"mirror": "mirror", "bridge_open": "bridge", "bridge_opened": "bridge", "closing": "bridge"}
 
@@ -291,8 +291,8 @@ static func source_anchor(source: String) -> String:
 	var head := cause.get_slice(":", 0)
 	var id := cause.get_slice(":", 1)
 	if ANCHOR_KINDS.has(head): return "%s:%s" % [ANCHOR_KINDS[head], id]
-	if head in ["rattle", "locked"]: return "spirit:" + cause.get_slice(":", 2)
-	if head == "drowned": return "spirit:" + id
+	if head in ["rattle", "locked", "teeter"]: return "spirit:" + cause.get_slice(":", 2)
+	if head in ["drowned", "fell"]: return "spirit:" + id
 	return "" if cause.is_empty() or cause.contains(":") else "spirit:" + cause
 
 ## Plays one tick of a recorded turn; sources[i] comes from event_source.

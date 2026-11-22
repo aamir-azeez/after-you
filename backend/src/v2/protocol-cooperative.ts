@@ -18,13 +18,13 @@ import rollingV2Initial from "./rolling-home-v2-initial.json";
 import houseV2Definition from "./a-house-for-two-v2.json";
 import houseV2Initial from "./a-house-for-two-v2-initial.json";
 
-export const HIGH_AND_LOW_HASH = "6aa907e802c92445745a6452c6ec0850dd8e98724e689b58a8ec82915fb08956";
-export const ROLLING_HOME_HASH = "d6aaa6006597dd5e4ce4dbc641d94c81c2ab17c55bd80b50c6a240e0e91cff87";
-export const HOUSE_HASH = "b868745e7bc025bb8fe5a49b698b15dfb0d428ea9fe905ce46fa46dd27d79867";
-export const WISHING_WELL_HASH = "4418a6f1ad6bdc3f1adee6d07d48184d03867a56a1b2d1d42c189584cfec5a94";
-export const HIGH_AND_LOW_V2_HASH = "1a254f62837bbbb91d9a825afe3a011becc322dd9e33c49f8ab899041ae198b8";
-export const ROLLING_HOME_V2_HASH = "7110c1c5eaad0e0a04985fcf5efbae21a2e9fc20155e5595eabc7f11d2f999dd";
-export const HOUSE_V2_HASH = "7c5fd9dd9e58c5f67c9ceb35f35b9ab2e2fcbcbbc63fa79653530437bf8710d9";
+export const HIGH_AND_LOW_HASH = "3b6576badcdd214630373a0f51040706e014845d9b8bc17483bd887f04a9ff40";
+export const ROLLING_HOME_HASH = "3362e8afd9fb3504868ab4b8b436050f62fe601e5c7ff8fea995424064f2dbff";
+export const HOUSE_HASH = "f14fb0abf330fa46afdb61078a8e8e99cee4cc2ade845304508cc90b05d27995";
+export const WISHING_WELL_HASH = "14cfffbdd9b23cee06056548f29bbae7f1e95c348315ff3ff0098b7190ee5f3e";
+export const HIGH_AND_LOW_V2_HASH = "79593b0e7e0b2a8fb055643dafb74734e332d26c8814e33415e233d186e80a58";
+export const ROLLING_HOME_V2_HASH = "6d8c6e7f2cdf75cabc49b48d9e72451f7f7b12c1c3cb13f6d00e489ff34f51b8";
+export const HOUSE_V2_HASH = "f3df2ecdb01a9b02ce3a3dfd4f3ba649d061ff7cfbf1f184ee312d4ea4202270";
 
 type Surface = { id: string; rect_cm: number[]; height_cm?: number; owner_slot?: string; axis?: string; from_height_cm?: number; to_height_cm?: number };
 type Marker = { id: string; position_cm: number[]; surface_id: string; radius_cm: number; owner_slot?: string; prop_id?: string };
@@ -44,7 +44,7 @@ function inside(p: Record<string, unknown>, marker: Marker, radius = marker.radi
 
 /** One bounded structural adapter for the shared native physical simulation.
  * Proof bytes are retained for native deterministic replay; the server does not simulate physics. */
-function adapter(definition: Definition, initial: ChapterCheckpoint, definitionHash: string): ChapterAdapter {
+export function adapter(definition: Definition, initial: ChapterCheckpoint, definitionHash: string): ChapterAdapter {
   const key = Object.freeze({ level_id: definition.id, level_version: definition.version, definition_hash: definitionHash });
   function catalog(value: Record<string, unknown>): void { need(value.level_id === key.level_id && value.level_version === key.level_version && value.definition_hash === key.definition_hash, "unsupported_chapter"); }
   // A definition declaring rules 9+ plays only those rules; published chapters keep 6/8.

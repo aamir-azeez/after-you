@@ -16,7 +16,6 @@ const DATA := {
 	"ground": {"*": "boardwalk", "path": "reed_bank", "reeds": "reed_bank", "bank": "reed_bank", "office": "timber"},
 	"picks": {"lamp": "lantern", "shrub": "green", "bank": "moss", "fence": "picket", "trim": "flowers", "clutter": "barrel"},
 	"tag": "wooden_plaque",
-	"pad": "stand_spot",
 	# The cover is the whole fog; no low banks (kit/fog.gd) over it.
 	"fog": "none",
 	"carried_item": "pipsport",

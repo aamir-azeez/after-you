@@ -25,6 +25,7 @@ const TurnLooks = preload("res://services/turn_looks.gd")
 const OpenTurns = preload("res://core/physical/open_turns.gd")
 const OpenTurnStore = preload("res://services/open_turn_store.gd")
 const PATH := "user://leaderboard-runs.json"
+const OPENINGS_PATH := "res://content/board_openings.json"
 const MAX_RUNS := 128
 const TICK_RATE := 30
 const ENTRY_DOMAIN := "after-you leaderboard entry v1\n"
@@ -43,10 +44,26 @@ static func use_path(path: String) -> void:
 	_loaded = false
 	_data = {}
 
-## The board a chapter version ranks on: "<level_id>@<level_version>", or "".
+## The board a chapter version ranks on, or "": "<level_id>@<level_version>",
+## or "<level_id>-<first 8 of its definition hash>@<level_version>" once the
+## chapter has changed since its board opened (content/board_openings.json,
+## which the server's leaderboards/boards.ts boardKey reads too). So a changed
+## chapter ranks, races and replays on a fresh board, and the board older apps
+## still read keeps its runs.
 static func board_key(chapter_key: String) -> String:
 	var known := Registry.descriptor(chapter_key)
-	return "" if known.is_empty() else "%s@%d" % [known.level_id, int(known.level_version)]
+	if known.is_empty(): return ""
+	var plain := "%s@%d" % [known.level_id, int(known.level_version)]
+	var opened: Variant = _openings().get(plain)
+	if opened == null or opened == known.definition_hash: return plain
+	return "%s-%s@%d" % [known.level_id, str(known.definition_hash).left(8), int(known.level_version)]
+
+static var _opened: Dictionary = {}
+static func _openings() -> Dictionary:
+	if _opened.is_empty():
+		var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(OPENINGS_PATH))
+		_opened = parsed.boards if parsed is Dictionary and parsed.get("boards") is Dictionary else {"": ""}
+	return _opened
 
 ## The chapter a board ranks: the offered chapter version with that board, or "".
 static func chapter_of(board: String) -> String:

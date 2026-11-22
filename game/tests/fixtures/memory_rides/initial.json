@@ -1,9 +1,9 @@
 {
   "a_recording_hash": "",
   "b_recording_hash": "",
-  "checkpoint_hash": "1cb4d54fc919cf0d27a0cae01dd06521ec083d4b453809bf63a6ff6d494a374f",
+  "checkpoint_hash": "520c97a17c512d03f595f7ba8ddc4c6cec2c208200f29bf3541c0a2b630140e9",
   "completed_stage_id": "",
-  "definition_hash": "5238c802550cf3d29e461f79f4890cf3790d3e33d3d28d426da0ec62bc2a21bf",
+  "definition_hash": "fb48cac2429a6cedfc64e9b31196da653f615f5d7b5152f9b66da417ab1923eb",
   "level_id": "ride-witness",
   "level_version": 1.0,
   "mechanisms": {

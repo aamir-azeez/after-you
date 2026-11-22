@@ -46,7 +46,7 @@ func _run() -> void:
 
 func _shared_buttons() -> void:
 	# These words are the public vocabulary, not a copy of icon/style internals.
-	var expected := {"retry": "Retry", "resume": "Resume", "preview": "Preview", "save": "Save turn", "record": "Record", "finish": "Finish", "pause": "Pause", "continue": "Continue", "back": "Back", "retry_save": "Retry save"}
+	var expected := {"retry": "Try again", "resume": "Resume", "preview": "Preview", "save": "Save turn", "record": "Record", "finish": "Finish", "pause": "Pause", "continue": "Continue", "back": "Back", "retry_save": "Retry save"}
 	for action_id: String in expected:
 		var button: Button = Actions.create(action_id, func(): pass)
 		_check(button.text == expected[action_id], "The shared action has its short text label: " + action_id)
@@ -68,7 +68,7 @@ func _shared_buttons() -> void:
 	for _index in range(4):
 		Actions.apply(retry, "resume")
 		Actions.apply(retry, "retry")
-	_check(retry.disabled and retry.text == "Retry", "Repeated presentation changes never re-enable an unavailable action")
+	_check(retry.disabled and retry.text == "Try again", "Repeated presentation changes never re-enable an unavailable action")
 	_check(retry.pressed.get_connections().size() == 1, "Repeated apply retains exactly the original callback connection")
 	_click(viewport, retry.get_global_rect().get_center())
 	await _settle()
@@ -83,7 +83,7 @@ func _shared_buttons() -> void:
 	viewport.add_child(controls)
 	var factory_calls := {"count": 0}
 	var factory_button: Button = controls.button_for("retry", func(): factory_calls.count += 1)
-	_check(factory_button.text == "Retry" and factory_button.icon != null and factory_button.get_meta("action_id", "") == "retry", "ChapterControls delegates semantic actions to the shared factory")
+	_check(factory_button.text == "Try again" and factory_button.icon != null and factory_button.get_meta("action_id", "") == "retry", "ChapterControls delegates semantic actions to the shared factory")
 	factory_button.pressed.emit()
 	_check(factory_calls.count == 1, "ChapterControls preserves the supplied action callback")
 	factory_button.free()

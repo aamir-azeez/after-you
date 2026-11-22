@@ -769,6 +769,13 @@ describe("carry-over turns", () => {
   }
   const header = (n: number, ticks: number, handoff: number, done = false) =>
     ({ duration_ticks: ticks, handoff_tick: handoff, start_hash: `s${n}`, handoff_hash: n === 1 ? "s1" : `s${n + 1}`, completed: done }) as unknown as ChapterRecording;
+  /** `actions` held still for `pad` more ticks (a still last run grows, as the codec keeps no two equal runs side by side). */
+  function padded(actions: Rec[], pad: number): Rec[] {
+    const last = actions.at(-1);
+    if (!pad) return actions;
+    if (last && last.x === 0 && last.z === 0 && !last.action) return [...actions.slice(0, -1), { ...last, ticks: last.ticks + pad }];
+    return [...actions, { ticks: pad, x: 0, z: 0, action: false }];
+  }
   /** Turn `n` of a stage: fixture `fixture`'s runs padded to `ticks`, pip `slot`'s, over `turns` (the stage's turns so far), its hand-off from S unless `change` says otherwise. */
   async function carryTurn(fixture: Rec, checkpoint: Rec, slot: string, turns: Rec[], ticks: number, closes = false, change: (turn: Rec) => void = () => {}): Promise<Rec> {
     const n = turns.length + 1, h = handoffs([...turns.map(turn => turn.duration_ticks), ticks]).at(-1)!;
@@ -777,7 +784,7 @@ describe("carry-over turns", () => {
     const runs = listed(fixture), pad = ticks - fixture.duration_ticks;
     const turn: Rec = { ...rest, simulation_version: 19, level_version: CARRY.level_version, definition_hash: CARRY.definition_hash, checkpoint_hash: checkpoint.checkpoint_hash,
       role: n === 1 ? "a" : "b", player_slot: slot, source_recording_hash: turns.at(-1)?.recording_hash ?? "", duration_ticks: ticks,
-      actions: [...runs.actions, ...(pad ? [{ ticks: pad, x: 0, z: 0, action: false }] : [])], replay_checks: runs.replay_checks,
+      actions: padded(runs.actions, pad), replay_checks: runs.replay_checks,
       completed: n > 1 && closes, outcome: { source_ready: true, objective_complete: n > 1 && closes },
       handoff_tick: h, start_hash: start, handoff_hash: n === 1 ? start : await digest(`world ${checkpoint.checkpoint_hash} ${n} ${ticks}`) };
     change(turn);
@@ -851,20 +858,20 @@ describe("carry-over turns", () => {
     const t1 = await carryTurn(setA as Rec, start, "p0", [], 577);
     let current = (await send(joined, host, t1)).room;
     // Turn 2 starts from turn 1's start world, at its tick 0.
-    await refused(current, guest, await carryTurn(setB as Rec, start, "p1", [t1], 1200, false, turn => { turn.start_hash = "b".repeat(64); }), "source_recording_mismatch");
-    await refused(current, guest, await carryTurn(setB as Rec, start, "p1", [t1], 1200, false, turn => { turn.handoff_tick = 1; }), "source_recording_mismatch");
-    const t2 = await carryTurn(setB as Rec, start, "p1", [t1], 1200);
+    await refused(current, guest, await carryTurn(setB as Rec, start, "p1", [t1], 1300, false, turn => { turn.start_hash = "b".repeat(64); }), "source_recording_mismatch");
+    await refused(current, guest, await carryTurn(setB as Rec, start, "p1", [t1], 1300, false, turn => { turn.handoff_tick = 1; }), "source_recording_mismatch");
+    const t2 = await carryTurn(setB as Rec, start, "p1", [t1], 1300);
     current = (await send(current, guest, t2)).room;
-    // Turn 3 takes over at turn 1's length (577) and, as a pass, outlasts the rest of turn 2 (623 ticks).
+    // Turn 3 takes over at turn 1's length (577) and, as a pass, outlasts the rest of turn 2 (723 ticks).
     expect(t2.handoff_hash).not.toBe(t1.handoff_hash);
-    await refused(current, host, await carryTurn(setB as Rec, start, "p0", [t1, t2], 622), "source_recording_mismatch");
-    await refused(current, host, await carryTurn(setB as Rec, start, "p0", [t1, t2], 1300, false, turn => { turn.handoff_tick = 0; }), "source_recording_mismatch");
-    await refused(current, host, await carryTurn(setB as Rec, start, "p0", [t1, t2], 1300, false, turn => { turn.start_hash = t1.handoff_hash; }), "source_recording_mismatch");
-    const t3 = await carryTurn(setB as Rec, start, "p0", [t1, t2], 1300);
+    await refused(current, host, await carryTurn(setB as Rec, start, "p0", [t1, t2], 722), "source_recording_mismatch");
+    await refused(current, host, await carryTurn(setB as Rec, start, "p0", [t1, t2], 1400, false, turn => { turn.handoff_tick = 0; }), "source_recording_mismatch");
+    await refused(current, host, await carryTurn(setB as Rec, start, "p0", [t1, t2], 1400, false, turn => { turn.start_hash = t1.handoff_hash; }), "source_recording_mismatch");
+    const t3 = await carryTurn(setB as Rec, start, "p0", [t1, t2], 1400);
     current = (await send(current, host, t3)).room;
-    // Turn 4 hands off at 623 with 677 ticks of turn 3 left, and closes the stage sooner: the rest of the replay is dropped.
-    const t4 = await carryTurn(setB as Rec, start, "p1", [t1, t2, t3], 606, true);
-    expect([t4.handoff_tick, t3.duration_ticks - t4.handoff_tick]).toEqual([623, 677]);
+    // Turn 4 hands off at 723 with 677 ticks of turn 3 left, and closes the stage sooner: the rest of the replay is dropped.
+    const t4 = await carryTurn(setB as Rec, start, "p1", [t1, t2, t3], (setB as Rec).duration_ticks, true);
+    expect([t4.handoff_tick, t3.duration_ticks - t4.handoff_tick]).toEqual([723, 677]);
     await failure(call(`/v2/rooms/${joined.room_id}/turns`, "POST", guest, { base_revision: current.revision, branch: 0, idempotency_key: key(), recording: t4,
       checkpoint: await carryClosing(setEnd as Rec, start, [t1, t2, t3, t4], "p1") }), 422, "checkpoint_recording_mismatch");
     const stageOne = await carryClosing(setEnd as Rec, start, [t1, t2, t3, t4]);
@@ -891,7 +898,7 @@ describe("carry-over turns", () => {
     const offered = await stub(current).replayTransfer(host.player_id);
     expect(offered).toMatchObject({ ok: true });
     const archive = (offered as { value: { archive: { turns: { recording: Rec }[] } } }).value.archive;
-    expect(archive.turns.map(turn => turn.recording.handoff_tick)).toEqual(expect.arrayContaining([0, 0, 577, 623]));
+    expect(archive.turns.map(turn => turn.recording.handoff_tick)).toEqual(expect.arrayContaining([0, 0, 577, 723]));
     expect(archive.turns.every(turn => isFingerprint(turn.recording))).toBe(true);
   });
 

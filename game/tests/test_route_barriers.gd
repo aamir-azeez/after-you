@@ -12,7 +12,12 @@ extends SceneTree
 ##  - every gate of every floor chapter's stages is a short, upright gate
 ##    straight across its crossing's mouth, no wider than the way it lands on,
 ##    and no gate meets another gate or a zone's rope, shut or open;
-##  - the sound map plays a rattle and a clunk named by what was pushed.
+##  - a step cut at a drop (water, a gap, the map's edge) teeters on first
+##    contact and not again while held for TEETER_REPEAT_TICKS, never while
+##    brushing along the edge, and never at a wall, a higher floor or a gate
+##    (which still bump);
+##  - the sound map plays a rattle and a clunk named by what was pushed, and a
+##    pop for a teeter.
 const Registry = preload("res://services/chapter_registry.gd")
 const Golden = preload("res://tests/golden_support.gd")
 const ReplayGolden = preload("res://tests/test_replay_golden.gd")
@@ -42,6 +47,7 @@ func _run() -> void:
 	_rules()
 	_shapes()
 	_refusals()
+	_teeters()
 	_sounds()
 	var played := 0
 	for key: String in Registry.keys():
@@ -238,6 +244,61 @@ func _refusals() -> void:
 		for event: Dictionary in finder.annotate(state, {"move_x": 0.0, "move_z": 0.0, "interact": tick == 85}).get("locked", []): clunks.append(tick)
 	_check(clunks == [80, 85], "A lock clunks on arrival and on a press, not every tick: %s" % [clunks])
 
+## The made-up stage's west island ends in water on its south side (z = -100)
+## and at the map's edge to the west (x = -300); a wall stands on it near the
+## middle and a higher floor (cliff, 64 cm) adjoins its south-east corner.
+func _teeters() -> void:
+	var view := _view()
+	view.islands = view.islands + [{"id": "cliff", "rect_cm": [-100, -200, 0, -100], "height_cm": 64}]
+	view["obstacles"] = [{"id": "wall", "rect_cm": [-180, -20, -160, 20], "surface_id": "west"}]
+	# Walked by hand the way the engine moves: south at x = -250 into the water,
+	# its centre stopping 12 cm short of the edge (z = -88), then held there.
+	var south: Array = [Vector2i(-250, -60), Vector2i(-250, -68), Vector2i(-250, -76), Vector2i(-250, -84)]
+	for tick in range(70): south.append(Vector2i(-250, -88))
+	var into_water := _events(south, func(_tick: int) -> Vector2: return Vector2(0, -1), view)
+	_check(into_water == [[4, RouteBarriers.EDGE, "west"], [4 + BarrierRefusals.TEETER_REPEAT_TICKS, RouteBarriers.EDGE, "west"]], "Walking into the water teeters on the tick it meets the edge, then only every %d ticks while held: %s" % [BarrierRefusals.TEETER_REPEAT_TICKS, into_water])
+	var west: Array = [Vector2i(-284, 50)]
+	for tick in range(4): west.append(Vector2i(-288, 50))
+	_check(_events(west, func(_tick: int) -> Vector2: return Vector2(-1, 0), view) == [[1, RouteBarriers.EDGE, "west"]], "Walking off the map's edge teeters")
+	# Along the water's edge with the stick slanted a little toward it: the
+	# engine slides the pip on, cutting under half of each step.
+	var along: Array = []
+	for tick in range(16): along.append(Vector2i(-280 + 8 * tick, -88))
+	_check(_events(along, func(_tick: int) -> Vector2: return Vector2(0.94, -0.34), view).is_empty(), "Brushing along the water's edge never teeters")
+	# A wall and a higher floor stop a step but are no drop.
+	var at_wall: Array = [Vector2i(-200, 0)]
+	for tick in range(4): at_wall.append(Vector2i(-192, 0))
+	_check(_events(at_wall, func(_tick: int) -> Vector2: return Vector2(1, 0), view).is_empty(), "Walking into a wall never teeters")
+	var at_cliff: Array = [Vector2i(-50, -80)]
+	for tick in range(4): at_cliff.append(Vector2i(-50, -88))
+	_check(_events(at_cliff, func(_tick: int) -> Vector2: return Vector2(0, -1), view).is_empty(), "Walking into a higher floor never teeters")
+	# The gate still bumps, never teeters.
+	var at_gate: Array = [Vector2i(-24, 0), Vector2i(-16, 0), Vector2i(-12, 0)]
+	_check(_events(at_gate, func(_tick: int) -> Vector2: return Vector2(1, 0), view) == [[2, RouteBarriers.OWNER, "plank"]], "Walking into a gate still bumps, not a teeter")
+	# A teeter never holds the pip: the next ticks it walks on along the edge
+	# or away (the engine moved it; the finder only reads), and nothing fires.
+	var walks_on: Array = [Vector2i(-250, -84), Vector2i(-250, -88), Vector2i(-242, -88), Vector2i(-234, -88), Vector2i(-234, -80), Vector2i(-234, -72)]
+	var sticks := [Vector2.ZERO, Vector2(0, -1), Vector2(1, 0), Vector2(1, 0), Vector2(0, 1), Vector2(0, 1)]
+	_check(_events(walks_on, func(tick: int) -> Vector2: return sticks[tick], view) == [[1, RouteBarriers.EDGE, "west"]], "Walking on along the edge and away after a teeter fires nothing more")
+	_check(not BarrierRefusals.drop_off(view, {}, _player(-50, -88, "west"), Vector2(0, -1), 12, 8) and BarrierRefusals.drop_off(view, {"plank": false}, _player(-12, 0, "west"), Vector2(1, 0), 12, 8), "A higher floor is no drop; a shut crossing is a gap")
+
+## [tick, kind, id] of each refusal p0 meets, walked through `at` with
+## `stick` on stage `view` (as _bumps).
+func _events(at: Array, stick: Callable, view: Dictionary) -> Array:
+	var finder := BarrierRefusals.new()
+	finder._definition = {"id": "made-up-level", "stages": [view.merged({"id": "made-up", "version": 1}, true)]}
+	finder._stage("made-up")
+	var start := {"stage_id": "made-up", "tick": 0, "active_slot": "p0", "bridges": {"plank": true}, "players": {"p0": _player(at[0].x, at[0].y, "west"), "p1": _player(450, 80, "east")}}
+	finder._remember(start)
+	var found: Array = []
+	for tick in range(1, at.size()):
+		var state := start.duplicate(true)
+		state.tick = tick
+		state.players.p0 = _player(at[tick].x, at[tick].y, "west")
+		var push: Vector2 = stick.call(tick)
+		for event: Dictionary in finder.annotate(state, {"move_x": push.x, "move_z": push.y, "interact": false}).get("refused", []): found.append([tick, event.kind, event.id])
+	return found
+
 ## The ticks p0 bumps the made-up stage's barriers, walked through `at` (its
 ## position each tick, cm, from tick 0) with `stick` (tick -> its stick).
 func _bumps(at: Array, stick: Callable) -> Array:
@@ -263,6 +324,10 @@ func _sounds() -> void:
 	var state := {"role": "a", "first_player_slot": "p0", "events": [], "players": {}, "refused": [{"slot": "p0", "kind": RouteBarriers.OWNER, "id": "blue-stair", "push": Vector2.RIGHT}], "locked": [{"slot": "p1", "kind": RouteBarriers.LOCK, "id": "shore-lever"}]}
 	var cues := ChapterSoundMap.cues(key, state, {})
 	_check(cues.cues == ["barrier_rattle", "control_locked"] and cues.sources == ["rattle:blue-stair:a|rattle", "locked:shore-lever:b|locked"], "A push and a lock play named cues: %s" % [cues])
+	state.refused = [{"slot": "p1", "kind": RouteBarriers.EDGE, "id": "shore", "push": Vector2.DOWN}]
+	state.locked = []
+	var teeter := ChapterSoundMap.cues(key, state, {})
+	_check(teeter.cues == ["spirit_teeter"] and teeter.sources == ["teeter:shore:b|teeter"] and SoundCues.CUES.has("spirit_teeter"), "A teeter plays its own cue from the pip: %s" % [teeter])
 
 # --- Fixtures ---------------------------------------------------------------------
 

@@ -7,7 +7,11 @@ import worker from "../src/index";
 import { routeV2 } from "../src/v2/routes";
 import { CHAPTERS, advertisedChapters } from "../src/v2/chapters";
 import { POLLEN_CLIENT, configJson, withConfig } from "./config";
+// Live's answers, with /v2/capabilities re-pinned for the solid hand controls' new chapter hashes (2026-11-20).
 import LIVE_ANSWERS from "./fixtures/live-answers-5601cb81.json";
+import { LEGACY_CHAPTERS } from "../src/v2/legacy-chapters";
+// The published chapters as older apps hold them, which room level 2 lists after the rows (legacy-chapters.ts).
+const current = <T extends { definition_hash: string }>(items: T[]): T[] => items.filter(item => !LEGACY_CHAPTERS.some(entry => entry.key.definition_hash === item.definition_hash));
 
 const ROWS = Object.entries(FLAG_VARS) as [FlagName, FlagVar][];
 const NAMES = ROWS.map(([, name]) => name);
@@ -167,6 +171,6 @@ describe("live answers", () => {
     const vars = LIVE_ENV();
     expect(await liveAnswers(vars)).toEqual(LIVE_ANSWERS);
     // Every published chapter is advertised, as live's flags had it; the unreleased ones are not.
-    expect(advertisedChapters(vars, 2).length).toBe(CHAPTERS.filter(row => row.flag === "").length);
+    expect(current(advertisedChapters(vars, 2)).length).toBe(CHAPTERS.filter(row => row.flag === "").length);
   });
 });

@@ -8,7 +8,6 @@ extends RefCounted
 const DATA := {
 	"theme": "garden",
 	"ground": {"shore": "grass", "loft": "timber"},
-	"pad": "stand_spot",
 	"lift": "rope_tower",
 	"edged": {"shore": ["back", "left", "front"], "loft": ["front", "right"]},
 	"props": {"*": [

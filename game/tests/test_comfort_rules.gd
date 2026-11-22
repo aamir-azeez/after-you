@@ -184,7 +184,7 @@ func _offer_and_overlap(rolling: Dictionary) -> void:
 	_check(not source.can_commit(),"Offering alone cannot accept an impossible partner route")
 	var offered: Dictionary = source.snapshot().props["round-ball"]
 	_check(offered.x == 240 and offered.z == 0,"Explicit handoff legally snaps to its exact current marker")
-	_move(source,[208,-80]); _move(source,[352,-80]); _move(source,[352,0]); _move(source,[608,0]); _move(source,[608,128]); _move(source,[896,128]); _move(source,[896,96]); _tap(source)
+	_move(source,[208,-80]); _move(source,[352,-80]); _move(source,[352,0]); _move(source,[608,0]); _move(source,[608,128]); _move(source,[896,128]); _tap(source)  # beside the solid home lever
 	_check(source.can_commit(),"Source can operate the route lever after offering and then save")
 	if not source.can_commit(): return
 	var first: Dictionary = source.export_recording()

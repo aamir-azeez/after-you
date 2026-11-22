@@ -193,9 +193,9 @@ const LAYOUT := {
 
 ## Cards outside the room panel (pause, review) add these rows when they apply.
 const REDO_ACTIONS := ["redo", "redo_status", "redo_retry"]
-## A turn ending's card (a turn that cannot be kept) adds them too, and solo
-## Play my turn again: the turn before it may be what has to change.
-const ENDING_REDO_ACTIONS := REDO_ACTIONS + ["redo_self"]
+## A turn stopped before it was kept (the pause card, a turn ending's card)
+## adds them too, and Redo last turn: the turn before it may be what has to change.
+const TURN_REDO_ACTIONS := REDO_ACTIONS + ["redo_self"]
 
 ## The wide panel's state for a room screen, "ready" or "waiting".
 static func panel_state(screen: String, fact: Callable) -> String:

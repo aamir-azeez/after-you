@@ -97,7 +97,7 @@ const SPOT_RADIUS_CM := 30
 ## A pip's body radius (runtime.gd PLAYER_RADIUS), for a solid spot
 ## (core/solid_footprint.gd): a pip walks round it and takes or puts there
 ## from within its reach_cm of the edge, the spot's radius no longer counting.
-const BODY_CM := 12
+const BODY_CM := Solid.BODY_CM
 ## Heights within this many cm count as level (stair ends, pip heights).
 const LEVEL_CM := 2
 const ACTS := ["take", "put", "give", "throw"]

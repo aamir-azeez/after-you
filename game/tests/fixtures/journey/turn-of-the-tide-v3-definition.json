@@ -326,7 +326,7 @@
 			"to_surface": "quay-catwalk"
 		}
 	],
-	"closing_ticks": 45,
+	"closing_ticks": 25,
 	"drops": [
 		{
 			"destination_surface": "e-beach",
@@ -563,6 +563,10 @@
 						-352
 					],
 					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
 					"surface_id": "m-quay",
 					"values": [
 						"low",
@@ -580,6 +584,10 @@
 						-448
 					],
 					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
 					"surface_id": "e-quay",
 					"values": [
 						"stowed",
@@ -803,6 +811,10 @@
 						96
 					],
 					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
 					"surface_id": "e-terrace-west"
 				},
 				{
@@ -813,6 +825,10 @@
 						-448
 					],
 					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
 					"surface_id": "e-quay"
 				},
 				{
@@ -823,6 +839,10 @@
 						-352
 					],
 					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
 					"surface_id": "e-quay"
 				},
 				{
@@ -953,6 +973,10 @@
 						-352
 					],
 					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
 					"surface_id": "m-quay",
 					"values": [
 						"low",
@@ -1003,6 +1027,10 @@
 						-64
 					],
 					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
 					"surface_id": "w-terrace",
 					"values": [
 						"shut",
@@ -1556,6 +1584,10 @@
 						80
 					],
 					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
 					"surface_id": "mole-terrace"
 				}
 			],
