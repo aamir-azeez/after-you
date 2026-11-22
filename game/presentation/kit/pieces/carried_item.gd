@@ -8,6 +8,10 @@ extends "res://presentation/kit/pieces/piece.gd"
 ##   "raft": a few lashed planks, for a float nobody carries.
 ##   "seed": the seed every world draws (presentation/seed_visual.gd), First
 ##       Steps' golden one.
+##   "winch_handle": an iron crank with a wooden grip
+##       (tools/blender/models/winch_handle.py). It lies on its side on the
+##       ground and in a pip's hands; fitted (resting at a solid spot: a winch,
+##       socket.gd winch()) it stands with its stub in the socket (fit()).
 ##
 ## The world shows each snapshot's item state (journey_world _present_items):
 ## over a spirit's head (carry: held the one way a seed or a lens is, its
@@ -26,7 +30,11 @@ extends "res://presentation/kit/pieces/piece.gd"
 const Floats = preload("res://presentation/kit/floats.gd")
 const Models = preload("res://presentation/kit/models.gd")
 const SpiritVisual = preload("res://presentation/spirit_visual.gd")
-const STYLES := ["parcel", "pipsport", "raft", "seed"]
+const STYLES := ["parcel", "pipsport", "raft", "seed", "winch_handle"]
+const HANDLE := "res://assets/models/winch_handle.glb"
+## The handle lying on its side: turned onto its grip's flat, its 5 cm iron
+## half over the floor, the middle of its length over its spot.
+const HANDLE_LIE := Transform3D(Basis(Vector3.BACK, PI / 2.0), Vector3(0.12, 0.026, 0))
 ## How long a pick-up or a set-down takes between the ground and the head (s).
 const HANDOFF := 0.2
 const NAVY := Color("2f3e66")
@@ -52,6 +60,8 @@ var _from := Vector3.ZERO
 var _handoff_age := HANDOFF
 ## Whether it has been drawn yet: the first showing never eases from the build spot.
 var _shown := false
+## A handle's pose (fit()): lying, or standing in its socket. Null for other styles.
+var _pose: Node3D = null
 ## Its flight's look (kit/throw_look.gd), given by the world on a stage with
 ## throws (island_world.gd throw_look); null where nothing is thrown.
 var throw_look: RefCounted = null
@@ -78,6 +88,12 @@ func _make(item_style: String, at: Vector3, parent: Node3D, options: Dictionary)
 		"seed":
 			# The seed's builder asks the world for its meshes: the terrain's parent.
 			SeedVisual.create(options.get("world", parent.get_parent()), SEED_RADIUS, SEED_GOLD, Vector3(0, SEED_RADIUS, 0), root)
+		"winch_handle":
+			_pose = Node3D.new()
+			_pose.name = "HandlePose"
+			_pose.transform = HANDLE_LIE
+			root.add_child(_pose)
+			Models.moving(HANDLE, "winch_handle", {"metal": Parts.IRON, "grip": Color("b08a62")}, _pose)
 		"raft":
 			# The log raft model at the float's 0.8 by 0.72 m, resting on its spot.
 			var raft := Models.moving("res://assets/models/raft.glb", "raft", {"log_a": Parts.TIMBER, "log_b": Parts.TIMBER_LIGHT, "lashing": Color("c9b48a"), "bearer": Parts.TIMBER_DARK}, root)
@@ -196,4 +212,10 @@ func advance(delta: float) -> void:
 	_draw()
 
 func moving_parts() -> Array[Node3D]:
+	# A handle's pose turns under its root, which the fold already keeps whole.
 	return [root]
+
+## Whether the item rests fitted in a socket (a solid spot): a handle then
+## stands with its stub in it, else lies on its side. Other styles keep one pose.
+func fit(fitted: bool) -> void:
+	if _pose != null: _pose.transform = Transform3D.IDENTITY if fitted else HANDLE_LIE

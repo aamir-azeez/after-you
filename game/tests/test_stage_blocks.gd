@@ -9,6 +9,7 @@ extends SceneTree
 const Blocks = preload("res://core/blocks/stage_blocks.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const PiecesWitness = preload("res://tests/pieces_witness.gd")
+const WellV2 = preload("res://core/journey/the_wishing_well_v2_catalog.gd")
 const Cooperative = preload("res://core/cooperative/stage_catalog.gd")
 const CooperativeSim = preload("res://core/cooperative/simulation.gd")
 const Journey = preload("res://core/journey/stage_catalog.gd")
@@ -57,10 +58,11 @@ func _prove(name: String, published: Dictionary, source: Dictionary, folder: Str
 
 ## Every block is used by some rewrite in every family that plays it. The new
 ## pieces' blocks (rules 16) have no published chapter yet: their witness
-## level (tests/pieces_witness.gd) uses each, and test_pieces plays it.
+## level (tests/pieces_witness.gd) uses each, and test_pieces plays it; the
+## swinging bucket is the-wishing-well@2's (tests/test_swing_piece.gd).
 func _check_coverage() -> void:
 	var used := {"cooperative": {}, "journey": {}}
-	for source: Dictionary in [_high_and_low(), _house(), _tide(), _long_way_home(), _long_way_home_v2(), _conservatory(), PiecesWitness.source()]:
+	for source: Dictionary in [_high_and_low(), _house(), _tide(), _long_way_home(), _long_way_home_v2(), _conservatory(), PiecesWitness.source(), WellV2.source()]:
 		for stage: Dictionary in source.stages:
 			for block: Dictionary in stage.get("blocks", []): used[Blocks.family_of(source)][str(block.block)] = true
 	for family: String in Blocks.FAMILY_BLOCKS:

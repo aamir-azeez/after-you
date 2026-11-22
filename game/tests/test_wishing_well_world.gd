@@ -85,15 +85,15 @@ func _stage(level: Dictionary, index: int, role: String) -> void:
 			observed.drop = true
 			observed.drop_sound = "well_plunk" in probe.heard.slice(heard_before)
 			_check(int(me.height) == 0 and str(me.surface_id) == "well-floor" and bool(state.hold_pads["bucket-rope"]), "The drop lands in the bucket and the rope is held")
-			_check(float(world._folds["long-stair"].target) == 1.0, "The long stair starts to unfold as the friend lands")
+			_check(float(world.well._folds["long-stair"].target) == 1.0, "The long stair starts to unfold as the friend lands")
 			_check(bucket.position.y < 0.01 and absf(world.actor_targets["p0"].y) < 0.01, "Under reduced motion the bucket and its rider settle on the floor at once")
 		if id == "go-on-ahead" and role == "b" and not bool(state.bridges["long-stair"]):
-			observed.folded = observed.get("folded", true) and float(world._folds["long-stair"].open) == 0.0
+			observed.folded = observed.get("folded", true) and float(world.well._folds["long-stair"].open) == 0.0
 		if id == "back-for-you" and role == "b" and str(me.surface_id) == "well-ladder":
 			observed.climb = true
 			var shown := 0
-			for rung: Node3D in world._ladder_rungs: shown += int(rung.visible)
-			observed.ladder_shown = shown == world._ladder_rungs.size()
+			for rung: Node3D in world.well._ladder_rungs: shown += int(rung.visible)
+			observed.ladder_shown = shown == world.well._ladder_rungs.size()
 			if not bool(state.hold_pads["still-holding"]): observed.bucket_up = bucket.position.y > World.BUCKET_RAISE - 0.01
 	_check(screen.sim.can_commit(), "Rendered real inputs remain committable: " + id + " " + role)
 	_check(Canonical.digest(screen.sim.level) == definition_hash, "Presentation never changes the authored chapter")
@@ -103,7 +103,7 @@ func _stage(level: Dictionary, index: int, role: String) -> void:
 		var pad: MeshInstance3D = world._physical_pads["bucket-rope"]
 		_check((pad.material_override as StandardMaterial3D).emission_enabled, "The bucket floor glows while the rope is held")
 	elif id == "go-on-ahead":
-		_check(bool(observed.get("folded", false)) and float(world._folds["long-stair"].open) == 1.0, "The stair stays folded until the friend lands, then lies open")
+		_check(bool(observed.get("folded", false)) and float(world.well._folds["long-stair"].open) == 1.0, "The stair stays folded until the friend lands, then lies open")
 	elif role == "b":
 		_check(observed.has("climb") and bool(observed.get("ladder_shown", false)), "The friend climbs a fully unrolled ladder")
 		_check(bool(observed.get("bucket_up", false)), "The empty bucket goes back up once the friend climbs out")
@@ -127,9 +127,9 @@ func _lowering(level: Dictionary) -> void:
 	sim.reset(level, "go-on-ahead", _fixture("the-wishing-well-initial-checkpoint"), {}, "a")
 	var start: Dictionary = sim.snapshot()
 	world.present(start, true)
-	var bucket: Node3D = world._bucket
-	var drum_start: float = world._windlass.rotation.x
-	var rope_start: float = world._bucket_rope.scale.y
+	var bucket: Node3D = world.well._bucket
+	var drum_start: float = world.well._windlass.rotation.x
+	var rope_start: float = world.well._bucket_rope.scale.y
 	var seen := {}
 	for frame: Dictionary in Simulation.expand_recording_inputs(_fixture("go-on-ahead-a")):
 		var state: Dictionary = sim.step(frame)
@@ -139,7 +139,7 @@ func _lowering(level: Dictionary) -> void:
 			seen.landing_y = bucket.position.y
 			seen.rider_y = world.actor_targets["p0"].y
 			seen.sim_y = float(state.players.p0.height)
-			seen.stair = float(world._folds["long-stair"].pivot.rotation.x)
+			seen.stair = float(world.well._folds["long-stair"].pivot.rotation.x)
 			seen.ticks = 0
 		elif seen.has("ticks"):
 			seen.ticks += 1
@@ -148,9 +148,9 @@ func _lowering(level: Dictionary) -> void:
 	seen.rest_y = bucket.position.y
 	seen.rest_rider = world.actor_targets["p0"].y
 	seen.rest_sim = float(sim.snapshot().players.p0.height)
-	seen.drum = float(world._windlass.rotation.x)
-	seen.rope = float(world._bucket_rope.scale.y)
-	seen.stair_open = absf(float(world._folds["long-stair"].pivot.rotation.x)) < 0.001
+	seen.drum = float(world.well._windlass.rotation.x)
+	seen.rope = float(world.well._bucket_rope.scale.y)
+	seen.stair_open = absf(float(world.well._folds["long-stair"].pivot.rotation.x)) < 0.001
 	_check(float(seen.get("landing_y", 0.0)) > 0.8 and float(seen.get("rider_y", 0.0)) > 0.8 and float(seen.get("sim_y", -1.0)) == 0.0, "The friend lands in the bucket near the top while the simulation stands them on the floor")
 	_check(float(seen.get("mid_y", 0.0)) > 0.05 and float(seen.get("mid_y", 1.0)) < float(seen.get("landing_y", 0.0)), "The bucket is part way down a quarter second later")
 	_check(float(seen.get("stair", 0.0)) > 0.5, "The long stair is still folded on the landing frame")
@@ -161,7 +161,7 @@ func _lowering(level: Dictionary) -> void:
 	_check(motions.has(["fold", "long-stair", 1]) and motions.has(["fold", "long-stair", 0]), "The long stair reports its unfolding")
 	_check(world._mechanism_motion.is_empty(), "Nothing still reels once everything has settled")
 	world.present(start, true)
-	_check(absf(bucket.position.y - World.BUCKET_RAISE) < 0.001 and absf(world._windlass.rotation.x - drum_start) < 0.001, "A retry shows the empty bucket back up at once")
+	_check(absf(bucket.position.y - World.BUCKET_RAISE) < 0.001 and absf(world.well._windlass.rotation.x - drum_start) < 0.001, "A retry shows the empty bucket back up at once")
 	world.free()
 	await process_frame
 

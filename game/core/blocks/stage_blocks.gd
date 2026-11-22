@@ -68,6 +68,13 @@ extends RefCounted
 ##                            turns while "when" holds
 ##   falls_path            J  "routes" behind a waterfall, dry while "lever"
 ##                            (its water gate) is on
+##   swinging_bucket       J  swing "id" hung from a crane at "pivot" [x, z]
+##                            sweeps "lane" {"surface", "rect"}
+##                            on a steady beat (core/physical/swings.gd):
+##                            "period", "sweep", "warn", "offset" ticks
+##                            (90, 30, 30, 0), "outcome" ("drowned"). "brake"
+##                            (a pad, inline or by id, or any when) parks it
+##                            the next time it swings back, while it holds
 ## An item term ("items", carried items on train/new-pieces-carry) is
 ## {"item_id", "spot_id"} with the pan's own id as its spot.
 
@@ -90,9 +97,13 @@ const NEEDS := {
 	"platform": ["id", "stops"], "weight_lift": ["id", "low", "high", "pads"],
 	"rope_raft": ["id", "selector", "stops"], "sinking_stones": ["stones"], "rope_ladder": ["stairs"],
 	"wheel_ride": ["stairs", "when"], "falls_path": ["lever", "routes"],
+	"swinging_bucket": ["id", "pivot", "lane"],
 }
+## A swinging bucket's beat when the block gives none (ticks): a 3 s beat,
+## 1 s across the lane after 1 s of warning.
+const SWING_BEAT := {"period": 90, "sweep": 30, "warn": 30, "offset": 0}
 ## The new pieces' blocks (rules 16).
-const PIECE_BLOCKS := ["fog_lantern", "crank_bridge", "weight_pan", "platform", "weight_lift", "rope_raft", "sinking_stones", "rope_ladder", "wheel_ride", "falls_path"]
+const PIECE_BLOCKS := ["fog_lantern", "crank_bridge", "weight_pan", "platform", "weight_lift", "rope_raft", "sinking_stones", "rope_ladder", "wheel_ride", "falls_path", "swinging_bucket"]
 ## Blocks each family's rules can play.
 const FAMILY_BLOCKS := {
 	COOPERATIVE: ["pad", "lever", "open_route", "hold_door", "relay_lever", "weight_pad", "one_way_drop", "ring_bell", "raw"],
@@ -144,6 +155,11 @@ static func problems(source: Dictionary) -> Array[String]:
 			if str(gate.route_id) not in routes: found.append("%s: gate on a route the level lacks: %s" % [stage.id, gate.route_id])
 			for id: String in _wired(gate, family):
 				if id not in placed: found.append("%s: %s wires %s, which the stage does not place" % [stage.id, gate.route_id, id])
+		for swing: Dictionary in stage.get("swings", []):
+			var ids: Array = []
+			_terms(swing.get("brake", {}), ids)
+			for id: String in ids:
+				if id not in placed: found.append("%s: swing %s brakes on %s, which the stage does not place" % [stage.id, swing.id, id])
 	for drop: Dictionary in level.get("drops", []):
 		var lever := str(drop.get("requires_lever", ""))
 		if not lever.is_empty() and not level.stages.any(func(stage: Dictionary) -> bool: return stage.get("levers", []).any(func(item: Dictionary) -> bool: return item.id == lever)):
@@ -206,6 +222,10 @@ static func _piece_missing(found: Array[String], kind: String, block: Dictionary
 			if block.has("items") and not block.items is Array: found.append("block weight_lift's items must be a list")
 		"rope_raft":
 			if not block.stops is Dictionary or block.stops.size() < 2: found.append("block rope_raft's stops must map two values or more to routes")
+		"swinging_bucket":
+			_need(found, kind, "lane", block.lane, ["surface", "rect"])
+			if not block.pivot is Array: found.append("block swinging_bucket's pivot must be a list")
+			if block.get("brake") is Dictionary and block.brake.has("at"): _need(found, kind, "brake", block.brake, ["id", "at", "surface", "owner"])
 		"sinking_stones":
 			if not block.stones is Array: found.append("block sinking_stones's stones must be a list")
 			if block.has("when") and not block.when is Dictionary: found.append("block sinking_stones's when must be a when")
@@ -321,6 +341,16 @@ static func _emit(level: Dictionary, stage: Dictionary, block: Dictionary, famil
 						stair["one_way"] = "up"
 						stair["hands"] = true
 				_add(level, stage, "gates", {"route_id": str(id), "when": block.when.duplicate(true)} if block.has("when") and not block.when.is_empty() else {"route_id": str(id)})
+		"swinging_bucket":
+			var swing := {"id": str(block.id), "pivot_cm": block.pivot.duplicate(),
+				"lane": {"surface_id": str(block.lane.surface), "rect_cm": block.lane.rect.duplicate()}}
+			for field: String in SWING_BEAT: swing[field + "_ticks"] = int(block.get(field, SWING_BEAT[field]))
+			swing["outcome"] = str(block.get("outcome", "drowned"))
+			# A brake given as a pad (by id, or inline with "at") is that pad held; any other when as written.
+			var brake: Variant = block.get("brake")
+			if brake is String or (brake is Dictionary and brake.has("at")): swing["brake"] = {"pad_id": _place(level, stage, brake, "pressure_pads", "pad", family)}
+			elif brake is Dictionary and not brake.is_empty(): swing["brake"] = brake.duplicate(true)
+			_add(level, stage, "swings", swing)
 		"falls_path":
 			var water_gate := _place(level, stage, block.lever, "levers", "lever", family)
 			for route: String in block.routes: _add(level, stage, "gates", {"route_id": route, "when": {"lever_id": water_gate}})

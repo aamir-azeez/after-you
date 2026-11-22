@@ -19,6 +19,9 @@ const Pulley = preload("res://presentation/kit/pieces/pulley.gd")
 const BridgeKit = preload("res://presentation/kit/pieces/bridge.gd")
 const BridgeRoll = preload("res://presentation/kit/pieces/bridge_roll.gd")
 const Raft = preload("res://presentation/kit/pieces/raft.gd")
+const Swing = preload("res://presentation/kit/pieces/swing.gd")
+const CarriedItem = preload("res://presentation/kit/pieces/carried_item.gd")
+const Socket = preload("res://presentation/kit/pieces/socket.gd")
 const Motion = preload("res://presentation/kit/motion.gd")
 ## Frames (at 60 a second) that outlast any arrival's overshoot.
 const SETTLE_FRAMES := int(Motion.ARRIVAL_SECONDS * 60.0) + 2
@@ -49,6 +52,7 @@ func _run() -> void:
 	_check_goal_light(holder)
 	_check_goal_pads(holder)
 	_check_arrivals(holder)
+	_check_swings(holder)
 	_check_roll(holder)
 	holder.free()
 	print("PIECE STYLES: %d checks, %d failures" % [checks, failures])
@@ -422,3 +426,36 @@ func _pose(node: Node3D) -> Array:
 		var t: Transform3D = (mesh as MeshInstance3D).global_transform
 		for v: Vector3 in [t.basis.x, t.basis.y, t.basis.z, t.origin]: pose.append(Vector3i((v * 10000.0).round()))
 	return pose
+
+## Every swing style stands on its pivot with its jib turned to the lane, hangs
+## back off the lane between beats (and while held), sweeps across and back
+## within its beat, follows the snapshot's phase without running ahead of it,
+## and snaps on an immediate call. The winch spot and the winch handle build.
+func _check_swings(holder: Node3D) -> void:
+	var swing := {"id": "crane", "pivot_cm": [200, 40], "lane": {"surface_id": "plank", "rect_cm": [150, 188, 250, 252]},
+		"period_ticks": 90, "sweep_ticks": 30, "warn_ticks": 30, "offset_ticks": 0, "outcome": "drowned"}
+	for style: String in Styles.SLOTS.swing:
+		var piece: RefCounted = Swing.build(style, swing, 0.0, 0.0, holder)
+		_check(piece.style == style and piece.root.get_parent() == holder and piece.root.position.is_equal_approx(Vector3(2.0, 0, 0.4)) and is_zero_approx(piece.root.rotation.y), "Swing %s stands on its pivot, its jib toward the lane" % style)
+		_check(piece.moving_parts().has(piece.hanger) and piece.moving_parts().has(piece.shadow) and _meshes(piece.root) > 0, "Swing %s keeps its bucket and shadow moving" % style)
+		var rest: Vector2 = piece.pose(0.0)
+		_check(rest.x < 0.0 and is_zero_approx(rest.y), "Swing %s hangs back, its shadow off the lane, between beats" % style)
+		_check(piece.pose(59.0).x < rest.x and piece.pose(59.0).y > 0.9, "Swing %s is drawn further back, its shadow grown, at the end of the warning" % style)
+		_check(piece.pose(75.0).x > 0.5 and is_equal_approx(piece.pose(89.999).x, rest.x), "Swing %s sweeps out across the lane and back to hang back" % style)
+		piece.set_beat({"phase": 10, "held": false}, true)
+		for frame in range(60): piece.advance(1.0 / 60.0)
+		_check(is_equal_approx(piece._shown, 10.0 + Swing.LEAD) and not piece.moving(), "Swing %s runs on at most LEAD ticks past the last snapshot" % style)
+		piece.set_beat({"phase": 12, "held": false})
+		_check(is_equal_approx(piece._shown, 11.5), "A nearby snapshot does not snap it")
+		piece.set_beat({"phase": 40, "held": true})
+		_check(is_equal_approx(piece._shown, 40.0), "A snapshot far off snaps it")
+		piece.set_beat({"phase": 5, "held": true}, true)
+		for frame in range(30): piece.advance(1.0 / 60.0)
+		_check(is_equal_approx(piece._shown, 5.0) and not piece.moving(), "Held, it stays parked")
+	_check(Swing.build("teapot", swing, 0.0, 0.0, holder).style == Swing.STYLES[0], "An unknown swing style builds the first")
+	var spot := Node3D.new()
+	holder.add_child(spot)
+	Socket.item_spot("winch", spot, {"radius_cm": 30})
+	_check(_meshes(spot) > 0 and is_equal_approx(Socket.rest_height("winch"), Socket.WINCH_AXLE), "The winch spot builds, its handle resting at the socket")
+	var handle: RefCounted = CarriedItem.build("winch_handle", AT, holder, {"id": "handle"})
+	_check(handle.style == "winch_handle" and _meshes(handle.root) > 0 and handle.radius > 0.1, "The winch handle builds")

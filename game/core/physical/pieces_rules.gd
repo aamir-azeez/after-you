@@ -24,11 +24,14 @@ extends RefCounted
 ## - One way stairs, a stair with "one_way": "up" (the pull-up rope ladder
 ##   and the wheel ride; core/cooperative/navigation.gd): a pip may climb one
 ##   but never go down it.
-## The carried pipsport (train/new-pieces-carry) adds to these same rules.
+## The carried pipsport (train/new-pieces-carry) adds to these same rules, and
+## so does the swinging bucket (core/physical/swings.gd), the one piece with a
+## state of its own: a beat counter kept in the world, never in a checkpoint.
 ## Shared by the engine, the catalogs, the blocks and the level tools; it
 ## preloads only open_turns.gd, so a catalog may preload it.
 const OpenTurns = preload("res://core/physical/open_turns.gd")
 const OpenControls = preload("res://core/physical/open_controls.gd")
+const Swings = preload("res://core/physical/swings.gd")
 const RULES := [OpenControls.PIECES_RULES_VERSION]
 ## How fast a deck travels, cm a second: a lift (its stops share a rectangle)
 ## and a raft. The world draws its decks at the same pace (kit/new_pieces.gd).
@@ -59,6 +62,7 @@ static func uses(level: Dictionary) -> Array:
 	var found: Array = []
 	for stair: Dictionary in level.get("stairs", []):
 		if stair.has("one_way"): found.append("one way stair %s" % stair.id)
+	found.append_array(Swings.uses(level))
 	for stage: Dictionary in level.get("stages", []):
 		for key: String in ["platforms", "sinking"]:
 			if not stage.get(key, []).is_empty(): found.append("%s on %s" % [key, stage.id])
@@ -101,6 +105,7 @@ static func problems(level: Dictionary) -> Array:
 				seen[id] = true
 		for stone: Variant in stage.get("sinking", []):
 			if not bridges.has(str(stone)): found.append("%s: sinking stone %s is not a bridge" % [stage.id, stone])
+	found.append_array(Swings.problems(level))
 	return found
 
 ## Ticks a deck takes from `from` to `to` ([x, z, height] cm, a stop's

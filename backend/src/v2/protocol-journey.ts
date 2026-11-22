@@ -28,6 +28,8 @@ import fogMarshDefinition from "./fog-marsh.json";
 import fogMarshInitial from "./fog-marsh-initial.json";
 import relayIslesV3Definition from "./relay-isles-v3.json";
 import relayIslesV3Initial from "./relay-isles-v3-initial.json";
+import wellV2Definition from "./the-wishing-well-v2.json";
+import wellV2Initial from "./the-wishing-well-v2-initial.json";
 
 export const CONSERVATORY_HASH = "5e4741419609acd603db2066a0e799c8ab92182ca08f9df3aa54d410760551a3";
 export const LONG_WAY_HOME_HASH = "79ea6a353b52459acc508c2a74baea488a4afe0c62079a07f7fb479e57193932";
@@ -40,6 +42,7 @@ export const CONSERVATORY_V2_HASH = "f72e035f86687403b8c5057266db33b4fa1211d2100
 export const FIRST_STEPS_V2_HASH = "0199c2dd8cd1caf0a3ed2f321cb9ca60b5aa47bda064f7287ee6f0f8a35fecfe";
 export const THE_FALLS_HASH = "04bb186a63543d697f77aa42eb0d831e3e6e0d1a3754247531dad45769753ac4";
 export const RELAY_ISLES_V3_HASH = "3dada19b365b4035a50e19a55b1d5e01dc8a3d1391987efe83755ba5bce42fce";
+export const WISHING_WELL_V2_HASH = "f100cedde0f65539106040ebf52a2c498815c53a6828bb56a1ff57ace73063ac";
 export const FOG_MARSH_HASH = "e7ddc8b6d35402c9e788e5a77ac8c1c4206bebea36130573b5e9d1179b892220";
 type Surface = { id: string; rect_cm: number[]; height_cm?: number; owner_slot?: string; axis?: string; from_height_cm?: number; to_height_cm?: number };
 export type Marker = { id: string; position_cm: number[]; surface_id: string; height_cm: number; radius_cm: number; owner_slot?: string };
@@ -228,3 +231,7 @@ export const fogMarsh = journeyAdapter(fogMarshDefinition, fogMarshInitial, FOG_
 /** Open turns with the new pieces (16): the Relay Isles on the journey rules, the seed a carried item on a solid
  * pedestal, placed in a solid nest and thrown over the garden's rope bridge. relay-isles@2 keeps its own adapter. Unreleased. */
 export const relayIslesV3 = journeyAdapter(relayIslesV3Definition as Definition, relayIslesV3Initial, RELAY_ISLES_V3_HASH);
+/** Open turns with the new pieces (20): the Wishing Well on the journey rules, shorter walks, the old crane's swinging bucket
+ * over the garden plank with its brake board, and the winch handle thrown up from the well. the-wishing-well@1 keeps its
+ * cooperative adapter. Unreleased. */
+export const wishingWellV2 = journeyAdapter(wellV2Definition as Definition, wellV2Initial, WISHING_WELL_V2_HASH);

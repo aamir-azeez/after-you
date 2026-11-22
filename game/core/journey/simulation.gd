@@ -7,6 +7,7 @@ const Seven = preload("res://core/journey/seven_mechanisms.gd")
 const BeamField = preload("res://core/beam_field.gd")
 const PiecesRules = preload("res://core/physical/pieces_rules.gd")
 const CarriedItems = preload("res://core/physical/carried_items.gd")
+const Swings = preload("res://core/physical/swings.gd")
 const CURRENT_SIMULATION_VERSION := 7
 const COMFORT_VERSION := 8
 ## Comfort rules under a new number, as in the cooperative ruleset. Only a
@@ -76,6 +77,12 @@ var _stops: Dictionary = {}
 var _decks: Dictionary = {}
 var _sinking: Array = []
 var _surfaces_before: Dictionary = {}
+## The pieces rules' swings (core/physical/swings.gd), set at reset: the
+## stage's swings in order, each one's beat counter by id (world state), and
+## whether its brake held this tick (for the screen).
+var _swing_plan: Array = []
+var _swing_counts: Dictionary = {}
+var _swing_braked: Dictionary = {}
 
 func _init() -> void:
 	simulation_version = CURRENT_SIMULATION_VERSION
@@ -149,7 +156,12 @@ func _reset_mechanics() -> void:
 	_decks = {}
 	_sinking = []
 	_surfaces_before = {}
+	_swing_plan = []
+	_swing_counts = {}
+	_swing_braked = {}
 	if _pieces_rules():
+		_swing_plan = stage.get("swings", [])
+		for swing: Dictionary in _swing_plan: _swing_counts[str(swing.id)] = 0
 		var bridges: Dictionary = {}
 		for bridge: Dictionary in level.get("bridges", []): bridges[bridge.id] = bridge
 		for platform: Dictionary in stage.get("platforms", []):
@@ -308,6 +320,7 @@ func _close_slowly(was: Dictionary) -> void:
 ## stays up there; walking off it, or onto it, it falls where it stood, and
 ## the turn ends the same way.
 func _check_hazards() -> void:
+	if not _swing_plan.is_empty(): _advance_swings()
 	if not _tide_rules() or not _drowned.is_empty(): return
 	for slot: String in ["p0", "p1"]:
 		var surface := str(_players[slot].surface_id)
@@ -338,6 +351,34 @@ func _check_hazards() -> void:
 		finished = true
 		_events.append("sank:" + stone)
 		_events.append("drowned:" + slot)
+		return
+	# The pieces rules: a swing across its lane knocks off a pip standing in it, p0 first.
+	for swing: Dictionary in _swing_plan:
+		if not Swings.sweeping(swing, int(_swing_counts[str(swing.id)])): continue
+		for slot: String in ["p0", "p1"]:
+			if not Swings.in_lane(swing, _players[slot]): continue
+			_drowned = {"slot": slot, "route": str(swing.lane.surface_id), "tick": tick, "swing": str(swing.id)}
+			finished = true
+			_events.append("knocked:" + str(swing.id))
+			_events.append("drowned:" + slot)
+			return
+
+## The pieces rules: each swing's beat moves on a tick, unless its brake holds
+## while it hangs back (core/physical/swings.gd). Says when one starts to creak
+## and when it swings.
+func _advance_swings() -> void:
+	for swing: Dictionary in _swing_plan:
+		var id := str(swing.id)
+		var braked: bool = swing.has("brake") and Seven.predicate(swing.brake, stage, _players, _mechanisms, _optics.signals, _open_controls())
+		var count := int(_swing_counts[id])
+		var next := Swings.next_count(swing, count, braked)
+		_swing_counts[id] = next
+		_swing_braked[id] = braked
+		if next == count: continue
+		var at := Swings.phase(swing, next)
+		var sweep_from := int(swing.period_ticks) - int(swing.sweep_ticks)
+		if at == sweep_from: _events.append("swing:" + id)
+		elif int(swing.warn_ticks) > 0 and at == sweep_from - int(swing.warn_ticks): _events.append("swing_creak:" + id)
 
 ## Tide rules: whether crossing `id` is a stepping stone shut and left standing
 ## too tall by its water.
@@ -532,6 +573,11 @@ func snapshot() -> Dictionary:
 			for id: String in _closing: closing[id] = int(_closing[id]) - tick
 			value.route_progress["closing"]=closing
 			value["drowned"]=_drowned.duplicate()
+		# The pieces rules: where each swing is in its beat.
+		if not _swing_plan.is_empty():
+			var swings: Dictionary = {}
+			for swing: Dictionary in _swing_plan: swings[str(swing.id)] = Swings.view(swing, int(_swing_counts[str(swing.id)]), bool(_swing_braked.get(str(swing.id), false)))
+			value["swings"]=swings
 		# The pieces rules: what each pip carries on its back.
 		if _carrying:
 			for slot: String in value.players: value.players[slot]["carrying"]=CarriedItems.held_by(_mechanisms.items,slot)
@@ -549,6 +595,8 @@ func _state_body() -> Dictionary:
 	# The pieces rules: a stage with throws hashes what is in flight, and one
 	# with a deck on its way hashes the deck.
 	if not _throws.is_empty(): value["flights"]=_flights.duplicate(true)
+	# The pieces rules: a stage with swings hashes each beat counter.
+	if not _swing_plan.is_empty(): value["swings"]=_swing_counts.duplicate()
 	if not _decks.is_empty(): value["decks"]=_decks.duplicate(true)
 	return value
 
@@ -567,6 +615,8 @@ func _save_extra(world: Dictionary) -> void:
 	if _tide_rules(): world["high"] = _high.duplicate(true)
 	world["legs_taken"] = _legs_taken.duplicate()
 	world["flights"] = _flights.duplicate(true)
+	# Only a stage with swings, so every other world hashes as before.
+	if not _swing_plan.is_empty(): world["swings"] = _swing_counts.duplicate()
 	if not _decks.is_empty(): world["decks"] = _decks.duplicate(true)
 
 func _load_extra(world: Dictionary) -> void:
@@ -578,6 +628,7 @@ func _load_extra(world: Dictionary) -> void:
 	_high = world.get("high", {}).duplicate(true)
 	_legs_taken = world.legs_taken.duplicate()
 	_flights = world.flights.duplicate(true)
+	for id: Variant in world.get("swings", {}): _swing_counts[str(id)] = int(world.swings[id])
 	_decks = world.get("decks", {}).duplicate(true)
 
 func _sorted_latches() -> Array:

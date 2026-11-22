@@ -938,16 +938,6 @@ func _build_lamplight() -> void:
 func present_history(checkpoint: Dictionary) -> void:
 	_show_first_stage()
 	super.present_history(checkpoint)
-	# The kept-crossing marks are drawn at ground level by the shared adapter;
-	# raise each pair to its crossing's height.
-	if is_instance_valid(_remembered):
-		var index := 0
-		for route: Dictionary in chapter_definition.get("bridges", []):
-			if route.id not in _latched_bridge_ids: continue
-			for offset in range(2):
-				if index + offset < _remembered.get_child_count():
-					(_remembered.get_child(index + offset) as Node3D).position.y += float(route.get("height_cm", 0)) / 100.0
-			index += 2
 	_history_tide = str(checkpoint.get("mechanisms", {}).get("controls", {}).get("tide", ""))
 
 func _present_water(state: Dictionary, immediate: bool) -> void:
