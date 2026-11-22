@@ -13,6 +13,8 @@ const ICONS := {
 	"record": preload("res://assets/ui/record.svg"),
 	"fast_forward": preload("res://assets/ui/fast-forward.svg"),
 }
+## The gap between a button's icon (or pair tag) and its label.
+const ICON_GAP := 10
 const DEFINITIONS := {
 	"record": {"label": "Record", "icon": "record", "primary": true, "hint": PlayerCopy.ACTION_BUTTONS_720AD17C8CC7},
 	"resume": {"label": "Resume", "icon": "play", "primary": true, "hint": PlayerCopy.ACTION_BUTTONS_B35F6908BD12},
@@ -57,7 +59,7 @@ static func apply(button: Button, action_id: String) -> void:
 	button.icon = ICONS[definition.icon]
 	button.tooltip_text = definition.hint
 	button.set_meta("action_id", action_id)
-	button.add_theme_constant_override("h_separation", 10)
+	button.add_theme_constant_override("h_separation", ICON_GAP)
 	button.add_theme_constant_override("icon_max_width", 22)
 	if action_id in ["back", "leave_unsaved"]:
 		ControlTheme.danger(button, ICONS.back)

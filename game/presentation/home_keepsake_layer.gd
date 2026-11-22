@@ -468,6 +468,11 @@ func _sync_spins() -> void:
 	_spins.clear()
 	for id: String in _kept: _spins.append_array(_kept[id].spins)
 	if not _play.is_empty(): _spins.append_array(_play.get("spins", []))
+	# A keepsake playing, or holding a part turning, gives its moving parts
+	# live shadows; the rest are baked where they stand (kit/contact_shadows.gd).
+	for id: String in _set.get("props", {}):
+		var holder := prop_node(id)
+		if holder != null: ContactShadows.set_playing(holder, _play.get("id") == id or not (_kept.get(id, {}).get("spins", []) as Array).is_empty())
 
 ## Whether a keepsake holds what its last tap kept (a flower grown, a lamp on).
 func holding(id: String) -> bool:

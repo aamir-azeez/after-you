@@ -187,7 +187,7 @@ func recorded_seed() -> void:
 	var receiver: String = world.actors.keys()[1]
 	caught_state.seed.owner=receiver
 	world.present(caught_state)
-	check(world.seed.position.is_equal_approx(world.actors[receiver].position + world.actors[receiver].carry_anchor_position()) and not world._seed_trail._mesh.visible,"Catch snaps to the hand and clears exposure without interpolation delay")
+	check(world.seed.position.is_equal_approx(world.actors[receiver].position + world.actors[receiver].carry_anchor_position()) and not world._seed_throw.trail._mesh.visible,"Catch snaps to the hand and clears exposure without interpolation delay")
 	world.present(sim.snapshot(),true)
 	var flight := false
 	var caught := false
@@ -197,10 +197,10 @@ func recorded_seed() -> void:
 		world.present(state)
 		world._process(1.0/30.0)
 		check(before == JSON.stringify(state),"Seed effect never modifies replay state")
-		if state.seed.status == "flying": flight = flight or world._seed_trail._mesh.visible
+		if state.seed.status == "flying": flight = flight or world._seed_throw.trail._mesh.visible
 		if state.seed.status == "held":
 			caught = true
-			check(not world._seed_trail._mesh.visible,"Real catch clears seed exposure")
+			check(not world._seed_throw.trail._mesh.visible,"Real catch clears seed exposure")
 	check(flight and caught and sim.snapshot().complete,"Retained seed recording flies, catches and completes unchanged")
 	world.load_level(definition)
 	check(world._motion_trails.is_empty(),"Rebuilding a seed world discards prior trails")

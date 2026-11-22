@@ -15,7 +15,8 @@ const ChapterIndex = preload("res://content/chapters/index.gd")
 const GraphicsPolicy = preload("res://services/graphics_policy.gd")
 const SpaceBackdrop = preload("res://presentation/kit/space_backdrop.gd")
 const ObjectMotionTrail = preload("res://presentation/object_motion_trail.gd")
-const SeedMotionTrail = preload("res://presentation/seed_motion_trail.gd")
+## The look of anything thrown: the seed here, carried items on the journey engine.
+const ThrowLook = preload("res://presentation/kit/throw_look.gd")
 const SeedVisual = preload("res://presentation/seed_visual.gd")
 const Primitives = preload("res://presentation/kit/primitives.gd")
 ## The spirits' ownership marks (kit/owner_mark.gd), whose colours are the worlds' spirit colours.
@@ -60,7 +61,9 @@ var _motion_quality := "balanced"
 ## The kit/look.gd preset the world shows, lit again when the quality changes.
 var _look := "day"
 var _motion_trails: Array[Node3D] = []
-var _seed_trail: Node3D
+## Every thrown thing's look (throw_look), the seed's among them.
+var _throw_looks: Array[RefCounted] = []
+var _seed_throw: RefCounted
 
 var terrain: Node3D
 var actors: Dictionary = {}
@@ -68,18 +71,6 @@ var actor_targets: Dictionary = {}
 var seed: MeshInstance3D
 var _seed_holder := ""
 var _seed_status := ""
-var _seed_snapshot_position := Vector3.ZERO
-var _seed_previous_position := Vector3.ZERO
-var _seed_snapshot_age := 0.0
-const SEED_SNAPSHOT_INTERVAL := 1.0 / 30.0
-var _seed_launch_offset := Vector3.ZERO
-var _seed_launch_age := 1.0
-## The thrown seed tumbles forward around a tilted axis while it flies. The angle
-## comes from the distance flown since the throw, so a replay poses it the same.
-const SEED_SPIN_PER_METRE := 2.6
-const SEED_SPIN_TILT := 0.42
-var _seed_launch_point := Vector3.ZERO
-var _seed_spin_axis := Vector3.ZERO
 var bridge_parts: Array[MeshInstance3D] = []
 var plate: MeshInstance3D
 var lift: Node3D
@@ -911,52 +902,51 @@ func present(snapshot: Dictionary, immediate: bool=false) -> void:
 	_present_garden(bool(snapshot.get("gate_open", false)) and bool(snapshot.get("lift_ready", false)), bool(snapshot.complete), immediate)
 
 func _reset_seed_pose() -> void:
-	if is_instance_valid(_seed_trail): _seed_trail.reset()
+	if _seed_throw != null: _seed_throw.reset()
 	_seed_holder=""
 	_seed_status=""
-	_seed_launch_offset=Vector3.ZERO
-	_seed_launch_age=1.0
-	_seed_snapshot_age=0.0
-	_seed_spin_axis=Vector3.ZERO
 
 func _clear_object_trails() -> void:
 	for trail: Node3D in _motion_trails:
 		if is_instance_valid(trail): trail.reset()
 	_motion_trails.clear()
-	_seed_trail = null
+	_throw_looks.clear()
+	_seed_throw = null
+
+## The look (kit/throw_look.gd) `body` flies with when thrown, its middle at
+## `middle` and blurred as wide as `radius`; its blur joins the world's others.
+func throw_look(body: Node3D, radius: float, middle: Vector3 = Vector3.ZERO) -> RefCounted:
+	var look: RefCounted = ThrowLook.new(self, body, radius, middle)
+	terrain.add_child(look.trail)
+	look.trail.set_quality(_motion_quality)
+	_motion_trails.append(look.trail)
+	_throw_looks.append(look)
+	return look
+
+## A look whose body is gone (a stage rebuilt without it), and its blur.
+func drop_throw_look(look: RefCounted) -> void:
+	_throw_looks.erase(look)
+	_motion_trails.erase(look.trail)
+	if is_instance_valid(look.trail): look.trail.queue_free()
 
 func _present_seed(value: Dictionary, immediate: bool) -> void:
-	if not is_instance_valid(_seed_trail):
-		_seed_trail = SeedMotionTrail.new()
-		_seed_trail.configure(self, seed, 0.13)
-		terrain.add_child(_seed_trail)
-		_seed_trail.set_quality(_motion_quality)
-		_motion_trails.append(_seed_trail)
+	if _seed_throw == null: _seed_throw = throw_look(seed, 0.13)
 	var status := str(value.get("status",""))
 	var holder := str(value.get("owner","")) if status=="held" else status.trim_prefix("held_") if status.begins_with("held_") else ""
 	var target := Vector3(float(value.x)/100.0,float(value.get("height",0))/100.0+0.16,float(value.z)/100.0)
+	var thrown_from: Variant = null
 	if immediate:
 		_reset_seed_pose()
 	elif status=="flying" and _seed_status!="flying" and actors.has(_seed_holder):
 		actors[_seed_holder].play_throw()
 		# Ease only the visual handoff from the higher head to the existing arc.
 		# The recorded trajectory and every catch window remain in simulation.
-		_seed_launch_offset=seed.position-target
-		_seed_launch_age=0.0
-	if status=="flying" and (immediate or _seed_status!="flying"):
-		_seed_launch_point=target
-		_seed_spin_axis=Vector3.ZERO
-	if immediate or status != "flying" or _seed_status != "flying":
-		_seed_previous_position=target
-		_seed_snapshot_age=SEED_SNAPSHOT_INTERVAL
-	elif not target.is_equal_approx(_seed_snapshot_position):
-		# Interpolate one recorded tick behind. Do not predict or alter catches.
-		_seed_previous_position=_seed_snapshot_position
-		_seed_snapshot_age=0.0
+		thrown_from=seed.position
+	var shown := status not in ["planted","missed"]
+	_seed_throw.present(status=="flying", target, shown, CREAM, immediate, thrown_from)
 	preload("res://presentation/plant_animation.gd").on_seed(self, seed, _seed_status, value, target, immediate)
 	_seed_status=status
 	_seed_holder=holder if actors.has(holder) else ""
-	_seed_snapshot_position=target
 	var material := seed.material_override as StandardMaterial3D
 	var carry_color := GOLD if _seed_holder in ["a", "p0"] else TEAL if _seed_holder in ["b", "p1"] else CREAM
 	# The icon's seed is white; the holder only tints it, and the glow carries their colour.
@@ -967,9 +957,7 @@ func _present_seed(value: Dictionary, immediate: bool) -> void:
 	SeedVisual.tint_glow(seed, carry_color)
 	for slot: String in actors:
 		actors[slot].carrying_seed=slot==_seed_holder
-	seed.visible=status not in ["planted","missed"]
-	_seed_trail.tint = carry_color
-	_seed_trail.set_motion_allowed(status == "flying" and seed.visible, immediate)
+	seed.visible=shown
 	_apply_seed_pose()
 
 func _create_object_trail(object: Node3D, radius: float) -> Node3D:
@@ -980,42 +968,15 @@ func _create_object_trail(object: Node3D, radius: float) -> Node3D:
 	_motion_trails.append(trail)
 	return trail
 
+## The seed in flight is its throw look's (kit/throw_look.gd); otherwise
+## upright on its holder's carry point or where it rests.
 func _apply_seed_pose() -> void:
-	if not is_instance_valid(seed) or _seed_status.is_empty(): return
-	if actors.has(_seed_holder):
-		var actor: SpiritVisual=actors[_seed_holder]
-		seed.position=actor.carry_point()
-	else:
-		var launch_blend := maxf(0.0,1.0-_seed_launch_age/0.16) if _seed_status=="flying" and not reduced_motion else 0.0
-		var flight_position := _seed_previous_position.lerp(_seed_snapshot_position, clampf(_seed_snapshot_age / SEED_SNAPSHOT_INTERVAL, 0.0, 1.0)) if _seed_status=="flying" else _seed_snapshot_position
-		seed.position=flight_position+_seed_launch_offset*launch_blend
-		if _seed_status=="flying" and not reduced_motion:
-			_spin_seed(flight_position)
-			return
-	_upright_seed()
+	if not is_instance_valid(seed) or _seed_status.is_empty() or _seed_throw == null: return
+	if not _seed_throw.pose(reduced_motion): _rest_seed()
 
-func _spin_seed(flight_position: Vector3) -> void:
-	var travel := flight_position-_seed_launch_point
-	var distance := travel.length()
-	if _seed_spin_axis.is_zero_approx():
-		var level := Vector3(travel.x,0.0,travel.z)
-		if level.length() < 0.02:
-			_upright_seed()
-			return
-		# Lock the axis once per throw: across the flight, tipped toward the sky.
-		var side := Vector3.UP.cross(level.normalized())
-		_seed_spin_axis=(side*cos(SEED_SPIN_TILT)+Vector3.UP*sin(SEED_SPIN_TILT)).normalized()
-	_set_seed_rotation(Quaternion(_seed_spin_axis,distance*SEED_SPIN_PER_METRE))
-
-func _upright_seed() -> void:
-	_set_seed_rotation(Quaternion.IDENTITY)
-
-func _set_seed_rotation(rotation_value: Quaternion) -> void:
-	if seed.quaternion.is_equal_approx(rotation_value): return
-	seed.quaternion=rotation_value
-	# The soft halo is a billboard; keep its own transform unrotated as well.
-	var glow := seed.get_node_or_null("SeedGlow") as Node3D
-	if glow != null: glow.quaternion=rotation_value.inverse()
+func _rest_seed() -> void:
+	seed.position=actors[_seed_holder].carry_point() if actors.has(_seed_holder) else _seed_throw.at()
+	_seed_throw.turn(Quaternion.IDENTITY)
 
 func update_spirit_attention() -> void:
 	# Rendered positions drive expression only; no snapshot or input is changed.
@@ -1219,9 +1180,9 @@ func _process(delta: float) -> void:
 		actor.advance_motion(actor.position-previous-ridden,delta,reduced_motion)
 	if not (home_view and home_presentation_owner!=0):
 		finish_spirit_motion()
-	_seed_launch_age+=delta
-	_seed_snapshot_age+=delta
-	_apply_seed_pose()
+	# Thrown things fly on (the seed among them), then the seed rests or rides.
+	for look: RefCounted in _throw_looks: look.advance(delta, reduced_motion)
+	if is_instance_valid(seed) and not _seed_status.is_empty() and _seed_throw != null and not _seed_throw.flying: _rest_seed()
 	for trail: Node3D in _motion_trails:
 		if is_instance_valid(trail): trail.advance(delta, reduced_motion)
 	_move_bridge(weight)
