@@ -11,8 +11,9 @@ extends SceneTree
 ##   colour, lit by the same rule as its tiles, from the snapshot alone;
 ## - every tile lies on its floor, clear of controls, ownership marks, decks,
 ##   the world's own scenery and every other row, and no two rows touch;
-##   nothing the world draws lies over a tile (a floor cap above its walking
-##   surface would hide it);
+##   nothing the world draws lies over any of a tile or a hair under its top
+##   (a floor's planks or trims, a cap above its walking surface would hide
+##   it), and no floor or crossing deck a pip walks on lies over it;
 ## - one mesh draws them all, and the states follow the snapshot alone:
 ##   faint, clear while either spirit is near one of the pair's inputs,
 ##   glowing while active, the same whatever came before (a replay shows what
@@ -55,6 +56,8 @@ const PLAQUE_FAINT_LETTER := 12.0
 const FLOORS := [Color("e9dcc0"), Color("6b5240"), Color("9cb86a"), Color("f2a07a"), Color("b4c5bd")]
 ## The light a floor tile meets, about, in the chapters' sun.
 const LIGHT := 0.9
+## How near two layers may lie before the depth buffer cannot tell them apart (COPLANAR).
+const Lint = preload("res://tests/test_dressing_lint.gd")
 ## Laying out a stage's tiles stays under this (headless, the whole stage).
 const BUILD_BUDGET_USEC := 150000
 var checks := 0
@@ -370,6 +373,9 @@ func _stage(world: Node3D, key: String, view: Dictionary) -> int:
 		# Nothing the world draws lies over a tile on its floor (a raised cap, a rug).
 		var over := layers.filter(func(layer: Array) -> bool: return _buries(layer[1], tile.at)).map(func(layer: Array) -> String: return str(layer[0]))
 		_check(over.is_empty(), "%s: %s's tile (%s) at %s shows over its floor; it lies under %s" % [where, tile.control, tile.letter, tile.at, ", ".join(over)])
+		# No deck or other walkable top lies over it.
+		var decks := _walked_over(view, tile.at)
+		_check(decks.is_empty(), "%s: %s's tile (%s) at %s lies on top of what a pip stands on there; it is under %s" % [where, tile.control, tile.letter, tile.at, ", ".join(decks)])
 	var rows: Array = []
 	for tile: Dictionary in placed:
 		if tile.row not in rows: rows.append(tile.row)
@@ -439,12 +445,23 @@ static func _floor_layers(world: Node3D) -> Array:
 		else: found.append([world.terrain.get_path_to(node), at * node.get_aabb()])
 	return found
 
-## Whether `box` lies over a tile on the floor at `at`: across its centre,
-## reaching down past the tile and topping out just over it, as a floor layer
-## drawn over the walking surface does (taller scenery the layout keeps clear of).
+## Whether `box` lies over any of the tile on the floor at `at`, reaching
+## down past the tile and topping out over it or under it by less than the
+## depth buffer tells apart (Lint.COPLANAR), as a layer drawn on the walking surface
+## does (a plank, a trim, a raised cap; taller scenery the layout keeps clear of).
 static func _buries(box: AABB, at: Vector3) -> bool:
 	var tile_top := at.y + PairTags.LIFT
-	return box.position.y <= tile_top and box.end.y > tile_top + 0.0005 and box.end.y < at.y + 0.03 and Rect2(box.position.x, box.position.z, box.size.x, box.size.z).has_point(Vector2(at.x, at.z))
+	return box.position.y <= tile_top and box.end.y > tile_top - Lint.COPLANAR and box.end.y < at.y + 0.03 and Rect2(box.position.x, box.position.z, box.size.x, box.size.z).intersects(_square(at))
+
+## The tile at `at` across the floor, a millimetre in.
+static func _square(at: Vector3) -> Rect2:
+	return Rect2(at.x - PairTags.TAG * 0.5, at.z - PairTags.TAG * 0.5, PairTags.TAG, PairTags.TAG).grow(-0.001)
+
+## The walkable tops over the tile at `at` (FloorSpots.tops: a floor or a
+## crossing at its highest), over any of it: a tile under one is hidden where
+## a pip walks over it.
+static func _walked_over(view: Dictionary, at: Vector3) -> Array:
+	return PairTags.FloorSpots.tops(view).filter(func(top: Dictionary) -> bool: return float(top.above) > at.y + 0.06 and (top.rect as Rect2).intersects(_square(at))).map(func(top: Dictionary) -> String: return str(top.what))
 
 ## Faint, near (either spirit), lit, and the same states whatever came before.
 func _states(world: Node3D, where: String, wired: Array[Dictionary]) -> void:

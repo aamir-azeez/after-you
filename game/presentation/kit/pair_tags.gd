@@ -61,6 +61,8 @@ const FloorSpots = preload("res://presentation/kit/floor_spots.gd")
 ## The game's own light rule, to find the mirrors that light a receiver.
 const BeamField = preload("res://core/beam_field.gd")
 const Primitives = preload("res://presentation/kit/primitives.gd")
+## What a floor draws on its walking surface, which a tile lies over.
+const Surfaces = preload("res://presentation/kit/surfaces.gd")
 ## The camera's angle, which a plaque faces.
 const ViewFit = preload("res://presentation/kit/view_fit.gd")
 const SHADER := preload("res://presentation/kit/pair_tags.gdshader")
@@ -69,11 +71,12 @@ const TAG := 0.28
 const GAP := 0.05
 ## Tags whose places are closer than this (same floor) join one row.
 const CLUSTER := 0.34
-## Every layer (rim, face, bands, letter) lies this far over the floor: 3 mm or
-## more from the floor lines' tops (6 mm, kit/surfaces.gd) and a crossing's
-## remembered footsteps (13.5 mm), under a spirit's ground shadow. The layers
-## write no depth and draw in order, so they share the height.
-const LIFT := 0.0095
+## Every layer (rim, face, bands, letter) lies this far over the floor: over
+## everything a floor draws on its walking surface (its seams, planks and
+## trims, Surfaces.RELIEF_TOP) by more than the depth buffer tells apart, and
+## under a spirit's ground shadow (24 mm). The layers write no depth and draw
+## in order, so they share the height.
+const LIFT := Surfaces.RELIEF_TOP + 0.004
 ## The token: its coloured face is FACE of the tile across, a rounded square
 ## set a little up in its frame, whose darker edge shows EDGE below it so the
 ## frame looks raised. The letter is LETTER_SHARE of the face tall.
@@ -761,9 +764,10 @@ func _place(row: Dictionary, floors: Array, avoid: Array, done: Array[Dictionary
 	row.squeezed = not (spot.clash as Array).is_empty()
 
 ## What a tile keeps clear of: stairs, obstacles, drops, every control's
-## disc, the goal, the handoff and every ownership mark.
+## disc, the goal, the handoff, every ownership mark and every floor or deck
+## over its own (FloorSpots.tops), so it lies on top of what a pip stands on.
 func _avoid(view: Dictionary) -> Array:
-	var found := FloorSpots.scenery(view, _world, OwnerMark.reach_of("p1"))
+	var found := FloorSpots.scenery(view, _world, OwnerMark.reach_of("p1")) + FloorSpots.tops(view)
 	var marks: Variant = _world.get("owner_marks")
 	if marks != null: found.append_array(marks.discs())
 	return found
