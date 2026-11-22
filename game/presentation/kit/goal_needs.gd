@@ -99,7 +99,7 @@ func _icon(kind: String, term: Dictionary, at: Vector3, root: Node3D, item_style
 				Parts.sphere(0.035, Parts.GOLD, at + Vector3(0, 0.035, 0), root)
 				return
 			var item: RefCounted = CarriedItemKit.build(look, at, root, {"id": "need-" + id})
-			item.root.scale = Vector3.ONE * ITEM_SCALE
+			item.root.scale = Vector3.ONE * _item_scale(item.root, at.y)
 		"lamp":
 			Parts.box(Vector3(0.02, 0.06, 0.02), Parts.TIMBER_DARK, at + Vector3(0, 0.03, 0), root)
 			Parts.sphere(0.035, Parts.LIGHT, at + Vector3(0, 0.08, 0), root)
@@ -110,3 +110,25 @@ func _icon(kind: String, term: Dictionary, at: Vector3, root: Node3D, item_style
 			Parts.torus(0.04, 0.008, Parts.CREAM, at + Vector3(0, 0.008, 0), root)
 		_:
 			Parts.disc(0.03, 0.03, Parts.CREAM, at + Vector3(0, 0.015, 0), root, 0.022, 6)
+
+## ITEM_SCALE, or smaller for an item a pip at the goal would stand in: a part
+## both wider than the kit's small stand and rising past its step-on height
+## over the goal's floor (kit/prop_rules.gd stands_in), such as a lens on its
+## edge, shrinks until it is no wider than that stand. `floor_top` is how high
+## the item's root stands over the goal's floor (m).
+static func _item_scale(item: Node3D, floor_top: float) -> float:
+	var rules: GDScript = load("res://presentation/kit/prop_rules.gd")
+	var scale := ITEM_SCALE
+	for mesh: Node in item.find_children("*", "MeshInstance3D", true, false):
+		var shape: Mesh = (mesh as MeshInstance3D).mesh
+		if shape == null: continue
+		var placed := Transform3D.IDENTITY
+		var node: Node = mesh
+		while node != item:
+			placed = (node as Node3D).transform * placed
+			node = node.get_parent()
+		var box: AABB = placed * shape.get_aabb()
+		var width := maxf(box.size.x, box.size.z)
+		if floor_top + box.end.y * ITEM_SCALE > float(rules.STEP_ON) and width * ITEM_SCALE > float(rules.SMALL_STAND):
+			scale = minf(scale, float(rules.SMALL_STAND) * 0.95 / width)
+	return scale

@@ -1,0 +1,1437 @@
+{
+	"bridges": [
+		{
+			"from_surface": "harbour",
+			"height_cm": 0,
+			"id": "harbour-court",
+			"rect_cm": [
+				-450,
+				-50,
+				-250,
+				50
+			],
+			"to_surface": "court"
+		},
+		{
+			"from_surface": "court",
+			"height_cm": 0,
+			"id": "court-north",
+			"rect_cm": [
+				-100,
+				-240,
+				0,
+				-130
+			],
+			"to_surface": "north"
+		},
+		{
+			"from_surface": "court",
+			"height_cm": 0,
+			"id": "court-south",
+			"rect_cm": [
+				-100,
+				130,
+				0,
+				240
+			],
+			"to_surface": "south"
+		},
+		{
+			"from_surface": "court",
+			"height_cm": 0,
+			"id": "court-rest",
+			"rect_cm": [
+				150,
+				-50,
+				240,
+				50
+			],
+			"to_surface": "rest-rock"
+		},
+		{
+			"from_surface": "rest-rock",
+			"height_cm": 0,
+			"id": "rest-tower",
+			"rect_cm": [
+				340,
+				-50,
+				450,
+				50
+			],
+			"to_surface": "tower"
+		}
+	],
+	"closing_ticks": 30,
+	"drops": [],
+	"id": "sleeping-lighthouse",
+	"islands": [
+		{
+			"height_cm": 0,
+			"id": "harbour",
+			"rect_cm": [
+				-850,
+				-180,
+				-450,
+				180
+			]
+		},
+		{
+			"height_cm": 0,
+			"id": "court",
+			"rect_cm": [
+				-250,
+				-130,
+				150,
+				130
+			]
+		},
+		{
+			"height_cm": 0,
+			"id": "north",
+			"rect_cm": [
+				-250,
+				-500,
+				150,
+				-240
+			]
+		},
+		{
+			"height_cm": 0,
+			"id": "south",
+			"rect_cm": [
+				-250,
+				240,
+				150,
+				500
+			]
+		},
+		{
+			"height_cm": 0,
+			"id": "rest-rock",
+			"rect_cm": [
+				240,
+				-100,
+				340,
+				100
+			]
+		},
+		{
+			"height_cm": 0,
+			"id": "tower",
+			"rect_cm": [
+				450,
+				-180,
+				850,
+				180
+			]
+		}
+	],
+	"item_spots": [
+		{
+			"height_cm": 0,
+			"id": "court-cradle",
+			"position_cm": [
+				-150,
+				60
+			],
+			"radius_cm": 32,
+			"surface_id": "court"
+		},
+		{
+			"height_cm": 0,
+			"id": "north-shelf",
+			"position_cm": [
+				40,
+				-400
+			],
+			"radius_cm": 32,
+			"surface_id": "north"
+		},
+		{
+			"height_cm": 0,
+			"id": "rest-perch",
+			"position_cm": [
+				290,
+				50
+			],
+			"radius_cm": 28,
+			"surface_id": "rest-rock"
+		},
+		{
+			"height_cm": 0,
+			"id": "tower-projector",
+			"position_cm": [
+				650,
+				0
+			],
+			"radius_cm": 32,
+			"surface_id": "tower"
+		}
+	],
+	"items": [
+		{
+			"at": "away",
+			"id": "lens"
+		}
+	],
+	"premium": true,
+	"props": [],
+	"schema_version": 7,
+	"simulation_version": 20,
+	"stages": [
+		{
+			"ball_pads": [],
+			"controls": [
+				{
+					"height_cm": 0,
+					"id": "harbour-mirror",
+					"initial": "backslash",
+					"kind": "mirror",
+					"position_cm": [
+						-560,
+						-100
+					],
+					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
+					"surface_id": "harbour",
+					"values": [
+						"slash",
+						"backslash"
+					]
+				},
+				{
+					"height_cm": 0,
+					"id": "court-mirror",
+					"initial": "slash",
+					"kind": "mirror",
+					"position_cm": [
+						-60,
+						60
+					],
+					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
+					"surface_id": "court",
+					"values": [
+						"slash",
+						"backslash"
+					]
+				}
+			],
+			"entry_latch_routes": [],
+			"first_player_slot": "p0",
+			"gates": [
+				{
+					"route_id": "harbour-court",
+					"when": {
+						"any": [
+							{
+								"signal_id": "harbour-eye"
+							},
+							{
+								"signal_id": "court-eye"
+							}
+						]
+					}
+				}
+			],
+			"goal": {
+				"height_cm": 0,
+				"id": "court-bell",
+				"owner_slot": "p1",
+				"position_cm": [
+					40,
+					-40
+				],
+				"radius_cm": 36,
+				"surface_id": "court"
+			},
+			"goal_policy": {
+				"kind": "ring"
+			},
+			"id": "borrowed-light",
+			"kind": "route_endpoint",
+			"levers": [],
+			"lit_when": {
+				"harbour-lamp": {
+					"pad_id": "harbour-pad"
+				}
+			},
+			"optical_field": {
+				"blockers": [],
+				"bounds_cm": [
+					-900,
+					-560,
+					900,
+					560
+				],
+				"emitters": [
+					{
+						"direction": "east",
+						"enabled": true,
+						"id": "harbour-lamp",
+						"position_cm": [
+							-690,
+							-100
+						]
+					},
+					{
+						"direction": "west",
+						"enabled": true,
+						"id": "court-lamp",
+						"position_cm": [
+							100,
+							60
+						]
+					}
+				],
+				"mirrors": [
+					{
+						"enabled": true,
+						"id": "harbour-mirror",
+						"orientation": "backslash",
+						"position_cm": [
+							-560,
+							-100
+						]
+					},
+					{
+						"enabled": true,
+						"id": "court-mirror",
+						"orientation": "slash",
+						"position_cm": [
+							-60,
+							60
+						]
+					}
+				],
+				"receivers": [
+					{
+						"enabled": true,
+						"id": "harbour-eye",
+						"position_cm": [
+							-560,
+							-160
+						]
+					},
+					{
+						"enabled": true,
+						"id": "court-eye",
+						"position_cm": [
+							-60,
+							-100
+						]
+					}
+				],
+				"schema_version": 1
+			},
+			"pressure_pads": [
+				{
+					"height_cm": 0,
+					"id": "harbour-pad",
+					"position_cm": [
+						-800,
+						120
+					],
+					"radius_cm": 32,
+					"surface_id": "harbour"
+				}
+			],
+			"receiver_action_ticks": 2,
+			"receiver_route_cm": [
+				[
+					40,
+					-40
+				]
+			],
+			"source_policy": {
+				"kind": "route_endpoint",
+				"when": {}
+			},
+			"turn_cap": 10,
+			"version": 1
+		},
+		{
+			"ball_pads": [],
+			"controls": [
+				{
+					"height_cm": 0,
+					"id": "north-mirror",
+					"initial": "slash",
+					"kind": "mirror",
+					"position_cm": [
+						-50,
+						0
+					],
+					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
+					"surface_id": "court",
+					"values": [
+						"slash",
+						"backslash"
+					]
+				}
+			],
+			"entry_latch_routes": [],
+			"first_player_slot": "p1",
+			"gates": [
+				{
+					"route_id": "court-north",
+					"when": {
+						"signal_id": "north-eye"
+					}
+				},
+				{
+					"route_id": "harbour-court"
+				}
+			],
+			"goal": {
+				"height_cm": 0,
+				"id": "lens-crest",
+				"owner_slot": "p1",
+				"position_cm": [
+					-150,
+					-50
+				],
+				"radius_cm": 36,
+				"surface_id": "court"
+			},
+			"goal_policy": {
+				"kind": "ring",
+				"when": {
+					"signal_id": "court-glow"
+				}
+			},
+			"id": "missing-piece",
+			"item_starts": {
+				"lens": "north-shelf"
+			},
+			"kind": "route_endpoint",
+			"levers": [],
+			"lit_when": {
+				"court-lamp": {
+					"pad_id": "court-pad"
+				},
+				"cradle-lamp": {
+					"item_id": "lens",
+					"spot_id": "court-cradle"
+				}
+			},
+			"optical_field": {
+				"blockers": [],
+				"bounds_cm": [
+					-900,
+					-560,
+					900,
+					560
+				],
+				"emitters": [
+					{
+						"direction": "west",
+						"enabled": true,
+						"id": "court-lamp",
+						"position_cm": [
+							100,
+							0
+						]
+					},
+					{
+						"direction": "west",
+						"enabled": true,
+						"id": "cradle-lamp",
+						"position_cm": [
+							-150,
+							116
+						]
+					}
+				],
+				"mirrors": [
+					{
+						"enabled": true,
+						"id": "north-mirror",
+						"orientation": "slash",
+						"position_cm": [
+							-50,
+							0
+						]
+					}
+				],
+				"receivers": [
+					{
+						"enabled": true,
+						"id": "north-eye",
+						"position_cm": [
+							-50,
+							-90
+						]
+					},
+					{
+						"enabled": true,
+						"id": "court-glow",
+						"position_cm": [
+							-240,
+							116
+						]
+					}
+				],
+				"schema_version": 1
+			},
+			"pressure_pads": [
+				{
+					"height_cm": 0,
+					"id": "court-pad",
+					"position_cm": [
+						110,
+						90
+					],
+					"radius_cm": 32,
+					"surface_id": "court"
+				}
+			],
+			"receiver_action_ticks": 2,
+			"receiver_route_cm": [
+				[
+					-150,
+					-50
+				]
+			],
+			"source_policy": {
+				"kind": "route_endpoint",
+				"when": {}
+			},
+			"turn_cap": 10,
+			"version": 1
+		},
+		{
+			"ball_pads": [],
+			"controls": [
+				{
+					"height_cm": 0,
+					"id": "upper-mirror",
+					"initial": "slash",
+					"kind": "mirror",
+					"position_cm": [
+						-220,
+						116
+					],
+					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
+					"surface_id": "court",
+					"values": [
+						"slash",
+						"backslash"
+					]
+				},
+				{
+					"height_cm": 0,
+					"id": "south-mirror",
+					"initial": "slash",
+					"kind": "mirror",
+					"position_cm": [
+						-94,
+						350
+					],
+					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
+					"surface_id": "south",
+					"values": [
+						"slash",
+						"backslash"
+					]
+				}
+			],
+			"entry_latch_routes": [],
+			"first_player_slot": "p0",
+			"gates": [
+				{
+					"route_id": "court-north",
+					"when": {
+						"signal_id": "north-promise"
+					}
+				},
+				{
+					"route_id": "court-south",
+					"when": {
+						"any": [
+							{
+								"signal_id": "south-way"
+							},
+							{
+								"signal_id": "south-promise"
+							}
+						]
+					}
+				},
+				{
+					"route_id": "harbour-court"
+				}
+			],
+			"goal": {
+				"height_cm": 0,
+				"id": "promise-crest",
+				"owner_slot": "p1",
+				"position_cm": [
+					60,
+					-60
+				],
+				"radius_cm": 36,
+				"surface_id": "court"
+			},
+			"goal_policy": {
+				"kind": "ring",
+				"when": {
+					"all": [
+						{
+							"signal_id": "north-promise"
+						},
+						{
+							"signal_id": "south-promise"
+						}
+					]
+				}
+			},
+			"id": "two-promises",
+			"kind": "route_endpoint",
+			"levers": [],
+			"lit_when": {
+				"lens-south": {
+					"item_id": "lens",
+					"spot_id": "court-cradle"
+				},
+				"lens-west": {
+					"item_id": "lens",
+					"spot_id": "court-cradle"
+				},
+				"north-lamp": {
+					"pad_id": "north-pad"
+				}
+			},
+			"optical_field": {
+				"blockers": [],
+				"bounds_cm": [
+					-900,
+					-560,
+					900,
+					560
+				],
+				"emitters": [
+					{
+						"direction": "west",
+						"enabled": true,
+						"id": "lens-west",
+						"position_cm": [
+							-150,
+							116
+						]
+					},
+					{
+						"direction": "south",
+						"enabled": true,
+						"id": "lens-south",
+						"position_cm": [
+							-94,
+							60
+						]
+					},
+					{
+						"direction": "south",
+						"enabled": true,
+						"id": "north-lamp",
+						"position_cm": [
+							-200,
+							-300
+						]
+					}
+				],
+				"mirrors": [
+					{
+						"enabled": true,
+						"id": "upper-mirror",
+						"orientation": "slash",
+						"position_cm": [
+							-220,
+							116
+						]
+					},
+					{
+						"enabled": true,
+						"id": "south-mirror",
+						"orientation": "slash",
+						"position_cm": [
+							-94,
+							350
+						]
+					}
+				],
+				"receivers": [
+					{
+						"enabled": true,
+						"id": "north-promise",
+						"position_cm": [
+							-220,
+							-420
+						]
+					},
+					{
+						"enabled": true,
+						"id": "south-promise",
+						"position_cm": [
+							0,
+							350
+						]
+					},
+					{
+						"enabled": true,
+						"id": "south-way",
+						"position_cm": [
+							-200,
+							270
+						]
+					}
+				],
+				"schema_version": 1
+			},
+			"pressure_pads": [
+				{
+					"height_cm": 0,
+					"id": "north-pad",
+					"position_cm": [
+						100,
+						-450
+					],
+					"radius_cm": 32,
+					"surface_id": "north"
+				}
+			],
+			"receiver_action_ticks": 2,
+			"receiver_route_cm": [
+				[
+					60,
+					-60
+				]
+			],
+			"source_policy": {
+				"kind": "route_endpoint",
+				"when": {}
+			},
+			"turn_cap": 10,
+			"version": 1
+		},
+		{
+			"ball_pads": [],
+			"controls": [
+				{
+					"height_cm": 0,
+					"id": "rest-mirror",
+					"initial": "backslash",
+					"kind": "mirror",
+					"position_cm": [
+						260,
+						-80
+					],
+					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
+					"surface_id": "rest-rock",
+					"values": [
+						"slash",
+						"backslash"
+					]
+				},
+				{
+					"height_cm": 0,
+					"id": "tower-mirror",
+					"initial": "backslash",
+					"kind": "mirror",
+					"position_cm": [
+						520,
+						-120
+					],
+					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
+					"surface_id": "tower",
+					"values": [
+						"slash",
+						"backslash"
+					]
+				},
+				{
+					"height_cm": 0,
+					"id": "path-selector",
+					"initial": "off",
+					"kind": "selector",
+					"optics": {
+						"first": {
+							"path-mirror": {
+								"orientation": "slash"
+							}
+						},
+						"off": {
+							"path-lamp": {
+								"enabled": false
+							}
+						},
+						"second": {
+							"path-mirror": {
+								"orientation": "backslash"
+							}
+						}
+					},
+					"position_cm": [
+						-120,
+						420
+					],
+					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
+					"surface_id": "south",
+					"values": [
+						"off",
+						"first",
+						"second"
+					]
+				}
+			],
+			"entry_latch_routes": [],
+			"first_player_slot": "p1",
+			"gates": [
+				{
+					"route_id": "court-rest",
+					"when": {
+						"any": [
+							{
+								"signal_id": "first-path"
+							},
+							{
+								"signal_id": "rest-eye"
+							}
+						]
+					}
+				},
+				{
+					"route_id": "rest-tower",
+					"when": {
+						"any": [
+							{
+								"signal_id": "second-path"
+							},
+							{
+								"signal_id": "tower-path"
+							}
+						]
+					}
+				},
+				{
+					"route_id": "harbour-court"
+				},
+				{
+					"route_id": "court-north"
+				},
+				{
+					"route_id": "court-south"
+				}
+			],
+			"goal": {
+				"height_cm": 0,
+				"id": "tower-bell",
+				"owner_slot": "p1",
+				"position_cm": [
+					700,
+					80
+				],
+				"radius_cm": 36,
+				"surface_id": "tower"
+			},
+			"goal_policy": {
+				"kind": "ring"
+			},
+			"id": "after-the-first-bell",
+			"kind": "route_endpoint",
+			"levers": [],
+			"lit_when": {
+				"path-lamp": {
+					"pad_id": "path-pad"
+				}
+			},
+			"optical_field": {
+				"blockers": [],
+				"bounds_cm": [
+					-900,
+					-560,
+					900,
+					560
+				],
+				"emitters": [
+					{
+						"direction": "east",
+						"enabled": true,
+						"id": "path-lamp",
+						"position_cm": [
+							-200,
+							350
+						]
+					},
+					{
+						"direction": "west",
+						"enabled": true,
+						"id": "rest-lamp",
+						"position_cm": [
+							320,
+							-80
+						]
+					},
+					{
+						"direction": "west",
+						"enabled": true,
+						"id": "beacon-lamp",
+						"position_cm": [
+							800,
+							-120
+						]
+					}
+				],
+				"mirrors": [
+					{
+						"enabled": true,
+						"id": "rest-mirror",
+						"orientation": "backslash",
+						"position_cm": [
+							260,
+							-80
+						]
+					},
+					{
+						"enabled": true,
+						"id": "tower-mirror",
+						"orientation": "backslash",
+						"position_cm": [
+							520,
+							-120
+						]
+					},
+					{
+						"enabled": true,
+						"id": "path-mirror",
+						"orientation": "backslash",
+						"position_cm": [
+							56,
+							350
+						]
+					}
+				],
+				"receivers": [
+					{
+						"enabled": true,
+						"id": "first-path",
+						"position_cm": [
+							56,
+							270
+						]
+					},
+					{
+						"enabled": true,
+						"id": "second-path",
+						"position_cm": [
+							56,
+							460
+						]
+					},
+					{
+						"enabled": true,
+						"id": "rest-eye",
+						"position_cm": [
+							260,
+							70
+						]
+					},
+					{
+						"enabled": true,
+						"id": "tower-path",
+						"position_cm": [
+							520,
+							-70
+						]
+					}
+				],
+				"schema_version": 1
+			},
+			"pressure_pads": [
+				{
+					"height_cm": 0,
+					"id": "path-pad",
+					"position_cm": [
+						-200,
+						450
+					],
+					"radius_cm": 32,
+					"surface_id": "south"
+				}
+			],
+			"receiver_action_ticks": 2,
+			"receiver_route_cm": [
+				[
+					700,
+					80
+				]
+			],
+			"source_policy": {
+				"kind": "route_endpoint",
+				"when": {}
+			},
+			"turn_cap": 10,
+			"version": 1
+		},
+		{
+			"ball_pads": [],
+			"controls": [],
+			"entry_latch_routes": [],
+			"first_player_slot": "p0",
+			"gates": [
+				{
+					"route_id": "court-rest",
+					"when": {
+						"any": [
+							{
+								"signal_id": "cradle-eye"
+							},
+							{
+								"signal_id": "perch-eye"
+							}
+						]
+					}
+				},
+				{
+					"route_id": "rest-tower",
+					"when": {
+						"any": [
+							{
+								"signal_id": "tower-eye"
+							},
+							{
+								"signal_id": "projector-eye"
+							}
+						]
+					}
+				},
+				{
+					"route_id": "harbour-court"
+				},
+				{
+					"route_id": "court-north"
+				},
+				{
+					"route_id": "court-south"
+				}
+			],
+			"goal": {
+				"height_cm": 0,
+				"id": "projector-crest",
+				"owner_slot": "p1",
+				"position_cm": [
+					720,
+					-90
+				],
+				"radius_cm": 36,
+				"surface_id": "tower"
+			},
+			"goal_policy": {
+				"kind": "ring",
+				"when": {
+					"item_id": "lens",
+					"spot_id": "tower-projector"
+				}
+			},
+			"id": "what-carried-you",
+			"kind": "route_endpoint",
+			"levers": [],
+			"lit_when": {
+				"cradle-lamp": {
+					"item_id": "lens",
+					"spot_id": "court-cradle"
+				},
+				"perch-lamp": {
+					"item_id": "lens",
+					"spot_id": "rest-perch"
+				},
+				"projector-lamp": {
+					"item_id": "lens",
+					"spot_id": "tower-projector"
+				},
+				"tower-lamp": {
+					"pad_id": "tower-pad"
+				}
+			},
+			"optical_field": {
+				"blockers": [],
+				"bounds_cm": [
+					-900,
+					-560,
+					900,
+					560
+				],
+				"emitters": [
+					{
+						"direction": "east",
+						"enabled": true,
+						"id": "cradle-lamp",
+						"position_cm": [
+							-94,
+							60
+						]
+					},
+					{
+						"direction": "west",
+						"enabled": true,
+						"id": "perch-lamp",
+						"position_cm": [
+							320,
+							-60
+						]
+					},
+					{
+						"direction": "west",
+						"enabled": true,
+						"id": "tower-lamp",
+						"position_cm": [
+							790,
+							-60
+						]
+					},
+					{
+						"direction": "west",
+						"enabled": true,
+						"id": "projector-lamp",
+						"position_cm": [
+							610,
+							30
+						]
+					}
+				],
+				"mirrors": [],
+				"receivers": [
+					{
+						"enabled": true,
+						"id": "cradle-eye",
+						"position_cm": [
+							130,
+							60
+						]
+					},
+					{
+						"enabled": true,
+						"id": "perch-eye",
+						"position_cm": [
+							130,
+							-60
+						]
+					},
+					{
+						"enabled": true,
+						"id": "tower-eye",
+						"position_cm": [
+							480,
+							-60
+						]
+					},
+					{
+						"enabled": true,
+						"id": "projector-eye",
+						"position_cm": [
+							480,
+							30
+						]
+					}
+				],
+				"schema_version": 1
+			},
+			"pressure_pads": [
+				{
+					"height_cm": 0,
+					"id": "tower-pad",
+					"position_cm": [
+						800,
+						150
+					],
+					"radius_cm": 32,
+					"surface_id": "tower"
+				}
+			],
+			"receiver_action_ticks": 2,
+			"receiver_route_cm": [
+				[
+					720,
+					-90
+				]
+			],
+			"source_policy": {
+				"kind": "route_endpoint",
+				"when": {}
+			},
+			"throws": [
+				{
+					"catch_cm": 60,
+					"flight_ticks": 60,
+					"id": "lens-throw",
+					"mark": {
+						"height_cm": 0,
+						"position_cm": [
+							110,
+							-90
+						],
+						"radius_cm": 30,
+						"surface_id": "court"
+					},
+					"to": "rest-perch"
+				}
+			],
+			"turn_cap": 20,
+			"version": 1
+		},
+		{
+			"ball_pads": [],
+			"controls": [
+				{
+					"height_cm": 0,
+					"id": "welcome-mirror",
+					"initial": "backslash",
+					"kind": "mirror",
+					"position_cm": [
+						290,
+						-20
+					],
+					"radius_cm": 28,
+					"surface_id": "rest-rock",
+					"values": [
+						"slash",
+						"backslash"
+					]
+				},
+				{
+					"height_cm": 0,
+					"id": "beacon-mirror",
+					"initial": "backslash",
+					"kind": "mirror",
+					"position_cm": [
+						650,
+						-130
+					],
+					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
+					"surface_id": "tower",
+					"values": [
+						"slash",
+						"backslash"
+					]
+				}
+			],
+			"entry_latch_routes": [],
+			"first_player_slot": "p1",
+			"gates": [
+				{
+					"route_id": "rest-tower",
+					"when": {
+						"signal_id": "tower-eye"
+					}
+				}
+			],
+			"goal": {
+				"height_cm": 0,
+				"id": "beacon-crest",
+				"owner_slot": "p1",
+				"position_cm": [
+					700,
+					80
+				],
+				"radius_cm": 36,
+				"surface_id": "tower"
+			},
+			"goal_policy": {
+				"kind": "ring",
+				"when": {
+					"all": [
+						{
+							"signal_id": "beacon"
+						},
+						{
+							"signal_id": "welcome-below"
+						}
+					]
+				}
+			},
+			"id": "a-welcome-left-on",
+			"kind": "route_endpoint",
+			"levers": [],
+			"lit_when": {
+				"projector-north": {
+					"item_id": "lens",
+					"spot_id": "tower-projector"
+				},
+				"projector-west": {
+					"item_id": "lens",
+					"spot_id": "tower-projector"
+				},
+				"tower-lamp": {
+					"pad_id": "tower-pad"
+				}
+			},
+			"optical_field": {
+				"blockers": [],
+				"bounds_cm": [
+					-900,
+					-560,
+					900,
+					560
+				],
+				"emitters": [
+					{
+						"direction": "west",
+						"enabled": true,
+						"id": "tower-lamp",
+						"position_cm": [
+							790,
+							-60
+						]
+					},
+					{
+						"direction": "west",
+						"enabled": true,
+						"id": "projector-west",
+						"position_cm": [
+							610,
+							-20
+						]
+					},
+					{
+						"direction": "north",
+						"enabled": true,
+						"id": "projector-north",
+						"position_cm": [
+							650,
+							-40
+						]
+					}
+				],
+				"mirrors": [
+					{
+						"enabled": true,
+						"id": "welcome-mirror",
+						"orientation": "backslash",
+						"position_cm": [
+							290,
+							-20
+						]
+					},
+					{
+						"enabled": true,
+						"id": "beacon-mirror",
+						"orientation": "backslash",
+						"position_cm": [
+							650,
+							-130
+						]
+					}
+				],
+				"receivers": [
+					{
+						"enabled": true,
+						"id": "tower-eye",
+						"position_cm": [
+							480,
+							-60
+						]
+					},
+					{
+						"enabled": true,
+						"id": "welcome-below",
+						"position_cm": [
+							290,
+							90
+						]
+					},
+					{
+						"enabled": true,
+						"id": "beacon",
+						"position_cm": [
+							800,
+							-130
+						]
+					}
+				],
+				"schema_version": 1
+			},
+			"pressure_pads": [
+				{
+					"height_cm": 0,
+					"id": "tower-pad",
+					"position_cm": [
+						800,
+						150
+					],
+					"radius_cm": 32,
+					"surface_id": "tower"
+				}
+			],
+			"receiver_action_ticks": 2,
+			"receiver_route_cm": [
+				[
+					700,
+					80
+				]
+			],
+			"source_policy": {
+				"kind": "route_endpoint",
+				"when": {}
+			},
+			"turn_cap": 20,
+			"version": 1
+		}
+	],
+	"stairs": [],
+	"starts": {
+		"p0": {
+			"height_cm": 0,
+			"position_cm": [
+				-760,
+				0
+			],
+			"surface_id": "harbour"
+		},
+		"p1": {
+			"height_cm": 0,
+			"position_cm": [
+				-520,
+				80
+			],
+			"surface_id": "harbour"
+		}
+	},
+	"turn_limits": {
+		"a_ticks": 2550,
+		"b_ticks": 2550
+	},
+	"version": 3
+}

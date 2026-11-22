@@ -49,6 +49,8 @@ const BLOCKS := {
 	"wheel_ride": {"cues": ["bridge_opened"]},
 	"falls_path": {"cues": ["lever_pulled", "bridge_opened"]},
 	"swinging_bucket": {"cues": []},
+	# Light pieces: a mirror or selector turned, a lit crossing opening or going dark.
+	"light": {"cues": ["switch_set", "bridge_opened", "bridge_closed"]},
 }
 ## The look a new piece's block gives the pieces and crossings it places when
 ## they name no "style" of their own: {block: {field: style}} (content/
