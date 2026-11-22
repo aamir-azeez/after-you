@@ -314,9 +314,9 @@
 					"id": "well-crane",
 					"lane": {
 						"rect_cm": [
-							150,
+							167,
 							188,
-							250,
+							233,
 							252
 						],
 						"surface_id": "garden-plank"

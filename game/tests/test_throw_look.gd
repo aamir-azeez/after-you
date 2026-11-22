@@ -7,7 +7,10 @@ extends SceneTree
 ##   (FIRST_STILL);
 ## - every item kind a pip can throw on the journey engine (each carried item
 ##   style, through first-steps@2's real throw) flies with the same look: its
-##   blur shows and it tumbles in flight, and once it lands both are gone.
+##   blur shows and it tumbles in flight, and once it lands both are gone;
+## - every throw mark, on every chapter that throws, carries the throw icon
+##   (kit/throw_mark.gd) pointing where the throw lands: in its ring's middle,
+##   or on the pad that is the throw spot.
 const FirstWorld = preload("res://presentation/first_steps_world.gd")
 const First = preload("res://core/first_steps/simulation.gd")
 const CarriedItemKit = preload("res://presentation/kit/pieces/carried_item.gd")
@@ -15,6 +18,9 @@ const CarriedItems = preload("res://core/physical/carried_items.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const Witness = preload("res://tests/first_steps_v2_witness.gd")
 const Walk = preload("res://tests/cooperative_witness.gd")
+const ThrowMark = preload("res://presentation/kit/throw_mark.gd")
+const Primitives = preload("res://presentation/kit/primitives.gd")
+const Parts = preload("res://presentation/kit/pieces/parts.gd")
 const KEY := "first-steps@2"
 const STAGE := "a-place-to-grow"
 const MARK := [140, -90]
@@ -41,6 +47,7 @@ func _run() -> void:
 	_check(moving.hash == FIRST_LOOK, "First Steps @1's thrown seed looks as it did: " + moving.hash)
 	_check(still.hash == FIRST_STILL, "and as it did under Reduce motion: " + still.hash)
 	await _every_kind()
+	await _every_mark_has_its_icon()
 	print("THROW LOOK: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -147,3 +154,42 @@ func _every_kind() -> void:
 		_check(landed and not piece.throw_look.flying and not piece.throw_look.trail._mesh.visible and piece.root.quaternion.is_equal_approx(Quaternion.IDENTITY), "Landed, the %s stands upright with no blur" % kind)
 		world.free()
 	_check(kinds >= 3, "Every carried kind is thrown: %d" % kinds)
+
+## Every throw mark carries the throw icon (kit/throw_mark.gd), on every
+## chapter that throws: the one cached icon mesh in the mark's cream, lying in
+## the middle of its ring and pointing where the throw lands; a mark inside a
+## pad (and an island family's throw pad) puts it on that pad's sinking top.
+func _every_mark_has_its_icon() -> void:
+	var marks := 0
+	for key: String in Registry.keys():
+		var level: Dictionary = Registry.definition(key)
+		var stages: Array = level.get("stages", []).filter(func(stage: Dictionary) -> bool: return not stage.get("throws", []).is_empty() or stage.has("throw_control") or (stage.has("plate_id") and stage.has("landing_cm")))
+		if stages.is_empty(): continue
+		var world: Node3D = Registry.world_script(key).new()
+		root.add_child(world)
+		world.set_process(false)
+		await world.load_level(level)
+		for stage: Dictionary in stages:
+			await world.show_stage(stage)
+			var spots: Array = []
+			for thrown: Dictionary in stage.get("throws", []):
+				spots.append({"id": str(thrown.id), "to": world._at(CarriedItems.spot(level.merged(stage, true), str(thrown.to))), "ring": "ThrowMark_" + str(thrown.id)})
+			for pad: Dictionary in world._throw_pads():
+				spots.append({"id": str(pad.pad), "to": pad.to, "ring": ""})
+			for spot: Dictionary in spots:
+				marks += 1
+				var where := "%s %s %s" % [key, stage.id, spot.id]
+				var icon := world.terrain.find_child(ThrowMark.ICON + "_" + spot.id, true, false) as MeshInstance3D
+				_check(icon != null and icon.mesh == ThrowMark.icon_mesh() and icon.material_override == Primitives.shared_material(Parts.CREAM), "The throw mark has its cream icon: " + where)
+				if icon == null: continue
+				var ring: Node3D = null
+				if not str(spot.ring).is_empty(): ring = world.terrain.find_child(spot.ring, true, false) as Node3D
+				var on_pad: bool = world.pad_pieces.values().any(func(piece: RefCounted) -> bool: return piece.rim.get_parent() == icon.get_parent())
+				var at := icon.global_position
+				if ring != null: _check(Vector2(at.x, at.z).distance_to(Vector2(ring.global_position.x, ring.global_position.z)) < 0.001 and at.y < ring.global_position.y, "The icon lies flat in the middle of its ring: " + where)
+				else: _check(on_pad or icon.get_parent() == world.terrain, "A mark inside a pad puts its icon on that pad (on the floor where the pad is drawn as something else): " + where)
+				var heading := icon.global_transform.basis.x.normalized()
+				var to: Vector3 = world.terrain.to_global(spot.to) - at
+				_check(Vector2(heading.x, heading.z).normalized().dot(Vector2(to.x, to.z).normalized()) > 0.99 and absf(heading.y) < 0.001, "The icon points where the throw lands: " + where)
+		world.free()
+	_check(marks >= 6, "Every throwing chapter's marks are checked: %d" % marks)

@@ -17,6 +17,10 @@ extends RefCounted
 ## island with a little spin, shrinking and fading out of view, and a soft
 ## puff of the kit's cream blooms where it went. Reduce motion skips the
 ## wobble and the tumble: the pip fades out where it stood, the puff still.
+## A pip knocked off (show()'s `shoved`, a point past its floor's edge, such
+## as a swinging bucket's shove, kit/pieces/swing.gd) is first shoved over
+## the edge, toppling that way (SHOVE), and falls away, drowns or lands from
+## there, so it never drops through the floor it stood on.
 ## Live play,
 ## the memory and a replay show the same, because it reads only the snapshot.
 ## Presentation only.
@@ -55,6 +59,11 @@ const AWAY_ROLL := 3.4
 const AWAY_TURN := 1.6
 const AWAY_FADE_SHARE := 0.35
 const AWAY_FADE := 0.3
+## A shove off the edge (s, m, radians): how long it takes (an ease out), the
+## hop over the edge and how far the pip tips over toward where it goes.
+const SHOVE := 0.3
+const SHOVE_HOP := 0.12
+const SHOVE_TIP := 0.9
 ## The puff where it went: [x offset, y offset, z offset, radius] in metres,
 ## fixed so every replay blooms alike; it grows this much over its life (s).
 const PUFF := [[0.0, 0.0, 0.0, 0.11], [0.12, 0.04, 0.03, 0.08], [-0.11, 0.05, -0.02, 0.085], [0.04, 0.11, -0.06, 0.07], [-0.05, -0.06, 0.07, 0.075]]
@@ -81,6 +90,8 @@ var _landed := false
 ## balls (built once a stage), and each faded part's own see-through amount
 ## before it, to give back.
 var _away := false
+## Where a knocked pip is shoved to before it falls (its place when not shoved).
+var _shoved := Vector3.ZERO
 var puff: Array[MeshInstance3D] = []
 var _faded: Dictionary = {}
 
@@ -95,8 +106,9 @@ func forget() -> void:
 	bubbles.clear()
 	puff.clear()
 
-## Each snapshot: its "drowned" ({} for none).
-func show(drowned: Dictionary) -> void:
+## Each snapshot: its "drowned" ({} for none), and where the pip is shoved to
+## first when it was knocked off (terrain space, null for none).
+func show(drowned: Dictionary, shoved: Variant = null) -> void:
 	var actors: Dictionary = _world.actors
 	if drowned.is_empty() or not actors.has(str(drowned.get("slot", ""))):
 		if not slot.is_empty(): clear()
@@ -105,13 +117,14 @@ func show(drowned: Dictionary) -> void:
 	_world.camera_focus = drowning
 	# A world with no water to go into shows any loss as a fall away.
 	if drowned.has("sky") or not "waters" in _world:
-		_show_fall_away(drowning)
+		_show_fall_away(drowning, shoved)
 		return
 	var surface := _surface_of(str(drowned.get("route", "")), drowning)
 	if drowned.has("fell"):
 		_show_fall(drowning, surface)
 		return
 	var target: Vector3 = _world.actor_targets[drowning]
+	if shoved is Vector3: target = Vector3(shoved.x, target.y, shoved.z)
 	target.y = minf(target.y, surface) - DEPTH
 	_world.actor_targets[drowning] = target
 	if slot == drowning: return
@@ -151,9 +164,10 @@ func _show_fall(falling: String, surface: float) -> void:
 	if _world.reduced_motion and not _landed: _land()
 	_world.actor_targets[falling] = _landing if _landed else _top
 
-## A fall away: it starts where its snapshot has it, startled; advance plays
-## the rest (a fade in place under Reduce motion).
-func _show_fall_away(falling: String) -> void:
+## A fall away: it starts where its snapshot has it, startled (shoved over
+## the edge to `shoved` first when knocked off); advance plays the rest (a
+## fade in place under Reduce motion).
+func _show_fall_away(falling: String, shoved: Variant = null) -> void:
 	if slot == falling and _away:
 		_place_away()
 		return
@@ -162,6 +176,7 @@ func _show_fall_away(falling: String) -> void:
 	_away = true
 	_age = 0.0
 	_top = _world.actor_targets[falling]
+	_shoved = Vector3(shoved.x, _top.y, shoved.z) if shoved is Vector3 else _top
 	var spirit: Node3D = _world.actors[falling]
 	if spirit.pose() == &"doze": spirit.set_pose(&"rest", {}, true)
 	spirit.set_expression(SpiritLook.SURPRISED, _world.reduced_motion)
@@ -177,18 +192,34 @@ func _show_fall_away(falling: String) -> void:
 			puff.append(ball)
 	_place_away()
 
-## The falling spirit and its puff at `_age` into the fall: the wobble, then
-## the tumble (or the fade in place under Reduce motion). The spirit is drawn
-## where its target is, so the world's easing adds nothing.
+## The falling spirit and its puff at `_age` into the fall: the wobble (or
+## the shove over the edge), then the tumble (or the fade in place under
+## Reduce motion). The spirit is drawn where its target is, so the world's
+## easing adds nothing.
 func _place_away() -> void:
 	var spirit: Node3D = _world.actors[slot]
 	var at := _top
 	var fade := 0.0
 	var size := 1.0
 	var reduced: bool = _world.reduced_motion
+	var push := _shoved - _top
+	var shoved := push.length() > 0.01
 	if reduced:
 		fade = clampf(_age / AWAY_FADE, 0.0, 1.0)
 		spirit.rotation = Vector3.ZERO
+	elif shoved and _age < SHOVE:
+		# Shoved over the edge, toppling that way as it goes.
+		var share := _age / SHOVE
+		var eased := 1.0 - (1.0 - share) * (1.0 - share)
+		at = _top + push * eased + Vector3(0.0, SHOVE_HOP * sin(PI * share), 0.0)
+		spirit.rotation = _tip(push, SHOVE_TIP * eased)
+	elif shoved:
+		at = _shoved
+		var share := clampf((_age - SHOVE) / AWAY_TUMBLE, 0.0, 1.0)
+		at += push.normalized() * AWAY_OUT * share + Vector3(0.0, -AWAY_DROP * share * share, 0.0)
+		spirit.rotation = _tip(push, SHOVE_TIP + AWAY_ROLL * share * share) + Vector3(0.0, AWAY_TURN * share, 0.0)
+		size = 1.0 - 0.85 * share * share
+		fade = clampf((share - (1.0 - AWAY_FADE_SHARE)) / AWAY_FADE_SHARE, 0.0, 1.0)
 	elif _age < AWAY_WOBBLE:
 		var share := _age / AWAY_WOBBLE
 		at.y += AWAY_HOP * sin(PI * share)
@@ -205,7 +236,7 @@ func _place_away() -> void:
 	for part: Variant in _faded:
 		if is_instance_valid(part): (part as GeometryInstance3D).transparency = maxf(float(_faded[part]), fade)
 	# The puff blooms as the pip fades out, where it is then.
-	var since := _age - (AWAY_FADE if reduced else AWAY_WOBBLE + AWAY_TUMBLE * (1.0 - AWAY_FADE_SHARE * 0.5))
+	var since := _age - (AWAY_FADE if reduced else (SHOVE if shoved else AWAY_WOBBLE) + AWAY_TUMBLE * (1.0 - AWAY_FADE_SHARE * 0.5))
 	for index in range(puff.size()):
 		var ball := puff[index]
 		var spec: Array = PUFF[index]
@@ -215,6 +246,11 @@ func _place_away() -> void:
 		ball.position = at + Vector3(float(spec[0]), float(spec[1]) + 0.15, float(spec[2])) * (1.0 + bloom)
 		ball.scale = Vector3.ONE * (1.0 + PUFF_GROW * bloom)
 		ball.transparency = 0.4 if reduced else bloom
+
+## A spirit tipped over by `angle` (radians) toward `push` (its rotation).
+static func _tip(push: Vector3, angle: float) -> Vector3:
+	var way := Vector2(push.x, push.z).normalized()
+	return Vector3(way.y * angle, 0.0, -way.x * angle)
 
 ## Whether spirit `role` is falling away now: the kit draws it, nothing carries it.
 func falling_away(role: String) -> bool:

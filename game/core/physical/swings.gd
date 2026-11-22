@@ -8,31 +8,40 @@ extends RefCounted
 ## {"surface_id", "rect_cm": [x0, z0, x1, z1]}, "period_ticks", "sweep_ticks",
 ## "warn_ticks", "offset_ticks", "brake": a when (optional), "outcome"}].
 ## Something hung from a pivot (an old crane's bucket, a lantern on a chain)
-## swings across its lane on a steady beat of period_ticks. Each beat ends with
-## sweep_ticks across the lane, after warn_ticks of warning (it draws back and
-## creaks, its shadow grows on the lane); the rest of the beat it hangs back,
-## out of the lane. A pip whose centre is in the lane, on the lane's floor or
-## crossing, on a sweep tick is knocked off: "drowned" into the water beside it
-## (the tide rules' drown, simulation.gd _check_hazards). Nothing in a swing
-## names a level; its look is the "swing" piece slot.
+## swings to and fro across its lane, one pass a beat of period_ticks, each
+## pass the other way. A pass starts still at one side (the end of the beat's
+## first rest ticks, period - sweep - warn), swings in over warn_ticks of
+## warning (it creaks), crosses the lane over the beat's last sweep_ticks and
+## swings out and up to the other side over the next beat's rest ticks, out of
+## the lane. It crosses along its swing axis (pivot to lane middle, the
+## nearer of x and z), from the lane's near edge to its far edge on even
+## passes and back on odd ones: on sweep tick i of sweep_ticks it is over the
+## middle (i + 1/2) / sweep_ticks of the way across, as wide as half the lane
+## (struck()). A pip whose centre is in the lane, on the lane's floor or
+## crossing, where the swing is on a sweep tick is knocked off: into the water
+## in a water chapter, else off into the sky (the shared rule,
+## runtime.gd knocked_off, simulation.gd _check_hazards). Nothing in a swing
+## names a level; its look is the "swing" piece slot, which draws it where
+## this says, tick for tick.
 ##
 ## Timing is the simulation tick only. Each swing keeps one beat counter, in
 ## the world (runtime.gd save_world, so a carry-over turn starts from it) and
 ## in the state hash; it starts at 0 when the stage starts and the beat's
 ## phase is (counter + offset_ticks) % period_ticks. The counter goes up every
-## tick unless the brake holds while the swing hangs back: then it waits there,
-## so a brake held mid-swing stops it the next time it swings back, a parked
-## swing is out of the lane (holding it never hurts anyone), and letting go
-## always gives the full warning before the next sweep. The live pip, the
-## friend's replay, the proof and the checks all count the same ticks.
+## tick unless the brake holds while the swing is at the top of its swing
+## (parked(): the last rest tick, still at one side): then it waits there, so
+## a brake held mid-swing stops it the next time it swings up out of the lane,
+## a parked swing is out of the lane (holding it never hurts anyone), and
+## letting go always gives the full warning before the next sweep. The live
+## pip, the friend's replay, the proof and the checks all count the same ticks.
 ##
 ## The level tools treat the lane as walkable (a pip may always wait for the
 ## beat) and the brake as a helper, so a swing never makes a stage two-pip.
 ## Pure static code shared by the engine, the catalogs, the blocks and the
 ## level tools; it preloads nothing.
 
-## What a hit does: knocked into the water ("drowned"). A ledge's fall waits
-## for the tide rules' fall outcome.
+## What a hit does: knocked off ("drowned": into the water where there is
+## some, else into the sky, runtime.gd knocked_off).
 const OUTCOMES := ["drowned"]
 const FIELDS := ["id", "pivot_cm", "lane", "period_ticks", "sweep_ticks", "warn_ticks", "offset_ticks", "outcome"]
 
@@ -56,11 +65,22 @@ static func warning(swing: Dictionary, count: int) -> bool:
 
 ## Whether `swing` hangs back, out of its lane, at `count`.
 static func resting(swing: Dictionary, count: int) -> bool:
-	return phase(swing, count) < int(swing.period_ticks) - int(swing.sweep_ticks) - int(swing.warn_ticks)
+	return phase(swing, count) < _rest(swing)
 
-## The counter after one more tick: it waits while braked and hanging back.
+## Whether `swing` is at the top of its swing at `count` (its last rest
+## tick), where a held brake parks it.
+static func parked(swing: Dictionary, count: int) -> bool:
+	return phase(swing, count) == _rest(swing) - 1
+
+## The counter after one more tick: it waits while braked at the top of its swing.
 static func next_count(swing: Dictionary, count: int, braked: bool) -> int:
-	return count if braked and resting(swing, count) else count + 1
+	return count if braked and parked(swing, count) else count + 1
+
+## Which pass `swing` is on at `count` (0 or 1): a pass starts at the end of
+## the beat's rest, so the rest ticks still belong to the beat before.
+static func pass_of(swing: Dictionary, count: int) -> int:
+	var beat := (count + int(swing.offset_ticks)) / int(swing.period_ticks)
+	return posmod(beat - (1 if resting(swing, count) else 0), 2)
 
 ## Whether `player` (x, z, surface_id) stands in `swing`'s lane.
 static func in_lane(swing: Dictionary, player: Dictionary) -> bool:
@@ -68,10 +88,50 @@ static func in_lane(swing: Dictionary, player: Dictionary) -> bool:
 	var r: Array = lane.rect_cm
 	return str(player.get("surface_id", "")) == str(lane.surface_id) and int(player.x) >= int(r[0]) and int(player.x) <= int(r[2]) and int(player.z) >= int(r[1]) and int(player.z) <= int(r[3])
 
-## What the screen reads: {"phase", "held"} for `count`, held while braked and
-## hanging back.
+## Whether `swing` knocks `player` off at `count`: on a sweep tick, the pip in
+## the lane and within the swing's reach of where it is across the lane (its
+## middle (i + 1/2) / sweep of the way, reaching half the lane's width either
+## way). Integer only.
+static func struck(swing: Dictionary, count: int, player: Dictionary) -> bool:
+	if not sweeping(swing, count) or not in_lane(swing, player): return false
+	var across := axis(swing)
+	var ends := edges(swing)
+	var near: int = ends[0]
+	var far: int = ends[1]
+	if pass_of(swing, count) == 1:
+		near = ends[1]
+		far = ends[0]
+	var sweep := int(swing.sweep_ticks)
+	var tick := phase(swing, count) - (int(swing.period_ticks) - sweep)
+	var at := int(player.x) if across == 0 else int(player.z)
+	# Doubled by sweep: |2s*at - (2s*near + (far - near)(2i + 1))| <= s*width.
+	return absi(2 * sweep * at - (2 * sweep * near + (far - near) * (2 * tick + 1))) <= sweep * absi(far - near)
+
+## The axis `swing` crosses its lane along: 0 for x, 1 for z, whichever of the
+## two runs further from its pivot to the lane's middle (z on a tie). Its
+## near edge is the side nearer the pivot.
+static func axis(swing: Dictionary) -> int:
+	var r: Array = swing.lane.rect_cm
+	var dx := absi(int(r[0]) + int(r[2]) - 2 * int(swing.pivot_cm[0]))
+	var dz := absi(int(r[1]) + int(r[3]) - 2 * int(swing.pivot_cm[1]))
+	return 0 if dx > dz else 1
+
+## The lane's edges along the swing axis, near (the pivot's side) then far (cm).
+static func edges(swing: Dictionary) -> Array:
+	var across := axis(swing)
+	var r: Array = swing.lane.rect_cm
+	var low := int(r[across])
+	var high := int(r[across + 2])
+	var pivot := int(swing.pivot_cm[across])
+	return [low, high] if absi(pivot - low) <= absi(pivot - high) else [high, low]
+
+## What the screen reads: {"phase", "pass", "held"} for `count`: the beat's
+## phase, which pass it is on (pass_of) and whether it is held parked.
 static func view(swing: Dictionary, count: int, braked: bool) -> Dictionary:
-	return {"phase": phase(swing, count), "held": braked and resting(swing, count)}
+	return {"phase": phase(swing, count), "pass": pass_of(swing, count), "held": braked and parked(swing, count)}
+
+static func _rest(swing: Dictionary) -> int:
+	return int(swing.period_ticks) - int(swing.sweep_ticks) - int(swing.warn_ticks)
 
 ## Every stage's swings that a level uses, as found messages ([] when none).
 static func uses(level: Dictionary) -> Array:

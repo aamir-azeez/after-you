@@ -969,6 +969,13 @@ func _after_interact() -> void:
 func _check_hazards() -> void:
 	pass
 
+## A pip knocked off its floor (`record`: the drowned record): into the water
+## in a chapter with water under its floors (WATER_CHAPTERS), else a fall into
+## the sky ("fell" and "sky"). The one rule for every knock-off.
+func knocked_off(record: Dictionary) -> Dictionary:
+	if str(level.get("id", "")) not in WATER_CHAPTERS: record.merge({"fell": true, "sky": true})
+	return record
+
 ## Open turns, once a tick's routes are final: each pip whose floor went from
 ## under it this tick keeps its footing (the rule by WATER_CHAPTERS above).
 ## Only a crossing that stood at the tick's start and is shut now (`was`: the
@@ -993,8 +1000,7 @@ func _keep_footing(was: Dictionary) -> void:
 			_players[slot] = spot
 			_events.append("stepped_back:" + slot)
 			continue
-		_drowned = {"slot": slot, "route": surface, "tick": tick}
-		if str(level.get("id", "")) not in WATER_CHAPTERS: _drowned.merge({"fell": true, "sky": true})
+		_drowned = knocked_off({"slot": slot, "route": surface, "tick": tick})
 		finished = true
 		_events.append(("fell:" if _drowned.has("fell") else "drowned:") + slot)
 		return

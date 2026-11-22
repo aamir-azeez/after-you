@@ -180,6 +180,11 @@ func present(state: Dictionary, immediate: bool) -> void:
 	for id: String in _swings:
 		if beats.has(id): _swings[id].set_beat(beats[id], immediate)
 
+## Where a pip at `at` (terrain space) that swing `id` knocked off is shoved
+## to (kit/pieces/swing.gd shove), null for no such swing.
+func shove(id: String, at: Vector3) -> Variant:
+	return _swings[id].shove(at) if _swings.has(id) else null
+
 func moving() -> bool:
 	if _swings.values().any(func(piece: RefCounted) -> bool: return piece.moving()): return true
 	if _ladders.values().any(func(ladder: Dictionary) -> bool: return ladder.piece.moving()): return true

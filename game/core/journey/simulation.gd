@@ -352,15 +352,17 @@ func _check_hazards() -> void:
 		_events.append("sank:" + stone)
 		_events.append("drowned:" + slot)
 		return
-	# The pieces rules: a swing across its lane knocks off a pip standing in it, p0 first.
+	# The pieces rules: a swing across its lane knocks off a pip where it is
+	# passing, p0 first, into the water or the sky (knocked_off).
 	for swing: Dictionary in _swing_plan:
-		if not Swings.sweeping(swing, int(_swing_counts[str(swing.id)])): continue
+		var count := int(_swing_counts[str(swing.id)])
+		if not Swings.sweeping(swing, count): continue
 		for slot: String in ["p0", "p1"]:
-			if not Swings.in_lane(swing, _players[slot]): continue
-			_drowned = {"slot": slot, "route": str(swing.lane.surface_id), "tick": tick, "swing": str(swing.id)}
+			if not Swings.struck(swing, count, _players[slot]): continue
+			_drowned = knocked_off({"slot": slot, "route": str(swing.lane.surface_id), "tick": tick, "swing": str(swing.id)})
 			finished = true
 			_events.append("knocked:" + str(swing.id))
-			_events.append("drowned:" + slot)
+			_events.append(("fell:" if _drowned.has("fell") else "drowned:") + slot)
 			return
 
 ## The pieces rules: each swing's beat moves on a tick, unless its brake holds

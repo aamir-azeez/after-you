@@ -746,6 +746,13 @@ func _present_seats(state: Dictionary, immediate: bool) -> void:
 				if pose != SpiritVisual.SpiritIdle.DOZE: actor.set_pose(SpiritVisual.SpiritIdle.SIT, seat.params, immediate)
 			elif pose == SpiritVisual.SpiritIdle.SIT: actor.set_pose(SpiritVisual.SpiritIdle.REST, {}, true)
 
+## A pip a swing knocked off is shoved past the lane's edge the bucket heads
+## for (kit/new_pieces.gd shove), from where the snapshot has it.
+func _knock_shove(knocked: Dictionary) -> Variant:
+	var slot := str(knocked.get("slot", ""))
+	if new_pieces == null or not knocked.has("swing") or not actor_targets.has(slot): return null
+	return new_pieces.shove(str(knocked.swing), actor_targets[slot])
+
 # --- Rules 20: carried items, floats, currents and both-hands crossings ---
 
 ## Every item of the level in its style (a pin by id, else the dressing's
@@ -794,17 +801,21 @@ func _build_items(stage: Dictionary) -> void:
 		if hands.has(str(route.id)) and not rope:
 			_ladder_rungs(route)
 			await _build_step()
-	# A throw's mark is a cream ring where the thrower stands, unless it lies
-	# wholly inside a pad, which is then the throw spot and draws it
-	# (LevelLayout.mark_pad); its landing the seed landing's ring of ticks the
-	# landing spot's size (kit/pieces/socket.gd).
+	# A throw's mark is a cream ring with the throw icon where the thrower
+	# stands, unless it lies wholly inside a pad, which is then the throw spot
+	# and carries the icon (LevelLayout.mark_pad, kit/throw_mark.gd), or has
+	# it on the floor at the mark where the pad is drawn as something else (a
+	# rope bucket); its landing the seed landing's ring of ticks the landing
+	# spot's size (kit/pieces/socket.gd).
 	for thrown: Dictionary in view.get("throws", []):
-		if LevelLayout.mark_pad(view, thrown.mark).is_empty():
-			var mark := ring(float(thrown.mark.get("radius_cm", CarriedItems.SPOT_RADIUS_CM)) / 100.0, CREAM, _at(thrown.mark) + Vector3(0, 0.03, 0), terrain)
-			mark.name = "ThrowMark_" + str(thrown.id)
+		var target: Dictionary = CarriedItems.spot(view, str(thrown.to))
+		var pad := LevelLayout.mark_pad(view, thrown.mark)
+		var radius := float(thrown.mark.get("radius_cm", CarriedItems.SPOT_RADIUS_CM)) / 100.0
+		if pad.is_empty(): ThrowMark.mark(radius, _at(thrown.mark), _at(target), terrain, str(thrown.id))
+		elif pad_pieces.has(pad.id): ThrowMark.on_pad(pad_pieces[pad.id], _at(target), str(thrown.id))
+		else: ThrowMark.icon(radius, _at(thrown.mark), _at(target), terrain, str(thrown.id))
 		var landing := Node3D.new()
 		landing.name = "ThrowLanding_" + str(thrown.id)
-		var target: Dictionary = CarriedItems.spot(view, str(thrown.to))
 		landing.position = _at(target)
 		terrain.add_child(landing)
 		SocketKit.landing(landing, float(target.get("radius_cm", CarriedItems.SPOT_RADIUS_CM)) / 100.0)

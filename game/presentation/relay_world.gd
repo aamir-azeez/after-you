@@ -71,6 +71,13 @@ func load_level(definition: Dictionary) -> void:
 	_frame_camera()
 
 
+## Each stage throws from its plate to its landing.
+func _throw_pads() -> Array:
+	var found: Array = []
+	for stage: Dictionary in current_level.get("stages", []):
+		if stage.has("plate_id") and stage.has("landing_cm"): found.append({"pad": str(stage.plate_id), "to": _floor_point(stage.landing_cm, str(stage.get("landing_surface", "")))})
+	return found
+
 func show_stage(stage: Dictionary) -> void:
 	reset_camera_exploration()
 	displayed_stage_id = str(stage.get("id", ""))
