@@ -30,7 +30,7 @@ export const HARD_FAILURES = {
 export const HARD_MODE_HEADER = "X-AfterYou-Hard-Mode";
 /** Slips a room keeps with their recordings. */
 export const MAX_KEPT = 5;
-export const REASONS = ["retry", "failed_turn", "drowned"] as const;
+export const REASONS = ["retry", "failed_turn", "drowned", "dropped"] as const;
 export type Reason = typeof REASONS[number];
 /** Who slipped, where and how, as a view shows the last one. */
 export type Failure = { by: string; stage_index: number; role: "a" | "b"; reason: Reason; at: string };

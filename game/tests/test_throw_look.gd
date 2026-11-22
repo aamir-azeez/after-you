@@ -10,6 +10,7 @@ extends SceneTree
 ##   blur shows and it tumbles in flight, and once it lands both are gone.
 const FirstWorld = preload("res://presentation/first_steps_world.gd")
 const First = preload("res://core/first_steps/simulation.gd")
+const ContactShadows = preload("res://presentation/kit/contact_shadows.gd")
 const CarriedItemKit = preload("res://presentation/kit/pieces/carried_item.gd")
 const CarriedItems = preload("res://core/physical/carried_items.gd")
 const Registry = preload("res://services/chapter_registry.gd")
@@ -134,6 +135,7 @@ func _every_kind() -> void:
 		world.present(sim.snapshot())
 		var spun := false
 		var blurred := false
+		var shadowed := false
 		var landed := false
 		for tick in range(int(level.stages[1].throws[0].flight_ticks) + 4):
 			var snap: Dictionary = sim.step({})
@@ -142,8 +144,11 @@ func _every_kind() -> void:
 			if CarriedItems.in_flight(sim._mechanisms.items.seed):
 				spun = spun or not piece.root.quaternion.is_equal_approx(Quaternion.IDENTITY)
 				blurred = blurred or piece.throw_look.trail._mesh.visible
+				shadowed = shadowed or not bool(piece.root.get_meta(ContactShadows.OFF_META, false))
 			elif "item_landed:seed" in snap.events: landed = true
 		_check(spun and blurred, "The thrown %s tumbles and blurs in flight (spun %s, blurred %s)" % [kind, spun, blurred])
+		_check(not shadowed, "The thrown %s casts no shadow in flight" % kind)
+		_check(landed and not bool(piece.root.get_meta(ContactShadows.OFF_META, false)), "Landed, the %s has its shadow again" % kind)
 		_check(landed and not piece.throw_look.flying and not piece.throw_look.trail._mesh.visible and piece.root.quaternion.is_equal_approx(Quaternion.IDENTITY), "Landed, the %s stands upright with no blur" % kind)
 		world.free()
 	_check(kinds >= 3, "Every carried kind is thrown: %d" % kinds)

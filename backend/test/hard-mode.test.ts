@@ -139,6 +139,14 @@ describe("hard rooms", () => {
     expect(next.room.hard?.failures).toBe(2);
   });
 
+  it("take a dropped item as a slip like a drowning, in the same one request, and refuse a reason it does not know", async () => {
+    const { host, room } = await hardRoom();
+    const unknown = await sendReset(room, host, resetBody(room, "tripped")); expect(unknown.status).toBe(422); expect(await errorCode(unknown)).toBe("invalid_reason");
+    const { room: after, failure } = await slipped(room, host, "dropped");
+    expect(failure).toMatchObject({ by: host.player_id, stage_index: 0, role: "a", reason: "dropped" });
+    expect(after.hard).toEqual({ schema_version: 1, failures: 1, over: false, last: failure });
+  });
+
   it("take only first tries, never redo, and nothing once the run is over", async () => {
     const { host, guest, room } = await hardRoom();
     const retried = await submit(room, host, firstA, undefined, { tries: 2 });

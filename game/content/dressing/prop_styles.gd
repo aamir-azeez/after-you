@@ -125,10 +125,11 @@ const SLOTS := {
 	"spillway": {"trickle": {}, "falls": {}},
 	# Rules 20's carried items and floats (kit/pieces/carried_item.gd) and the
 	# current that carries them (kit/pieces/current.gd).
-	"carried_item": {"parcel": {}, "pipsport": {}, "raft": {}, "seed": {}, "winch_handle": {}},
+	"carried_item": {"parcel": {}, "pipsport": {}, "raft": {}, "seed": {}, "winch_handle": {}, "lens": {}},
 	# Where an item rests (kit/pieces/socket.gd item_spot): nothing drawn, a
-	# stone pedestal, a garden planter, the relay nest or a winch a handle fits.
-	"item_spot": {"none": {}, "pedestal": {}, "planter": {}, "nest": {}, "winch": {}},
+	# stone pedestal, a garden planter, the relay nest, a winch a handle fits
+	# or a lens cradle.
+	"item_spot": {"none": {}, "pedestal": {}, "planter": {}, "nest": {}, "winch": {}, "cradle": {}},
 	# A current's legs: marks on the water, or a hoist's bucket on a rope line
 	# that winds an item up to another floor.
 	"current": {"ripples": {}, "chevrons": {}, "bucket": {}},
