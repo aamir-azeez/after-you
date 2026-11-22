@@ -86,6 +86,7 @@ import { withConfig } from "./config";
 import { LEGACY_CHAPTERS } from "../src/v2/legacy-chapters";
 // The published chapters as older apps hold them, which room level 2 lists after the rows (legacy-chapters.ts).
 const current = <T extends { definition_hash: string }>(items: T[]): T[] => items.filter(item => !LEGACY_CHAPTERS.some(entry => entry.key.definition_hash === item.definition_hash));
+import { grantFullJourney } from "./full-journey";
 
 /** A fixture checkpoint as an open turns room takes it: no proof nests in it (v2/open-turns.ts fingerprints), and its hash never covered one. */
 function flat<T extends object>(checkpoint: T): Omit<T, "proof"> { const { proof: _proof, ...rest } = checkpoint as T & { proof?: unknown }; void _proof; return rest; }
@@ -230,9 +231,10 @@ describe("open controls (rules 12 and 13)", () => {
     await expect(checkpointV2(await rehash(kept), initialCheckpoint(chain.adapter.key) as ChapterCheckpoint, a, c, [b])).rejects.toMatchObject({ code: "checkpoint_mechanism_mismatch" });
   });
   it("refuses a guest whose client never offered the open rules, and plays a room to completion", async () => {
-    // Turn of the Tide@3 is free, so a room needs no purchase.
+    // Turn of the Tide@3 is Full Journey, so its host holds a tester grant.
     for (const chain of [CHAINS[1]]) {
       const flags = { [chain.flag]: "true" }, host = await account(), oldGuest = await account(), guest = await account();
+      await grantFullJourney(host);
       const created = await call("/v2/rooms", "POST", host, { ...chain.adapter.key, idempotency_key: key() }, flags);
       expect(created.status, chain.name).toBe(200);
       const room = await created.json<RoomSnapshotV2>();

@@ -7,7 +7,7 @@ import { ITEM_ID_PATTERN, featuredCodeFor, offeredTagFor, type Look } from "./ca
 import { withoutFaces } from "./reaction-loadout";
 import { servedFaceVersion } from "../v2/face-packs";
 import { FACE_SINGLES_VERSION } from "../v2/end-reactions";
-import { CHAPTERS } from "../v2/chapters";
+import { CHAPTERS, paid } from "../v2/chapters";
 import type { CommittedV2, MutationV2 } from "../v2/room";
 import type { Entitlement } from "../entitlement";
 import type { PollenMember, TurnFacts } from "./turn-facts";
@@ -250,7 +250,7 @@ const only = (claim: Record<string, unknown>, keys: string[]) => Object.keys(cla
 /** Whether a level_id is a chapter, and whether any version of it is paid. */
 function chapterLevel(levelId: string): { premium: boolean } | null {
   const rows = CHAPTERS.filter(row => row.adapter.key.level_id === levelId);
-  return rows.length ? { premium: rows.some(row => row.adapter.premium) } : null;
+  return rows.length ? { premium: rows.some(row => paid(row.adapter)) } : null;
 }
 
 /**

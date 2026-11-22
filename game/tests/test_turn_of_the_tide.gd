@@ -65,7 +65,7 @@ func _run() -> void:
 
 func _definition() -> void:
 	_check(not level.is_empty() and Catalog.known(level) and level.id == "turn-of-the-tide" and level.version == 1, "A known version 1 definition")
-	_check(level.schema_version == 7 and level.simulation_version == 9 and not level.premium, "Schema 7, pinned to rules 9, free")
+	_check(level.schema_version == 7 and level.simulation_version == 9 and not level.premium, "Schema 7, pinned to rules 9, a free definition (the descriptor sells it as Full Journey)")
 	_check(level.stages.size() == 2 and level.stages[0].id == Witness.SET and level.stages[1].id == Witness.SLACK, "Two stages: set-the-tide then slack-water")
 	_check(level.stages[0].first_player_slot == "p0" and level.stages[1].first_player_slot == "p1", "The roles swap between the stages")
 	_check(level.islands.size() == 20 and level.stairs.size() == 10 and level.bridges.size() == 26, "20 islands, 10 stairs, 26 bridges")
@@ -85,15 +85,15 @@ func _registry() -> void:
 	# @2 is offered in its place (test_turn_of_the_tide_versions.gd).
 	var offered_key := Registry.offered_key(key)
 	_check(key not in Registry.UNRELEASED and key not in Registry.offered_keys() and offered_key == "turn-of-the-tide@2" and offered_key in Registry.offered_keys(), "The chapter is offered as its @2")
-	# Solo lists free chapters first in registry order, so the tide follows the well.
-	var free: Array[String] = []
+	# Solo lists Full Journey chapters after the free ones in registry order, so the tide comes last.
+	var paid: Array[String] = []
 	for offered: String in Registry.offered_keys():
-		if not Registry.descriptor(offered).premium: free.append(offered)
-	_check(free.find(offered_key) == free.find(Registry.WISHING_WELL) + 1 and free[-1] == offered_key, "Among the free chapters it comes straight after The Wishing Well")
+		if Registry.descriptor(offered).premium: paid.append(offered)
+	_check(not paid.is_empty() and paid[-1] == offered_key, "It is the last Full Journey chapter")
 	_check(Registry.is_journey(key) and Registry.is_cooperative(key) and Registry.simulation_script(key) == Simulation, "It plays on the journey facade")
 	_check(Registry.supported_rules(key) == [9] and Registry.preferred_rules(key) == 9, "The registry supports exactly rules 9")
 	var descriptor := Registry.descriptor(key)
-	_check(not descriptor.premium and descriptor.simulation_version == 9 and descriptor.recording_version == 7 and descriptor.stage_count == 2, "Free, rules 9, schema 7 recordings, two stages")
+	_check(descriptor.premium and descriptor.simulation_version == 9 and descriptor.recording_version == 7 and descriptor.stage_count == 2, "Full Journey, rules 9, schema 7 recordings, two stages")
 	_check(descriptor.local_path == "user://turn-of-the-tide-journey-v1.json" and descriptor.definition_hash == Canonical.digest(level), "Its own journal and the exact definition hash")
 	_check(descriptor.title == level.title and not str(descriptor.summary).is_empty() and not str(descriptor.completion_text).is_empty(), "Its own title, summary and completion, not the Rolling Home fallback")
 	_check(descriptor.summary != Registry.descriptor(Registry.ROLLING_HOME).summary, "The descriptor does not fall through to the Rolling Home summary")

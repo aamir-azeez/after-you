@@ -67,7 +67,10 @@ func _row(key: String) -> Dictionary:
 		"level_id": str(descriptor.level_id),
 		"level_version": int(descriptor.level_version),
 		"definition_hash": str(descriptor.definition_hash),
-		"premium": bool(descriptor.premium),
+		## The published definition's flag, which room pins and the advertised list carry.
+		"premium": bool(level.get("premium", false)),
+		## A free definition sold as Full Journey (descriptor "full_journey"): the server's rows (backend/src/v2/chapters.ts) are pinned to these.
+		"full_journey": bool(data.get("full_journey", false)),
 		"stage_count": int(descriptor.stage_count),
 		"family": kind,
 		"recording_version": int(descriptor.recording_version),

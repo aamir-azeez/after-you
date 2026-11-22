@@ -46,7 +46,7 @@ func _registry() -> void:
 	_check(V1 not in Registry.UNRELEASED and V2 not in Registry.UNRELEASED, "Neither version is held back")
 	_check(Registry.resolve(v1) == V1 and Registry.resolve(v2) == V2, "Each version resolves to its own key, so @1 rooms still open")
 	_check(v2.local_path != v1.local_path and v1.local_path == "user://turn-of-the-tide-journey-v1.json", "@2 keeps its own journal and @1's is unchanged")
-	_check(not v2.premium and v2.premium == v1.premium and v2.title == v1.title and v2.stage_count == v1.stage_count, "@2 is the same free chapter, title and length")
+	_check(v2.premium and v2.premium == v1.premium and v2.title == v1.title and v2.stage_count == v1.stage_count, "@2 is the same Full Journey chapter, title and length")
 	_check(Thumbnails.path(V2) == Thumbnails.path(V1) and not Thumbnails.path(V2).is_empty(), "@2 reuses the chapter thumbnail")
 	_check(Main.JourneyFlow.own_solo_card(V2) and ChapterPicker.entry(V2).mark == V2, "Play Solo has an @2 card marked under its own key")
 	var shared := Journey.new(v1.local_path, null, V2)
