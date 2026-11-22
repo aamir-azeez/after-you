@@ -1,9 +1,9 @@
 {
 	"a_recording_hash": "",
 	"b_recording_hash": "",
-	"checkpoint_hash": "35b0e9f581868f19c55412ccf7ef22993ef8494ded2ff0288e7deb955a51e110",
+	"checkpoint_hash": "086bf054715e996c344d7be52660bd11d1e9fb56b60071ea162fae98027c2ef3",
 	"completed_stage_id": "",
-	"definition_hash": "60330e79eae89400b0b2dd96ee36775330c79a389e605ae05cc7c9afde7bc08e",
+	"definition_hash": "515f581b3979b8545998e2ea862a51d78f0ae81251e157138e5fa44caeaf1638",
 	"level_id": "sleeping-lighthouse",
 	"level_version": 3,
 	"mechanisms": {

@@ -1,24 +1,27 @@
 {
 	"catch_assistance": true,
-	"checkpoint_hash": "35b0e9f581868f19c55412ccf7ef22993ef8494ded2ff0288e7deb955a51e110",
+	"checkpoint_hash": "086bf054715e996c344d7be52660bd11d1e9fb56b60071ea162fae98027c2ef3",
 	"completed": false,
-	"definition_hash": "60330e79eae89400b0b2dd96ee36775330c79a389e605ae05cc7c9afde7bc08e",
+	"definition_hash": "515f581b3979b8545998e2ea862a51d78f0ae81251e157138e5fa44caeaf1638",
 	"duration_ticks": 50,
-	"final_state_hash": "7299f5a47f5725831478cffb851789df6a5d01655f17159e0d9af250fb30d879",
+	"final_state_hash": "36d926d3f682a5b7877de864813bf7f2f0babc9a69b9a58f360785b8a5db3f96",
+	"handoff_hash": "97d74009b5c28ae479266dd49c80b366e514b05c4e88c8f1f115f783e63af300",
+	"handoff_tick": 0,
 	"level_id": "sleeping-lighthouse",
 	"level_version": 3,
 	"outcome": {
 		"objective_complete": false,
 		"source_ready": true
 	},
-	"packed": "AQMKnAAeAGQ8AAAydNZuBxP+rA==",
+	"packed": "AQMKnAAeAGQ8AACdbW8yb7+0ig==",
 	"player_slot": "p0",
-	"recording_hash": "f2dbb475a64aeb0d330b9c971b986e27049ccad1deb589e85aeace21a2511019",
+	"recording_hash": "a43295be9d09e100e10bd0927d48bc542ae38fdac464fd6453eb6d0cba7304a6",
 	"role": "a",
 	"schema_version": 7,
-	"simulation_version": 16,
+	"simulation_version": 20,
 	"source_recording_hash": "",
 	"stage_id": "borrowed-light",
 	"stage_version": 1,
+	"start_hash": "97d74009b5c28ae479266dd49c80b366e514b05c4e88c8f1f115f783e63af300",
 	"tick_rate": 30
 }

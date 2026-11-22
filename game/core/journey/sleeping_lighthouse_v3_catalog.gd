@@ -1,6 +1,6 @@
 extends RefCounted
 ## sleeping-lighthouse@3: the Sleeping Lighthouse on the shared journey rules,
-## pinned to open turns with the new pieces (core/physical/pieces_rules.gd: 16)
+## pinned to open turns with the new pieces (core/physical/pieces_rules.gd: 20, carry-over turns)
 ## and lit by the light pieces (core/physical/light_pieces.gd, the "light"
 ## block), so a stage passes back and forth until both pips end a turn at its
 ## goal with its light holding, up to its cap. Every control works for either
@@ -59,7 +59,7 @@ static func definition() -> Dictionary:
 
 static func source() -> Dictionary:
 	return {"schema_version": 7, "simulation_version": 9, "id": "sleeping-lighthouse", "version": 3, "premium": true, "closing_ticks": 30,
-		"turn_limits": {"a_ticks":1800,"b_ticks":1800},
+		"turn_limits": {"a_ticks":2550,"b_ticks":2550},
 		"starts": {"p0": {"position_cm": [-760, 0], "height_cm": 0, "surface_id": "harbour"}, "p1": {"position_cm": [-520, 80], "height_cm": 0, "surface_id": "harbour"}},
 		"props": [], "drops": [], "stairs": [],
 		# Away until the lens appears on the north isle.

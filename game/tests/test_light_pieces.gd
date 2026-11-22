@@ -50,7 +50,7 @@ func _run() -> void:
 func _blocks() -> void:
 	var source := Witness.source()
 	_check(StageBlocks.problems(source).is_empty(), "The witness's blocks have no problems: %s" % [StageBlocks.problems(source)])
-	_check(PiecesRules.problems(level).is_empty() and level.simulation_version == 16, "Its light is sound on rules 16: %s" % [PiecesRules.problems(level)])
+	_check(PiecesRules.problems(level).is_empty() and level.simulation_version == PiecesRules.RULES[0], "Its light is sound on the pieces rules: %s" % [PiecesRules.problems(level)])
 	_check(PiecesRules.uses(level) == ["light on pad", "light on cradle"], "Light is a new piece on both stages: %s" % [PiecesRules.uses(level)])
 	var pad: Dictionary = level.stages[0]
 	_check(pad.lit_when == {"harbour-lamp": {"pad_id": "light-pad"}} and pad.optical_field.emitters == [{"id": "harbour-lamp", "position_cm": [60, 50], "enabled": true, "direction": "east"}], "The harbour lamp shines while the light pad is held")
@@ -149,7 +149,7 @@ func _sim(stage_id: String, players: Dictionary, controls: Dictionary = {}) -> S
 	for slot: String in players: checkpoint.players[slot] = players[slot]
 	for id: String in controls: checkpoint.mechanisms.controls[id] = controls[id]
 	var sim := Simulation.new()
-	sim.simulation_version = 16
+	sim.simulation_version = int(level.simulation_version)
 	sim._reset_trusted(level, stage_id, checkpoint, {}, "a", [])
 	return sim
 

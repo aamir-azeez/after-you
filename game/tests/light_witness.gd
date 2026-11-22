@@ -1,6 +1,6 @@
 extends RefCounted
 ## The light pieces' witness level (core/physical/light_pieces.gd), written
-## with the light block (core/blocks/stage_blocks.gd) on rules 16. A quay and
+## with the light block (core/blocks/stage_blocks.gd) on the pieces rules (20). A quay and
 ## an isle joined by the span, all at height 0:
 ##   "pad": the harbour lamp shines while someone stands on the light pad, far
 ##     from the span; the quay mirror turned to slash sends its light north to

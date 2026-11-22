@@ -382,6 +382,28 @@
 			],
 			"unlock_fruits": 0
 		},
+		"sleeping-lighthouse@3": {
+			"definition_fixture": "journey/sleeping-lighthouse-v3-definition.json",
+			"definition_hash": "515f581b3979b8545998e2ea862a51d78f0ae81251e157138e5fa44caeaf1638",
+			"family": "journey",
+			"flag": "SLEEPING_LIGHTHOUSE_V3_CHAPTER_ENABLED",
+			"full_journey": false,
+			"hard": false,
+			"initial_checkpoint_hash": "086bf054715e996c344d7be52660bd11d1e9fb56b60071ea162fae98027c2ef3",
+			"initial_fixture": "journey/sleeping-lighthouse-v3-initial-checkpoint.json",
+			"key": "sleeping-lighthouse@3",
+			"level_id": "sleeping-lighthouse",
+			"level_version": 3,
+			"max_branches": 7,
+			"premium": true,
+			"recording_version": 7,
+			"simulation_version": 20,
+			"stage_count": 6,
+			"supported_simulation_versions": [
+				20
+			],
+			"unlock_fruits": 0
+		},
 		"the-falls@1": {
 			"definition_fixture": "journey/the-falls-definition.json",
 			"definition_hash": "04bb186a63543d697f77aa42eb0d831e3e6e0d1a3754247531dad45769753ac4",
@@ -538,6 +560,7 @@
 		"a-house-for-two@2",
 		"the-falls@1",
 		"fog-marsh@1",
-		"relay-isles@3"
+		"relay-isles@3",
+		"sleeping-lighthouse@3"
 	]
 }

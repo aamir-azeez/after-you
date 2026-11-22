@@ -9,10 +9,10 @@ extends RefCounted
 ## - A selector control with "optics": {value: {optical id: {"orientation"?:
 ##   "slash"/"backslash", "enabled"?: bool}}} sets those optical entities while
 ##   it shows that value: a selector that steers a mirror, or switches a lamp
-##   off at one value (sleeping-lighthouse@3's path selector).
+##   off at one value.
 ## - The stage's "lit_when": {emitter id: when} lights a lamp only while its
 ##   when holds (Seven.predicate): a light pad ({"pad_id"}), a lens resting in
-##   a cradle ({"item_id", "spot_id"}, rules 16's carried items), a lever. A
+##   a cradle ({"item_id", "spot_id"}, the carried items), a lever. A
 ##   when never reads a signal (light never powers light), so one trace a tick
 ##   settles it.
 ## A receiver's signal opens a crossing through an ordinary gate

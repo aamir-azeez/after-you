@@ -47,7 +47,7 @@ export const THE_FALLS_HASH = "04bb186a63543d697f77aa42eb0d831e3e6e0d1a375424753
 export const RELAY_ISLES_V3_HASH = "3dada19b365b4035a50e19a55b1d5e01dc8a3d1391987efe83755ba5bce42fce";
 export const WISHING_WELL_V2_HASH = "f100cedde0f65539106040ebf52a2c498815c53a6828bb56a1ff57ace73063ac";
 export const FOG_MARSH_HASH = "e7ddc8b6d35402c9e788e5a77ac8c1c4206bebea36130573b5e9d1179b892220";
-export const SLEEPING_LIGHTHOUSE_V3_HASH = "60330e79eae89400b0b2dd96ee36775330c79a389e605ae05cc7c9afde7bc08e";
+export const SLEEPING_LIGHTHOUSE_V3_HASH = "515f581b3979b8545998e2ea862a51d78f0ae81251e157138e5fa44caeaf1638";
 type Surface = { id: string; rect_cm: number[]; height_cm?: number; owner_slot?: string; axis?: string; from_height_cm?: number; to_height_cm?: number };
 export type Marker = { id: string; position_cm: number[]; surface_id: string; height_cm: number; radius_cm: number; owner_slot?: string };
 export type Predicate = { all?: Predicate[]; any?: Predicate[]; not?: Predicate; control_id?: string; value?: string; lever_id?: string; pad_id?: string; signal_id?: string; item_id?: string; carried?: boolean; spot_id?: string };
@@ -229,7 +229,7 @@ export const fogMarsh = journeyAdapter(fogMarshDefinition, fogMarshInitial, FOG_
 /** Open turns with the new pieces (16): the Relay Isles on the journey rules, the seed a carried item on a solid
  * pedestal, placed in a solid nest and thrown over the garden's rope bridge. relay-isles@2 keeps its own adapter. Unreleased. */
 export const relayIslesV3 = journeyAdapter(relayIslesV3Definition as Definition, relayIslesV3Initial, RELAY_ISLES_V3_HASH);
-/** Open turns with the new pieces and light pieces (16): the six Lighthouse stages on the journey rules, its bridges held by
+/** Open turns with the new pieces and light pieces (20): the six Lighthouse stages on the journey rules, its bridges held by
  * light (light-pieces.ts), its lens a carried item thrown to Rest Rock. Seven branches, as every open chapter. Unreleased. */
 export const sleepingLighthouseV3 = journeyAdapter(sleepingLighthouseV3Definition as unknown as Definition, sleepingLighthouseV3Initial, SLEEPING_LIGHTHOUSE_V3_HASH, 7);
 /** Open turns with the new pieces (20): the Wishing Well on the journey rules, shorter walks, the old crane's swinging bucket
