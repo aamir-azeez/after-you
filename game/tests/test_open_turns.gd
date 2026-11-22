@@ -64,6 +64,7 @@ const Joystick = preload("res://presentation/joystick.gd")
 const ChapterControls = preload("res://presentation/chapter_controls.gd")
 const SpiritLook = preload("res://presentation/spirit_look.gd")
 const Frozen = preload("res://services/frozen_simulation.gd")
+const OpenTurnStore = preload("res://services/open_turn_store.gd")
 const TRACES := "user://open-turns-test-traces"
 const TIDE := "turn-of-the-tide@3"
 const STAGE := "set-the-tide"
@@ -364,11 +365,14 @@ func _hard_runs() -> void:
 	_check(Canonical.same(_json(sim.export_recording()), slip), "and plays back byte for byte")
 	var viewer: Node = await _hard_viewer({"chapter_key": TIDE, "kind": "watch", "run": slipped})
 	_check(viewer.mode == "replay" and viewer.replay_pair_index == 0 and viewer.sim.get("role") == "b", "The chapter screen opens the kept slip in its replay (%s)" % viewer.mode)
+	# Carry-over turns: the screen plays the stage's shared timeline straight through, the slip last.
+	var stretches: Array = viewer._replay_stretches
 	var ticks := 0
-	while viewer.mode == "replay" and ticks < 2000 and viewer.replay_cursor < viewer.replay_frames.size():
-		viewer.advance_input({})
+	while viewer.mode == "replay" and ticks < 6000:
+		if viewer.replay_cursor < viewer.replay_frames.size(): viewer.advance_input({})
+		elif not viewer._next_stretch(): break
 		ticks += 1
-	_check(viewer.replay_cursor == viewer.replay_frames.size() and viewer.replay_frames.size() == int(slip.duration_ticks), "and plays it up to the slip")
+	_check(stretches == OpenTurnStore.timeline(turns) and not stretches.is_empty() and viewer._replay_stretch == stretches.size() - 1 and viewer.replay_cursor == viewer.replay_frames.size() and viewer.replay_frames.size() == int(slip.duration_ticks), "and plays the stage's timeline up to the slip (stretch %d of %d, %s)" % [viewer._replay_stretch + 1, stretches.size(), viewer.mode])
 	await _close_hard_viewer(viewer)
 	# A finished stage: kept with its passes, and its closing turn replays over them.
 	_check(journal.accept_recording(a) and journal.accept_recording(turn_two) and journal.accept_recording(turn_three) and journal.accept_recording(closing), "The run plays the stage again in four turns (%s)" % journal.last_error)
@@ -381,7 +385,8 @@ func _hard_runs() -> void:
 	_check(int(HardMode.summary(whole).parts) == 1 and HardMode.runs(TIDE).size() == 2, "It lists as one part beside the slip")
 	_check(Canonical.same(CheckpointPairs.derive(Simulation, level, start, HardMode.watch_pairs(whole)[0]).get("checkpoint"), _stage_checkpoint), "Its stage derives the same checkpoint when watched")
 	viewer = await _hard_viewer({"chapter_key": TIDE, "kind": "watch", "id": str(whole.id)})
-	_check(viewer.mode == "replay" and viewer.replay_frames.size() == int(closing.duration_ticks) and viewer.sim.get("role") == "b", "The chapter screen replays the closing turn over its passes (%s)" % viewer.mode)
+	var timeline := OpenTurnStore.timeline([a, turn_two, turn_three, closing])
+	_check(viewer.mode == "replay" and viewer._replay_stretches == timeline and not timeline.is_empty() and timeline[-1] == {"turn": 3, "ticks": -1} and viewer.sim.get("role") == "b", "The chapter screen replays the stage straight through its timeline, the closing turn last (%s)" % viewer.mode)
 	await _close_hard_viewer(viewer)
 	# Turns that do not chain are refused when watched.
 	var shuffled: Dictionary = whole.duplicate(true)

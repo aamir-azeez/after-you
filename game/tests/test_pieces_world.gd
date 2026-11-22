@@ -367,7 +367,7 @@ func _sim(stage_id: String, players: Dictionary, prior: Dictionary = {}, role: S
 	checkpoint.next_stage_id = stage_id
 	for slot: String in players: checkpoint.players[slot] = players[slot]
 	var sim := Simulation.new()
-	sim.simulation_version = 16
+	sim.simulation_version = 20
 	sim._reset_trusted(level, stage_id, checkpoint, prior, role)
 	return sim
 
