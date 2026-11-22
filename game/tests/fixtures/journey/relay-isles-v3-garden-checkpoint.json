@@ -1,0 +1,288 @@
+{
+	"checkpoint_hash": "ac534e7c591d425f07041a1905aca57161e0cfcb9769099cc90926b3fedadb9d",
+	"completed_stage_id": "garden",
+	"definition_hash": "30ff6b4e95e79dbadb6c4928c6bc80c1fb4a5b4f495e649f0087912c56a42bb9",
+	"level_id": "relay-isles",
+	"level_version": 3,
+	"mechanisms": {
+		"controls": {},
+		"items": {
+			"seed": {
+				"height": 0,
+				"holder": "",
+				"spot": "garden",
+				"surface_id": "east",
+				"x": 620,
+				"z": 120
+			}
+		},
+		"latched_bridges": [],
+		"levers": {},
+		"props": {}
+	},
+	"next_stage_id": "",
+	"players": {
+		"p0": {
+			"height": 0,
+			"surface_id": "east",
+			"x": 720,
+			"z": 40
+		},
+		"p1": {
+			"height": 0,
+			"surface_id": "east",
+			"x": 720,
+			"z": 40
+		}
+	},
+	"previous_checkpoint_hash": "eeebcdf601d70d461b9a17629f2ef4554113bc71395922868f6246915f40e1d3",
+	"proof": {
+		"checkpoint": {
+			"checkpoint_hash": "eeebcdf601d70d461b9a17629f2ef4554113bc71395922868f6246915f40e1d3",
+			"completed_stage_id": "relay",
+			"definition_hash": "30ff6b4e95e79dbadb6c4928c6bc80c1fb4a5b4f495e649f0087912c56a42bb9",
+			"level_id": "relay-isles",
+			"level_version": 3.0,
+			"mechanisms": {
+				"controls": {},
+				"items": {
+					"seed": {
+						"height": 0.0,
+						"holder": "",
+						"spot": "relay-socket",
+						"surface_id": "relay",
+						"x": 40.0,
+						"z": 0.0
+					}
+				},
+				"latched_bridges": [],
+				"levers": {},
+				"props": {}
+			},
+			"next_stage_id": "garden",
+			"players": {
+				"p0": {
+					"height": 0.0,
+					"surface_id": "relay",
+					"x": -60.0,
+					"z": 110.0
+				},
+				"p1": {
+					"height": 0.0,
+					"surface_id": "relay",
+					"x": -60.0,
+					"z": 110.0
+				}
+			},
+			"previous_checkpoint_hash": "037c2a7ca78e6aa5bacdeacfc6da543b5e833bdb9297cb4f85a4a0d1faec4797",
+			"proof": {
+				"checkpoint": {
+					"a_recording_hash": "",
+					"b_recording_hash": "",
+					"checkpoint_hash": "037c2a7ca78e6aa5bacdeacfc6da543b5e833bdb9297cb4f85a4a0d1faec4797",
+					"completed_stage_id": "",
+					"definition_hash": "30ff6b4e95e79dbadb6c4928c6bc80c1fb4a5b4f495e649f0087912c56a42bb9",
+					"level_id": "relay-isles",
+					"level_version": 3.0,
+					"mechanisms": {
+						"controls": {},
+						"items": {
+							"seed": {
+								"height": 0.0,
+								"holder": "",
+								"spot": "seed-pedestal",
+								"surface_id": "west",
+								"x": -620.0,
+								"z": 40.0
+							}
+						},
+						"latched_bridges": [],
+						"levers": {},
+						"props": {}
+					},
+					"next_stage_id": "relay",
+					"players": {
+						"p0": {
+							"height": 0.0,
+							"surface_id": "west",
+							"x": -480.0,
+							"z": 100.0
+						},
+						"p1": {
+							"height": 0.0,
+							"surface_id": "west",
+							"x": -320.0,
+							"z": -120.0
+						}
+					},
+					"previous_checkpoint_hash": "",
+					"proof": {},
+					"schema_version": 7.0,
+					"stage_index": 0.0
+				},
+				"turns": [
+					{
+						"catch_assistance": true,
+						"checkpoint_hash": "037c2a7ca78e6aa5bacdeacfc6da543b5e833bdb9297cb4f85a4a0d1faec4797",
+						"completed": false,
+						"definition_hash": "30ff6b4e95e79dbadb6c4928c6bc80c1fb4a5b4f495e649f0087912c56a42bb9",
+						"duration_ticks": 130.0,
+						"final_state_hash": "4927d5882c38c38a4605d455047125a36b963a1ed8c2cf5eca7802c95ebe5759",
+						"level_id": "relay-isles",
+						"level_version": 3.0,
+						"outcome": {
+							"objective_complete": false,
+							"source_ready": true
+						},
+						"packed": "AREWnAAC5wAOAJwCAM4CAAADAAA0ZAACGQAQAGQCAEsCAAADAAAinAACzgAqAJwCAOc8AADQdrPOJTBFfHZ+2cnOtndC2vRbTPKeE+7j0NKrePPoAw==",
+						"player_slot": "p0",
+						"recording_hash": "bd293ed84e345b4ef25103d4f3e5a00f6d6d3f080b8542f7235a7d308864a7b7",
+						"role": "a",
+						"schema_version": 7.0,
+						"simulation_version": 16.0,
+						"source_recording_hash": "",
+						"stage_id": "relay",
+						"stage_version": 1.0,
+						"tick_rate": 30.0
+					},
+					{
+						"catch_assistance": true,
+						"checkpoint_hash": "037c2a7ca78e6aa5bacdeacfc6da543b5e833bdb9297cb4f85a4a0d1faec4797",
+						"completed": false,
+						"definition_hash": "30ff6b4e95e79dbadb6c4928c6bc80c1fb4a5b4f495e649f0087912c56a42bb9",
+						"duration_ticks": 341.0,
+						"final_state_hash": "e99263bcf8eb87bc64e4215ea28812f0bfe93a5131f665070152a4a723f99f43",
+						"level_id": "relay-isles",
+						"level_version": 3.0,
+						"outcome": {
+							"objective_complete": false,
+							"source_ready": true
+						},
+						"packed": "ARMeAGQGZAACSwDIAQAAOGQAAksAKAAADGQAAhkAAgAAAwAADgCcAgDOJGQAAksAtAEAADKcACoAZAIAGa170ualh56ycOk48rYLlHYO6qLVG+xs1JXwu4aZin9FlZTec3i00KnqUrm288tGgJRgt8VaXR78AKAUd/yICNyoFaewiF9WbaBXxabQfhFeXk8zsgpG9Hd2jkTNcT7Rn/yZsv2eK/pasWjskLSa/JeXmJRhZXRMhgt8o6sxrmIu+6NY1YC8XBc=",
+						"player_slot": "p1",
+						"recording_hash": "c7d8d002571f9003fd7792bebd9608df44e5738df32a538b0f1655089926fc43",
+						"role": "b",
+						"schema_version": 7.0,
+						"simulation_version": 16.0,
+						"source_recording_hash": "bd293ed84e345b4ef25103d4f3e5a00f6d6d3f080b8542f7235a7d308864a7b7",
+						"stage_id": "relay",
+						"stage_version": 1.0,
+						"tick_rate": 30.0
+					},
+					{
+						"catch_assistance": true,
+						"checkpoint_hash": "037c2a7ca78e6aa5bacdeacfc6da543b5e833bdb9297cb4f85a4a0d1faec4797",
+						"completed": true,
+						"definition_hash": "30ff6b4e95e79dbadb6c4928c6bc80c1fb4a5b4f495e649f0087912c56a42bb9",
+						"duration_ticks": 341.0,
+						"final_state_hash": "dec359fd236629122cbacfdb7d70a63bc856317eef7e4a65ebaf486fe56a8f14",
+						"level_id": "relay-isles",
+						"level_version": 3.0,
+						"outcome": {
+							"objective_complete": true,
+							"source_ready": true
+						},
+						"packed": "ARcWnAAC5wAOAJwCAM4CAAADAAA0ZAACGQAQAGQCAEsCAAADAAAinAACzgAqAJwCAOfcAQAADgBkAgAybmQAGgBkAgBLbAAA24ARmL7MMoa/Zxj7vmUzEnFxF1c+CnkPfuRnmReSA5TEpCjKnh3NDEaArf73X1elAahbUZMKbStyQXkC7PbOUs4tyai79agkMR7c3g0Wzqapn/Vq/GCVx5/R6yKTjTb0DqDCgoS/o1JzKeGDiuXT/9NXpMgXfGvbxIeFeLgRwoVe/RKERX1RbA==",
+						"player_slot": "p0",
+						"recording_hash": "cc33a395a2d9b8d0ec1a46b2a33075ad495e8006bc06b18bf56b24c0eef897e5",
+						"role": "b",
+						"schema_version": 7.0,
+						"simulation_version": 16.0,
+						"source_recording_hash": "c7d8d002571f9003fd7792bebd9608df44e5738df32a538b0f1655089926fc43",
+						"stage_id": "relay",
+						"stage_version": 1.0,
+						"tick_rate": 30.0
+					}
+				]
+			},
+			"schema_version": 8.0,
+			"stage_index": 1.0,
+			"turn_hashes": [
+				"bd293ed84e345b4ef25103d4f3e5a00f6d6d3f080b8542f7235a7d308864a7b7",
+				"c7d8d002571f9003fd7792bebd9608df44e5738df32a538b0f1655089926fc43",
+				"cc33a395a2d9b8d0ec1a46b2a33075ad495e8006bc06b18bf56b24c0eef897e5"
+			]
+		},
+		"turns": [
+			{
+				"catch_assistance": true,
+				"checkpoint_hash": "eeebcdf601d70d461b9a17629f2ef4554113bc71395922868f6246915f40e1d3",
+				"completed": false,
+				"definition_hash": "30ff6b4e95e79dbadb6c4928c6bc80c1fb4a5b4f495e649f0087912c56a42bb9",
+				"duration_ticks": 140.0,
+				"final_state_hash": "6b1a6f6d7355875dff74dadb8c9f54bb631d7ee9a637c81d27229d611405e64b",
+				"level_id": "relay-isles",
+				"level_version": 3.0,
+				"outcome": {
+					"objective_complete": false,
+					"source_ready": true
+				},
+				"packed": "AQ8MZAACGQAaAJwCALUCAAADAAAYAGQCADIoZAACAAADAAA0nAAC5wAyAJw8AAA3UJj7zuusDjsZBjWVMfzhNNL+E4kY8mn3xQrAX5K0zA==",
+				"player_slot": "p1",
+				"recording_hash": "41f93eb5b8a0bf5d7c37970183f1fe5089d6acc9bde6404d36697a4ea54e34df",
+				"role": "a",
+				"schema_version": 7.0,
+				"simulation_version": 16.0,
+				"source_recording_hash": "",
+				"stage_id": "garden",
+				"stage_version": 1.0,
+				"tick_rate": 30.0
+			},
+			{
+				"catch_assistance": true,
+				"checkpoint_hash": "eeebcdf601d70d461b9a17629f2ef4554113bc71395922868f6246915f40e1d3",
+				"completed": false,
+				"definition_hash": "30ff6b4e95e79dbadb6c4928c6bc80c1fb4a5b4f495e649f0087912c56a42bb9",
+				"duration_ticks": 413.0,
+				"final_state_hash": "048cc8aad170bbcc651d583e11482555ef21eebb763c70643666f5e4a7407c00",
+				"level_id": "relay-isles",
+				"level_version": 3.0,
+				"outcome": {
+					"objective_complete": false,
+					"source_ready": true
+				},
+				"packed": "ARZ4AAA0ZAACGQAaAJwCALV4AABCZAACSwAMAAADAAAyZAAeAGQCAAADAAAEZAACMgAsAJwCAM7wAQAAFGQAGABkAgAyEjKuv4xDDDeG2HTDz5ObK85rDjbxnZqKgeS+S2uJDSgINGv8wWqiSTq88SVKD9PNdKVqn69SeEpy5RthKf4ZtPgUs9rjps+zhWNn2DpfxiOaaE064TOu2akUkEMYdLx/KZEFCayCkMPZfa1WfMOT37QEUyIzLrELkbCOq/7uUvJ5NbvL9cw/f6EiC+0WFLCtdq0dgoo2EW8=",
+				"player_slot": "p0",
+				"recording_hash": "fd2fb81b1d35c5c9f17dc72553ca9e743e5be818e35b3f24656bd61f7c8ef861",
+				"role": "b",
+				"schema_version": 7.0,
+				"simulation_version": 16.0,
+				"source_recording_hash": "41f93eb5b8a0bf5d7c37970183f1fe5089d6acc9bde6404d36697a4ea54e34df",
+				"stage_id": "garden",
+				"stage_version": 1.0,
+				"tick_rate": 30.0
+			},
+			{
+				"catch_assistance": true,
+				"checkpoint_hash": "eeebcdf601d70d461b9a17629f2ef4554113bc71395922868f6246915f40e1d3",
+				"completed": true,
+				"definition_hash": "30ff6b4e95e79dbadb6c4928c6bc80c1fb4a5b4f495e649f0087912c56a42bb9",
+				"duration_ticks": 413.0,
+				"final_state_hash": "45706e30031a823bc4fee26805eb1b76c27eb39c08ab197a53390f2d701a662e",
+				"level_id": "relay-isles",
+				"level_version": 3.0,
+				"outcome": {
+					"objective_complete": true,
+					"source_ready": true
+				},
+				"packed": "ARYMZAACGQAaAJwCALUCAAADAAAYAGQCADIoZAACAAADAAA0nAAC5wAyAJzeAgAADABkAgAZwgFkAAIyABYAZAIAGRYAACAhP1mTkZP1vy8O2YxwDEpqPHFSU27oHUXFFg5FgFEQRS5HrZxwmxgh4HxP6JZx+V7WsjFo+tm2/UzFclAa8is9lQYLHw7Z5nzblMuURbIwlwJz2uSqjOPL0RMTyXxtxoyUIAKiAHhacKi7a47kX0pLhuSonr1TmWUE3zyL9BxiuhhhoUuFAK+vA4SuSidl/gYUF0gaIwaj",
+				"player_slot": "p1",
+				"recording_hash": "32263660c25c27c672310f766399a12679134ffd875633be66fd41ca72cee0de",
+				"role": "b",
+				"schema_version": 7.0,
+				"simulation_version": 16.0,
+				"source_recording_hash": "fd2fb81b1d35c5c9f17dc72553ca9e743e5be818e35b3f24656bd61f7c8ef861",
+				"stage_id": "garden",
+				"stage_version": 1.0,
+				"tick_rate": 30.0
+			}
+		]
+	},
+	"schema_version": 8,
+	"stage_index": 2,
+	"turn_hashes": [
+		"41f93eb5b8a0bf5d7c37970183f1fe5089d6acc9bde6404d36697a4ea54e34df",
+		"fd2fb81b1d35c5c9f17dc72553ca9e743e5be818e35b3f24656bd61f7c8ef861",
+		"32263660c25c27c672310f766399a12679134ffd875633be66fd41ca72cee0de"
+	]
+}

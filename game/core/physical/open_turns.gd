@@ -115,6 +115,61 @@ static func pair_turns(pair: Dictionary) -> Array:
 		passes = nested.slice(1, nested.size() - 1) if nested.size() > 2 else []
 	return [pair.get("a")] + passes + [pair.get("b")]
 
+## Carry-over turns (claude-20261011/carry-over-turns/design.md): a stage is
+## one shared timeline that only moves forward. Turn k starts from turn k-1's
+## world at its hand-off tick H(k), with the rest of turn k-1 (its pip's
+## recorded inputs) replaying beside the live pip for M(k) ticks. Every turn's
+## record adds three header fields, covered by its recording_hash: H
+## (handoff_tick), the world hash at its start (start_hash) and at its tick M,
+## which is the next turn's start (handoff_hash). A checkpoint adds the pip
+## that starts the next stage (next_first_slot, checkpoint schema 9). The rules
+## numbers 18, 19, 20 and 21 take over from 14, 15, 16 and 17 when the engine
+## lands (open_controls.gd).
+const HANDOFF_TICK := "handoff_tick"
+const START_HASH := "start_hash"
+const HANDOFF_HASH := "handoff_hash"
+const RECORD_FIELDS := [HANDOFF_TICK, START_HASH, HANDOFF_HASH]
+const NEXT_FIRST_SLOT := "next_first_slot"
+## The pip that starts a level's first stage: the host's.
+const FIRST_SLOT := "p0"
+
+## S(turn): where turn `turn` starts on its stage's shared timeline, from
+## `lengths`, the durations of the stage's turns before it in order (turn 1
+## first; at least turn - 1 of them). Each pip's turns join end to end on its
+## own track: S(1) = S(2) = 0, S(k) = S(k-2) + L(k-2).
+static func start_tick(lengths: Array, turn: int) -> int:
+	var start := 0
+	for k in range(turn - 2, 0, -2): start += int(lengths[k - 1])
+	return start
+
+## H(turn): how many ticks into turn - 1 turn `turn` takes over, S(k) - S(k-1).
+## 0 for turns 1 and 2 (turn 2 hands off at tick 0 of turn 1).
+static func handoff_tick(lengths: Array, turn: int) -> int:
+	return 0 if turn <= 2 else start_tick(lengths, turn) - start_tick(lengths, turn - 1)
+
+## M(turn): how long the friend's replay plays beside turn `turn`, the rest of
+## turn - 1 after the hand-off: L(k-1) - H(k). 0 for turn 1. It is also the
+## next turn's hand-off: H(k+1) = M(k).
+static func replay_ticks(lengths: Array, turn: int) -> int:
+	return 0 if turn <= 1 else int(lengths[turn - 2]) - handoff_tick(lengths, turn)
+
+## Whether turn `turn` may end after `length` ticks: a pass once the friend's
+## replay is over (length >= M), and a turn that finished the stage at any
+## tick (both pips at the lit goal; the rest of the replay is dropped).
+static func long_enough(lengths: Array, turn: int, length: int, completed: bool) -> bool:
+	return completed or length >= replay_ticks(lengths, turn)
+
+## The pip that starts the stage after `checkpoint`: its next_first_slot, or
+## the host's for a level's first stage (a checkpoint without one).
+static func first_slot(checkpoint: Dictionary) -> String:
+	var declared: Variant = checkpoint.get(NEXT_FIRST_SLOT)
+	return str(declared) if declared in ["p0", "p1"] else FIRST_SLOT
+
+## The pip that starts the next stage once a stage whose first pip is `first`
+## closed on turn `turns`: whoever did not play the closing turn.
+static func next_first_slot(first: String, turns: int) -> String:
+	return "p1" if slot(first, turns) == "p0" else "p0"
+
 ## Whether rules `version` play open turns.
 static func rules(version: int) -> bool:
 	return version in RULES

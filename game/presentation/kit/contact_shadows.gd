@@ -25,8 +25,9 @@ extends Node3D
 ## - every dressing prop: kit/props.gd `build()` asks prop() (PROP_NONE lists
 ##   the kinds that get none, and a prop set below its floor stands in water,
 ##   as does one the water world finds out in the water, which sets it off);
-## - Home keepsakes, garden planters, relay nests and the classic island
-##   trees mark their own roots; a carried item marks its root `live`.
+## - Home's earned keepsakes, garden planters and relay nests mark their own
+##   roots (an unearned keepsake's outline gets none); a carried item marks
+##   its root `live`.
 ## A marked root is a plain Node3D container. Its feet are the bottoms of the
 ## meshes that reach down to its lowest point (a tree stands on its trunk, not
 ## its crown; a model by the outline of its lowest vertices), each foot its
@@ -316,12 +317,17 @@ static func feet(root: Node3D, kept: Dictionary = {}) -> Array:
 				if (foot[1] as Vector2).x < 0.0025 or (foot[1] as Vector2).y < 0.0025: continue
 				result.append([foot[0], foot[1], ground_y, 1.0 if soft else foot[2], foot[3], 1.0, not soft])
 			if tiny and not result.is_empty(): result = [_tiny_foot(result, ground_y)]
-	# The biggest first; equal ones by where they stand, so the same few win
-	# whatever order the parts were found in.
-	casters.sort_custom(func(a: Array, b: Array) -> bool: return _before([-_q((a[1] as Vector2).x * (a[1] as Vector2).y), _q((a[0] as Vector2).x), _q((a[0] as Vector2).y), _q(float(a[3]))], [-_q((b[1] as Vector2).x * (b[1] as Vector2).y), _q((b[0] as Vector2).x), _q((b[0] as Vector2).y), _q(float(b[3]))]))
+	# The biggest shadow first (a tall post before a low wide plinth, so an
+	# arch's shadow keeps its legs); equal ones by where they stand, so the
+	# same few win whatever order the parts were found in.
+	casters.sort_custom(func(a: Array, b: Array) -> bool: return _before([-_q(_cast_size(a)), _q((a[0] as Vector2).x), _q((a[0] as Vector2).y), _q(float(a[3]))], [-_q(_cast_size(b)), _q((b[0] as Vector2).x), _q((b[0] as Vector2).y), _q(float(b[3]))]))
 	root.set_meta(CASTERS_META, casters.slice(0, CASTS_MOST))
 	root.set_meta(FEET_META, result)
 	return result
+
+## How big a caster's sun shadow is: its longer side by its height.
+static func _cast_size(caster: Array) -> float:
+	return maxf((caster[1] as Vector2).x, (caster[1] as Vector2).y) * (float(caster[3]) - float(caster[2]))
 
 ## Tiny dressing's one faint round foot: under the middle of its feet,
 ## TINY_SHARE of their outline across, wearing no grass.
@@ -849,10 +855,19 @@ static func _cast(caster: Array, to_ground: Transform3D, sun: Vector3) -> Array:
 	var near := Vector2(low.x, low.z) + offset * (low.y - ground_y)
 	var far := Vector2(high.x, high.z) + offset * (high.y - ground_y)
 	var along := (far - near).normalized() if far.distance_to(near) > 0.001 else offset.normalized()
-	var size := (caster[1] as Vector2) * Vector2(to_ground.basis.x.length(), to_ground.basis.z.length())
-	var width := maxf(size.x, size.y) * 0.8
+	# The caster's own box as it lies on the floor, measured along the sun and
+	# across it: a long thin beam casts a long thin band, never a blob as wide
+	# as the beam is long. A squarish part (most, round) keeps its round
+	# shadow its longer side across, whichever way it is turned.
+	var half: Vector2 = caster[1]
+	var side_x := Vector2(to_ground.basis.x.x, to_ground.basis.x.z) * half.x
+	var side_z := Vector2(to_ground.basis.z.x, to_ground.basis.z.z) * half.y
+	var longest := maxf(side_x.length(), side_z.length())
+	var across := Vector2(-along.y, along.x)
+	var deep := minf(absf(side_x.dot(along)) + absf(side_z.dot(along)), longest) * 0.8
+	var wide := minf(absf(side_x.dot(across)) + absf(side_z.dot(across)), longest) * 0.8
 	var soft := lerpf(CAST_SOFT.x, CAST_SOFT.y, clampf(high.y - ground_y, 0.0, 2.0) * 0.5)
-	return [(near + far) * 0.5, along, Vector2(near.distance_to(far) * 0.5 + width * 0.5, width), soft]
+	return [(near + far) * 0.5, along, Vector2(near.distance_to(far) * 0.5 + deep * 0.5, wide), soft]
 
 ## How far along the floor a point's shadow falls per metre of height, in
 ## world space (0 with no sun).

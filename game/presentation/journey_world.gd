@@ -745,13 +745,22 @@ func _present_seats(state: Dictionary, immediate: bool) -> void:
 # --- Rules 16: carried items, floats, currents and both-hands crossings ---
 
 ## Every item of the level in its style (a pin by id, else the dressing's
-## "carried_item" pick; a float nobody carries is a raft unless pinned), the
-## stage's current legs, and the rungs that mark a crossing needing both
-## hands (core/physical/carried_items.gd): a carrier stops at a ladder. A
-## rope bridge (kit/pieces/deck.gd) needs no rungs.
+## "carried_item" pick; a float nobody carries is a raft unless pinned), every
+## item spot in its "item_spot" style (a pedestal, a planter, a nest or none:
+## kit/pieces/socket.gd item_spot), the stage's current legs, and the rungs
+## that mark a crossing needing both hands (core/physical/carried_items.gd): a
+## carrier stops at a ladder. A rope bridge (kit/pieces/deck.gd) needs no rungs.
 func _build_items(stage: Dictionary) -> void:
 	var view: Dictionary = CooperativeCatalog.stage_definition(chapter_definition, str(stage.get("id", "")))
 	if view.get("items", []).is_empty(): return
+	for spot: Dictionary in view.get("item_spots", []):
+		var look := _piece_style("item_spot", str(spot.id))
+		if look == "none": continue
+		var root := Node3D.new()
+		root.name = "ItemSpot_" + str(spot.id)
+		root.position = _at(spot)
+		terrain.add_child(root)
+		SocketKit.item_spot(look, root, spot)
 	var start: Dictionary = CarriedItems.initial(view)
 	for item: Dictionary in view.items:
 		var id := str(item.id)
@@ -816,7 +825,10 @@ func _item_point(state: Dictionary) -> Vector3:
 	if CarriedItems.in_flight(state): return Vector3(float(state.x), float(state.height), float(state.z)) / 100.0
 	# On a platform's stop: at that stop's height (its deck carries it there).
 	if new_pieces != null and not new_pieces.ride(str(state.surface_id)).is_empty(): return Vector3(float(state.x), float(state.height), float(state.z)) / 100.0
-	return _at({"position_cm": [int(state.x), int(state.z)], "surface_id": str(state.surface_id)})
+	var at := _at({"position_cm": [int(state.x), int(state.z)], "surface_id": str(state.surface_id)})
+	# At a drawn item spot: on its pedestal, in its planter's soil or its nest.
+	var spot := str(state.get("spot", ""))
+	return at if spot.is_empty() else at + Vector3(0, SocketKit.rest_height(_piece_style("item_spot", spot)), 0)
 
 ## Rungs across a both-hands crossing every RUNG_CM along it, at its height
 ## there, with a post at each end: plain leaves the static fold batches.

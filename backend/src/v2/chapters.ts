@@ -3,7 +3,7 @@ import { flagOn, type FlagVar } from "../flags";
 import * as Relay from "./protocol-relay";
 import * as FirstSteps from "./protocol-first-steps";
 import { highAndLow, highAndLowV2, rollingHome, rollingHomeV2, houseForTwo, houseForTwoV2, wishingWell, wishingWellV2 } from "./protocol-cooperative";
-import { conservatory, conservatoryV2, firstStepsV2, fogMarsh, longWayHome, longWayHomeV2, longWayHomeV3, theFalls, turnOfTheTide, turnOfTheTideV2, turnOfTheTideV3 } from "./protocol-journey";
+import { conservatory, conservatoryV2, firstStepsV2, fogMarsh, longWayHome, longWayHomeV2, longWayHomeV3, relayIslesV3, theFalls, turnOfTheTide, turnOfTheTideV2, turnOfTheTideV3 } from "./protocol-journey";
 import { sleepingLighthouseV2 } from "./protocol-lighthouse";
 import { LEGACY_CHAPTERS } from "./legacy-chapters";
 import { LEGACY_STAGE_COUNT, type ChapterAdapter, type ChapterKey } from "./chapter-types";
@@ -49,6 +49,7 @@ export const CHAPTERS: readonly { readonly adapter: ChapterAdapter; readonly fla
   { adapter: houseForTwoV2, flag: "A_HOUSE_FOR_TWO_V2_CHAPTER_ENABLED" },
   { adapter: theFalls, flag: "THE_FALLS_CHAPTER_ENABLED" },
   { adapter: fogMarsh, flag: "FOG_MARSH_CHAPTER_ENABLED" },
+  { adapter: relayIslesV3, flag: "RELAY_ISLES_V3_CHAPTER_ENABLED" },
 ]);
 const rows: readonly ChapterAdapter[] = CHAPTERS.map(row => row.adapter);
 /** Every chapter the server plays: the rows, then the published chapters as older apps

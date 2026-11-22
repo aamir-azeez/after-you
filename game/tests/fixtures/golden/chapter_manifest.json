@@ -280,6 +280,27 @@
 			],
 			"unlock_fruits": 0
 		},
+		"relay-isles@3": {
+			"definition_fixture": "journey/relay-isles-v3-definition.json",
+			"definition_hash": "30ff6b4e95e79dbadb6c4928c6bc80c1fb4a5b4f495e649f0087912c56a42bb9",
+			"family": "journey",
+			"flag": "RELAY_ISLES_V3_CHAPTER_ENABLED",
+			"hard": false,
+			"initial_checkpoint_hash": "037c2a7ca78e6aa5bacdeacfc6da543b5e833bdb9297cb4f85a4a0d1faec4797",
+			"initial_fixture": "journey/relay-isles-v3-initial-checkpoint.json",
+			"key": "relay-isles@3",
+			"level_id": "relay-isles",
+			"level_version": 3,
+			"max_branches": 7,
+			"premium": false,
+			"recording_version": 7,
+			"simulation_version": 16,
+			"stage_count": 2,
+			"supported_simulation_versions": [
+				16
+			],
+			"unlock_fruits": 0
+		},
 		"rolling-home@1": {
 			"definition_fixture": "cooperative/rolling-home-definition.json",
 			"definition_hash": "3362e8afd9fb3504868ab4b8b436050f62fe601e5c7ff8fea995424064f2dbff",
@@ -493,6 +514,7 @@
 		"rolling-home@2",
 		"a-house-for-two@2",
 		"the-falls@1",
-		"fog-marsh@1"
+		"fog-marsh@1",
+		"relay-isles@3"
 	]
 }

@@ -109,6 +109,7 @@ const KNOWN := {
 	"long-way-home near-crossing": "a neighbour 48 cm off its corner (the garden arch): the gap between them stays readable (WalkReach KEEP_GAP_CM), so this side reaches only 14 cm",
 	"long-way-home porch-door": "a neighbour 48 cm off its corner (the garden door): the gap between them stays readable (WalkReach KEEP_GAP_CM), so this side reaches only 14 cm",
 	"long-way-home recovery-stair": "the garden meets the stair along its run, so that side keeps its walkable edge",
+	"relay-isles relay-east": "its @3 rope bridge sags between its ends: an open deck by design: stones, rungs or a ride with water or air between them, drawn wider (kit/walk_reach.gd) but never a solid floor",
 	"the-falls beach": "its corner by stepping stones: the open water round the stones' mouth stays open a reach either side of them (WalkReach open), walled at the floor's edge",
 	"the-falls down-to-lookout": "the lock wall stands where the pools meet, placed by the water block",
 	"the-falls isle": "its corner by stepping stones: the open water round the stones' mouth stays open a reach either side of them (WalkReach open), walled at the floor's edge",

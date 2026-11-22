@@ -80,6 +80,16 @@ var rings_released := 0
 ## (end_early), at `_early_tick`. It waits as a pip early to its goal does.
 var _ended_early := false
 var _early_tick := -1
+## Carry-over turns (begin): the friend's replay beside this turn is the rest
+## of their turn, and the stage ends the moment both pips are at the lit goal.
+## A live pip there first (objective_done: its own part) dozes while the
+## replay plays on; if the replay ends with the friend elsewhere it wakes and
+## plays on, and if it walks off the goal the wait lets go.
+var _carried := false
+## Carry-over turns (begin_playback): the friend's turn playing before this
+## turn's hand-off, from its start, stepped through its recorded inputs.
+var _watching := false
+var _frames: Array = []
 ## Skip to end is under way (see skip_tick).
 var skipping := false
 ## The player's Always skip waits: the screen presses its own Skip to end as
@@ -99,10 +109,15 @@ var _skip_spent_usec := 0
 var _skip_shown_frame := -1
 
 ## A recorded turn starts at tick zero. `prior_ticks` is the length of the
-## memory being followed; a first turn has none and never waits.
-func begin(role: String, prior_ticks: int) -> void:
+## memory being followed; a first turn has none and never waits. `carried`: a
+## turn of carry-over turns (OpenTurnStore.carried), whose memory is the rest
+## of the friend's turn (OpenTurnStore.replay_ticks).
+func begin(role: String, prior_ticks: int, carried: bool = false) -> void:
 	_role = role
 	_prior_end = maxi(0, prior_ticks)
+	_carried = carried
+	_watching = false
+	_frames = []
 	_objective_tick = -1
 	_waiting = false
 	_tick = 0
@@ -121,6 +136,26 @@ func begin(role: String, prior_ticks: int) -> void:
 	_early_tick = -1
 	if is_instance_valid(soundscape) and soundscape.has_method("drop_held_cues"): soundscape.drop_held_cues()
 	_release_world()
+
+## Carry-over turns: the friend's turn plays before this turn's hand-off,
+## `ticks` of it from its start, stepped through `frames`, its recorded inputs
+## (playback_input). Nobody dozes: the turn shown is the friend's, so the
+## camera follows them. Fast-forward and Skip to end run as in a wait; the
+## playback is over (watching() true, waiting() false) at its last tick or
+## when the turn shown ends, and the screen hands off with a fresh begin.
+func begin_playback(ticks: int, frames: Array) -> void:
+	begin("", ticks)
+	_frames = frames
+	_watching = true
+	_waiting = _prior_end > 0
+
+## Whether this turn is the friend's playback before the hand-off.
+func watching() -> bool:
+	return _watching
+
+## The input a playback steps next (its recorded one); still otherwise.
+func playback_input() -> Dictionary:
+	return _frames[_tick] if _watching and _tick < _frames.size() else STILL_INPUT
 
 ## The prior recording's length, read the same way on every screen.
 static func prior_ticks(prior: Variant) -> int:
@@ -221,7 +256,7 @@ func skip_tick(sim: RefCounted, sounds: Callable, advance: Callable) -> Dictiona
 	var last := last_waiting_tick()
 	var state: Dictionary = {}
 	while skipping and _waiting and _tick < last and not bool(sim.get("finished")) and str(sim.get("error")).is_empty():
-		state = sim.step(STILL_INPUT)
+		state = sim.step(playback_input())
 		step_silently(state, sounds.call(state))
 		if _skip_spent_usec + clock_usec.call() - started > skip_budget_usec:
 			# A tick catching up in a frame already shown leaves the redraw to the next frame.
@@ -285,6 +320,9 @@ func _observe(state: Dictionary, sounds: Dictionary) -> PackedInt32Array:
 	if seed is Dictionary and str(seed.get("status", "")) == "held" and str(seed.get("owner", "")) == str(state.get("active_slot", "")):
 		_carried_seed = seed
 	_find_keys(state)
+	if _watching:
+		_waiting = _tick < _prior_end and not bool(state.get("finished", false))
+		return hold
 	if _role != "b" or _prior_end <= 0: return hold
 	var done := objective_done(state)
 	var complete := bool(state.get("complete", false))
@@ -317,6 +355,12 @@ func _observe(state: Dictionary, sounds: Dictionary) -> PackedInt32Array:
 		_wake()
 		if _holding: _ring()
 		else: _release_world()
+	elif _carried and _holding and not complete and not bool(state.get("finished", false)) and (not done or (was_waiting and not _waiting)):
+		# Carry-over turns: the pip left the goal, or the friend's replay ended
+		# elsewhere (the pip wakes and plays on). Arriving again waits again.
+		if done: _wake()
+		_objective_tick = -1
+		_ring()
 	# Arrival hands over to the wake; the world lets go after the ring.
 	if _waiting or (was_waiting and not _arrived): _apply_wait()
 	return hold

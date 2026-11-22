@@ -26,6 +26,8 @@ import theFallsDefinition from "./the-falls.json";
 import theFallsInitial from "./the-falls-initial.json";
 import fogMarshDefinition from "./fog-marsh.json";
 import fogMarshInitial from "./fog-marsh-initial.json";
+import relayIslesV3Definition from "./relay-isles-v3.json";
+import relayIslesV3Initial from "./relay-isles-v3-initial.json";
 
 export const CONSERVATORY_HASH = "5e4741419609acd603db2066a0e799c8ab92182ca08f9df3aa54d410760551a3";
 export const LONG_WAY_HOME_HASH = "79ea6a353b52459acc508c2a74baea488a4afe0c62079a07f7fb479e57193932";
@@ -37,6 +39,7 @@ export const TURN_OF_THE_TIDE_V3_HASH = "f6d35bd1d93cf379cbcd13e17c2194185fb3d77
 export const CONSERVATORY_V2_HASH = "a0a839959180b0608a5967602d49d511f0fe274121fec246c6d2e735fc4aa4f8";
 export const FIRST_STEPS_V2_HASH = "12cbcd0d89a440e6d81889441382d1a86136b58579ce872ff308bbf5f1621840";
 export const THE_FALLS_HASH = "b4c618bab73170d2218e6af527f2b6af69c5e5e581f9f322c16d5f3a8d944cdc";
+export const RELAY_ISLES_V3_HASH = "30ff6b4e95e79dbadb6c4928c6bc80c1fb4a5b4f495e649f0087912c56a42bb9";
 export const FOG_MARSH_HASH = "d0e39655afb04303003d35e899554df28ff8aee2af4b917e070cd02c43316015";
 type Surface = { id: string; rect_cm: number[]; height_cm?: number; owner_slot?: string; axis?: string; from_height_cm?: number; to_height_cm?: number };
 export type Marker = { id: string; position_cm: number[]; surface_id: string; height_cm: number; radius_cm: number; owner_slot?: string };
@@ -221,3 +224,6 @@ export const firstStepsV2 = journeyAdapter(firstStepsV2Definition as Definition,
 export const theFalls = journeyAdapter(theFallsDefinition, theFallsInitial, THE_FALLS_HASH);
 /** The new pieces with carried items (16): three stages catching the pipsport in the marsh and carrying it home. Unreleased. */
 export const fogMarsh = journeyAdapter(fogMarshDefinition, fogMarshInitial, FOG_MARSH_HASH);
+/** Open turns with the new pieces (16): the Relay Isles on the journey rules, the seed a carried item on a solid
+ * pedestal, placed in a solid nest and thrown over the garden's rope bridge. relay-isles@2 keeps its own adapter. Unreleased. */
+export const relayIslesV3 = journeyAdapter(relayIslesV3Definition as Definition, relayIslesV3Initial, RELAY_ISLES_V3_HASH);

@@ -329,6 +329,8 @@ redo_prompts 1
 redo_session 2
 refresh_schedule 3
 registry_golden 3
+relay_isles_v3 2
+relay_isles_v3_world 2
 relay_journey 1
 relay_online 1
 relay_preview 2
