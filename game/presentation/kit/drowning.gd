@@ -17,6 +17,11 @@ extends RefCounted
 ## island with a little spin, shrinking and fading out of view, and a soft
 ## puff of the kit's cream blooms where it went. Reduce motion skips the
 ## wobble and the tumble: the pip fades out where it stood, the puff still.
+## A dropped item (the drowned record with "dropped": a pip carrying something
+## stepped onto a crossing needing both hands) keeps the pip where it stands,
+## startled, with the camera on it; the item itself is let go and lands at
+## the crossing's foot through the world's own set-down
+## (journey_world _present_items, from the snapshot's items).
 ## Live play,
 ## the memory and a replay show the same, because it reads only the snapshot.
 ## Presentation only.
@@ -81,6 +86,8 @@ var _landed := false
 ## balls (built once a stage), and each faded part's own see-through amount
 ## before it, to give back.
 var _away := false
+## A dropped item: whether the spirit shown is startled by its drop.
+var _dropped := false
 var puff: Array[MeshInstance3D] = []
 var _faded: Dictionary = {}
 
@@ -103,6 +110,9 @@ func show(drowned: Dictionary) -> void:
 		return
 	var drowning := str(drowned.slot)
 	_world.camera_focus = drowning
+	if drowned.has("dropped"):
+		_show_dropped(drowning)
+		return
 	# A world with no water to go into shows any loss as a fall away.
 	if drowned.has("sky") or not "waters" in _world:
 		_show_fall_away(drowning)
@@ -129,6 +139,17 @@ func show(drowned: Dictionary) -> void:
 		bubbles[index].position = Vector3(target.x + float(spec[0]), 0.0, target.z + float(spec[1]))
 		bubbles[index].visible = true
 	_rise()
+
+## A dropped item: the pip stays put, startled (a held face, so a replay
+## seek keeps it).
+func _show_dropped(dropping: String) -> void:
+	if slot == dropping and _dropped: return
+	if not slot.is_empty(): clear()
+	slot = dropping
+	_dropped = true
+	var spirit: Node3D = _world.actors[dropping]
+	if spirit.pose() == &"doze": spirit.set_pose(&"rest", {}, true)
+	spirit.set_expression(SpiritLook.SURPRISED, _world.reduced_motion)
 
 ## A fall: on top of its stone while it wobbles, then landed in the water in
 ## front of it (at once under Reduce motion, which never wobbles).
@@ -248,7 +269,7 @@ func _splash(at: Vector3) -> void:
 ## wobbles, then lands; a spirit falling away wobbles, tumbles and is gone in a
 ## puff. Under Reduce motion only a fall away moves on (its fade).
 func advance(delta: float) -> void:
-	if slot.is_empty(): return
+	if slot.is_empty() or _dropped: return
 	if _away:
 		_age += maxf(delta, 0.0)
 		_place_away()
@@ -280,6 +301,7 @@ func clear() -> void:
 	if _world.camera_focus == slot: _world.camera_focus = ""
 	slot = ""
 	_away = false
+	_dropped = false
 	_fell = false
 	_landed = false
 	if is_instance_valid(ring): ring.visible = false

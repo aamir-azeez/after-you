@@ -186,6 +186,7 @@ static func failure_line(run: Dictionary) -> String:
 	var friend := friend_of(run)
 	match str(run.get("reason", "")):
 		"drowned": return PlayerCopy.HARD_FRIEND_WENT_UNDER % [friend, stage] if by_friend else PlayerCopy.HARD_YOU_WENT_UNDER % stage
+		"dropped": return PlayerCopy.HARD_FRIEND_DROPPED % [friend, stage] if by_friend else PlayerCopy.HARD_YOU_DROPPED % stage
 		"retry": return PlayerCopy.HARD_FRIEND_STARTED_OVER % [friend, stage] if by_friend else PlayerCopy.HARD_YOU_STARTED_OVER % stage
 	return PlayerCopy.HARD_FRIEND_SLIPPED % [friend, stage] if by_friend else PlayerCopy.HARD_YOU_SLIPPED % stage
 

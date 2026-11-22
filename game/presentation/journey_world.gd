@@ -8,6 +8,7 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const CarriedItems = preload("res://core/physical/carried_items.gd")
 const CarriedItemKit = preload("res://presentation/kit/pieces/carried_item.gd")
 const CurrentKit = preload("res://presentation/kit/pieces/current.gd")
+const HandsSigns = preload("res://presentation/kit/hands_signs.gd")
 const ItemParts = preload("res://presentation/kit/pieces/parts.gd")
 const Solid = preload("res://core/solid_footprint.gd")
 const LightPieces = preload("res://core/physical/light_pieces.gd")
@@ -103,6 +104,8 @@ var _item_pieces: Dictionary = {}
 ## stop's deck (kit/new_pieces.gd ride).
 var _item_decks: Dictionary = {}
 var _current_piece: RefCounted
+## The both-hands signs at the feet of the stage's ladders and rope bridges.
+var hands_signs := HandsSigns.new()
 ## Light pieces (core/physical/light_pieces.gd): the ring of each item spot in
 ## the "cradle" style a lamp's lit_when names, by spot id, lit while a lens
 ## rests there, and the cables from each lamp's light pads and cradles (lamp id
@@ -125,6 +128,7 @@ func show_stage(stage: Dictionary) -> void:
 	_item_pieces.clear()
 	_item_decks.clear()
 	_current_piece = null
+	hands_signs = HandsSigns.new()
 	_cradles.clear()
 	_lamp_cables.clear()
 	_shown_stage = stage
@@ -574,6 +578,7 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	if is_instance_valid(_waiting_ring): _glow(_waiting_ring,CREAM,0.6 if state.get("can_commit",false) and not OpenTurns.pinned(chapter_definition) else 0.0)
 	_present_seats(state, immediate)
 	_present_items(state, immediate)
+	hands_signs.present(state)
 	_present_light(state)
 	if _wait_hints_on and _wait_hints.update(state): _show_wait_marks()
 	# What a world sets after this (its own levers and wheels) is read by the
@@ -844,7 +849,8 @@ func _present_light(state: Dictionary) -> void:
 ## item spot in its "item_spot" style (a pedestal, a planter, a nest or none:
 ## kit/pieces/socket.gd item_spot), the stage's current legs, and the rungs
 ## that mark a crossing needing both hands (core/physical/carried_items.gd): a
-## carrier stops at a ladder. A rope bridge (kit/pieces/deck.gd) needs no rungs.
+## carrier that steps on drops what it carries. A rope bridge (kit/pieces/
+## deck.gd) needs no rungs. Each foot gets its two hands sign (kit/hands_signs.gd).
 func _build_items(stage: Dictionary) -> void:
 	var view: Dictionary = CooperativeCatalog.stage_definition(chapter_definition, str(stage.get("id", "")))
 	if view.get("items", []).is_empty(): return
@@ -885,6 +891,10 @@ func _build_items(stage: Dictionary) -> void:
 		if hands.has(str(route.id)) and not rope:
 			_ladder_rungs(route)
 			await _build_step()
+	# Each foot's two hands sign, shown while a carrier stands near it.
+	for bubble: LabelBubble in hands_signs.build(view, terrain):
+		if not reduced_motion: bubble.set_bob(true)
+		_bubbles.append(bubble)
 	# A throw's mark is a cream ring where the thrower stands, unless it lies
 	# wholly inside a pad, which is then the throw spot and draws it
 	# (LevelLayout.mark_pad); its landing the seed landing's ring of ticks the
@@ -899,6 +909,16 @@ func _build_items(stage: Dictionary) -> void:
 		landing.position = _at(target)
 		terrain.add_child(landing)
 		SocketKit.landing(landing, float(target.get("radius_cm", CarriedItems.SPOT_RADIUS_CM)) / 100.0)
+
+## What crossing `id` needing both hands looks like, as the dropped card
+## names it (PlayerCopy.HANDS_CROSSING_NAMES): a one way stair's ladder is a
+## "rope_ladder" or the "wheel" (kit/pieces/rope_ladder.gd), a rope deck a
+## "rope_bridge", and anything else with rungs a "ladder".
+func hands_crossing(id: String) -> String:
+	for stair: Dictionary in chapter_definition.get("stairs", []):
+		if str(stair.id) == id and stair.has("one_way"): return "wheel" if _piece_style("ladder", id) == "wheel" else "rope_ladder"
+	if new_pieces != null and chapter_definition.get("bridges", []).any(func(route: Dictionary) -> bool: return str(route.id) == id) and new_pieces.deck_style(id) == "rope": return "rope_bridge"
+	return "ladder"
 
 ## The node drawing item `id` (over its carrier's head or where it rests), or
 ## null: an ending scene hides it while its own stands in for it.

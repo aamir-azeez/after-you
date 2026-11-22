@@ -84,6 +84,12 @@ const DROWNED_YOU := "Oh no, you drowned! Try again?"
 const DROWNED_FRIEND := "Oh no, your friend drowned! Try again?"
 const FELL_YOU := "Your pip fell! Try again?"
 const FELL_FRIEND := "Your friend fell! Try again?"
+## A carrier that stepped onto a crossing needing both hands dropped its item
+## (the pieces rules, core/journey/simulation.gd _drop_on_hands): the item's id
+## and the crossing's kind ("ladder" for a stair, "rope bridge" for a bridge).
+## The card names both in the world's own words (presentation/turn_endings.gd).
+const DROPPED_YOU := "You dropped the %s. It's hard to hold onto it on a %s."
+const DROPPED_FRIEND := "Your friend dropped the %s. It's hard to hold onto it on a %s."
 const RECORD_KEYS := Controls.RECORD_KEYS
 const OUTCOME_KEYS := ["source_ready", "objective_complete"]
 const CHECKPOINT_KEYS := ["schema_version", "level_id", "level_version", "definition_hash", "stage_index", "completed_stage_id", "next_stage_id", "players", "mechanisms", "previous_checkpoint_hash", "a_recording_hash", "b_recording_hash", "checkpoint_hash", "proof"]
@@ -100,7 +106,9 @@ var complete := false
 ## {"slot", "route", "tick"} once a pip has drowned (the journey's tide rules,
 ## or under open turns a pip whose floor went from under it over water), with
 ## "fell": true when it fell instead, and "sky": true when that fall was into
-## the sky. {} while nobody has; a turn with one is never kept (keeps_draft).
+## the sky; "dropped": the item's id when a carrier dropped it on a crossing
+## needing both hands. {} while nobody has; a turn with one is never kept
+## (keeps_draft).
 var _drowned: Dictionary = {}
 var error := ""
 var catch_assistance := true
@@ -339,7 +347,7 @@ func _play_both(frame: Dictionary) -> void:
 	var frames := {active_slot: frame, memory_slot: _friend_frame()}
 	_before_moves()
 	_refresh_routes()
-	if _plays_friend_world: _move_floor = {"routes": _walk_routes(memory_slot).duplicate(), "levers": _mechanisms.levers.duplicate()}
+	if _plays_friend_world: _move_floor = {"routes": _routes.duplicate(), "levers": _mechanisms.levers.duplicate()}
 	for slot: String in SLOTS: _move(frames[slot], slot)
 	for slot: String in SLOTS: _after_move(slot)
 	_refresh_routes()
@@ -458,7 +466,7 @@ func _move(frame: Dictionary, slot: String = "") -> void:
 	var steps := maxi(absi(delta.x), absi(delta.y))
 	var walked := Vector2i.ZERO
 	var cells := _navigation_cells()
-	var routes := _walk_routes(slot)
+	var routes := _routes
 	for index in range(1, steps + 1):
 		if not _drowned.is_empty(): return
 		var next := Vector2i(roundi(float(delta.x * index) / steps), roundi(float(delta.y * index) / steps))
@@ -469,7 +477,7 @@ func _move(frame: Dictionary, slot: String = "") -> void:
 		if unit.y != 0: _try_move(Vector2i(0, unit.y), cells, routes, slot)
 
 ## cells: this definition's floor index (_navigation_cells()), fetched once per move.
-## routes: the crossings the walker may step on (_walk_routes()), likewise.
+## routes: the crossings the walker may step on (the open ones), likewise.
 ## The live pip pushes a prop here, and under the shared ball either pip.
 func _try_move(delta: Vector2i, cells: Dictionary, routes: Dictionary, slot: String = "") -> bool:
 	if slot.is_empty(): slot = active_slot
@@ -804,10 +812,13 @@ func commit_reason() -> String:
 	if stage.source_policy.kind == "offer_ball": return "Leave the ball where your partner can take over."
 	return "Keep the crossing ready for your partner."
 
-## What a turn a pip drowned or fell in says, or "" when none did.
+## What a turn a pip drowned, fell or dropped its item in says, or "" when none did.
 func _lost_reason() -> String:
 	if _drowned.is_empty(): return ""
 	var yours := str(_drowned.get("slot", "")) == active_slot
+	if _drowned.has("dropped"):
+		var kind := "rope bridge" if level.get("bridges", []).any(func(route: Dictionary) -> bool: return str(route.id) == str(_drowned.route)) else "ladder"
+		return (DROPPED_YOU if yours else DROPPED_FRIEND) % [str(_drowned.dropped), kind]
 	if _drowned.has("fell"): return FELL_YOU if yours else FELL_FRIEND
 	return DROWNED_YOU if yours else DROWNED_FRIEND
 
@@ -875,7 +886,7 @@ func _part_done() -> bool:
 
 func walkable_at(x: int, z: int, slot: String = "") -> bool:
 	var selected := active_slot if slot.is_empty() else slot
-	var found := Navigation.at(level, _walk_routes(selected), _mechanisms.levers, _players[selected], x, z, selected, PLAYER_RADIUS, true, _navigation_cells())
+	var found := Navigation.at(level, _routes, _mechanisms.levers, _players[selected], x, z, selected, PLAYER_RADIUS, true, _navigation_cells())
 	return not found.is_empty() and not _in_solid(found)
 
 func export_recording() -> Dictionary:
@@ -988,12 +999,6 @@ func _load_extra(_world: Dictionary) -> void:
 ## Open turns: at the start of each tick, before either pip moves.
 func _before_moves() -> void:
 	pass
-
-## The crossings slot's pip may step onto this tick: the open ones, less any
-## a facade's rules keep it off (the pieces rules: a pip carrying an item never climbs
-## a crossing that needs both hands). Never changes the routes themselves.
-func _walk_routes(_slot: String) -> Dictionary:
-	return _routes
 
 ## After the live pip's press, before the routes are worked out again: a
 ## facade whose things move on a press (the pieces rules' current) moves them here.

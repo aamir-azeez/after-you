@@ -63,7 +63,7 @@ extends RefCounted
 ##                            "when" holds (always without one)
 ##   rope_ladder           J  "stairs" climbed up only, always hung
 ## Ladders, the wheel ride and rope bridges also say "hands": true (both
-## hands needed: a pip carrying an item never steps on).
+## hands needed: a pip that steps on carrying an item drops it and the turn ends).
 ##   wheel_ride            J  "stairs" ridden up only, on a big wheel that
 ##                            turns while "when" holds
 ##   falls_path            J  "routes" behind a waterfall, dry while "lever"
@@ -451,7 +451,7 @@ static func _any_of(terms: Array) -> Dictionary:
 	return terms[0] if terms.size() == 1 else {"any": terms}
 
 ## A rope bridge needs both hands (carried items: a pip holding something
-## never steps onto a "hands" crossing).
+## that steps onto a "hands" crossing drops it and the turn ends).
 static func _needs_hands(level: Dictionary, route: String) -> void:
 	for bridge: Dictionary in level.get("bridges", []):
 		if bridge.id == route: bridge["hands"] = true
