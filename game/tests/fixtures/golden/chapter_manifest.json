@@ -387,6 +387,7 @@
 			"definition_hash": "60330e79eae89400b0b2dd96ee36775330c79a389e605ae05cc7c9afde7bc08e",
 			"family": "journey",
 			"flag": "SLEEPING_LIGHTHOUSE_V3_CHAPTER_ENABLED",
+			"full_journey": false,
 			"hard": false,
 			"initial_checkpoint_hash": "35b0e9f581868f19c55412ccf7ef22993ef8494ded2ff0288e7deb955a51e110",
 			"initial_fixture": "journey/sleeping-lighthouse-v3-initial-checkpoint.json",
