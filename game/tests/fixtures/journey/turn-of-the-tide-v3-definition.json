@@ -849,10 +849,14 @@
 					"height_cm": 48,
 					"id": "stone-bar",
 					"position_cm": [
-						1400,
-						88
+						1370,
+						96
 					],
 					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
 					"surface_id": "r-terrace"
 				}
 			],

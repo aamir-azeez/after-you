@@ -25,7 +25,9 @@ const CAPS := {"set-the-tide": 10, "slack-water": 20}
 ## terrace beside them). Slack Water: the boom and the punt hold only while
 ## someone stands on their posts, and the sea key hangs on the mole, beside
 ## the gate it unlocks, so the first one over opens the sea gate for the other.
-const STONE_BAR := {"id": "stone-bar", "position_cm": [1400, 88], "radius_cm": 28, "surface_id": "r-terrace", "height_cm": 48}
+## The stone bar stands at the terrace's west lip, so neither its knob nor its
+## lamp draws over the harbour bell's frame (tests/test_level_checker.gd).
+const STONE_BAR := {"id": "stone-bar", "position_cm": [1370, 96], "radius_cm": 28, "surface_id": "r-terrace", "height_cm": 48}
 const HELD := {"set-the-tide": {"slipway": "wheel-step-pad"}, "slack-water": {"boom-jetty": "boom-post-pad", "punt-ferry": "punt-post-pad"}}
 const SEA_KEY := {"position_cm": [-768, 80], "surface_id": "mole-terrace", "height_cm": 48}
 ## The bollard line stands two flags west of @2's spot, so the gangway lever

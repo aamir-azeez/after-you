@@ -1,9 +1,9 @@
 {
 	"a_recording_hash": "",
 	"b_recording_hash": "",
-	"checkpoint_hash": "bef10c62e954f7a3615f586503d9a888e09d7008fdeb640589e9f37963c09774",
+	"checkpoint_hash": "2dc4fefa941e5bf72c25c54ea2e1249d179cca8536a951c7f68c060e8244c161",
 	"completed_stage_id": "",
-	"definition_hash": "85cbc39001fa7bf96611f88c307499284b847a6145da5168d4c51a28500f16ba",
+	"definition_hash": "5a120bfca492578d7fb90ce3791b302b700f434c3340262fe3f81b4c649dcc35",
 	"level_id": "turn-of-the-tide",
 	"level_version": 3,
 	"mechanisms": {
