@@ -1214,7 +1214,7 @@ func _bake_ground(ground: Node3D, feet_list: Array, casts: Array, signature: int
 	elif shade is ImageTexture and (shade as ImageTexture).get_size() == Vector2((baked.image as Image).get_size()):
 		if baked.image != before.get("image"): (shade as ImageTexture).update(baked.image)
 	else: look.set_shader_parameter(param, ImageTexture.create_from_image(baked.image))
-	if look.get_shader_parameter("has_moving") != not moving.is_empty(): look.set_shader_parameter("has_moving", not moving.is_empty())
+	if (look.get_shader_parameter("has_moving") == true) == moving.is_empty(): look.set_shader_parameter("has_moving", not moving.is_empty())
 	# Drawn over the tiles either texture shades, each once.
 	var tiles: Array[Rect2] = []
 	var seen := {}
@@ -1236,8 +1236,9 @@ func _clear(ground: Node3D) -> void:
 	_empty_overlay(ground)
 	var look := overlay.material_override as ShaderMaterial
 	look.set_shader_parameter("shade", null)
-	look.set_shader_parameter("moving", null)
-	look.set_shader_parameter("has_moving", false)
+	if look.get_shader_parameter("has_moving") == true:
+		look.set_shader_parameter("moving", null)
+		look.set_shader_parameter("has_moving", false)
 
 ## Draws the live shadows: the biggest first, equal ones by where they stand
 ## (never by the order they were found); then the playing parts'.
