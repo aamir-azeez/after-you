@@ -29,7 +29,7 @@ static func antialiasing(quality: Variant) -> Viewport.MSAA:
 static func backdrop_detail(quality: Variant) -> bool:
 	return normalize(quality) != "low"
 
-## Motion blur behind a rolling ball or a thrown seed.
+## Motion blur behind a rolling ball or anything thrown.
 static func motion_trails(quality: Variant) -> bool:
 	return normalize(quality) != "low"
 

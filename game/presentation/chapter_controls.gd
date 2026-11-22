@@ -78,6 +78,7 @@ var _memory_wait := false
 var _view_world: Node
 ## The room a control docked beside Finish takes (dock_beside_finish).
 var _docked_width := 0.0
+var _docked: Control
 ## A docked control keeps this far from the buttons.
 const DOCK_GAP := 20.0
 ## The turn dots' row under the timer: its top and height, the width its dots
@@ -141,14 +142,48 @@ func _show_pair_chip(state: Dictionary, interactive: bool) -> void:
 	pair_chip.show_chip(chip)
 	var room: Texture2D = _chip_room if pair_chip.visible and action_button.visible else null
 	if action_button.icon != room: action_button.icon = room
+	_fit_action_button()
 	_place_pair_chip()
+
+## The action button grows to hold its tag, gap, full label and the edge padding
+## on one line, up to the room before the docked React button (its near edge
+## less DOCK_GAP, read at layout time) or, with none docked, the safe area. A
+## label wider than that wraps onto a second line at that width; the text is
+## never shrunk and nothing touches the edges.
+func _fit_action_button() -> void:
+	if not is_instance_valid(action_button) or not is_instance_valid(ui): return
+	var left_handed := bool(settings.get("left_handed", false))
+	var edge := 28.0 if left_handed else 30.0
+	var room := ui.size.x - edge * 2.0
+	if is_instance_valid(_docked) and _docked.visible:
+		room = (_docked.offset_right + DOCK_GAP - edge) if left_handed else (-edge - (_docked.offset_left - DOCK_GAP))
+	var margin := action_button.get_theme_stylebox("normal").get_margin(SIDE_LEFT) + action_button.get_theme_stylebox("normal").get_margin(SIDE_RIGHT)
+	var lead := _chip_room.size.x + float(action_button.get_theme_constant("h_separation")) if action_button.icon != null else 0.0
+	var font := action_button.get_theme_font("font")
+	var text_width := font.get_string_size(action_button.text, HORIZONTAL_ALIGNMENT_LEFT, -1, action_button.get_theme_font_size("font_size")).x
+	var need := margin + lead + text_width
+	var wrap := need > room
+	var width := maxf(210.0, room if wrap else need)
+	action_button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART if wrap else TextServer.AUTOWRAP_OFF
+	var height := 64.0
+	if wrap:
+		action_button.size = Vector2(width, 0.0)
+		height = maxf(64.0, action_button.get_combined_minimum_size().y)
+	action_button.offset_bottom = -114.0
+	action_button.offset_top = -114.0 - height
+	if left_handed:
+		action_button.offset_left = 28.0
+		action_button.offset_right = 28.0 + width
+	else:
+		action_button.offset_right = -edge
+		action_button.offset_left = -edge - width
 
 ## Puts the chip in the room the button leaves at its left end, again
 ## whenever the button moves or grows (a long prompt grows it).
 func _place_pair_chip() -> void:
 	if not pair_chip.visible: return
 	var left := action_button.get_theme_stylebox("normal").get_margin(SIDE_LEFT)
-	pair_chip.position = action_button.position + Vector2(left - 6.0, (action_button.size.y - pair_chip.size.y) * 0.5)
+	pair_chip.position = action_button.position + Vector2(left, (action_button.size.y - pair_chip.size.y) * 0.5)
 
 ## The live spirit is waiting for its friend's memory: `text` names the friend
 ## and `ratio` is how much of the memory is left (1 to 0); `skipping` is true
@@ -393,8 +428,10 @@ func _build_ui() -> void:
 	# The controls a run is played with make its own cues: no tick over them.
 	ButtonTicks.quiet(action_button)
 	hud.add_child(action_button)
-	_chip_room.size = Vector2(PairChip.PairTags.CHIP - 10.0, 1.0)
+	# The room is the whole chip, so the chip sits at the button's own edge padding and the label keeps the button's usual icon gap.
+	_chip_room.size = Vector2(PairChip.PairTags.CHIP, 1.0)
 	action_button.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	action_button.add_theme_constant_override("h_separation", Actions.ICON_GAP)
 	pair_chip = PairChip.new()
 	hud.add_child(pair_chip)
 	action_button.item_rect_changed.connect(_place_pair_chip)
@@ -446,6 +483,7 @@ func _build_ui() -> void:
 ## buttons in their places. The hint line keeps clear of it. One control at most.
 func dock_beside_finish(control: Control, size: Vector2) -> void:
 	_docked_width = size.x + DOCK_GAP
+	_docked = control
 	# A run's reactions pop their own sound.
 	ButtonTicks.quiet(control)
 	hud.add_child(control)
@@ -480,6 +518,7 @@ func _resize() -> void:
 	if not is_inside_tree() or not is_instance_valid(ui):
 		return
 	SafeArea.inset(ui, SafeArea.rect(get_viewport()))
+	_fit_action_button()
 	if is_instance_valid(hint_label):
 		_anchor_rect(hint_label, Control.PRESET_BOTTOM_LEFT, ControlTheme.hint_bounds(ui.size.x, bool(settings.get("left_handed", false)), _docked_width))
 	if is_instance_valid(chapter_label):

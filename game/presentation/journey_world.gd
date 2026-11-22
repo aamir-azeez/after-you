@@ -112,6 +112,8 @@ func show_stage(stage: Dictionary) -> void:
 	_wait_marks.clear()
 	_seats.clear()
 	_seat_last.clear()
+	for piece: RefCounted in _item_pieces.values():
+		if piece.throw_look != null: drop_throw_look(piece.throw_look)
 	_item_pieces.clear()
 	_item_decks.clear()
 	_current_piece = null
@@ -768,6 +770,9 @@ func _build_items(stage: Dictionary) -> void:
 		var look := pin if not pin.is_empty() else _piece_style("carried_item", id) if CarriedItems.carriable(item) else "raft"
 		var at := _item_point(start.get(id, {})) if str(start.get(id, {}).get("holder", "")).is_empty() else Vector3.ZERO
 		_item_pieces[id] = CarriedItemKit.build(look, at, terrain, {"id": id})
+		# Where it can be thrown it flies with the one throw look, at its own size.
+		var piece: RefCounted = _item_pieces[id]
+		if not view.get("throws", []).is_empty() and CarriedItems.carriable(item): piece.throw_look = throw_look(piece.root, piece.throw_radius(), piece.middle)
 		# On a world with the water kit, rings spread from it while it floats.
 		var water: Variant = get("waters")
 		if water != null: water.ripple_from(_item_pieces[id].root)
