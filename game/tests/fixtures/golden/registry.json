@@ -3137,8 +3137,8 @@
 				"rolling-home@1",
 				"a-house-for-two@1",
 				"conservatory@1",
-				"long-way-home@1",
 				"the-wishing-well@1",
+				"long-way-home@1",
 				"long-way-home@2",
 				"turn-of-the-tide@1",
 				"turn-of-the-tide@2"
@@ -3290,22 +3290,6 @@
 					"title": "The Way Light Returns"
 				},
 				{
-					"chapter_key": "long-way-home@1",
-					"family": "long-way-home",
-					"friend_available": true,
-					"id": "long-way-home/the-path-you-leave",
-					"stage_id": "the-path-you-leave",
-					"title": "The Path You Leave"
-				},
-				{
-					"chapter_key": "long-way-home@1",
-					"family": "long-way-home",
-					"friend_available": true,
-					"id": "long-way-home/a-place-beside-you",
-					"stage_id": "a-place-beside-you",
-					"title": "A Place Beside You"
-				},
-				{
 					"chapter_key": "the-wishing-well@1",
 					"family": "the-wishing-well",
 					"friend_available": true,
@@ -3320,6 +3304,22 @@
 					"id": "the-wishing-well/back-for-you",
 					"stage_id": "back-for-you",
 					"title": "Back for You"
+				},
+				{
+					"chapter_key": "long-way-home@1",
+					"family": "long-way-home",
+					"friend_available": true,
+					"id": "long-way-home/the-path-you-leave",
+					"stage_id": "the-path-you-leave",
+					"title": "The Path You Leave"
+				},
+				{
+					"chapter_key": "long-way-home@1",
+					"family": "long-way-home",
+					"friend_available": true,
+					"id": "long-way-home/a-place-beside-you",
+					"stage_id": "a-place-beside-you",
+					"title": "A Place Beside You"
 				},
 				{
 					"chapter_key": "turn-of-the-tide@1",

@@ -40,9 +40,10 @@ static func keys() -> Array[String]:
 	return Index.keys()
 
 ## Chapters to start or host. Use keys() for everything that loads.
+## In the order every chapter list shows them (Index.shown_keys()).
 static func offered_keys() -> Array[String]:
 	var result: Array[String] = []
-	for key: String in keys():
+	for key: String in Index.shown_keys():
 		if not SUPERSEDED.has(key) and key not in UNRELEASED: result.append(key)
 	return result
 
@@ -84,7 +85,7 @@ static func leads_picker(key: String) -> bool:
 
 ## Where a chapter sits in every picker, lowest first: free chapters lead and
 ## Full Journey ones follow; within each, chapters that lead the pickers come
-## first. Equal ranks keep the order given. The pickers (ChapterPicker.shown_order)
+## first. Equal ranks keep the order given (offered_keys()). The pickers (ChapterPicker.shown_order)
 ## and the unlock chain (services/chapter_unlocks.gd) both sort by this.
 static func picker_rank(key: String, premium: bool) -> int:
 	return int(premium) * 2 + int(not leads_picker(key))

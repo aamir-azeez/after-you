@@ -133,7 +133,7 @@ func _open_hard_chapter(key: String) -> void:
 	else: host._open_chapter_preview(ChapterRegistry.solo_scene(key), {}, request)
 
 ## The Chapters page's cards, as given to its picker (which shows free ones
-## first): every chapter with its own Solo card, in registry order. A chapter
+## first): every chapter with its own Solo card, in offered order. A chapter
 ## the chain has not reached is locked with its reason as the card's note; a
 ## Full Journey one the player does not own keeps the Full Journey lock.
 ## With hard on: only chapters with hard runs, each locked until finished.
