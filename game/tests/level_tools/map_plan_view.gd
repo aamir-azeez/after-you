@@ -355,7 +355,7 @@ func _starts() -> void:
 		draw_circle(centre + Vector2(-3.5, -1.5), 1.6, INK)
 		draw_circle(centre + Vector2(3.5, -1.5), 1.6, INK)
 
-# --- Rules 16: items, currents and both-hands crossings -------------------------------
+# --- Rules 20: items, currents and both-hands crossings -------------------------------
 
 ## Item spots as small squares (dashed on the water), each current leg as an
 ## arrow named by its wheel's value (dashed where a board can stop it), each

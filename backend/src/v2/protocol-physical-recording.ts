@@ -1,16 +1,14 @@
 import { ApiError, HASH_PATTERN, canonicalJson, digest, integer, object, text } from "../protocol";
 import { boundedValue, exact, MAX_CHECKPOINT_BYTES, MAX_RECORDING_BYTES, MAX_V2_BODY_BYTES } from "./protocol-relay";
-import { carryOver, comfortRules, openTurns, type ChapterKey, type ChapterLimits, type ChapterRecording } from "./chapter-types";
+import { comfortRules, openTurns, type ChapterKey, type ChapterLimits, type ChapterRecording } from "./chapter-types";
 import { MAX_ROW_BYTES } from "./row-bound";
 import { isPacked, packedKeys, unpackRecording } from "./recording-codec";
 import { CARRY_RECORD_KEYS, MAX_OPEN_TURN_TICKS, OPEN_TURNS_BRANCHES, carryFits, isFingerprint, openBodyLimits, openTurnLimits, packedRecordingBytes, type OpenTurns } from "./open-turns";
 
 const RECORD_KEYS = ["schema_version", "simulation_version", "level_id", "level_version", "definition_hash", "stage_id", "stage_version", "checkpoint_hash", "role", "player_slot", "tick_rate", "duration_ticks", "catch_assistance", "actions", "replay_checks", "final_state_hash", "completed", "outcome", "source_recording_hash", "recording_hash"];
 const PACKED_KEYS = packedKeys(RECORD_KEYS);
-/** An open turns fingerprint (open-turns.ts): a packed record without `packed`. */
-const FINGERPRINT_KEYS = PACKED_KEYS.filter(key => key !== "packed");
-/** Carry-over turns (rules 18 to 21) add their hand-off header fields to each form (open-turns.ts CARRY_RECORD_KEYS). */
-const CARRY_KEYS = { record: [...RECORD_KEYS, ...CARRY_RECORD_KEYS], packed: [...PACKED_KEYS, ...CARRY_RECORD_KEYS], print: [...FINGERPRINT_KEYS, ...CARRY_RECORD_KEYS] };
+/** Open turns add their hand-off header fields to each form (open-turns.ts CARRY_RECORD_KEYS); a fingerprint is a packed record without `packed`. */
+const OPEN_KEYS = { record: [...RECORD_KEYS, ...CARRY_RECORD_KEYS], packed: [...PACKED_KEYS, ...CARRY_RECORD_KEYS], print: [...PACKED_KEYS.filter(key => key !== "packed"), ...CARRY_RECORD_KEYS] };
 const OUTCOMES = ["source_ready", "objective_complete"];
 const MAX_TICKS = 900, MAX_REPLAY_CHECKS = 31;
 function need(value: unknown, code: string): asserts value { if (!value) throw new ApiError(422, code); }
@@ -49,11 +47,10 @@ export function openPhysicalRecording(definition: { simulation_version?: number;
   key: Readonly<ChapterKey>, version: 6 | 7, supported: readonly number[], maxBranches = OPEN_TURNS_BRANCHES):
   { open: OpenTurns; limits: ChapterLimits; recording: (value: unknown, stored?: boolean) => Promise<ChapterRecording> } {
   const turns = turnLimits(definition);
-  const carry = carryOver(definition.simulation_version);
-  const open = openTurnLimits(definition.stages, packedRecordingBytes(turns?.b_ticks ?? 1200), maxBranches, carry);
+  const open = openTurnLimits(definition.stages, packedRecordingBytes(turns?.b_ticks ?? 1200), maxBranches);
   const limits = { ...(turns ? scaledLimits(turns) : COMFORT_RECORDING), ...openBodyLimits(open) };
   checkTurnBounds(limits, open.branches);
-  const parsed = physicalRecording(definition, key, version, supported, undefined, turns, limits, true, carry);
+  const parsed = physicalRecording(definition, key, version, supported, undefined, turns, limits, true);
   return { open, limits, recording: (value: unknown, stored = false) => {
     if (!stored) need(value !== null && typeof value === "object" && isPacked(value), "packed_recording_required");
     return parsed(value, stored);
@@ -94,31 +91,30 @@ export function checkTurnBounds(limits: Readonly<ChapterLimits>, maxBranches: nu
 /** Envelope selection comes only from an explicitly registered immutable adapter.
  * This preserves the published six parser and shares no checkpoint semantics.
  * `stored` (open turns only): the record is a stored row, which may be a turn's fingerprint (open-turns.ts); its header
- * is checked as a turn's is, and its hash, which covers the runs it no longer holds, is taken as stored.
- * `carry` (carry-over turns): every turn names its hand-off (open-turns.ts carryFits) and a stage's first turn may be either pip's. */
+ * is checked as a turn's is, and its hash, which covers the runs it no longer holds, is taken as stored. Every open turn
+ * names its hand-off (open-turns.ts carryFits) and a stage's first turn may be either pip's. */
 export function physicalRecording(definition: { stages: readonly { id: string; first_player_slot: string }[] }, key: Readonly<ChapterKey>, version: 6 | 7 | 8, supported: readonly number[] = [version], maxTicks = Number.MAX_SAFE_INTEGER,
-  turns?: Readonly<TurnLimits>, limits?: Readonly<ChapterLimits>, open = false, carry = false): (value: unknown, stored?: boolean) => Promise<ChapterRecording> {
+  turns?: Readonly<TurnLimits>, limits?: Readonly<ChapterLimits>, open = false): (value: unknown, stored?: boolean) => Promise<ChapterRecording> {
   return async (value: unknown, stored = false): Promise<ChapterRecording> => {
     const comfort = value !== null && typeof value === "object" && "simulation_version" in value && comfortRules(value.simulation_version) && supported.includes(value.simulation_version as number);
     boundedValue(value, comfort ? limits?.recording_bytes ?? 65_536 : MAX_RECORDING_BYTES, comfort ? limits?.recording_values : undefined);
     // A packed record (v2/recording-codec.ts) carries its runs and checks as one string; whether the room may take it is the room's call.
-    const r = object(value), packed = isPacked(r), print = open && stored && isFingerprint(r); exact(r, print ? (carry ? CARRY_KEYS.print : FINGERPRINT_KEYS) : packed ? (carry ? CARRY_KEYS.packed : PACKED_KEYS) : carry ? CARRY_KEYS.record : RECORD_KEYS); need(r.level_id === key.level_id && r.level_version === key.level_version && r.definition_hash === key.definition_hash, "unsupported_chapter");
+    const r = object(value), packed = isPacked(r), print = open && stored && isFingerprint(r); exact(r, print ? OPEN_KEYS.print : packed ? (open ? OPEN_KEYS.packed : PACKED_KEYS) : open ? OPEN_KEYS.record : RECORD_KEYS); need(r.level_id === key.level_id && r.level_version === key.level_version && r.definition_hash === key.definition_hash, "unsupported_chapter");
     need(r.schema_version === version && supported.includes(r.simulation_version as number) && r.stage_version === 1 && r.tick_rate === 30, "unsupported_simulation_version");
     const stage = definition.stages.find(stage => stage.id === r.stage_id); need(stage, "unknown_stage");
     need(r.role === "a" || r.role === "b", "invalid_role");
-    // Open turns (open-turns.ts): a later turn is either pip's, as its place in the stage says (the room and the checkpoint check it);
-    // on carry-over turns the first turn too, as the checkpoint before the stage says.
-    need(r.player_slot === (r.role === "a" ? stage.first_player_slot : stage.first_player_slot === "p0" ? "p1" : "p0") || open && (r.role === "b" || carry) && (r.player_slot === "p0" || r.player_slot === "p1"), "wrong_player_slot");
+    // Open turns (open-turns.ts): any turn is either pip's, as its place in the stage and the checkpoint before the stage say (the room and the checkpoint check it).
+    need(r.player_slot === (r.role === "a" ? stage.first_player_slot : stage.first_player_slot === "p0" ? "p1" : "p0") || open && (r.player_slot === "p0" || r.player_slot === "p1"), "wrong_player_slot");
     // Open turns: every turn has the second turn's limit.
     const role = open ? "b" : r.role;
     const published = comfortRules(r.simulation_version) && role === "b" ? 1200 : MAX_TICKS;
     const limit = Math.min(turns ? (role === "b" ? turns.b_ticks : turns.a_ticks) : published, maxTicks);
     const duration = integer(r.duration_ticks, 1, limit); bool(r.catch_assistance); bool(r.completed);
-    for (const name of ["checkpoint_hash", "final_state_hash", "recording_hash", ...(carry ? ["start_hash"] : [])]) text(r[name], HASH_PATTERN);
+    for (const name of ["checkpoint_hash", "final_state_hash", "recording_hash", ...(open ? ["start_hash"] : [])]) text(r[name], HASH_PATTERN);
     // A turn that closes its stage before the friend's replay is over hands nothing off (an empty handoff_hash).
-    if (carry && !(r.completed === true && r.handoff_hash === "")) text(r.handoff_hash, HASH_PATTERN);
-    // Carry-over turns: a hand-off inside the turn before (never longer than this limit); a first turn hands off at 0 from its own start.
-    if (carry) { integer(r.handoff_tick, 0, limit); need(r.role !== "a" || carryFits(r as ChapterRecording, null, null), "invalid_handoff"); }
+    if (open && !(r.completed === true && r.handoff_hash === "")) text(r.handoff_hash, HASH_PATTERN);
+    // Open turns: a hand-off inside the turn before (never longer than this limit); a first turn hands off at 0 from its own start.
+    if (open) { integer(r.handoff_tick, 0, limit); need(r.role !== "a" || carryFits(r as ChapterRecording, null, null), "invalid_handoff"); }
     need(r.role === "a" ? r.source_recording_hash === "" : typeof r.source_recording_hash === "string" && HASH_PATTERN.test(r.source_recording_hash), "invalid_source_hash");
     // Packed runs and checks come back canonical, on the implied check ticks and ending on final_state_hash.
     if (print) { exact(object(r.outcome), OUTCOMES); Object.values(object(r.outcome)).forEach(bool); return r as ChapterRecording; }

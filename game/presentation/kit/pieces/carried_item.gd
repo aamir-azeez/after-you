@@ -1,5 +1,5 @@
 extends "res://presentation/kit/pieces/piece.gd"
-## World kit: a carried item or a float (rules 16, core/physical/carried_items.gd)
+## World kit: a carried item or a float (rules 20, core/physical/carried_items.gd)
 ## in one of its styles (content/dressing/prop_styles.gd "carried_item";
 ## content/dressing/piece_styles.gd picks which, a pin by the item's id first).
 ##

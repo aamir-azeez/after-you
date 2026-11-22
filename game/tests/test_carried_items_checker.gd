@@ -1,5 +1,5 @@
 extends SceneTree
-## The level checker understands rules 16's carried items and currents
+## The level checker understands rules 20's carried items and currents
 ## (tests/level_graph.gd _reach_items and with_items, used by
 ## tests/test_level_checker.gd) on the witness level (tests/carried_items_level.gd):
 ## - stage 1 is solvable with the pipsport handed up the both-hands ladder, and

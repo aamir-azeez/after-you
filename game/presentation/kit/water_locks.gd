@@ -21,7 +21,7 @@ extends Node3D
 ##
 ## A spillway's look is the dressing's "spillway" pick (content/dressing/
 ## prop_styles.gd), set by the water kit before build(): "trickle" is the thin
-## sheet; "falls" (The Falls, rules 16's waterfall) makes the same spillway a
+## sheet; "falls" (The Falls, rules 20's waterfall) makes the same spillway a
 ## waterfall: a thick sheet, white foam where it lands and a slow mist over
 ## the pool below, all shown only while the water falls.
 ##

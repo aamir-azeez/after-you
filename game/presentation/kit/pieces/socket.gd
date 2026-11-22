@@ -21,7 +21,7 @@ extends RefCounted
 ##       where a thrown seed lands, the ring the landing spot's radius.
 ##   pedestal(): First Steps' stone pedestal, a drum, a cream cap a little
 ##       wider and a gold ring, the seed resting on the cap.
-##   item_spot(): a rules 16 item spot (core/physical/carried_items.gd) in the
+##   item_spot(): a rules 20 item spot (core/physical/carried_items.gd) in the
 ##       "item_spot" style its piece resolves to (content/dressing/piece_styles.gd):
 ##       "pedestal", "planter" (garden()), "nest" (relay()) or "none". A solid
 ##       spot (core/solid_footprint.gd) sizes a pedestal's drum to its solid

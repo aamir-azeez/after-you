@@ -9,16 +9,14 @@ extends RefCounted
 ## the server checks: base revision, a flat checkpoint linked by hash to the
 ## room's and naming exactly the stage's turns, and a sent-back copy hashing to
 ## a fingerprint it holds. Only HTTP is doubled; the phones are real coordinators.
-## Carry-over turns (rules 18 to 21, backend/src/v2/open-turns.ts carryFits) also chain each turn to the one before by
-## its start and hand-off hashes and hand-off tick, a pass lasts at least the rest of the friend's turn, a stage's first
-## pip is the one its checkpoint names (next_first_slot) and the closing checkpoint names the pip that did not close it.
+## Turns also chain to the one before by their start and hand-off hashes and hand-off tick (backend/src/v2/open-turns.ts
+## carryFits), a pass lasts at least the rest of the friend's turn, a stage's first pip is the one its checkpoint names
+## (next_first_slot) and the closing checkpoint names the pip that did not close it.
 const Coordinator = preload("res://services/relay_room_coordinator.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const OpenTurns = preload("res://core/physical/open_turns.gd")
 const OpenTurnStore = preload("res://services/open_turn_store.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
-## Carry-over turns, as backend/src/v2/chapter-types.ts CARRY_OVER_RULES.
-const CARRY_RULES := [18, 19, 20, 21]
 
 var chapter := ""
 var level: Dictionary = {}
@@ -78,15 +76,11 @@ func _fail(status: int, code: String) -> Dictionary:
 func done() -> bool:
 	return stage_index >= level.stages.size()
 
-func _carry() -> bool:
-	return int(level.get("simulation_version", 0)) in CARRY_RULES
-
-## The pip that plays the stage's turn 1: on carry-over turns the checkpoint's (the host's for the first stage).
+## The pip that plays the stage's turn 1: the checkpoint's (the host's for the first stage).
 func _first_slot() -> String:
-	if _carry(): return str(checkpoint.get("next_first_slot", "p0"))
-	return str(level.stages[stage_index].first_player_slot)
+	return str(checkpoint.get("next_first_slot", "p0"))
 
-## Carry-over turns: `recording` starts from the stage's latest turn at its hand-off, as the server's carryFits checks.
+## Whether `recording` starts from the stage's latest turn at its hand-off, as the server's carryFits checks.
 func _hands_off(recording: Dictionary) -> bool:
 	if stage.is_empty(): return int(recording.get("handoff_tick", -1)) == 0 and recording.get("handoff_hash") == recording.get("start_hash")
 	var memory: Dictionary = rows[stage[-1].hash]
@@ -148,7 +142,7 @@ func _turn(player: String, body: Dictionary) -> Dictionary:
 	if player != _player_of(turn): return _fail(403, "not_your_turn")
 	var recording: Dictionary = body.recording
 	if not recording.has("packed") or not OpenTurnStore.hash_ok(recording): return _fail(400, "invalid_recording")
-	if _carry() and not _hands_off(recording): return _fail(409, "source_recording_mismatch")
+	if not _hands_off(recording): return _fail(409, "source_recording_mismatch")
 	_acknowledge(player, int(body.base_revision))
 	var turn_id := OpenTurns.turn_id(0, stage_index, turn)
 	var closes: bool = recording.role == "b" and recording.completed == true
@@ -156,7 +150,7 @@ func _turn(player: String, body: Dictionary) -> Dictionary:
 		var flat: Variant = body.get("checkpoint")
 		var names: Array = stage.map(func(item: Dictionary) -> String: return item.hash) + [recording.recording_hash]
 		if not flat is Dictionary or flat.has("proof") or flat.previous_checkpoint_hash != checkpoint.checkpoint_hash or not Canonical.same(flat.turn_hashes, names): return _fail(400, "invalid_checkpoint")
-		if _carry() and (int(flat.get("schema_version", 0)) != 9 or flat.get("next_first_slot") != ("p0" if recording.player_slot == "p1" else "p1")): return _fail(422, "checkpoint_recording_mismatch")
+		if (int(flat.get("schema_version", 0)) != 9 or flat.get("next_first_slot") != ("p0" if recording.player_slot == "p1" else "p1")): return _fail(422, "checkpoint_recording_mismatch")
 	# Turn k goes to its fingerprint as turn k+1 is accepted.
 	if not stage.is_empty(): _stub(stage[-1].hash)
 	revision += 1

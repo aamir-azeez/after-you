@@ -6,11 +6,11 @@ import { canonicalJson, digest } from "../src/protocol";
 import { chapter, checkpointV2, initialCheckpoint } from "../src/v2/protocol";
 import { CHAPTERS } from "../src/v2/chapters";
 import { MAX_ROW_BYTES, MAX_REPLAY_ARCHIVE_BYTES } from "../src/v2/row-bound";
-import { CARRY_RECORD_KEYS, DEFAULT_TURN_CAP, MAX_OPEN_TURN_TICKS, OPEN_CHECKPOINT_KEYS, OPEN_TURN_ID_PATTERN, PACKED_RECORDING_VALUES, carryFits, fingerprint, handoffTick, isFingerprint, mustFinish, openCheckpointShape, openAccepted, openTurnLimits, packedRecordingBytes, recordingBytes, timelineShares, turnId, turnNumber, turnSlot } from "../src/v2/open-turns";
+import { CARRY_RECORD_KEYS, DEFAULT_TURN_CAP, MAX_OPEN_TURN_TICKS, OPEN_CHECKPOINT_KEYS, OPEN_CHECKPOINT_SCHEMA, OPEN_TURN_ID_PATTERN, PACKED_RECORDING_VALUES, carryFits, fingerprint, handoffTick, isFingerprint, mustFinish, openAccepted, openTurnLimits, packedRecordingBytes, recordingBytes, timelineShares, turnId, turnNumber, turnSlot } from "../src/v2/open-turns";
 import { MAX_PACKED_CHARS, checkTicks, packRecording, unpackRecording } from "../src/v2/recording-codec";
 import { conservatoryV2, firstStepsV2, fogMarsh, longWayHomeV2, longWayHomeV3, relayIslesV3, theFalls, turnOfTheTideV2, turnOfTheTideV3 } from "../src/v2/protocol-journey";
 import { highAndLowV2, houseForTwoV2, rollingHomeV2, wishingWellV2 } from "../src/v2/protocol-cooperative";
-import { carryOver, comfortRules, openControls, openTurns, piecesRules, sharedBall, tideRules, type ChapterCheckpoint, type ChapterRecording } from "../src/v2/chapter-types";
+import { comfortRules, openControls, openTurns, piecesRules, sharedBall, tideRules, type ChapterCheckpoint, type ChapterRecording } from "../src/v2/chapter-types";
 import type { MutationV2, RoomSnapshotV2 } from "../src/v2/room";
 import type { RedoStateV2 } from "../src/redo-control";
 import carrySetA from "../../game/tests/fixtures/journey/turn-of-the-tide-v3-set-the-tide-a.json";
@@ -27,48 +27,32 @@ import { decodeBlob } from "../src/blob-codec";
 import { countingEnv, meterRows } from "./meter";
 
 /**
- * Open turns (v2/open-turns.ts) on Turn of the Tide@3 pinned to the older open turns rules 15, a chapter only this file
- * knows (LEGACY: every published open level now pins carry-over turns, 18 to 21, and the server still takes 14 to 17).
- * The server never simulates, so the chains here are built from the native fixtures' first two turns, as rules 15 records: a pass is the fixture's second turn not finished, a later turn
- * swaps the pip and chains its source, and every record and checkpoint is hashed again. Every turn goes packed
- * (v2/recording-codec.ts), as an open turns room takes no other form.
+ * Open turns (v2/open-turns.ts) on Turn of the Tide@3 pinned to rules 19 under a key only this file knows (CARRY). The
+ * server never simulates, so the chains here are built from the native fixtures' first two turns: a pass is the fixture's
+ * second turn not finished, a later turn swaps the pip, chains its source and takes over at its hand-off, with stand-in
+ * world hashes, and every record and checkpoint is hashed again. Every turn goes packed (v2/recording-codec.ts), as an
+ * open turns room takes no other form.
  */
 type Account = { player_id: string; device_token: string };
 type Rec = Record<string, any>;
-/** Carry-over turns (the last describe): Turn of the Tide@3 pinned to rules 19, a chapter only this file knows. */
 const CARRY = vi.hoisted(() => ({ level_id: "turn-of-the-tide", level_version: 98, definition_hash: "c".repeat(64) }));
-/** Every other describe: Turn of the Tide@3 on the older open turns rules 15, a chapter only this file knows. */
-const LEGACY = vi.hoisted(() => ({ level_id: "turn-of-the-tide", level_version: 97, definition_hash: "b".repeat(64) }));
 vi.mock("../src/v2/chapters", async original => {
   const actual = await original<typeof import("../src/v2/chapters")>();
   const { journeyAdapter } = await import("../src/v2/protocol-journey");
   const { canonicalJson: canonical, digest: hash } = await import("../src/protocol");
-  const pinned = async (pin: { level_version: number; definition_hash: string }, rules: number) => {
-    const definition = { ...structuredClone((await import("../src/v2/turn-of-the-tide-v3.json")).default), version: pin.level_version, simulation_version: rules };
-    const { checkpoint_hash: _old, proof, ...body } = { ...structuredClone((await import("../src/v2/turn-of-the-tide-v3-initial.json")).default), level_version: pin.level_version, definition_hash: pin.definition_hash } as Record<string, unknown>; void _old;
-    return journeyAdapter(definition as never, { ...body, checkpoint_hash: await hash(canonical(body)), proof } as never, pin.definition_hash, 7);
-  };
-  const carried = await pinned(CARRY, 19), legacy = await pinned(LEGACY, 15);
-  const is = (value: unknown, pin: typeof CARRY) => value !== null && typeof value === "object" && (value as Record<string, unknown>).level_id === pin.level_id && (value as Record<string, unknown>).level_version === pin.level_version && (value as Record<string, unknown>).definition_hash === pin.definition_hash;
-  const mocked = (value: unknown) => is(value, CARRY) ? carried : is(value, LEGACY) ? legacy : null;
-  return { ...actual, chapter: (value: unknown) => mocked(value) ?? actual.chapter(value), chapterKey: (value: unknown) => mocked(value) ? { ...mocked(value)!.key } : actual.chapterKey(value),
-    chapterFlag: (entry: unknown) => entry === carried || entry === legacy ? "" : actual.chapterFlag(entry as never), creatable: (entry: unknown, e: Env) => entry === carried || entry === legacy || actual.creatable(entry as never, e) };
+  const definition = { ...structuredClone((await import("../src/v2/turn-of-the-tide-v3.json")).default), version: CARRY.level_version, simulation_version: 19 };
+  const { checkpoint_hash: _old, proof, ...body } = { ...structuredClone((await import("../src/v2/turn-of-the-tide-v3-initial.json")).default), level_version: CARRY.level_version, definition_hash: CARRY.definition_hash } as Record<string, unknown>; void _old;
+  const carried = journeyAdapter(definition as never, { ...body, checkpoint_hash: await hash(canonical(body)), proof } as never, CARRY.definition_hash, 7);
+  const mocked = (value: unknown) => value !== null && typeof value === "object" && (value as Record<string, unknown>).level_id === CARRY.level_id && (value as Record<string, unknown>).level_version === CARRY.level_version && (value as Record<string, unknown>).definition_hash === CARRY.definition_hash ? carried : null;
+  return { ...actual, chapter: (value: unknown) => mocked(value) ?? actual.chapter(value), chapterKey: (value: unknown) => mocked(value) ? { ...carried.key } : actual.chapterKey(value),
+    chapterFlag: (entry: unknown) => entry === carried ? "" : actual.chapterFlag(entry as never), creatable: (entry: unknown, e: Env) => entry === carried || actual.creatable(entry as never, e) };
 });
 const FLAGS = { TURN_OF_THE_TIDE_V3_CHAPTER_ENABLED: "true", NOTIFICATIONS_ENABLED: "false" };
-const NEW_CLIENT = [2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
-const adapter = chapter(LEGACY);
-/** A native carry-over record as the older rules 15 write it: no hand-off fields, LEGACY's pin. */
-function legacyTurn(record: Rec): Rec {
-  const { handoff_tick: _h, start_hash: _s, handoff_hash: _o, ...rest } = structuredClone(record); void _h; void _s; void _o;
-  return { ...rest, simulation_version: 15, level_version: LEGACY.level_version, definition_hash: LEGACY.definition_hash };
-}
-/** A native schema 9 checkpoint as the older rules write it: schema 8, no next_first_slot, LEGACY's pin. */
-function legacyCheckpoint(checkpoint: Rec): Rec {
-  const { next_first_slot: _next, ...rest } = structuredClone(checkpoint); void _next;
-  return { ...rest, schema_version: 8, level_version: LEGACY.level_version, definition_hash: LEGACY.definition_hash };
-}
-const [setA, setB, slackA, slackB] = [carrySetA, carrySetB, carrySlackA, carrySlackB].map(record => legacyTurn(record as Rec));
-const [setEnd, slackEnd] = [carrySetEnd, carrySlackEnd].map(checkpoint => legacyCheckpoint(checkpoint as Rec));
+const NEW_CLIENT = [2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 18, 19, 20, 21];
+const adapter = chapter(CARRY);
+/** A native record or checkpoint under CARRY's pin. */
+const pinned = (value: Rec): Rec => ({ ...structuredClone(value), level_version: CARRY.level_version, definition_hash: CARRY.definition_hash });
+const [setA, setB, slackA, slackB, setEnd, slackEnd] = [carrySetA, carrySetB, carrySlackA, carrySlackB, carrySetEnd, carrySlackEnd].map(value => pinned(value as Rec));
 const key = () => crypto.randomUUID();
 let address = 0;
 async function call(path: string, method = "GET", account?: Account, body?: unknown, headers: Record<string, string> = {}): Promise<Response> {
@@ -106,29 +90,39 @@ async function sealed(checkpoint: Rec): Promise<Rec> { const { checkpoint_hash: 
 const print = (turn: Rec) => fingerprint(turn as ChapterRecording) as Rec;
 const other = (slot: string) => slot === "p0" ? "p1" : "p0";
 
-/** A later turn: the fixture's second turn, played by the pip turn `n` belongs to, over `memory`, closing the stage or not. */
-async function later(fixtureB: Rec, first: string, n: number, memory: Rec, closes: boolean, checkpointHash: string, extraTicks = 0): Promise<Rec> {
+/**
+ * The next turn after `turns` (the stage's turns so far): the fixture's second turn, played by the pip its number belongs
+ * to in a stage `first` starts, over the latest turn, from its hand-off world at its hand-off tick, closing the stage or not.
+ */
+async function later(fixtureB: Rec, first: string, turns: Rec[], closes: boolean, checkpointHash: string, extraTicks = 0): Promise<Rec> {
+  const n = turns.length + 1, memory = turns.at(-1)!, ticks = fixtureB.duration_ticks + extraTicks;
   return hashed({ ...structuredClone(fixtureB), checkpoint_hash: checkpointHash, player_slot: turnSlot(first, n), source_recording_hash: memory.recording_hash,
+    handoff_tick: handoffTick(memory as ChapterRecording, (turns.at(-2) ?? null) as ChapterRecording | null), start_hash: memory.handoff_hash, handoff_hash: await digest(`world ${checkpointHash} ${n} ${ticks}`),
     duration_ticks: fixtureB.duration_ticks + extraTicks, actions: [...listed(fixtureB).actions, ...(extraTicks ? [{ ticks: extraTicks, x: 0, z: 0, action: false }] : [])],
     replay_checks: extraTicks ? [...listed(fixtureB).replay_checks.slice(0, -1), { tick: fixtureB.duration_ticks + extraTicks, state_hash: fixtureB.final_state_hash }] : listed(fixtureB).replay_checks,
     completed: closes, outcome: { ...fixtureB.outcome, objective_complete: closes } });
 }
-/** The schema 8 checkpoint that closes a stage with `turns` (by hash, no proof), from the fixture's own end state with both pips where its goal pip ended. */
+/**
+ * The checkpoint that closes a stage with `turns` (by hash, no proof), from the fixture's own end state with both pips where
+ * its goal pip ended, naming the pip that did not close the stage to start the next.
+ */
 async function closing(fixtureEnd: Rec, previous: Rec, turns: Rec[], together = true): Promise<Rec> {
   const { a_recording_hash: _a, b_recording_hash: _b, proof: _proof, ...rest } = structuredClone(fixtureEnd); void _a; void _b; void _proof;
-  const goalPip = rest.players[other(turns[0].player_slot)];
+  const goalPip = rest.players[other(fixtureEnd === setEnd ? setA.player_slot : slackA.player_slot)];
   // Apart: the first pip back where the stage started it, away from the goal.
   rest.players = together ? { p0: { ...goalPip }, p1: { ...goalPip } } : { ...rest.players, [turns[0].player_slot]: structuredClone(previous.players[turns[0].player_slot]) };
-  return sealed({ ...rest, schema_version: 8, previous_checkpoint_hash: previous.checkpoint_hash, turn_hashes: turns.map(turn => turn.recording_hash) });
+  return sealed({ ...rest, schema_version: OPEN_CHECKPOINT_SCHEMA, previous_checkpoint_hash: previous.checkpoint_hash, turn_hashes: turns.map(turn => turn.recording_hash), next_first_slot: other(turns.at(-1)!.player_slot) });
 }
-/** A stage's chain: turn 1 and `passes` passes, then the closing turn and its checkpoint. */
+/** A stage's chain: turn 1 by the pip `previous` names (the host's on the first stage) and `passes` passes, then the closing turn and its checkpoint. */
 async function chain(stage: 0 | 1, previous: Rec, passes: number): Promise<{ turns: Rec[]; checkpoint: Rec }> {
-  const [fixtureA, fixtureB, fixtureEnd] = stage === 0 ? [setA, setB, setEnd] : [slackA, slackB, slackEnd] as Rec[];
-  const first = (fixtureA as Rec).player_slot as string;
-  const turns: Rec[] = [await hashed({ ...structuredClone(fixtureA), checkpoint_hash: previous.checkpoint_hash })];
-  for (let n = 2; n <= passes + 2; n++) turns.push(await later(fixtureB as Rec, first, n, turns.at(-1)!, n === passes + 2, previous.checkpoint_hash));
-  return { turns, checkpoint: await closing(fixtureEnd as Rec, previous, turns) };
+  const [fixtureA, fixtureB, fixtureEnd] = stage === 0 ? [setA, setB, setEnd] : [slackA, slackB, slackEnd];
+  const first = previous.next_first_slot ?? "p0";
+  const turns: Rec[] = [await hashed({ ...structuredClone(fixtureA), checkpoint_hash: previous.checkpoint_hash, player_slot: first })];
+  for (let n = 2; n <= passes + 2; n++) turns.push(await later(fixtureB, first, turns, n === passes + 2, previous.checkpoint_hash));
+  return { turns, checkpoint: await closing(fixtureEnd, previous, turns) };
 }
+/** The members who start and follow the stage after `checkpoint`: the first stage's first pip is the host's (`first`). */
+const pips = (checkpoint: Rec, first: Account, second: Account): [Account, Account] => checkpoint.next_first_slot === "p1" ? [second, first] : [first, second];
 const initial = () => initialCheckpoint(adapter.key) as unknown as Rec;
 const validate = (checkpoint: Rec, previous: Rec, turns: Rec[]) =>
   checkpointV2(checkpoint, previous as ChapterCheckpoint, turns[0] as ChapterRecording, turns.at(-1) as ChapterRecording, turns.slice(1, -1) as ChapterRecording[]);
@@ -137,8 +131,7 @@ async function room(): Promise<{ host: Account; guest: Account; room: RoomSnapsh
   const host = await account(), guest = await account(); await grantFullJourney(host);
   const made = await json<RoomSnapshotV2>(call("/v2/rooms", "POST", host, { ...adapter.key, idempotency_key: key() }));
   const joined = await json<RoomSnapshotV2>(call("/v2/rooms/join", "POST", guest, { invite_code: made.invite_code, supported_simulation_versions: NEW_CLIENT }));
-  const first = setA.player_slot === "p0" ? host : guest;
-  return { host, guest, room: joined, first, second: first === host ? guest : host };
+  return { host, guest, room: joined, first: host, second: guest };
 }
 const send = (room: RoomSnapshotV2, who: Account, recording: Rec, checkpoint?: Rec, extra: Record<string, unknown> = {}, status = 200) =>
   json<MutationV2>(call(`/v2/rooms/${room.room_id}/turns`, "POST", who, { base_revision: room.revision, branch: room.branch, idempotency_key: key(), recording, ...(checkpoint ? { checkpoint } : {}), ...extra }), status);
@@ -195,8 +188,8 @@ describe("open turns: rules and bounds", () => {
     // The longest open turn, ten minutes, packs well inside the packed string bound every room shares (a third to spare).
     const longest = Array.from({ length: MAX_OPEN_TURN_TICKS }, (_, i) => ({ ticks: 1, x: i % 2 ? -100 : 100, z: -100, action: false }));
     expect(packRecording(longest, checkTicks(MAX_OPEN_TURN_TICKS).map(tick => ({ tick, state_hash: "f".repeat(64) })), MAX_OPEN_TURN_TICKS).length * 1.5).toBeLessThan(MAX_PACKED_CHARS);
-    expect(turnLimits({ simulation_version: 15, turn_limits: { a_ticks: MAX_OPEN_TURN_TICKS, b_ticks: MAX_OPEN_TURN_TICKS } })).toEqual({ a_ticks: MAX_OPEN_TURN_TICKS, b_ticks: MAX_OPEN_TURN_TICKS });
-    expect(() => turnLimits({ simulation_version: 15, turn_limits: { a_ticks: 9000, b_ticks: MAX_OPEN_TURN_TICKS + 1 } })).toThrow("invalid turn_limits");
+    expect(turnLimits({ simulation_version: 19, turn_limits: { a_ticks: MAX_OPEN_TURN_TICKS, b_ticks: MAX_OPEN_TURN_TICKS } })).toEqual({ a_ticks: MAX_OPEN_TURN_TICKS, b_ticks: MAX_OPEN_TURN_TICKS });
+    expect(() => turnLimits({ simulation_version: 19, turn_limits: { a_ticks: 9000, b_ticks: MAX_OPEN_TURN_TICKS + 1 } })).toThrow("invalid turn_limits");
     expect(() => turnLimits({ simulation_version: 13, turn_limits: { a_ticks: 9000, b_ticks: 9001 } })).toThrow("invalid turn_limits");
     expect(() => openTurnLimits([{}, {}, {}, {}], packedRecordingBytes(MAX_OPEN_TURN_TICKS), 7)).not.toThrow();
     // Under a ninth of the same JSON turn's bytes, the header allowance included.
@@ -228,9 +221,9 @@ describe("open turns: rules and bounds", () => {
     const swapped = [...turns]; swapped[2] = await hashed({ ...turns[2], player_slot: other(turns[2].player_slot) });
     swapped[3] = await hashed({ ...turns[3], source_recording_hash: swapped[2].recording_hash });
     await expect(validate(await closing(setEnd as Rec, start, swapped), start, swapped)).rejects.toMatchObject({ code: "checkpoint_recording_mismatch" });
-    // A turn shorter than its memory.
-    const longer = [...turns]; longer[2] = await later(setB as Rec, setA.player_slot, 3, turns[1], false, start.checkpoint_hash, 30);
-    longer[3] = await later(setB as Rec, setA.player_slot, 4, longer[2], true, start.checkpoint_hash);
+    // A pass that ends before the friend's replay beside it is over: turn 2 runs 656 ticks past turn 3's hand-off.
+    const longer = [turns[0]]; longer.push(await later(setB, "p0", longer, false, start.checkpoint_hash, 600));
+    longer.push(await later(setB, "p0", longer, false, start.checkpoint_hash)); longer.push(await later(setB, "p0", longer, true, start.checkpoint_hash));
     await expect(validate(await closing(setEnd as Rec, start, longer), start, longer)).rejects.toMatchObject({ code: "checkpoint_recording_mismatch" });
     // A pass that says it finished, or a closing turn that did not.
     const finishedPass = [...turns]; finishedPass[1] = await hashed({ ...turns[1], completed: true, outcome: { ...turns[1].outcome, objective_complete: true } });
@@ -252,7 +245,7 @@ describe("open turns: a first turn ended early", () => {
   it("takes a first turn whose own part is not done on open turns only, and the next turn closes the stage over it", async () => {
     const start = initial();
     const early = await hashed({ ...structuredClone(setA as Rec), checkpoint_hash: start.checkpoint_hash, outcome: { ...(setA as Rec).outcome, source_ready: false } });
-    const closingTurn = await later(setB as Rec, setA.player_slot, 2, early, true, start.checkpoint_hash);
+    const closingTurn = await later(setB, "p0", [early], true, start.checkpoint_hash);
     const turns = [early, await hashed({ ...closingTurn, outcome: { ...closingTurn.outcome, source_ready: false } })];
     const checkpoint = await closing(setEnd as Rec, start, turns);
     expect(openAccepted(early as ChapterRecording)).toBe(true);
@@ -290,7 +283,7 @@ describe("open turns: a friend room", () => {
     expect(two.room).not.toHaveProperty("open_stage");
     // The wrong pip, or a memory that is not the latest turn.
     await send(two.room, second, turns[2], undefined, {}, 409);
-    await send(two.room, first, await later(setB as Rec, setA.player_slot, 3, turns[0], false, initial().checkpoint_hash), undefined, {}, 409);
+    await send(two.room, first, await hashed({ ...turns[2], source_recording_hash: turns[0].recording_hash }), undefined, {}, 409);
     const three = await send(two.room, first, turns[2]);
     expect(three.receipt.turn_id).toBe("t0-0-c");
     expect(three.room).toMatchObject({ active_player_id: second.player_id });
@@ -302,7 +295,7 @@ describe("open turns: a friend room", () => {
     expect(four.room.checkpoint).not.toHaveProperty("proof");
     expect(four.room.open_turns).toMatchObject({ turn: 1, turn_hashes: [], newest: null, closing: turns[3] });
     // Stage two closes in two turns, as before open turns.
-    const next = await chain(1, checkpoint, 0), slackFirst = slackA.player_slot === setA.player_slot ? first : second, slackSecond = slackFirst === first ? second : first;
+    const next = await chain(1, checkpoint, 0), [slackFirst, slackSecond] = pips(checkpoint, first, second);
     const five = await send(four.room, slackFirst, next.turns[0]), six = await send(five.room, slackSecond, next.turns[1], next.checkpoint);
     expect(six.room).toMatchObject({ stage_index: 2, active_role: "complete", active_player_id: null, checkpoint: next.checkpoint });
     expect(six.room.open_turns).toMatchObject({ turn: 0, cap: 0, must_finish: false, turn_hashes: [], newest: null, closing: next.turns[1] });
@@ -346,7 +339,7 @@ describe("open turns: a friend room", () => {
     const one = await send(joined, first, turns[0]), two = await send(one.room, second, turns[1]);
     const three = await send(await read(two.room, first), first, turns[2]);
     // The friend has not read it: the first pip may replace it. The new turn three keeps the same memory.
-    const again = await later(setB as Rec, setA.player_slot, 3, turns[1], false, initial().checkpoint_hash, 15);
+    const again = await later(setB, "p0", turns.slice(0, 2), false, initial().checkpoint_hash, 15);
     const replaced = await send(three.room, first, again, undefined, { replaces: turns[2].recording_hash });
     expect(replaced.receipt).toMatchObject({ branch: 1, turn_id: "t1-0-c" });
     expect(replaced.room).toMatchObject({ a_turn_id: "t1-0-a", recording_a: print(turns[0]) });
@@ -356,7 +349,7 @@ describe("open turns: a friend room", () => {
     expect(seen.active_player_id).toBe(second.player_id);
     await failure(call(`/v2/rooms/${joined.room_id}/turns`, "POST", first, { base_revision: seen.revision, branch: seen.branch, idempotency_key: key(), recording: turns[2], replaces: again.recording_hash }), 409, "turn_already_seen");
     // And the friend closes the stage over the new turn three.
-    const closingTurn = await later(setB as Rec, setA.player_slot, 4, again, true, initial().checkpoint_hash, 15);
+    const closingTurn = await later(setB, "p0", [turns[0], turns[1], again], true, initial().checkpoint_hash, 15);
     const done = await send(seen, second, closingTurn, await closing(setEnd as Rec, initial(), [turns[0], turns[1], again, closingTurn]));
     expect(done.room).toMatchObject({ stage_index: 1, branch: 1, completed_pair_ids: ["p1-0"] });
   });
@@ -433,7 +426,7 @@ describe("open turns: fingerprints, history and replays", () => {
   async function finished(passes = 2) {
     const made = await room(), { first, second } = made;
     const one = await chain(0, initial(), passes), two = await chain(1, one.checkpoint, 1);
-    const slackFirst = slackA.player_slot === setA.player_slot ? first : second, slackSecond = slackFirst === first ? second : first;
+    const [slackFirst, slackSecond] = pips(one.checkpoint, first, second);
     let current = made.room;
     for (const [i, turn] of one.turns.entries()) current = (await send(current, i % 2 ? second : first, turn, i === one.turns.length - 1 ? one.checkpoint : undefined)).room;
     for (const [i, turn] of two.turns.entries()) current = (await send(current, i % 2 ? slackSecond : slackFirst, turn, i === two.turns.length - 1 ? two.checkpoint : undefined)).room;
@@ -462,7 +455,7 @@ describe("open turns: fingerprints, history and replays", () => {
     const pair = await json<Rec>(call(`/v2/rooms/${joined.room_id}/pairs/p0-0`, "GET", partner));
     expect(pair).toMatchObject({ a: print(one.turns[0]), b: print(one.turns[2]), checkpoint: one.checkpoint });
     // Stage two: the partner's next turn acknowledges the closing turn it played over, with no poll at all.
-    const two = await chain(1, one.checkpoint, 1), slackFirst = slackA.player_slot === setA.player_slot ? first : second, slackSecond = slackFirst === first ? second : first;
+    const two = await chain(1, one.checkpoint, 1), [slackFirst, slackSecond] = pips(one.checkpoint, first, second);
     for (const [i, turn] of two.turns.entries()) {
       current = (await send(current, i % 2 ? slackSecond : slackFirst, turn, i === two.turns.length - 1 ? two.checkpoint : undefined)).room;
       if (i === 0) expect(await full(current)).toEqual(["t0-1-a"]);
@@ -516,7 +509,7 @@ describe("open turns: fingerprints, history and replays", () => {
     expect(await copies(first, "/want", { schema_version: 1, recording_hashes: [hashes[0]] })).toMatchObject({ copies: [] });
     await copies(second, "", { schema_version: 1, turns: [one.turns[0]] });
     expect((await copies(first, "/want", { schema_version: 1, recording_hashes: [hashes[0]] })).copies).toEqual([one.turns[0]]);
-    const two = await chain(1, one.checkpoint, 1), slackFirst = slackA.player_slot === setA.player_slot ? first : second;
+    const two = await chain(1, one.checkpoint, 1), [slackFirst] = pips(one.checkpoint, first, second);
     current = (await send(current, slackFirst, two.turns[0])).room;
     expect(await rows()).toEqual({ wants: 0, copies: 0 });
     // Only turns of this room, and only in an open turns room.
@@ -573,8 +566,7 @@ describe("open turns: a hard room", () => {
     const host = await account(), guest = await account(); await grantFullJourney(host);
     const made = await json<RoomSnapshotV2>(call("/v2/rooms", "POST", host, { ...adapter.key, idempotency_key: key(), mode: "hard" }));
     const joined = await json<RoomSnapshotV2>(call("/v2/rooms/join", "POST", guest, { invite_code: made.invite_code, supported_simulation_versions: NEW_CLIENT }, HARD));
-    const first = setA.player_slot === "p0" ? host : guest;
-    return { room: joined, first, second: first === host ? guest : host };
+    return { room: joined, first: host, second: guest };
   }
   /** A slip's reset; under open turns a slip over a pass brings the turns under its memory from the phone's copy (`chain`). */
   const reset = (room: RoomSnapshotV2, who: Account, slip: Rec, chain?: Rec[]) => call(`/v2/rooms/${room.room_id}/hard-reset`, "POST", who,
@@ -597,7 +589,7 @@ describe("open turns: a hard room", () => {
     expect(await full(three)).toEqual([turnId(0, 0, 3)]);
     // The second pip slips on turn 4 and sends the turns under its memory from its own copy: the room matches them to its
     // fingerprints and keeps the slip whole, with its memory (turn 3, held in full) and those turns.
-    const slip = await later(setB as Rec, setA.player_slot, 4, turns[2], false, initial().checkpoint_hash, 9);
+    const slip = await later(setB, "p0", turns.slice(0, 3), false, initial().checkpoint_hash, 9);
     const reset = await slipped(three, second, slip, [turns[0], turns[1]]);
     expect(reset.room).toMatchObject({ branch: 1, stage_index: 0, a_turn_id: null, active_role: "a", active_player_id: first.player_id });
     expect(reset.room.open_turns).toMatchObject({ turn: 1, turn_hashes: [], newest: null });
@@ -616,7 +608,7 @@ describe("open turns: a hard room", () => {
     current = (await send(current, first, turns[2])).room;
     current = (await send(current, second, turns[3], checkpoint)).room;
     expect(current).toMatchObject({ stage_index: 1, branch: 2, hard: { failures: 2, over: false } });
-    const next = await chain(1, checkpoint, 0), slackFirst = slackA.player_slot === setA.player_slot ? first : second;
+    const next = await chain(1, checkpoint, 0), [slackFirst] = pips(checkpoint, first, second);
     current = (await send(current, slackFirst, next.turns[0])).room;
     current = (await send(current, slackFirst === first ? second : first, next.turns[1], next.checkpoint)).room;
     expect(current.active_role).toBe("complete");
@@ -624,9 +616,9 @@ describe("open turns: a hard room", () => {
   it("drops a slip whose turns under its memory are not the room's, and still starts the run again", async () => {
     const { room: joined, first, second } = await hardRoom();
     const { turns } = await chain(0, initial(), 2);
-    const slip = await later(setB as Rec, setA.player_slot, 4, turns[2], false, initial().checkpoint_hash, 9);
+    const slip = await later(setB, "p0", turns.slice(0, 3), false, initial().checkpoint_hash, 9);
     // Another turn 2 that checks on its own but is not the one the room took.
-    const otherTwo = await later(setB as Rec, setA.player_slot, 2, turns[0], false, initial().checkpoint_hash, 3);
+    const otherTwo = await later(setB, "p0", [turns[0]], false, initial().checkpoint_hash, 3);
     // Missing, out of order, another turn, and a fingerprint where a whole turn belongs (the chapter keeps 7 branches, so 5 resets here).
     const wrong: (Rec[] | undefined)[] = [undefined, [turns[1], turns[0]], [turns[0], otherTwo], [turns[0], print(turns[1])]];
     let current = joined;
@@ -651,7 +643,7 @@ describe("open turns: a hard room", () => {
     const one = await send(joined, first, turns[0]), two = await send(one.room, second, turns[1]);
     await failure(call(`/v2/rooms/${joined.room_id}/turns`, "POST", first, { base_revision: two.room.revision, branch: two.room.branch, idempotency_key: key(), recording: turns[2], tries: 2 }), 409, "hard_run_retry");
     const three = await send(two.room, first, turns[2]);
-    const again = await later(setB as Rec, setA.player_slot, 3, turns[1], false, initial().checkpoint_hash, 15);
+    const again = await later(setB, "p0", turns.slice(0, 2), false, initial().checkpoint_hash, 15);
     await failure(call(`/v2/rooms/${joined.room_id}/turns`, "POST", first, { base_revision: three.room.revision, branch: three.room.branch, idempotency_key: key(), recording: again, replaces: turns[2].recording_hash }), 409, "hard_run_no_redo");
   });
   it("ends the run when the room cannot hold another one with every stage at its cap", async () => {
@@ -710,7 +702,7 @@ describe("open turns: snapshot restore", () => {
     const { turns, checkpoint } = await chain(0, initial(), 2);
     let current = joined;
     for (const [i, turn] of turns.entries()) current = (await send(current, i % 2 ? second : first, turn, i === turns.length - 1 ? checkpoint : undefined)).room;
-    const next = await chain(1, checkpoint, 1), slackFirst = slackA.player_slot === setA.player_slot ? first : second, slackSecond = slackFirst === first ? second : first;
+    const next = await chain(1, checkpoint, 1), [slackFirst, slackSecond] = pips(checkpoint, first, second);
     for (const [i, turn] of next.turns.entries()) current = (await send(current, i % 2 ? slackSecond : slackFirst, turn, i === next.turns.length - 1 ? next.checkpoint : undefined)).room;
     expect(current).toMatchObject({ stage_index: 2, active_role: "complete" });
     const archive = await roundTrip(joined.room_id);
@@ -722,7 +714,7 @@ describe("open turns: snapshot restore", () => {
     const { turns } = await chain(0, initial(), 2);
     const one = await send(joined, first, turns[0]), two = await send(one.room, second, turns[1]);
     const three = await send(await read(two.room, first), first, turns[2]);
-    const again = await later(setB as Rec, setA.player_slot, 3, turns[1], false, initial().checkpoint_hash, 15);
+    const again = await later(setB, "p0", turns.slice(0, 2), false, initial().checkpoint_hash, 15);
     const replaced = await send(three.room, first, again, undefined, { replaces: turns[2].recording_hash });
     const mid = await roundTrip(joined.room_id);
     expect(mid.payload.tables.find(table => table.name === "operations")!.rows).toHaveLength(4);
@@ -732,7 +724,7 @@ describe("open turns: snapshot restore", () => {
     changedCopy.checksum.value = await digest(canonicalJson(changedCopy.payload));
     expect(await restore(joined.room_id, canonicalJson(changedCopy))).toMatchObject({ ok: false, code: "snapshot_missing_receipt" });
     const seen = await read(replaced.room, second);
-    const closingTurn = await later(setB as Rec, setA.player_slot, 4, again, true, initial().checkpoint_hash, 15);
+    const closingTurn = await later(setB, "p0", [turns[0], turns[1], again], true, initial().checkpoint_hash, 15);
     await send(seen, second, closingTurn, await closing(setEnd as Rec, initial(), [turns[0], turns[1], again, closingTurn]));
     expect((await roundTrip(joined.room_id)).payload.summary).toMatchObject({ state: "active", branch: 1 });
   });
@@ -753,14 +745,11 @@ describe("open turns: packed turns only", () => {
 });
 
 /**
- * Carry-over turns (rules 18 to 21, claude-20261011/carry-over-turns/design.md) on a Turn of the Tide@3 pinned to rules
- * 19, which exists only in this file (CARRY). The server never simulates: each turn names its start world, its hand-off
+ * Carry-over turns (rules 18 to 21, claude-20261011/carry-over-turns/design.md) on CARRY. The server never simulates: each turn names its start world, its hand-off
  * tick and the world it hands to the next turn, and the server checks that they chain. Hand-offs here are worked out from
  * the design's timeline, S(1) = S(2) = 0, S(k) = S(k-2) + L(k-2) and H(k) = S(k) - S(k-1), not from the server's own sum.
  */
 describe("carry-over turns", () => {
-  const carry = () => chapter(CARRY);
-  const CARRY_CLIENT = [...NEW_CLIENT, 19];
   /** H(k) for each turn of a stage whose turns last `lengths`, straight from the design's S. */
   function handoffs(lengths: number[]): number[] {
     const start: number[] = [];
@@ -790,27 +779,25 @@ describe("carry-over turns", () => {
     change(turn);
     return hashed(turn);
   }
-  /** The schema 9 checkpoint closing a stage with `turns` from fixture end `end` (both pips where its goal pip ended), naming `next` (by default the pip that did not close it) to start the next stage. */
+  /** The checkpoint closing a stage with `turns` from fixture end `end`, naming `next` (by default the pip that did not close it) to start the next stage. */
   async function carryClosing(end: Rec, previous: Rec, turns: Rec[], next = other(turns.at(-1)!.player_slot)): Promise<Rec> {
-    const flat = await closing(end, previous, turns), goal = structuredClone(end.players[other(end === setEnd ? setA.player_slot : slackA.player_slot)]);
-    return sealed({ ...flat, players: { p0: goal, p1: { ...goal } }, schema_version: 9, level_version: CARRY.level_version, definition_hash: CARRY.definition_hash, next_first_slot: next });
+    return sealed({ ...await closing(end, previous, turns), next_first_slot: next });
   }
   const refused = (room: RoomSnapshotV2, who: Account, recording: Rec, code: string) =>
     failure(call(`/v2/rooms/${room.room_id}/turns`, "POST", who, { base_revision: room.revision, branch: room.branch, idempotency_key: key(), recording }), 409, code);
   async function carryRoom() {
     const host = await account(), guest = await account();
     const made = await json<RoomSnapshotV2>(call("/v2/rooms", "POST", host, { ...CARRY, idempotency_key: key() }));
-    return { host, guest, room: await json<RoomSnapshotV2>(call("/v2/rooms/join", "POST", guest, { invite_code: made.invite_code, supported_simulation_versions: CARRY_CLIENT })) };
+    return { host, guest, room: await json<RoomSnapshotV2>(call("/v2/rooms/join", "POST", guest, { invite_code: made.invite_code, supported_simulation_versions: NEW_CLIENT })) };
   }
 
-  it("pins 18 to 21 beside 14 to 17, with schema 9 checkpoints and the hand-off fields", () => {
-    for (const [earlier, later] of [[14, 18], [15, 19], [16, 20], [17, 21]]) {
-      for (const rules of [comfortRules, tideRules, openControls, openTurns, piecesRules, sharedBall]) expect(rules(later), `${rules.name} ${later}`).toBe(rules(earlier));
-      expect([carryOver(earlier), carryOver(later)]).toEqual([false, true]);
-    }
-    expect(carry().open_turns).toMatchObject({ carry: true, caps: adapter.open_turns!.caps, branches: 7 });
-    expect(adapter.open_turns!.carry).toBe(false);
-    expect(openCheckpointShape(carry().open_turns!)).toEqual({ schema: 9, keys: [...OPEN_CHECKPOINT_KEYS.slice(0, -1), "next_first_slot", "checkpoint_hash"] });
+  it("plays open turns on 18 to 21 only, with schema 9 checkpoints and the hand-off fields", () => {
+    const rules = Array.from({ length: 22 }, (_, n) => n);
+    expect([rules.filter(openTurns), rules.filter(openControls), rules.filter(tideRules), rules.filter(piecesRules), rules.filter(sharedBall)])
+      .toEqual([[18, 19, 20, 21], [12, 13, 18, 19, 20, 21], [10, 13, 19, 20], [20], [21]]);
+    expect(rules.filter(comfortRules)).toEqual([8, 9, 10, 12, 13, 18, 19, 20, 21]);
+    expect(adapter.open_turns).toMatchObject({ branches: 7 });
+    expect([OPEN_CHECKPOINT_SCHEMA, OPEN_CHECKPOINT_KEYS.at(-2)]).toEqual([9, "next_first_slot"]);
     expect(CARRY_RECORD_KEYS).toEqual(["handoff_tick", "start_hash", "handoff_hash"]);
   });
 
@@ -878,7 +865,7 @@ describe("carry-over turns", () => {
     expect(stageOne.next_first_slot).toBe("p0");
     current = (await send(current, guest, t4, stageOne)).room;
     // The guest closed it, so the host's pip starts stage two, where the definition names the guest's.
-    expect(carry().stages[1].first_player_slot).toBe("p1");
+    expect(adapter.stages[1].first_player_slot).toBe("p1");
     expect(current).toMatchObject({ stage_index: 1, checkpoint: stageOne, first_player_id: host.player_id, active_player_id: host.player_id, active_role: "a" });
     const status = async (who: Account) => (await json<{ rooms: { room_id: string; status: string }[] }>(call("/v1/room-inbox", "GET", who))).rooms.find(row => row.room_id === joined.room_id)?.status;
     expect([await status(host), await status(guest)]).toEqual(["your_turn", "waiting_for_their_turn"]);
@@ -905,13 +892,11 @@ describe("carry-over turns", () => {
   it("keeps the hand-off fields under each turn's hash and in its fingerprint", async () => {
     const start = initialCheckpoint(CARRY) as unknown as Rec, t1 = await carryTurn(setA as Rec, start, "p0", [], 577);
     const t2 = await carryTurn(setB as Rec, start, "p1", [t1], 700);
-    for (const turn of [t1, t2]) expect(await carry().recording(turn)).toBeTruthy();
-    expect(await carry().recording(print(t2), true)).toMatchObject({ handoff_tick: 0, start_hash: t1.handoff_hash, handoff_hash: t2.handoff_hash });
-    // A changed field breaks the hash; a turn without them is the older rules' and is refused here.
-    await expect(carry().recording({ ...t2, handoff_tick: 1 })).rejects.toMatchObject({ code: "recording_hash_mismatch" });
+    for (const turn of [t1, t2]) expect(await adapter.recording(turn)).toBeTruthy();
+    expect(await adapter.recording(print(t2), true)).toMatchObject({ handoff_tick: 0, start_hash: t1.handoff_hash, handoff_hash: t2.handoff_hash });
+    // A changed field breaks the hash; a turn without them is refused.
+    await expect(adapter.recording({ ...t2, handoff_tick: 1 })).rejects.toMatchObject({ code: "recording_hash_mismatch" });
     const { handoff_tick: _h, start_hash: _s, handoff_hash: _o, ...older } = t2; void _h; void _s; void _o;
-    await expect(carry().recording(await hashed(older))).rejects.toBeTruthy();
-    // And the older rules take no hand-off fields.
-    await expect(adapter.recording(await hashed({ ...structuredClone(setA), handoff_tick: 0, start_hash: t1.start_hash, handoff_hash: t1.start_hash }))).rejects.toBeTruthy();
+    await expect(adapter.recording(await hashed(older))).rejects.toBeTruthy();
   });
 });

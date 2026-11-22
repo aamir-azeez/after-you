@@ -104,15 +104,14 @@ const CHAINS: Chain[] = [
   // The cooperative family on the same open turns (protocol-cooperative.ts): both players end at each bell.
   { name: "high-and-low@2", adapter: highAndLowV2, hash: HIGH_AND_LOW_V2_HASH, rules: 18, flag: "HIGH_AND_LOW_V2_CHAPTER_ENABLED", definition: highDefinition, initial: highInitial,
     bundled: bundledHigh, bundledInitial: bundledHighInitial, stages: [[highUpperA, highUpperB, highUpperC, flat(highUpperEnd)], [highDownA, highDownB, highDownC, flat(highDownEnd)]] },
-  // The shared ball (21, 17 on carry-over turns): both players push one ball; Rolling Home's last stage ends with it in its cradle and both players home.
+  // The shared ball (21): both players push one ball; Rolling Home's last stage ends with it in its cradle and both players home.
   { name: "rolling-home@2", adapter: rollingHomeV2, hash: ROLLING_HOME_V2_HASH, rules: 21, flag: "ROLLING_HOME_V2_CHAPTER_ENABLED", definition: rollingDefinition, initial: rollingInitial,
     bundled: bundledRolling, bundledInitial: bundledRollingInitial, stages: [[rollingFriendA, rollingFriendB, rollingFriendC, flat(rollingFriendEnd)], [rollingHomeA, rollingHomeB, rollingHomeC, flat(rollingHomeEnd)]] },
   { name: "a-house-for-two@2", adapter: houseForTwoV2, hash: HOUSE_V2_HASH, rules: 21, flag: "A_HOUSE_FOR_TWO_V2_CHAPTER_ENABLED", definition: houseDefinition, initial: houseInitial,
     bundled: bundledHouse, bundledInitial: bundledHouseInitial, stages: [[houseOpenA, houseOpenB, houseOpenC, flat(houseOpenEnd)], [houseBelowA, houseBelowB, houseBelowC, flat(houseBelowEnd)]] },
 ];
-// 0.8.1 and older: none of them offers 12 or 13 (11 is the Lighthouse room's).
-// A client that knows the older open turns (14 to 17) and not carry-over turns (18 to 21) is old for every open level.
-const OLD_CLIENTS = [[2, 4, 5, 6, 7, 8, 9, 10], [2, 4, 5, 6, 7, 8, 9, 10, 11], [2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13], [2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]], NEW_CLIENT = [2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 18, 19, 20, 21];
+// 0.8.1 and older: none of them offers 12 or 13 (11 is the Lighthouse room's), and none offers open turns (18 to 21).
+const OLD_CLIENTS = [[2, 4, 5, 6, 7, 8, 9, 10], [2, 4, 5, 6, 7, 8, 9, 10, 11], [2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]], NEW_CLIENT = [2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 18, 19, 20, 21];
 const key = () => crypto.randomUUID();
 let requestNo = 0;
 async function call(path: string, method = "GET", account?: Account, body?: unknown, overrides: Record<string, unknown> = {}): Promise<Response> {
@@ -141,11 +140,11 @@ afterEach(async () => { await reset(); });
 
 describe("open controls (rules 12 and 13)", () => {
   it("numbers the open rules apart from every published one", () => {
-    expect(COMFORT_RULES).toEqual([8, 9, 10, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21]);
-    expect([9, 10, 11, 12, 13, 14, 15, 16, 17].map(openControls)).toEqual([false, false, false, true, true, true, true, true, true]);
-    expect([9, 10, 11, 12, 13, 14, 15, 16, 17].map(tideRules)).toEqual([false, true, false, false, true, false, true, true, false]);
-    // 17 is 14 with the shared ball: open turns, no tide.
-    expect([14, 15, 16, 17].map(sharedBall)).toEqual([false, false, false, true]); expect(openTurns(17)).toBe(true);
+    expect(COMFORT_RULES).toEqual([8, 9, 10, 12, 13, 18, 19, 20, 21]);
+    expect([9, 10, 11, 12, 13, 18, 19, 20, 21].map(openControls)).toEqual([false, false, false, true, true, true, true, true, true]);
+    expect([9, 10, 11, 12, 13, 18, 19, 20, 21].map(tideRules)).toEqual([false, true, false, false, true, false, true, true, false]);
+    // 21 is 18 with the shared ball: open turns, no tide.
+    expect([18, 19, 20, 21].map(sharedBall)).toEqual([false, false, false, true]); expect(openTurns(21)).toBe(true);
     expect(comfortRules(11)).toBe(false);
   });
   for (const chain of CHAINS) {

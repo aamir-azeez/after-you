@@ -2,7 +2,7 @@ import { ApiError, HASH_PATTERN, canonicalJson, digest, integer, object } from "
 import { boundedValue, exact, MAX_CHECKPOINT_BYTES } from "./protocol-relay";
 import { checkRoutesAndLevers, checkTurnBounds, openPhysicalRecording, physicalRecording, physicalAccepted as accepted, scaledLimits, turnLimits, type TurnLimits } from "./protocol-physical-recording";
 import { openTurns, piecesRules, tideRules as tideRulesVersion, type ChapterAdapter, type ChapterCheckpoint, type ChapterRecording } from "./chapter-types";
-import { openAccepted, openCheckpointShape, openStageEnds, openTurnsProblem } from "./open-turns";
+import { OPEN_CHECKPOINT_KEYS, OPEN_CHECKPOINT_SCHEMA, openAccepted, openStageEnds, openTurnsProblem } from "./open-turns";
 import { checkItemDefinition, checkItems, declaresItems, isItemTerm, itemHolds, type ItemDefinition } from "./protocol-items";
 import conservatoryDefinition from "./conservatory.json";
 import conservatoryInitial from "./conservatory-initial.json";
@@ -47,7 +47,7 @@ export type Predicate = { all?: Predicate[]; any?: Predicate[]; not?: Predicate;
 type Control = Marker & { values: string[]; initial: string };
 type Stage = { id: string; version: number; first_player_slot: string; turn_cap?: number; controls: Control[]; levers: Marker[]; pressure_pads: Marker[];
   gates: { route_id: string; when?: Predicate }[]; entry_latch_routes: string[]; goal: Marker; goal_policy: { kind?: string; when?: Predicate };
-  /** Rules 16 (chapter-types.ts PIECES_RULES): stones that hold one pip; platform stops are plain gated crossings. */
+  /** Rules 20 (chapter-types.ts PIECES_RULES): stones that hold one pip; platform stops are plain gated crossings. */
   sinking?: string[];
   source_policy: { kind: string; when?: Predicate; endpoint?: Marker; branches?: { pad_id: string }[] } };
 type Definition = { id: string; version: number; simulation_version: number; premium: boolean; islands: Surface[]; bridges: Surface[]; stairs: Surface[]; stages: Stage[]; turn_limits?: TurnLimits };
@@ -68,7 +68,7 @@ function signals(controls: Record<string, unknown>): Record<string, boolean> {
     "second-light": controls["final-mirror"] === "slash" };
 }
 
-/** A gate tree on an end state, as the client's Seven.predicate: all, any, not (rules 16),
+/** A gate tree on an end state, as the client's Seven.predicate: all, any, not (rules 20),
  * a selector's value, a lever on, a beam signal lit, a pad held (by either pip on open controls). */
 export function gateHolds(value: Predicate, state: { controls: Record<string, unknown>; levers: Record<string, unknown>; light: Record<string, boolean>;
   players: Record<string, unknown>; stage: Pick<Stage, "pressure_pads">; open: boolean; items?: Parameters<typeof itemHolds>[1] }): boolean {
@@ -84,7 +84,7 @@ export function gateHolds(value: Predicate, state: { controls: Record<string, un
   return true;
 }
 
-/** Rules 16: both pips on one sinking stone, which sinks it, so no stage ends that way. */
+/** Rules 20: both pips on one sinking stone, which sinks it, so no stage ends that way. */
 export function sunkTogether(stage: Pick<Stage, "sinking">, players: Record<string, unknown>): boolean {
   const p0 = object(players.p0).surface_id, p1 = object(players.p1).surface_id;
   return p0 === p1 && (stage.sinking ?? []).includes(String(p0));
@@ -93,7 +93,7 @@ export function sunkTogether(stage: Pick<Stage, "sinking">, players: Record<stri
 /** Builds a journey chapter from its definition (every chapter below; test/open-turns-long.test.ts builds a five stage open turns chapter with it, and test/carried-items.test.ts its witnesses). */
 export function journeyAdapter(definition: Definition, initial: ChapterCheckpoint, definitionHash: string, maxBranches?: number): ChapterAdapter {
   const key = Object.freeze({ level_id: definition.id, level_version: definition.version, definition_hash: definitionHash });
-  // Rules 16's carried items (protocol-items.ts): only a definition that lists them keeps mechanisms.items.
+  // Rules 20's carried items (protocol-items.ts): only a definition that lists them keeps mechanisms.items.
   checkItemDefinition(definition as unknown as ItemDefinition);
   const withItems = declaresItems(definition);
   // A definition declaring rules 9 or later plays only those; older ones keep 7 and 8.
@@ -102,7 +102,7 @@ export function journeyAdapter(definition: Definition, initial: ChapterCheckpoin
   // Tide rules (10 and 13) latch no route: a player may end a stage on a
   // stub only while one of this stage's gates for it holds on the end state.
   const tideRules = tideRulesVersion(definition.simulation_version);
-  // Open turns (14 and 15, open-turns.ts): a stage takes turns until its goal holds; their bounds and parser are every family's (openPhysicalRecording).
+  // Open turns (18 to 20, open-turns.ts): a stage takes turns until its goal holds; their bounds and parser are every family's (openPhysicalRecording).
   const open = openTurns(definition.simulation_version);
   const opened = open ? openPhysicalRecording(definition, key, 7, supported, maxBranches) : undefined;
   const openLimits = opened?.open;
@@ -115,7 +115,7 @@ export function journeyAdapter(definition: Definition, initial: ChapterCheckpoin
   const isAccepted = open ? openAccepted : accepted;
   async function checkpoint(value: unknown, previous: ChapterCheckpoint, a: ChapterRecording, b: ChapterRecording, passes: readonly ChapterRecording[] = []): Promise<ChapterCheckpoint> {
     boundedValue(value, limits?.checkpoint_bytes ?? MAX_CHECKPOINT_BYTES, limits?.checkpoint_values);
-    const shape = openLimits ? openCheckpointShape(openLimits) : { schema: 7, keys: CHECKPOINT_KEYS };
+    const shape = openLimits ? { schema: OPEN_CHECKPOINT_SCHEMA, keys: OPEN_CHECKPOINT_KEYS } : { schema: 7, keys: CHECKPOINT_KEYS };
     const c = object(value); exact(c, shape.keys);
     need(c.level_id === key.level_id && c.level_version === key.level_version && c.definition_hash === key.definition_hash, "unsupported_chapter");
     const index = previous.stage_index + 1, stage = definition.stages[index - 1];
@@ -133,7 +133,7 @@ export function journeyAdapter(definition: Definition, initial: ChapterCheckpoin
     need(c.previous_checkpoint_hash === previous.checkpoint_hash && all.every((turn, i) => turn.checkpoint_hash === previous.checkpoint_hash && turn.stage_id === stage.id &&
       (i === 0 || turn.source_recording_hash === all[i - 1].recording_hash)), "checkpoint_source_mismatch");
     if (openLimits) {
-      // Open turns: the next pip each turn, never shorter than its memory (on carry-over turns, chained by hand-off), within the stage's cap; the turns by hash, no proof.
+      // Open turns: the next pip each turn, chained by hand-off, within the stage's cap; the turns by hash, no proof.
       const problem = openTurnsProblem(openLimits, index - 1, stage, previous, all, c);
       need(!problem, problem);
     } else {
@@ -218,13 +218,13 @@ export const turnOfTheTideV3: ChapterAdapter = journeyAdapter(tideV3Definition, 
 /** Open controls (12): Conservatory@1 with the court's two forks on a balcony only the first player reaches,
  * and the first turn ending at the court-wait spot on the court. Unreleased. */
 export const conservatoryV2 = journeyAdapter(conservatoryV2Definition, conservatoryV2Initial, CONSERVATORY_V2_HASH);
-/** Open turns with the new pieces (16): First Steps on the journey rules, its lift a weight lift, its seed a
+/** Open turns with the new pieces (20): First Steps on the journey rules, its lift a weight lift, its seed a
  * carried item on a solid pedestal, thrown from the loft or carried down. first-steps@1 keeps its own adapter. Unreleased. */
 export const firstStepsV2 = journeyAdapter(firstStepsV2Definition as Definition, firstStepsV2Initial, FIRST_STEPS_V2_HASH);
-/** The new pieces with carried items (16): four stages carrying the pipsport up the falls. Unreleased. */
+/** The new pieces with carried items (20): four stages carrying the pipsport up the falls. Unreleased. */
 export const theFalls = journeyAdapter(theFallsDefinition, theFallsInitial, THE_FALLS_HASH);
-/** The new pieces with carried items (16): three stages catching the pipsport in the marsh and carrying it home. Unreleased. */
+/** The new pieces with carried items (20): three stages catching the pipsport in the marsh and carrying it home. Unreleased. */
 export const fogMarsh = journeyAdapter(fogMarshDefinition, fogMarshInitial, FOG_MARSH_HASH);
-/** Open turns with the new pieces (16): the Relay Isles on the journey rules, the seed a carried item on a solid
+/** Open turns with the new pieces (20): the Relay Isles on the journey rules, the seed a carried item on a solid
  * pedestal, placed in a solid nest and thrown over the garden's rope bridge. relay-isles@2 keeps its own adapter. Unreleased. */
 export const relayIslesV3 = journeyAdapter(relayIslesV3Definition as Definition, relayIslesV3Initial, RELAY_ISLES_V3_HASH);

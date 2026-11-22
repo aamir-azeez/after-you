@@ -94,7 +94,7 @@ var _stage_built := false
 ## last snapshot position, so it sits only while still.
 var _seats: Array = []
 var _seat_last: Dictionary = {}
-## Rules 16's carried items and floats by id, and the stage's current
+## Rules 20's carried items and floats by id, and the stage's current
 ## (kit/pieces/carried_item.gd, current.gd); none on other rules.
 var _item_pieces: Dictionary = {}
 ## Item id -> [where it rests, the platform stop it rests on]: it rides that
@@ -744,7 +744,7 @@ func _present_seats(state: Dictionary, immediate: bool) -> void:
 				if pose != SpiritVisual.SpiritIdle.DOZE: actor.set_pose(SpiritVisual.SpiritIdle.SIT, seat.params, immediate)
 			elif pose == SpiritVisual.SpiritIdle.SIT: actor.set_pose(SpiritVisual.SpiritIdle.REST, {}, true)
 
-# --- Rules 16: carried items, floats, currents and both-hands crossings ---
+# --- Rules 20: carried items, floats, currents and both-hands crossings ---
 
 ## Every item of the level in its style (a pin by id, else the dressing's
 ## "carried_item" pick; a float nobody carries is a raft unless pinned), every

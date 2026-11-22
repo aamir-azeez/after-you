@@ -1,5 +1,5 @@
 extends RefCounted
-## The Falls: four stages on the new pieces (rules 16, core/physical/pieces_rules.gd:
+## The Falls: four stages on the new pieces (rules 20, core/physical/pieces_rules.gd:
 ## the tide rules with open controls and open turns, plus carried items,
 ## currents, platforms, sinking stones, one way stairs and "not" gates),
 ## written with the stage blocks (core/blocks/stage_blocks.gd). The designs are

@@ -316,7 +316,7 @@ static func predicate_references(predicate: Dictionary) -> Array[String]:
 		for child: Dictionary in predicate.get(key, []):
 			for id: String in predicate_references(child):
 				if id not in found: found.append(id)
-	# Rules 16: a control a gate wants off (a lit fog lantern floods its path) still works it.
+	# Rules 20: a control a gate wants off (a lit fog lantern floods its path) still works it.
 	if predicate.get("not") is Dictionary:
 		for id: String in predicate_references(predicate["not"]):
 			if id not in found: found.append(id)

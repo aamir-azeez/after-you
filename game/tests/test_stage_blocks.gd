@@ -56,7 +56,7 @@ func _prove(name: String, published: Dictionary, source: Dictionary, folder: Str
 	_check(Canonical.same(Blocks.expand(source), built) and Canonical.same(source, _copy(source)), "%s expands the same every time and leaves its source alone" % name)
 
 ## Every block is used by some rewrite in every family that plays it. The new
-## pieces' blocks (rules 16) have no published chapter yet: their witness
+## pieces' blocks (rules 20) have no published chapter yet: their witness
 ## level (tests/pieces_witness.gd) uses each, and test_pieces plays it.
 func _check_coverage() -> void:
 	var used := {"cooperative": {}, "journey": {}}

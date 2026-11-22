@@ -144,7 +144,7 @@ func _run() -> void:
 	quit(1 if failures else 0)
 
 func _rules() -> void:
-	_check(OpenTurns.rules(18) and OpenTurns.rules(19) and OpenTurns.rules(20) and OpenTurns.rules(21) and not OpenTurns.rules(12) and not OpenTurns.rules(13) and not OpenTurns.rules(14) and not OpenTurns.rules(17), "Open turns are 18 to 21; 14 to 17 are gone")
+	_check(OpenTurns.rules(18) and OpenTurns.rules(19) and OpenTurns.rules(20) and OpenTurns.rules(21) and not OpenTurns.rules(12) and not OpenTurns.rules(13), "Open turns are 18 to 21")
 	_check([1, 2, 3, 4].map(func(n: int) -> String: return OpenTurns.slot("p1", n)) == ["p1", "p0", "p1", "p0"], "Odd turns are the first pip's")
 	_check(OpenTurns.turn_id(3, 1, 1) == "t3-1-a" and OpenTurns.turn_id(3, 1, 3) == "t3-1-c" and OpenTurns.turn_id(0, 0, 20) == "t0-0-t", "Turn ids keep a and b and go on by letter")
 	_timeline()

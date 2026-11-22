@@ -1,5 +1,5 @@
 extends SceneTree
-## Rules 16's throws and solid item spots on the shared journey engine
+## Rules 20's throws and solid item spots on the shared journey engine
 ## (core/physical/carried_items.gd, core/solid_footprint.gd), on first-steps@2's
 ## second stage through the real engine:
 ## - the shapes: the level is sound, a throw to no spot or with a short flight

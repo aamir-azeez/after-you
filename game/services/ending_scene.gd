@@ -155,7 +155,7 @@ static func _check_step(step: Variant, props: Dictionary) -> String:
 
 ## The slot each role plays: {"carrier": slot, "other": slot}. The carrier
 ## carries the cast's item in `snapshot` (a journey snapshot's
-## players[slot].carrying, rules 16), else it is the fallback slot.
+## players[slot].carrying, rules 20), else it is the fallback slot.
 static func cast(data: Dictionary, snapshot: Dictionary) -> Dictionary:
 	var spec: Dictionary = data.get("cast", {})
 	var carrier := str(spec.get("fallback", "p0"))

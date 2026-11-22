@@ -1,5 +1,5 @@
 extends RefCounted
-## World kit: how a stage's new pieces (rules 16, core/physical/pieces_rules.gd)
+## World kit: how a stage's new pieces (rules 20, core/physical/pieces_rules.gd)
 ## look, all read from the stage plan, so a level author writes nothing for
 ## them. cooperative_world hosts one per stage (the journey worlds' base):
 ##   - each crossing's deck in its "deck" style (kit/pieces/deck.gd): a crank

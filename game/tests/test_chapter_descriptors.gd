@@ -301,12 +301,12 @@ func _wait_hints(key: String, data: Dictionary, level: Dictionary) -> void:
 		if stage.get("goal") is Dictionary: goals[str(stage.goal.get("id", ""))] = true
 		var planned: Variant = LevelLayout.for_key(key, str(stage.id), level).get("goal")
 		if planned is Dictionary: goals[str(planned.get("id", ""))] = true
-	# Rules 16's crossings take a deck style, and its one way stairs a ladder.
+	# Rules 20's crossings take a deck style, and its one way stairs a ladder.
 	var bridges: Dictionary = {}
 	for route: Dictionary in level.get("bridges", []): bridges[str(route.id)] = true
 	var stairs: Dictionary = {}
 	for route: Dictionary in level.get("stairs", []): stairs[str(route.id)] = true
-	# Rules 16's carried items take a "carried_item" style (kit/pieces/carried_item.gd),
+	# Rules 20's carried items take a "carried_item" style (kit/pieces/carried_item.gd),
 	# their spots an "item_spot" style (kit/pieces/socket.gd item_spot).
 	var items: Dictionary = {}
 	for item: Dictionary in level.get("items", []): items[str(item.id)] = true

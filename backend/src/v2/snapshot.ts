@@ -25,7 +25,7 @@ import { clearMemberNames, isMemberNamesTable } from "../display-names";
 
 import { MAX_ROW_BYTES } from "./row-bound";
 import { nestedProof } from "./checkpoint-chain";
-import { OPEN_TURN_ID_PATTERN, carryFits, firstSlot, fingerprint, isFingerprint, openCheckpointShape, turnId, turnNumber, turnSlot } from "./open-turns";
+import { OPEN_CHECKPOINT_KEYS, OPEN_TURN_ID_PATTERN, carryFits, firstSlot, fingerprint, isFingerprint, turnId, turnNumber, turnSlot } from "./open-turns";
 import { plainRow, type RowData } from "./row-codec";
 import { MAX_ATTEMPT_BYTES, ZERO_LINK, attemptLink, blobBytes, blobFromRows } from "./history-blob";
 import { bytesDigest } from "../blob-codec";
@@ -201,10 +201,10 @@ async function content(copied: Table[], version=5, resolver: CampaignDefinitionR
     need(text(row.turn_id, open ? OPEN_TURN_ID_PATTERN : /^t(?:[0-9]|[12][0-9]|3[01])-[0-7]-[ab]$/) && Number(String(row.turn_id).split("-")[1]) < stages && integer(row.accepted_revision) && row.accepted_revision > 0 && row.accepted_revision <= state.revision);
     const [branch, index] = row.turn_id.slice(1).split("-"), role = roleOf(row.turn_id);
     need(Number(branch) <= state.branch && (!open || turnNumber(row.turn_id) <= open.caps[Number(index)]));
-    // Odd turns are the stage's first pip's, even turns the other's (a and b before open turns). Carry-over turns take a
-    // stage's first pip from the checkpoint before it, so there a turn is checked against its stage's turn 1 (chains below).
-    const carry = open?.carry === true, slot = turnSlot(selected.stages[Number(index)].first_player_slot, turnNumber(row.turn_id));
-    const member = (pip: string) => carry ? [state.host_id, state.guest_id].includes(row.player_id) : row.player_id === (pip === "p0" ? state.host_id : state.guest_id);
+    // A is the stage's first pip's, b the other's. Open turns take a stage's first pip from the checkpoint before it, so
+    // there a turn is checked against its stage's turn 1 (chains below).
+    const slot = turnSlot(selected.stages[Number(index)].first_player_slot, turnNumber(row.turn_id));
+    const member = (pip: string) => open ? [state.host_id, state.guest_id].includes(row.player_id) : row.player_id === (pip === "p0" ? state.host_id : state.guest_id);
     const data = parseData(row.data);
     if (Object.keys(data).length === 1 && Object.hasOwn(data, "recording_hash")) {
       need(stubbed(Number(branch)) && text(data.recording_hash, HASH_PATTERN), "snapshot_unexpected_stub");
@@ -215,14 +215,14 @@ async function content(copied: Table[], version=5, resolver: CampaignDefinitionR
     let recording: RecordingV2;
     try { recording = open ? await storedRecordingV2(data, selected.key) : await recordingV2(data, selected.key); } catch { throw new SnapshotError("invalid_snapshot_recording"); }
     need(recording.simulation_version === simulationVersion, "snapshot_simulation_mismatch");
-    need(recording.stage_id === selected.stages[Number(index)].id && recording.role === role && (!open || carry || recording.player_slot === slot));
+    need(recording.stage_id === selected.stages[Number(index)].id && recording.role === role && (open || recording.player_slot === slot));
     need(row.player_id === (recording.player_slot === "p0" ? state.host_id : state.guest_id) && row.player_id !== null);
     need(acceptedRecording(recording));
     turns.set(row.turn_id, { recording, full: recording, row });
   }
   /**
    * Open turns: each branch's turns of a stage in play order, a on without a gap. Held records chain as the room took
-   * them: one checkpoint, each over the turn before it, never shorter, and only the last may close the stage.
+   * them: one checkpoint, each over the turn before it at its hand-off, and only the last may close the stage.
    */
   const chains = new Map<string, Turn[]>();
   if (open) for (const id of turns.keys()) {
@@ -231,16 +231,14 @@ async function content(copied: Table[], version=5, resolver: CampaignDefinitionR
     const chain: Turn[] = [];
     for (let n = 1; turns.has(turnId(branch, index, n)); n++) chain.push(turns.get(turnId(branch, index, n))!);
     need([...turns.keys()].filter(other => other.startsWith(`t${group}-`)).length === chain.length, "snapshot_turn_gap");
-    // Carry-over turns: the members alternate from the stage's turn 1, which on the stage in play is the pip its checkpoint names.
-    if (open.carry) {
-      need(chain.every((turn, i) => (turn.row.player_id === chain[0].row.player_id) === (i % 2 === 0)), "snapshot_turn_chain");
-      if (branch === state.branch && index === state.stage_index && !tombstone) need(chain[0].row.player_id === (firstSlot(open, selected.stages[index], state.checkpoint as CheckpointV2) === "p0" ? state.host_id : state.guest_id), "snapshot_turn_chain");
-    }
+    // The members alternate from the stage's turn 1, which on the stage in play is the pip its checkpoint names.
+    need(chain.every((turn, i) => (turn.row.player_id === chain[0].row.player_id) === (i % 2 === 0)), "snapshot_turn_chain");
+    if (branch === state.branch && index === state.stage_index && !tombstone) need(chain[0].row.player_id === (firstSlot(open, selected.stages[index], state.checkpoint as CheckpointV2) === "p0" ? state.host_id : state.guest_id), "snapshot_turn_chain");
     chain.forEach((turn, i) => {
       const previous = chain[i - 1]?.full, full = turn.full;
       if (!previous || !full) return;
-      // Carry-over turns chain by hand-off (open-turns.ts carryFits), which needs the turn before the memory held too.
-      const before = i >= 2 ? chain[i - 2].full : null, fits = open.carry ? (i >= 2 && !before) || carryFits(full, previous, before) : full.duration_ticks >= previous.duration_ticks;
+      // Turns chain by hand-off (open-turns.ts carryFits), which needs the turn before the memory held too.
+      const before = i >= 2 ? chain[i - 2].full : null, fits = (i >= 2 && !before) || carryFits(full, previous, before);
       need(full.checkpoint_hash === previous.checkpoint_hash && full.source_recording_hash === previous.recording_hash && fits && (i === chain.length - 1 || !full.completed), "snapshot_turn_chain");
     });
     chains.set(group, chain);
@@ -289,7 +287,7 @@ async function content(copied: Table[], version=5, resolver: CampaignDefinitionR
     let previous = known.full;
     if (!previous && open) {
       // Open turns nest nothing: a checkpoint whose predecessor is only a hash (an offloaded attempt's) is checked by its hashes alone.
-      const flat = exact(pair.checkpoint, [...openCheckpointShape(open).keys]);
+      const flat = exact(pair.checkpoint, OPEN_CHECKPOINT_KEYS);
       const { checkpoint_hash: hash, ...body } = flat;
       need(flat.stage_index === pair.stage_index + 1 && flat.previous_checkpoint_hash === known.checkpoint_hash && same(flat.turn_hashes, chain.map(turn => turn.recording.recording_hash)) &&
         text(hash, HASH_PATTERN) && await digest(canonicalJson(body)) === hash, "invalid_snapshot_checkpoint");
