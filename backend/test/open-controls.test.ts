@@ -137,7 +137,7 @@ afterEach(async () => { await reset(); });
 
 describe("open controls (rules 12 and 13)", () => {
   it("numbers the open rules apart from every published one", () => {
-    expect(COMFORT_RULES).toEqual([8, 9, 10, 12, 13, 14, 15, 16, 17]);
+    expect(COMFORT_RULES).toEqual([8, 9, 10, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21]);
     expect([9, 10, 11, 12, 13, 14, 15, 16, 17].map(openControls)).toEqual([false, false, false, true, true, true, true, true, true]);
     expect([9, 10, 11, 12, 13, 14, 15, 16, 17].map(tideRules)).toEqual([false, true, false, false, true, false, true, true, false]);
     // 17 is 14 with the shared ball: open turns, no tide.

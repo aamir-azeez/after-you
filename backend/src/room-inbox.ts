@@ -9,6 +9,7 @@ import { partnerNameField, shownName } from "./display-names";
 import { duelLink, duelMasks } from "./duels/room-link";
 import { inboxRedo } from "./redo-control";
 import { unpackCheckpoint } from "./v2/row-codec";
+import { firstSlot } from "./v2/open-turns";
 
 export type RoomInboxStatus = "waiting_for_friend" | "your_turn" | "waiting_for_their_turn" | "completed" | "unavailable" | "closed";
 /** Clients from 0.5.2 send this header and understand the "closed" status; older clients validate the status list exactly. */
@@ -94,8 +95,8 @@ export function legacyInboxProjection(storage: DurableObjectStorage, player: str
 export function relayInboxProjection(storage: DurableObjectStorage, player: string, names = false): Outcome<RoomInboxProjection> {
   const row = storage.sql.exec<{
     room_id: string; revision: number; stage_index: number; branch: number; level_id: string; level_version: number;
-    definition_hash: string; host_id: string; guest_id: string | null; a_turn_id: string | null; checkpoint_hash: string | null; packed_checkpoint: string | null; updated_at: string; passes: number | null;
-  }>("SELECT json_extract(data,'$.room_id') AS room_id,json_extract(data,'$.revision') AS revision,json_extract(data,'$.stage_index') AS stage_index,json_extract(data,'$.branch') AS branch,json_extract(data,'$.level_id') AS level_id,json_extract(data,'$.level_version') AS level_version,json_extract(data,'$.definition_hash') AS definition_hash,json_extract(data,'$.host_id') AS host_id,json_extract(data,'$.guest_id') AS guest_id,json_extract(data,'$.a_turn_id') AS a_turn_id,json_extract(data,'$.checkpoint.checkpoint_hash') AS checkpoint_hash,CASE WHEN json_type(data,'$.checkpoint')='text' THEN json_extract(data,'$.checkpoint') END AS packed_checkpoint,json_extract(data,'$.updated_at') AS updated_at,json_array_length(data,'$.open_stage.passes') AS passes FROM room WHERE id=1 AND json_extract(data,'$.deleted') IS NOT 1").toArray()[0];
+    definition_hash: string; host_id: string; guest_id: string | null; a_turn_id: string | null; checkpoint_hash: string | null; packed_checkpoint: string | null; updated_at: string; passes: number | null; next_first_slot: string | null;
+  }>("SELECT json_extract(data,'$.room_id') AS room_id,json_extract(data,'$.revision') AS revision,json_extract(data,'$.stage_index') AS stage_index,json_extract(data,'$.branch') AS branch,json_extract(data,'$.level_id') AS level_id,json_extract(data,'$.level_version') AS level_version,json_extract(data,'$.definition_hash') AS definition_hash,json_extract(data,'$.host_id') AS host_id,json_extract(data,'$.guest_id') AS guest_id,json_extract(data,'$.a_turn_id') AS a_turn_id,json_extract(data,'$.checkpoint.checkpoint_hash') AS checkpoint_hash,CASE WHEN json_type(data,'$.checkpoint')='text' THEN json_extract(data,'$.checkpoint') END AS packed_checkpoint,json_extract(data,'$.updated_at') AS updated_at,json_array_length(data,'$.open_stage.passes') AS passes,json_extract(data,'$.checkpoint.next_first_slot') AS next_first_slot FROM room WHERE id=1 AND json_extract(data,'$.deleted') IS NOT 1").toArray()[0];
   if (!row && closedRoom(storage)) return fail(410, "room_closed");
   if (!row || !isMember(storage, row, player)) return fail(404, "room_not_found");
   let active: string | null = null, open: { turn: number; cap: number } | undefined;
@@ -103,8 +104,10 @@ export function relayInboxProjection(storage: DurableObjectStorage, player: stri
     const selected = chapter({ level_id: row.level_id, level_version: row.level_version, definition_hash: row.definition_hash });
     const stage = selected.stages[row.stage_index];
     if (stage) {
-      const first = stage.first_player_slot === "p0" ? row.host_id : row.guest_id;
-      const second = stage.first_player_slot === "p0" ? row.guest_id : row.host_id;
+      // Carry-over turns (v2/open-turns.ts firstSlot): a later stage's checkpoint names its first pip; a packed one is unpacked only then.
+      const firstPip = firstSlot(selected.open_turns, stage, selected.open_turns?.carry && row.stage_index > 0 ? nextFirst(row) : null);
+      const first = firstPip === "p0" ? row.host_id : row.guest_id;
+      const second = firstPip === "p0" ? row.guest_id : row.host_id;
       // Open turns (v2/open-turns.ts): each pass hands the next turn back across, so an odd count of passes is the first player's.
       active = row.a_turn_id && (row.passes ?? 0) % 2 === 0 ? second : first;
       if (selected.open_turns && row.guest_id) open = { turn: row.a_turn_id ? 2 + (row.passes ?? 0) : 1, cap: selected.open_turns.caps[row.stage_index] };
@@ -126,6 +129,11 @@ export function relayInboxProjection(storage: DurableObjectStorage, player: stri
   });
 }
 
+/** The checkpoint's next_first_slot from either row form (carry-over turns only); an unreadable packed checkpoint names none. */
+function nextFirst(row: { next_first_slot: string | null; checkpoint_hash: string | null; packed_checkpoint: string | null }): { next_first_slot?: unknown } {
+  if (row.next_first_slot !== null || row.packed_checkpoint === null) return { next_first_slot: row.next_first_slot };
+  try { return { next_first_slot: (unpackCheckpoint(row.packed_checkpoint) as { next_first_slot?: unknown } | null)?.next_first_slot }; } catch { return {}; }
+}
 /** The room's checkpoint hash from either row form; an unreadable packed checkpoint reads as none, as before. */
 function checkpointHash(row: { checkpoint_hash: string | null; packed_checkpoint: string | null }): string | null {
   if (row.checkpoint_hash !== null || row.packed_checkpoint === null) return row.checkpoint_hash;
