@@ -53,6 +53,13 @@ const SHARED_BALL_RULES := OpenControls.SHARED_BALL_RULES
 ## water it drowns; anywhere else it falls into the sky ("fell" and "sky" on
 ## the drowned record). Either ends the turn. Decided here, so live play, the
 ## friend's replay, memories and replays all agree (_keep_footing).
+## Open turns: the friend's replay walks off where its floor went. A step of
+## the replay onto a spot that had floor in the friend's own world (this turn
+## played again from its start with the live pip standing still, which is the
+## world the friend played in) but has none here, because the live pip moved a
+## lift or raft away or let a deck or bridge shut, takes the replay there and
+## it falls (or drowns over water) as above, ending the turn. Anywhere else the
+## replay keeps to its floor as the live pip does at an edge (_floor_went).
 ## The chapters whose crossings span water (their worlds draw it: a chapter
 ## descriptor's "water"). Beside the definition, like stage_catalog.gd
 ## tall_stones, so no definition hash moves; test_footing checks it against
@@ -77,6 +84,12 @@ const DROWNED_YOU := "Oh no, you drowned! Try again?"
 const DROWNED_FRIEND := "Oh no, your friend drowned! Try again?"
 const FELL_YOU := "Your pip fell! Try again?"
 const FELL_FRIEND := "Your friend fell! Try again?"
+## A carrier that stepped onto a crossing needing both hands dropped its item
+## (the pieces rules, core/journey/simulation.gd _drop_on_hands): the item's id
+## and the crossing's kind ("ladder" for a stair, "rope bridge" for a bridge).
+## The card names both in the world's own words (presentation/turn_endings.gd).
+const DROPPED_YOU := "You dropped the %s. It's hard to hold onto it on a %s."
+const DROPPED_FRIEND := "Your friend dropped the %s. It's hard to hold onto it on a %s."
 const RECORD_KEYS := Controls.RECORD_KEYS
 const OUTCOME_KEYS := ["source_ready", "objective_complete"]
 const CHECKPOINT_KEYS := ["schema_version", "level_id", "level_version", "definition_hash", "stage_index", "completed_stage_id", "next_stage_id", "players", "mechanisms", "previous_checkpoint_hash", "a_recording_hash", "b_recording_hash", "checkpoint_hash", "proof"]
@@ -93,7 +106,9 @@ var complete := false
 ## {"slot", "route", "tick"} once a pip has drowned (the journey's tide rules,
 ## or under open turns a pip whose floor went from under it over water), with
 ## "fell": true when it fell instead, and "sky": true when that fall was into
-## the sky. {} while nobody has; a turn with one is never kept (keeps_draft).
+## the sky; "dropped": the item's id when a carrier dropped it on a crossing
+## needing both hands. {} while nobody has; a turn with one is never kept
+## (keeps_draft).
 var _drowned: Dictionary = {}
 var error := ""
 var catch_assistance := true
@@ -140,6 +155,19 @@ var _friend_held := false
 var _start_hash := ""
 var _handoff_world: Dictionary = {}
 var _handoff_hash := ""
+## Open turns, a later turn: the world it started from (load_world, read only),
+## whether the live pip has done anything yet (until then this world is the
+## friend's own), and the friend's own world (_friend_floor), made only when
+## the replay first meets an edge after that. Not world state: it follows from
+## the start and the inputs, so a turn played again from its record agrees.
+var _start_world: Dictionary = {}
+var _live_moved := false
+var _friend_world: RefCounted = null
+## Set on a friend's own world: its replay keeps to its floor as the friend did
+## live, and each tick keeps the floor it walked on (_move_floor: the replay's
+## routes and the levers as the pips moved).
+var _plays_friend_world := false
+var _move_floor: Dictionary = {}
 ## The digest of `level`, worked out on first use after a reset (level is set
 ## only by a reset, to its own deep copy, and never changed after): the state
 ## hash, the recording and the navigation index read it instead of digesting
@@ -227,6 +255,10 @@ func _reset_trusted(definition: Dictionary, stage_id: String, checkpoint: Dictio
 	_start_hash = ""
 	_handoff_world = {}
 	_handoff_hash = ""
+	_start_world = {}
+	_live_moved = false
+	_friend_world = null
+	_move_floor = {}
 	tick = 0
 	finished = false
 	complete = false
@@ -266,6 +298,7 @@ func _tick(input: Dictionary = {}) -> void:
 	var previous_routes := _routes.duplicate()
 	var frame := quantize_input(input)
 	_append_frame(frame)
+	if int(frame.x) != 0 or int(frame.z) != 0 or bool(frame.action): _live_moved = true
 	if _open_turns(): _play_both(frame)
 	else:
 		if role == "b": _advance_source()
@@ -300,7 +333,7 @@ func _tick(input: Dictionary = {}) -> void:
 		finished = true
 		_events.append("turn_finished")
 	if _open_turns() and tick == replay_ticks(): _keep_handoff()
-	if tick % TICK_RATE == 0 or finished: _checks.append({"tick":tick,"state_hash":state_hash()})
+	if (tick % TICK_RATE == 0 or finished) and not _plays_friend_world: _checks.append({"tick":tick,"state_hash":state_hash()})
 
 const SLOTS := ["p0", "p1"]
 const STILL := {"x": 0, "z": 0, "action": false}
@@ -314,12 +347,13 @@ func _play_both(frame: Dictionary) -> void:
 	var frames := {active_slot: frame, memory_slot: _friend_frame()}
 	_before_moves()
 	_refresh_routes()
+	if _plays_friend_world: _move_floor = {"routes": _routes.duplicate(), "levers": _mechanisms.levers.duplicate()}
 	for slot: String in SLOTS: _move(frames[slot], slot)
 	for slot: String in SLOTS: _after_move(slot)
 	_refresh_routes()
 	var held := {active_slot: _held, memory_slot: _friend_held}
 	for slot: String in SLOTS:
-		if bool(frames[slot].action) and not bool(held[slot]): _interact(slot)
+		if bool(frames[slot].action) and not bool(held[slot]) and _drowned.is_empty(): _interact(slot)
 	_after_interact()
 	_held = bool(frame.action)
 	_friend_held = bool(frames[memory_slot].action)
@@ -388,6 +422,10 @@ func load_world(world: Dictionary, handoff: int) -> void:
 	for id: Variant in world.entered_routes: _comfort_entries[str(id)] = true
 	_drowned = world.get("drowned", {}).duplicate()
 	_load_extra(world)
+	# The friend's own world starts here too, until the live pip does anything.
+	_start_world = world
+	_live_moved = false
+	_friend_world = null
 
 func _advance_source() -> void:
 	var open := _open_controls()
@@ -428,8 +466,9 @@ func _move(frame: Dictionary, slot: String = "") -> void:
 	var steps := maxi(absi(delta.x), absi(delta.y))
 	var walked := Vector2i.ZERO
 	var cells := _navigation_cells()
-	var routes := _walk_routes(slot)
+	var routes := _routes
 	for index in range(1, steps + 1):
+		if not _drowned.is_empty(): return
 		var next := Vector2i(roundi(float(delta.x * index) / steps), roundi(float(delta.y * index) / steps))
 		var unit := next - walked
 		walked = next
@@ -438,7 +477,7 @@ func _move(frame: Dictionary, slot: String = "") -> void:
 		if unit.y != 0: _try_move(Vector2i(0, unit.y), cells, routes, slot)
 
 ## cells: this definition's floor index (_navigation_cells()), fetched once per move.
-## routes: the crossings the walker may step on (_walk_routes()), likewise.
+## routes: the crossings the walker may step on (the open ones), likewise.
 ## The live pip pushes a prop here, and under the shared ball either pip.
 func _try_move(delta: Vector2i, cells: Dictionary, routes: Dictionary, slot: String = "") -> bool:
 	if slot.is_empty(): slot = active_slot
@@ -446,7 +485,14 @@ func _try_move(delta: Vector2i, cells: Dictionary, routes: Dictionary, slot: Str
 	var x := int(previous.x) + delta.x
 	var z := int(previous.z) + delta.y
 	var position := Navigation.at(level, routes, _mechanisms.levers, previous, x, z, slot, PLAYER_RADIUS, true, cells)
-	if position.is_empty() or _in_solid(position, previous) or not _may_step(previous, position): return false
+	if position.is_empty():
+		var gone := _floor_went(previous, x, z, slot, cells)
+		if gone.is_empty(): return false
+		# The friend's replay steps out where its floor was, and falls.
+		_players[slot] = gone.at
+		_lose_footing(slot, str(gone.route))
+		return true
+	if _in_solid(position, previous) or not _may_step(previous, position): return false
 	var pushed: Variant = _pushes(previous, x, z, int(position.height), delta, slot, slot == active_slot or _shared_ball(), cells)
 	if pushed == null: return false
 	for id: String in pushed: _mechanisms.props[id] = pushed[id]
@@ -766,10 +812,13 @@ func commit_reason() -> String:
 	if stage.source_policy.kind == "offer_ball": return "Leave the ball where your partner can take over."
 	return "Keep the crossing ready for your partner."
 
-## What a turn a pip drowned or fell in says, or "" when none did.
+## What a turn a pip drowned, fell or dropped its item in says, or "" when none did.
 func _lost_reason() -> String:
 	if _drowned.is_empty(): return ""
 	var yours := str(_drowned.get("slot", "")) == active_slot
+	if _drowned.has("dropped"):
+		var kind := "rope bridge" if level.get("bridges", []).any(func(route: Dictionary) -> bool: return str(route.id) == str(_drowned.route)) else "ladder"
+		return (DROPPED_YOU if yours else DROPPED_FRIEND) % [str(_drowned.dropped), kind]
 	if _drowned.has("fell"): return FELL_YOU if yours else FELL_FRIEND
 	return DROWNED_YOU if yours else DROWNED_FRIEND
 
@@ -837,7 +886,7 @@ func _part_done() -> bool:
 
 func walkable_at(x: int, z: int, slot: String = "") -> bool:
 	var selected := active_slot if slot.is_empty() else slot
-	var found := Navigation.at(level, _walk_routes(selected), _mechanisms.levers, _players[selected], x, z, selected, PLAYER_RADIUS, true, _navigation_cells())
+	var found := Navigation.at(level, _routes, _mechanisms.levers, _players[selected], x, z, selected, PLAYER_RADIUS, true, _navigation_cells())
 	return not found.is_empty() and not _in_solid(found)
 
 func export_recording() -> Dictionary:
@@ -951,12 +1000,6 @@ func _load_extra(_world: Dictionary) -> void:
 func _before_moves() -> void:
 	pass
 
-## The crossings slot's pip may step onto this tick: the open ones, less any
-## a facade's rules keep it off (the pieces rules: a pip carrying an item never climbs
-## a crossing that needs both hands). Never changes the routes themselves.
-func _walk_routes(_slot: String) -> Dictionary:
-	return _routes
-
 ## After the live pip's press, before the routes are worked out again: a
 ## facade whose things move on a press (the pieces rules' current) moves them here.
 ## Published rules have none.
@@ -1000,10 +1043,51 @@ func _keep_footing(was: Dictionary) -> void:
 			_players[slot] = spot
 			_events.append("stepped_back:" + slot)
 			continue
-		_drowned = knocked_off({"slot": slot, "route": surface, "tick": tick})
-		finished = true
-		_events.append(("fell:" if _drowned.has("fell") else "drowned:") + slot)
+		_lose_footing(slot, surface)
 		return
+
+## Open turns: `slot`'s pip lost its floor `surface` and falls into the sky,
+## or drowns in a water chapter; the turn ends there.
+func _lose_footing(slot: String, surface: String) -> void:
+	_drowned = knocked_off({"slot": slot, "route": surface, "tick": tick})
+	finished = true
+	_events.append(("fell:" if _drowned.has("fell") else "drowned:") + slot)
+
+## Open turns: {"at": where the friend's replay stands, "route": the crossing
+## whose floor went} once its step from `previous` to (x, z), refused here,
+## goes there because the friend's own world had floor there (_friend_floor)
+## and nothing stands there here, even with both hands free (a crossing shut,
+## a lift or raft gone); else {} and it keeps to its floor. Only once the live
+## pip has done anything, since until then the two worlds are one.
+func _floor_went(previous: Dictionary, x: int, z: int, slot: String, cells: Dictionary) -> Dictionary:
+	if role != "b" or slot != memory_slot or _plays_friend_world or not _live_moved or tick >= replay_ticks() or not _open_turns(): return {}
+	if not Navigation.at(level, _routes, _mechanisms.levers, previous, x, z, slot, PLAYER_RADIUS, true, cells).is_empty(): return {}
+	var floor := _friend_floor()
+	if floor.is_empty(): return {}
+	var there := Navigation.at(level, floor.routes, floor.levers, previous, x, z, slot, PLAYER_RADIUS, true, cells)
+	if there.is_empty() or _in_solid(there, previous): return {}
+	# The crossing under its footprint that held there and is shut here (a centre still over a bank names the crossing).
+	for route: Dictionary in level.get("bridges", []) + level.get("stairs", []):
+		if bool(floor.routes.get(route.id, false)) and not bool(_routes.get(route.id, false)) and Navigation._circle_rect(Vector2i(x, z), PLAYER_RADIUS, route.rect_cm):
+			return {"at": there, "route": str(route.id)}
+	return {"at": there, "route": str(there.surface_id)}
+
+## The floor the friend's replay walked on at this tick in the friend's own
+## world: this turn played from its start with the live pip standing still,
+## made the first time it is asked for and played on as far as each ask needs.
+## {} once that world has ended.
+func _friend_floor() -> Dictionary:
+	if _friend_world == null:
+		_friend_world = _new_simulation()
+		_friend_world.simulation_version = simulation_version
+		_friend_world.catch_assistance = catch_assistance
+		_friend_world._plays_friend_world = true
+		# Only the chain's length is read (this turn's number) once the start is given.
+		var chain: Array = []
+		chain.resize(turn_number - 2)
+		_friend_world._reset_trusted(level, str(stage.id), _checkpoint, _prior, role, chain, {"world": _start_world, "handoff_tick": handoff_tick})
+	while _friend_world.tick <= tick and not _friend_world.finished and _friend_world.error.is_empty(): _friend_world._tick({})
+	return _friend_world._move_floor if _friend_world.tick == tick + 1 else {}
 
 ## The nearest spot within FOOTING_REACH a pip at `player` may stand on (its
 ## whole footprint on floor at its height, off every solid), when its walk

@@ -273,7 +273,7 @@ func in_turn() -> bool:
 static func event_source(event: String, live_role: String) -> String:
 	# Named by what moved, whoever played it: the same crossing, spirit or control
 	# sounds the same live, in memory, on retry and in replay.
-	if event.begins_with("bridge_open") or event.begins_with("selector:") or event.begins_with("closing:") or event.begins_with("drowned:") or event.begins_with("fell:"): return event + "|" + event
+	if event.begins_with("bridge_open") or event.begins_with("selector:") or event.begins_with("closing:") or event.begins_with("drowned:") or event.begins_with("fell:") or event.begins_with("dropped:"): return event + "|" + event
 	if event in FIRST_SPIRIT_EVENTS: return "a|" + event
 	if event in SECOND_SPIRIT_EVENTS: return "b|" + event
 	return live_role + "|" + event
@@ -292,7 +292,7 @@ static func source_anchor(source: String) -> String:
 	var id := cause.get_slice(":", 1)
 	if ANCHOR_KINDS.has(head): return "%s:%s" % [ANCHOR_KINDS[head], id]
 	if head in ["rattle", "locked", "teeter"]: return "spirit:" + cause.get_slice(":", 2)
-	if head in ["drowned", "fell"]: return "spirit:" + id
+	if head in ["drowned", "fell", "dropped"]: return "spirit:" + id
 	return "" if cause.is_empty() or cause.contains(":") else "spirit:" + cause
 
 ## Plays one tick of a recorded turn; sources[i] comes from event_source.

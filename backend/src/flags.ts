@@ -112,6 +112,8 @@ export const FLAG_VARS = Object.freeze({
   fogMarshChapter: "FOG_MARSH_CHAPTER_ENABLED",
   /** Creating Relay Isles@3 rooms (relay-isles@3, open turns on the journey rules), read through the CHAPTERS table in v2/chapters.ts. Unreleased until the owner says. */
   relayIslesV3Chapter: "RELAY_ISLES_V3_CHAPTER_ENABLED",
+  /** Creating Sleeping Lighthouse@3 rooms (sleeping-lighthouse@3, open turns with light pieces on the journey rules), read through the CHAPTERS table in v2/chapters.ts. Unreleased until the owner says. */
+  sleepingLighthouseV3Chapter: "SLEEPING_LIGHTHOUSE_V3_CHAPTER_ENABLED",
 } as const);
 
 /**

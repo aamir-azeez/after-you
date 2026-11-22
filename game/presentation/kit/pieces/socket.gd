@@ -23,14 +23,18 @@ extends RefCounted
 ##       wider and a gold ring, the seed resting on the cap.
 ##   item_spot(): a rules 20 item spot (core/physical/carried_items.gd) in the
 ##       "item_spot" style its piece resolves to (content/dressing/piece_styles.gd):
-##       "pedestal", "planter" (garden()), "nest" (relay()), "winch" (winch())
-##       or "none". A solid
+##       "pedestal", "planter" (garden()), "nest" (relay()), "winch" (winch()),
+##       "cradle" (cradle()) or "none". A solid
 ##       spot (core/solid_footprint.gd) sizes a pedestal's drum to its solid
 ##       circle; a planter takes the spot's radius. rest_height() is how high an
 ##       item resting there sits.
 ##   winch(): a rope winch on two posts whose front post has the square
 ##       socket a winch handle fits (tools/blender/models/winch.py); a handle
 ##       resting at the spot (carried_item.gd "winch_handle") sits in it.
+##   cradle(): a lens cradle (light pieces, core/physical/light_pieces.gd: a
+##       spot where a resting lens lights a lamp): a low slate drum with a
+##       ring the colour the world gives and three brass notches round where
+##       the lens stands on its edge, CRADLE_TOP up (lighthouse_world.gd's).
 ## drawn_radius() and landing_radius() are how far from its centre each look
 ## reaches on the floor, so the level checker keeps the pieces on one floor
 ## apart as drawn (kit/prop_rules.gd control_bodies).
@@ -74,6 +78,14 @@ const PEDESTAL_TOP := 0.45
 const PEDESTAL_STONE := Color("bbccb5")
 ## Where a seed rests in the nest: 35 cm up, the v2 engine's socket height.
 const NEST_REST := 0.35
+## The top of a lens cradle's drum (m): a lens resting there stands on it.
+const CRADLE_TOP := 0.12
+## The cradle's slate drum radius (m).
+const CRADLE_DRUM := 0.31
+## Where the lens's middle sits over the drum, and the notches round it (m).
+const CRADLE_LENS := 0.21
+const CRADLE_SLATE := Color("728994")
+const CRADLE_BRASS := Color("d5b876")
 ## The winch model and the height of its socket's middle, where a resting
 ## handle's stub sits (its origin 2 cm under the stub's middle).
 const WINCH := "res://assets/models/winch.glb"
@@ -83,7 +95,7 @@ const WINCH_AXLE := 0.40
 const WINCH_REACH := 0.38
 const WINCH_COLORS := {"stone": Color("9a8d76"), "wood": Color("7a5d45"), "wood_dark": Color("5f4a38"), "rope": Color("d1b98c"), "metal": Color("4f5458")}
 ## How high an item resting at a spot of each "item_spot" style sits (metres).
-const REST := {"pedestal": PEDESTAL_TOP, "planter": PLANTER + 0.02, "nest": NEST_REST, "winch": WINCH_AXLE}
+const REST := {"pedestal": PEDESTAL_TOP, "planter": PLANTER + 0.02, "nest": NEST_REST, "winch": WINCH_AXLE, "cradle": CRADLE_TOP}
 
 ## A stand under `root` (the spot's node, on its floor): a base `radius`
 ## across in `base_color`, a ring in `ring_color` round it (none when
@@ -113,10 +125,12 @@ static func relay(root: Node3D, base: float = NEST_BASE) -> void:
 	_ring(root, 0.14, 0.035, NEST, Vector3(0, 0.38, 0))
 	_ring(root, 0.17, 0.035, NEST_DARK, Vector3(0, 0.425, 0))
 	_ring(root, 0.19, 0.03, NEST, Vector3(0, 0.465, 0))
-	# Three teal leaves fanning out under the nest.
+	# Three teal leaves fanning out under the nest, from inside the stump's top
+	# so only their outer half shows, below the nest's floor (never in its bowl).
 	for index in range(3):
 		var angle := TAU * index / 3.0 + PI / 2.0
-		var leaf := Primitives.mesh_node(Primitives.shared_mesh("sphere", 0.16), Primitives.shared_material(LEAF), Vector3(cos(angle) * 0.26 * fan, 0.40, sin(angle) * 0.26 * fan), root)
+		var out := maxf(0.26 * fan, 0.17)
+		var leaf := Primitives.mesh_node(Primitives.shared_mesh("sphere", 0.16), Primitives.shared_material(LEAF), Vector3(cos(angle) * out, 0.33, sin(angle) * out), root)
 		leaf.scale = Vector3(0.42 * fan, 0.14, fan)
 		leaf.rotation = Vector3(0, -angle + PI / 2.0, 0)
 		leaf.rotate_object_local(Vector3.RIGHT, -0.35)
@@ -158,6 +172,7 @@ static func item_spot(style: String, root: Node3D, spot: Dictionary) -> void:
 		# Base, ring and leaves inside the spot's own radius.
 		"nest": relay(root, nest_base(spot))
 		"winch": winch(root)
+		"cradle": cradle(root, float(spot.get("radius_cm", 30)) / 100.0, Parts.CREAM)
 
 ## A winch under `root`, its socket facing the camera over the spot.
 static func winch(root: Node3D) -> void:
@@ -178,6 +193,7 @@ static func drawn_radius(style: String, spot: Dictionary) -> float:
 		"planter": return float(spot.get("radius_cm", 48)) / 100.0 + 0.01 + RING_TUBE
 		"nest": return radius
 		"winch": return WINCH_REACH
+		"cradle": return maxf(CRADLE_DRUM, radius + 0.025)
 	return 0.0
 
 ## How far from its centre a landing mark `radius` across is drawn (metres).
@@ -196,6 +212,19 @@ static func landing(root: Node3D, radius: float = LANDING) -> void:
 		var angle := float(index) * TAU / 8.0
 		var tick := Primitives.mesh_node(Primitives.cached_box(TICK), Primitives.shared_material(Parts.CREAM), Vector3(cos(angle) * (radius + LANDING_TICKS), 0.03, sin(angle) * (radius + LANDING_TICKS)), root)
 		tick.rotation.y = -angle
+
+## A lens cradle under `root`, `radius` across, its ring in `ring_color`.
+## Returns the ring, which the world lights while the lens rests there.
+static func cradle(root: Node3D, radius: float, ring_color: Color) -> MeshInstance3D:
+	ContactShadows.mark(root)
+	_cyl(root, CRADLE_DRUM, CRADLE_TOP, CRADLE_SLATE, Vector3(0, CRADLE_TOP * 0.5, 0))
+	var ring := Parts.ring(radius, ring_color, Vector3(0, CRADLE_TOP + 0.01, 0), root)
+	ring.name = "CradleRing"
+	# Wider than the lens's own notches, so a resting lens never shares a face with them.
+	for index in range(3):
+		var angle := float(index) * TAU / 3.0
+		Parts.box(Vector3(0.075, 0.12, 0.065), CRADLE_BRASS, Vector3(sin(angle) * 0.25, CRADLE_TOP + CRADLE_LENS + cos(angle) * 0.25, -0.05), root)
+	return ring
 
 static func _cyl(root: Node3D, radius: float, height: float, color: Color, at: Vector3, top: float = -1.0) -> MeshInstance3D:
 	return Primitives.mesh_node(Primitives.cached_shape(Primitives.cylinder_mesh(radius, height, top, 14 if top >= 0.0 else 24)), Primitives.shared_material(color), at, root)

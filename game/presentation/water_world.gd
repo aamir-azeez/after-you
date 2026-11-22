@@ -218,7 +218,7 @@ func _route_rect(id: String) -> Array:
 func _present_stones(state: Dictionary, immediate: bool) -> void:
 	var routes: Dictionary = state.get("bridges", {})
 	var drowned: Dictionary = state.get("drowned", {})
-	var sunk := "" if drowned.has("fell") else str(drowned.get("route", ""))
+	var sunk := "" if drowned.has("fell") or drowned.has("dropped") else str(drowned.get("route", ""))
 	var controls: Dictionary = state.get("controls", {})
 	for id: String in _stones:
 		var stone: Dictionary = _stones[id]

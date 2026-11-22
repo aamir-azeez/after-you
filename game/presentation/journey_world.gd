@@ -8,8 +8,10 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const CarriedItems = preload("res://core/physical/carried_items.gd")
 const CarriedItemKit = preload("res://presentation/kit/pieces/carried_item.gd")
 const CurrentKit = preload("res://presentation/kit/pieces/current.gd")
+const HandsSigns = preload("res://presentation/kit/hands_signs.gd")
 const ItemParts = preload("res://presentation/kit/pieces/parts.gd")
 const Solid = preload("res://core/solid_footprint.gd")
+const LightPieces = preload("res://core/physical/light_pieces.gd")
 ## The soft honey dashes round a crossing a wait hint names.
 const HINT_DASH := Color("f2d39b")
 ## A selector's bubble body stands as if its tail ended here, just over the
@@ -102,6 +104,14 @@ var _item_pieces: Dictionary = {}
 ## stop's deck (kit/new_pieces.gd ride).
 var _item_decks: Dictionary = {}
 var _current_piece: RefCounted
+## The both-hands signs at the feet of the stage's ladders and rope bridges.
+var hands_signs := HandsSigns.new()
+## Light pieces (core/physical/light_pieces.gd): the ring of each item spot in
+## the "cradle" style a lamp's lit_when names, by spot id, lit while a lens
+## rests there, and the cables from each lamp's light pads and cradles (lamp id
+## -> cables), lit while the lamp shines.
+var _cradles: Dictionary = {}
+var _lamp_cables: Dictionary = {}
 
 func show_stage(stage: Dictionary) -> void:
 	if str(stage.get("id", "")) == displayed_stage_id: return
@@ -118,6 +128,9 @@ func show_stage(stage: Dictionary) -> void:
 	_item_pieces.clear()
 	_item_decks.clear()
 	_current_piece = null
+	hands_signs = HandsSigns.new()
+	_cradles.clear()
+	_lamp_cables.clear()
 	_shown_stage = stage
 	_stage_built = false
 	# Before the build awaits: a present meanwhile reads this stage's crossings.
@@ -126,6 +139,7 @@ func show_stage(stage: Dictionary) -> void:
 	_build_seats(stage)
 	await _build_step()
 	await _build_items(stage)
+	_build_light(stage)
 	_stage_built = true
 	_build_wait_marks()
 	_sort_bubbles()
@@ -543,6 +557,8 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	_placement_due = true
 	var visual := state.duplicate()
 	visual["mirrors"] = state.get("controls",{}).duplicate()
+	# A mirror a selector steers turns as the light runs (light_pieces.gd).
+	if str(_shown_stage.get("id","")) == str(state.get("stage_id","")): visual.mirrors.merge(LightPieces.orientations(_shown_stage,state.get("controls",{})),false)
 	visual["emitter_powered"] = not state.get("optics",{}).get("segments",[]).is_empty()
 	# Detach the one nested dictionary this adapter extends. Every other
 	# snapshot branch is consumed without mutation by the physical renderer.
@@ -562,6 +578,8 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	if is_instance_valid(_waiting_ring): _glow(_waiting_ring,CREAM,0.6 if state.get("can_commit",false) and not OpenTurns.pinned(chapter_definition) else 0.0)
 	_present_seats(state, immediate)
 	_present_items(state, immediate)
+	hands_signs.present(state)
+	_present_light(state)
 	if _wait_hints_on and _wait_hints.update(state): _show_wait_marks()
 	# What a world sets after this (its own levers and wheels) is read by the
 	# next pass, not by the one an immediate present already ran.
@@ -753,6 +771,84 @@ func _knock_shove(knocked: Dictionary) -> Variant:
 	if new_pieces == null or not knocked.has("swing") or not actor_targets.has(slot): return null
 	return new_pieces.shove(str(knocked.swing), actor_targets[slot])
 
+# --- Light pieces (core/physical/light_pieces.gd) ---
+
+## The stage's light beyond its mirror controls (lighthouse_world draws those,
+## its lamps and receivers): each optical mirror no hand turns (a selector
+## steers it, or it stands fixed), and a cable from each lamp's light pad and
+## item spot (its cradle: _build_items draws it in its item_spot style) to the
+## lamp's foot where they share a floor. Plain scenery: the snapshot lights it.
+func _build_light(stage: Dictionary) -> void:
+	var field: Dictionary = stage.get("optical_field", {})
+	if field.is_empty(): return
+	var turned: Dictionary = {}
+	for control: Dictionary in stage.get("controls", []):
+		if str(control.get("kind", "")) == "mirror": turned[str(control.id)] = true
+	var set := LightPieces.orientations(stage, {})
+	for mirror: Dictionary in field.get("mirrors", []):
+		if turned.has(str(mirror.id)): continue
+		var pivot := _mirror_body(point(mirror.position_cm), _control_base_height(mirror), terrain, false)
+		pivot.rotation.y = PI / 4.0 if set.get(str(mirror.id), "") == "slash" else -PI / 4.0
+		_mirror_nodes[str(mirror.id)] = pivot
+	var lit: Dictionary = stage.get("lit_when", {})
+	for id: String in lit:
+		var lamp: Dictionary = {}
+		for emitter: Dictionary in field.get("emitters", []):
+			if str(emitter.id) == id: lamp = emitter
+		if lamp.is_empty(): continue
+		var foot := point(lamp.position_cm) + Vector3(0, _control_base_height(lamp) + LIGHT_LINK_LIFT, 0)
+		var cables: Array[MeshInstance3D] = []
+		var powers: Array = []
+		_lamp_powers(lit[id], powers)
+		for power: Dictionary in powers:
+			var at := Vector3.INF
+			if power.has("pad_id"):
+				for pad: Dictionary in stage.get("pressure_pads", []):
+					if str(pad.id) == str(power.pad_id): at = _at(pad)
+			else:
+				var spot := CarriedItems.spot(chapter_definition, str(power.spot_id))
+				if spot.is_empty(): continue
+				at = _at(spot)
+				var built := terrain.get_node_or_null("ItemSpot_" + str(spot.id))
+				var ring: Node = built.find_child("CradleRing", false, false) if built != null else null
+				if ring is MeshInstance3D: _cradles[str(spot.id)] = ring
+			if at == Vector3.INF: continue
+			var start := at + Vector3(0, LIGHT_LINK_LIFT, 0)
+			var elbow := Vector3(foot.x, start.y, start.z)
+			if not _shares_floor(start, elbow) or not _shares_floor(elbow, foot): continue
+			for leg: Array in [[start, elbow], [elbow, foot]]:
+				if (leg[0] as Vector3).distance_to(leg[1]) > 0.01: cables.append(_floor_cable(leg[0], leg[1], 0.025, LIGHT_LINK))
+		_lamp_cables[id] = cables
+
+## A cable's lift off its floor (clear of a throw landing's ticks it may
+## cross, kit/pieces/socket.gd landing()), and its colour while its lamp is
+## dark (m).
+const LIGHT_LINK_LIFT := 0.04
+const LIGHT_LINK := Color("8a8f86")
+
+## What powers a lamp in its lit_when: each light pad ({"pad_id"}) and each
+## cradle ({"spot_id"} of an item term), appended to `found`.
+static func _lamp_powers(when: Dictionary, found: Array) -> void:
+	if when.has("pad_id"): found.append({"pad_id": str(when.pad_id)})
+	if CarriedItems.is_term(when) and when.has("spot_id"): found.append({"spot_id": str(when.spot_id)})
+	for key: String in ["all", "any"]:
+		for child: Variant in when.get(key, []):
+			if child is Dictionary: _lamp_powers(child, found)
+
+## Each cradle glows while its lens rests there, each lamp's cables while it shines.
+func _present_light(state: Dictionary) -> void:
+	if _cradles.is_empty() and _lamp_cables.is_empty(): return
+	var items: Dictionary = state.get("mechanisms", {}).get("items", {})
+	for id: String in _cradles:
+		var resting := false
+		for item: Dictionary in items.values():
+			if str(item.get("holder", "")).is_empty() and str(item.get("spot", "")) == id: resting = true
+		_glow(_cradles[id], LIGHT_COLOR, 1.0 if resting else 0.0)
+	var shining: Dictionary = {}
+	for segment: Dictionary in state.get("optics", {}).get("segments", []): shining[str(segment.get("emitter_id", ""))] = true
+	for id: String in _lamp_cables:
+		for cable: MeshInstance3D in _lamp_cables[id]: _glow(cable, LIGHT_COLOR if shining.has(id) else LIGHT_LINK, 0.7 if shining.has(id) else 0.0)
+
 # --- Rules 20: carried items, floats, currents and both-hands crossings ---
 
 ## Every item of the level in its style (a pin by id, else the dressing's
@@ -760,7 +856,8 @@ func _knock_shove(knocked: Dictionary) -> Variant:
 ## item spot in its "item_spot" style (a pedestal, a planter, a nest or none:
 ## kit/pieces/socket.gd item_spot), the stage's current legs, and the rungs
 ## that mark a crossing needing both hands (core/physical/carried_items.gd): a
-## carrier stops at a ladder. A rope bridge (kit/pieces/deck.gd) needs no rungs.
+## carrier that steps on drops what it carries. A rope bridge (kit/pieces/
+## deck.gd) needs no rungs. Each foot gets its two hands sign (kit/hands_signs.gd).
 func _build_items(stage: Dictionary) -> void:
 	var view: Dictionary = CooperativeCatalog.stage_definition(chapter_definition, str(stage.get("id", "")))
 	if view.get("items", []).is_empty(): return
@@ -801,6 +898,10 @@ func _build_items(stage: Dictionary) -> void:
 		if hands.has(str(route.id)) and not rope:
 			_ladder_rungs(route)
 			await _build_step()
+	# Each foot's two hands sign, shown while a carrier stands near it.
+	for bubble: LabelBubble in hands_signs.build(view, terrain):
+		if not reduced_motion: bubble.set_bob(true)
+		_bubbles.append(bubble)
 	# A throw's mark is a cream ring with the throw icon where the thrower
 	# stands, unless it lies wholly inside a pad, which is then the throw spot
 	# and carries the icon (LevelLayout.mark_pad, kit/throw_mark.gd), or has
@@ -819,6 +920,16 @@ func _build_items(stage: Dictionary) -> void:
 		landing.position = _at(target)
 		terrain.add_child(landing)
 		SocketKit.landing(landing, float(target.get("radius_cm", CarriedItems.SPOT_RADIUS_CM)) / 100.0)
+
+## What crossing `id` needing both hands looks like, as the dropped card
+## names it (PlayerCopy.HANDS_CROSSING_NAMES): a one way stair's ladder is a
+## "rope_ladder" or the "wheel" (kit/pieces/rope_ladder.gd), a rope deck a
+## "rope_bridge", and anything else with rungs a "ladder".
+func hands_crossing(id: String) -> String:
+	for stair: Dictionary in chapter_definition.get("stairs", []):
+		if str(stair.id) == id and stair.has("one_way"): return "wheel" if _piece_style("ladder", id) == "wheel" else "rope_ladder"
+	if new_pieces != null and chapter_definition.get("bridges", []).any(func(route: Dictionary) -> bool: return str(route.id) == id) and new_pieces.deck_style(id) == "rope": return "rope_bridge"
+	return "ladder"
 
 ## The node drawing item `id` (over its carrier's head or where it rests), or
 ## null: an ending scene hides it while its own stands in for it.
