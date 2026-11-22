@@ -38,8 +38,8 @@ const DONE := "done"
 ## Every way to play a turn or a stage again, or take one back.
 const WITHHELD := ["retry", "try_again", "redo_self", "start_over", "redo", "redo_play", "redo_keep", "redo_status", "redo_retry"]
 ## How a run ended early: a second start of a turn, a turn that could not be
-## kept, a turn the water took.
-const REASONS := ["retry", "failed_turn", "drowned"]
+## kept, a turn the water took, an item dropped on a crossing needing both hands.
+const REASONS := ["retry", "failed_turn", "drowned", "dropped"]
 const FAILED := "failed"
 const COMPLETE := "complete"
 const MAX_FAILED := 5
@@ -79,12 +79,13 @@ static func slipped(tries: int) -> bool:
 	return tries > 1
 
 ## Why a finished turn ends the run, from its verified check ({valid,
-## snapshot, ready}) and its recording: "drowned", "failed_turn" (it cannot be
+## snapshot, ready}) and its recording: "drowned" (a fall too), "dropped" (an
+## item let go on a crossing needing both hands), "failed_turn" (it cannot be
 ## kept, so the only way on would be a retry), or "" when the turn can be kept
 ## (OpenTurns.keepable: under open turns a pass is kept too).
 static func failure(verified: Dictionary, recording: Dictionary = {}) -> String:
 	var snapshot: Variant = verified.get("snapshot", {})
-	if snapshot is Dictionary and snapshot.get("drowned") is Dictionary and not snapshot.drowned.is_empty(): return "drowned"
+	if snapshot is Dictionary and snapshot.get("drowned") is Dictionary and not snapshot.drowned.is_empty(): return "dropped" if snapshot.drowned.has("dropped") else "drowned"
 	if not OpenTurns.keepable(verified, recording): return "failed_turn"
 	return ""
 

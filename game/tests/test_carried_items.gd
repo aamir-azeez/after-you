@@ -4,8 +4,9 @@ extends SceneTree
 ## engine and its proof:
 ## - the rules number, the shapes, the predicate terms, and published
 ##   checkpoints that keep their four mechanisms;
-## - pick up, put down, and a carrier refused at the both-hands ladder while an
-##   empty pip climbs it;
+## - pick up, put down, and a carrier that steps onto the both-hands ladder
+##   drops the item at its foot and ends the turn ("dropped"), a turn kept
+##   nowhere that replays to the same drop, while an empty pip climbs it;
 ## - stage 1 over four turns on the shared timeline: the friend's replay
 ##   carries what it carried, turn 3 takes over at the ladder's foot still
 ##   carrying it and hands it up, turn 4 takes it from turn 3's replay at the
@@ -13,7 +14,8 @@ extends SceneTree
 ##   again (and fails with the holder changed);
 ## - the replay sees it gone (the live pip took it first), a same tick tie (p0
 ##   goes first), a replay's give in reach and out of reach, a replay handed
-##   the item that never climbs the ladder loaded, and a take on a replay's
+##   the item that drops it on the ladder (the friend's drop ends the live turn,
+##   and the turn replays to the same drop), and a take on a replay's
 ##   last tick never repeated after it ends;
 ## - every turn replays exactly, and plays the same from its kept start world
 ##   as with the turns before it played again;
@@ -116,8 +118,15 @@ func _hands() -> void:
 	_tap(sim)
 	_check(sim._mechanisms.items.pipsport.holder == "p0", "And is picked up again")
 	_go(sim, FOOT)
+	_check(not sim.finished and sim._mechanisms.items.pipsport.holder == "p0", "At the ladder's foot the carrier still holds it")
 	_go(sim, TOP)
-	_check(str(sim._players.p0.surface_id) == "dock" and int(sim._players.p0.x) < -90, "A carrier never climbs the both-hands ladder (stopped at %s)" % sim._players.p0.x)
+	var dropped: Dictionary = sim._mechanisms.items.pipsport
+	var shown: Dictionary = sim.snapshot()
+	_check(sim.finished and str(sim._players.p0.surface_id) == "ladder" and shown.drowned == {"slot": "p0", "route": "ladder", "tick": int(shown.drowned.tick), "dropped": "pipsport"} and "dropped:p0" in shown.events, "Stepping onto the both-hands ladder carrying, the pip drops it and the turn ends: %s" % [shown.drowned])
+	_check(dropped.holder == "" and dropped.spot == "" and dropped.surface_id == "dock" and int(dropped.x) == -100 and int(dropped.z) == 0 and int(dropped.height) == 0 and shown.players.p0.carrying == "", "The pipsport lands loose at the ladder's foot: %s" % [dropped])
+	_check(not sim.keeps_draft() and not sim.can_commit() and shown.commit_reason == Simulation.DROPPED_YOU % ["pipsport", "ladder"], "A dropped turn is kept nowhere and says so: %s" % shown.commit_reason)
+	var replayed: Dictionary = proof._verify_raw(level, _record(sim), start, {})
+	_check(replayed.valid and replayed.snapshot.drowned == shown.drowned and replayed.snapshot.mechanisms.items.pipsport == dropped, "The dropped turn replays to the same drop (%s)" % replayed.get("error", ""))
 	var empty := _sim(level, "hand-up", start)
 	_go(empty, FOOT)
 	_go(empty, TOP)
@@ -223,7 +232,7 @@ func _gone_and_tie() -> void:
 	_check(sim._mechanisms.items.pipsport.holder == "p1" and sim.snapshot().players.p0.carrying == "", "The live pip took it first, so the replay's pick up finds nothing")
 	_go(sim, FOOT)
 	_go(sim, TOP)
-	_check(str(sim._players.p1.surface_id) == "dock", "Loaded, the live pip cannot climb back up")
+	_check(sim.finished and sim.snapshot().drowned.get("slot") == "p1" and sim.snapshot().drowned.get("dropped") == "pipsport" and sim._mechanisms.items.pipsport.holder == "", "Loaded, the live pip climbing back up drops it and the turn ends")
 	var tie := _sim(level, "hand-up", start, a)
 	_go(tie, TOP)
 	_go(tie, FOOT)
@@ -237,7 +246,8 @@ func _gone_and_tie() -> void:
 	_check(tied.valid, "The tie replays exactly (%s)" % tied.get("error", ""))
 
 ## A: p0 waits, then climbs. B: p1 fetches the pipsport and hands it to the
-## waiting replay, which then reaches the ladder loaded and never climbs it.
+## waiting replay, which then steps onto the ladder loaded and drops it: the
+## friend's drop ends the live turn, which replays to the same drop.
 func _ladder_drop() -> void:
 	var a_sim := _sim(level, "hand-up", start)
 	_go(a_sim, [-200, 0])
@@ -259,7 +269,11 @@ func _ladder_drop() -> void:
 	_check(sim._mechanisms.items.pipsport.holder == "p0", "The replay now holds it")
 	_until(sim, int(a.duration_ticks))
 	var state: Dictionary = sim._mechanisms.items.pipsport
-	_check(state.holder == "p0" and str(sim._players.p0.surface_id) == "dock" and int(sim._players.p0.x) < -90, "Loaded, the replay never climbs the ladder: it stops at the foot, still carrying it (%s)" % str(sim._players.p0))
+	var shown: Dictionary = sim.snapshot()
+	_check(sim.finished and str(shown.drowned.get("slot", "")) == "p0" and str(shown.drowned.get("dropped", "")) == "pipsport" and state.holder == "" and state.surface_id == "dock", "Loaded, the replay steps onto the ladder and drops it at the foot, ending the turn (%s)" % [shown.drowned])
+	_check(shown.commit_reason == Simulation.DROPPED_FRIEND % ["pipsport", "ladder"], "The live turn says the friend dropped it: %s" % shown.commit_reason)
+	var replayed: Dictionary = proof._verify_raw(level, _record(sim), start, a)
+	_check(replayed.valid and replayed.snapshot.drowned == shown.drowned and replayed.snapshot.mechanisms.items.pipsport == state, "The friend's drop replays the same (%s)" % replayed.get("error", ""))
 
 ## A ends with a put on its last tick. Once it is over, the live pip hands
 ## the item back to the still replay, which keeps it: a replay's last act

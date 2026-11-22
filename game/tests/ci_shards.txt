@@ -142,6 +142,7 @@ gone_room_release 1
 graphics_policy 3
 graphics_settings 3
 hand_reach 3
+hands_full 1
 hard_mode 1
 hard_mode_room 2
 hard_mode_solo 2

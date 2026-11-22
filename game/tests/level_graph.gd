@@ -554,7 +554,8 @@ func ball_reaches_goal(stage: Dictionary, settable: Dictionary) -> bool:
 ## hold it on and the item spots it could rest at, written into `settable` as
 ## "item:<id>": {"carried": [floors], "spots": [spot ids]}. A pip that reaches
 ## a floor the item rests on may pick it up; a carrier walks every open
-## crossing but those needing both hands; across one of those it is handed up
+## crossing but those needing both hands (stepping onto one loaded drops the
+## item and ends the turn: a dead end); across one of those it is handed up
 ## when some pip reaches the far end; it rests at an item spot on any floor it
 ## is carried to; a current leg carries it on once the leg's selector can show
 ## the leg's value (`when` and `stop` are not judged: an over-approximation);
