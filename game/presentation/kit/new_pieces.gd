@@ -86,7 +86,9 @@ func lays(definition: Dictionary) -> bool:
 
 func lay_deck(definition: Dictionary, deck: Node3D, width: float, depth: float, across_x: bool, low: float, high: float) -> void:
 	var style := deck_style(str(definition.id))
-	if not style.is_empty(): Deck.lay(style, deck, width, depth, across_x, low, high)
+	# A stone is built once, down to its water's bed (water_world.gd stone_drop).
+	var drop: float = _world.stone_drop(definition) if style == "stones" and _world.has_method("stone_drop") else Deck.STONE_DROP
+	if not style.is_empty(): Deck.lay(style, deck, width, depth, across_x, low, high, drop)
 	if style == "falls_path":
 		# The rock lip over the path and the falls' water pouring off it, shown
 		# while the path is shut (kit/pieces/falls_curtain.gd).

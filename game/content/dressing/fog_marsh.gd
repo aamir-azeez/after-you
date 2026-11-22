@@ -88,7 +88,7 @@ const DATA := {
 		# enough to stand up out of the fog: the leaning windmill, two huts on
 		# stilts, two sunken boats, dead trees and reed beds; two beds round the
 		# channel where the pipsport bobs at the start of Catch the Pipsport.
-		{"kind": "windmill", "at": [3000, -1150], "y": -10, "rot": 18, "size": 2.0},
+		{"kind": "windmill", "at": [3000, -1150], "y": -60, "rot": 18, "size": 2.0},
 		{"kind": "stilt_hut", "at": [5700, -1050], "y": -10, "rot": -12, "size": 1.5},
 		{"kind": "stilt_hut", "at": [10400, 950], "y": -10, "rot": 160, "size": 1.5},
 		{"kind": "sunken_boat", "at": [1900, 860], "y": -10, "rot": 20, "size": 1.4},

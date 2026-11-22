@@ -44,9 +44,12 @@ const STONE_UNDER := 0.10
 const STONE_RATE := 0.45
 ## How far over its open height a stone its water left high stands (m), clear
 ## above the floors it joins, so no pip steps on; a pip already on it rides up.
-## A world builds each stone long enough to stand this tall with its foot
-## still on the bed.
+## A world builds each stone once, long enough to stand this tall with its foot
+## still STONE_FOOT under its bed.
 const STONE_TALL := 0.45
+## How far under its bed (m) a stone's foot stands at its highest, so the bed
+## always hides the foot and the water only covers more or less of the stone.
+const STONE_FOOT := 0.30
 const JourneyCatalog = preload("res://core/journey/stage_catalog.gd")
 
 ## The water kit for the shown stage.
@@ -229,6 +232,18 @@ func _present_stones(state: Dictionary, immediate: bool) -> void:
 		if immediate or reduced_motion:
 			stone.y = _stone_target(stone)
 			stone.deck.position.y = stone.y
+
+## The length of a stone built once (m), from its top down to its foot: from
+## its open height `rest` up STONE_TALL where its water leaves it high, down to
+## STONE_FOOT under the bed `bed` of its water. Whatever the water does, a
+## stone never changes size: it only moves whole (_stone_target).
+static func stone_length(rest: float, bed: float) -> float:
+	return rest + STONE_TALL - bed + STONE_FOOT
+
+## stone_length() of crossing `route` (a definition): its open height over the
+## bed of the water it stands in.
+func stone_drop(route: Dictionary) -> float:
+	return stone_length(float(WaterBodies.low_cm(route)) / 100.0, waters.bed(waters.body_of(route.rect_cm)))
 
 ## Where a stone heads: its open height, STONE_TALL over it while left high,
 ## or just under its water while down.

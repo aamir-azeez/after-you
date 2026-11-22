@@ -16,9 +16,10 @@ extends RefCounted
 ## sinking stones are one row of four from the lookout to the rock (the slip
 ## row). Heights in cm.
 ##   1 foot-of-the-falls: the mill wheel sets the pool (LOW shows the stepping
-##     stones, HIGH winds the bucket up to the ledge); the footbridge from the
-##     mill is down while its pan on the island is weighed (a pip or the
-##     pipsport); the island ladder needs both hands.
+##     stones; either pip turns it); the footbridge from the mill is down while
+##     its pan on the island is weighed (a pip or the pipsport); the island
+##     ladder needs both hands; the bucket on the island winds up to the ledge
+##     while a pip stands on the crank board beside its top.
 ##   2 the-old-mill: the water gate board turns the big wheel (ride it up to
 ##     the loft, both hands), floods the mill steps and dries the old
 ##     riverbed; the sack lift carries the hook up while the gate board or the
@@ -79,13 +80,16 @@ static func source() -> Dictionary:
 		"stages": [_foot(), _mill(), _behind(), _stones()]}
 
 ## Stage 1: Gold on the mill with the pool wheel, Teal on the beach; the
-## pipsport in the post box on the island.
+## pipsport in the post box on the island. The bucket line is wound by a pip
+## on the winch crank board on the ledge (owner, 2026-11-22), as stage 3's
+## basket line is; the pool wheel only shows or hides the stepping stones.
 static func _foot() -> Dictionary:
 	var stage := _stage("foot-of-the-falls", "p0", [1688, -406])
 	stage.item_starts = {"pipsport": "post"}
-	stage.current_legs = [{"from": "bucket", "to": "bucket-top", "control_id": "pool", "value": "HIGH"}]
+	stage.current_legs = [{"from": "bucket", "to": "bucket-top", "when": {"pad_id": "winch"}}]
 	stage.blocks = [
 		{"block": "selector", "id": "pool", "at": [208, -406], "surface": "mill", "owner": "p0", "height": 120, "values": ["HIGH", "LOW"], "initial": "HIGH"},
+		{"block": "pad", "id": "winch", "at": [2380, -250], "surface": "ledge", "owner": "p0", "height": 120, "style": "crank_board"},
 		{"block": "selector_gate", "selector": "pool", "routes": {"stones": "LOW"}},
 		{"block": "weight_pan", "pad": _pad("pan", [2416, 434], "isle", 0), "items": ["pipsport"], "routes": ["footbridge"]},
 		{"block": "open_route", "routes": ["ladder"]},
