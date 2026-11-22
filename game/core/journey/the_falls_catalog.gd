@@ -40,6 +40,8 @@ const StageBlocks = preload("res://core/blocks/stage_blocks.gd")
 const PiecesRules = preload("res://core/physical/pieces_rules.gd")
 ## Turns a stage may take: 10, or 20 on a hard stage (the owner's call).
 const CAPS := {"foot-of-the-falls": 10, "the-old-mill": 10, "behind-the-falls": 10, "the-last-stones": 10}
+## Every goal needs the pipsport: the blocks give each goal a pedestal in front of it and
+## ask for the pipsport resting there (stage_blocks.gd goal_pedestals).
 const CARRIED := {"item_id": "pipsport", "carried": true}
 
 static func definition() -> Dictionary:

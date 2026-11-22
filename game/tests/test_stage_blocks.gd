@@ -11,6 +11,9 @@ const Canonical = preload("res://core/v2/canonical.gd")
 const PiecesWitness = preload("res://tests/pieces_witness.gd")
 const LightWitness = preload("res://tests/light_witness.gd")
 const WellV2 = preload("res://core/journey/the_wishing_well_v2_catalog.gd")
+const GoalKit = preload("res://presentation/kit/pieces/goal.gd")
+const SocketKit = preload("res://presentation/kit/pieces/socket.gd")
+const Solid = preload("res://core/solid_footprint.gd")
 const Cooperative = preload("res://core/cooperative/stage_catalog.gd")
 const CooperativeSim = preload("res://core/cooperative/simulation.gd")
 const Journey = preload("res://core/journey/stage_catalog.gd")
@@ -41,6 +44,7 @@ func _run() -> void:
 	_prove("conservatory", Journey.definition("conservatory@1"), _conservatory(), "journey", JourneySim)
 	_check_coverage()
 	_check_rules()
+	_check_pedestals()
 	print("STAGE BLOCKS: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -103,6 +107,37 @@ func _check_rules() -> void:
 		{"block": "pad", "id": "p", "at": [0, 0], "surface": "a", "owner": "p0"}, {"block": "hold_door", "pad": {"id": "p", "at": [5, 0], "surface": "a", "owner": "p0"}, "routes": ["r"]}]}]}
 	_check(Blocks.problems(twice).any(func(line: String) -> bool: return line.contains("placed twice")), "One id placed twice is named")
 	_check(Blocks.family_of({"schema_version": 4}).is_empty() and not Blocks.problems({"schema_version": 4, "stages": []}).is_empty(), "Blocks refuse rules they do not know")
+
+## A goal that asks for an item carried gets a pedestal item spot and asks for the item
+## resting there (owner, 2026-11-22), the same for every level.
+func _check_pedestals() -> void:
+	var carried := {"item_id": "pipsport", "carried": true}
+	var source := {"schema_version": 7, "items": [{"id": "pipsport", "at": "away"}], "item_spots": [{"id": "post", "surface_id": "deck", "position_cm": [0, 0], "height_cm": 40}],
+		"islands": [{"id": "deck", "rect_cm": [0, -300, 600, 300], "height_cm": 40}], "bridges": [], "stairs": [], "stages": [{"id": "s", "blocks": [
+			{"block": "lever", "id": "l", "at": [300, 100], "surface": "deck", "owner": "p0", "height": 40},
+			{"block": "ring_bell", "id": "end", "at": [300, 0], "surface": "deck", "owner": "p1", "height": 40, "radius": 48, "when": {"all": [{"lever_id": "l"}, carried]}}]}]}
+	_check(Blocks.problems(source).is_empty(), "A goal that needs an item carried has no problems: %s" % [Blocks.problems(source)])
+	var built := Blocks.expand(source)
+	var spot: Dictionary = built.item_spots[1] if built.item_spots.size() == 2 else {}
+	_check(not spot.is_empty() and spot.id == "end-pedestal" and spot.surface_id == "deck" and spot.height_cm == 40, "The goal gets a pedestal item spot on its own floor: %s" % [built.item_spots])
+	_check(Blocks.goal_pedestals("end", source.stages[0].blocks[1].when) == {"pipsport": "end-pedestal"}, "goal_pedestals names the spot for the descriptor's look")
+	_check(JSON.stringify(built.stages[0].goal_policy.when) == JSON.stringify({"all": [{"lever_id": "l"}, {"item_id": "pipsport", "spot_id": "end-pedestal"}]}), "The carried need becomes the item resting at the pedestal: %s" % [built.stages[0].goal_policy.when])
+	_check(not JSON.stringify(built).contains("carried"), "No carried need is left in the definition")
+	var at := Vector2(float(spot.position_cm[0]), float(spot.position_cm[1])) - Vector2(300, 0)
+	_check(at.length() >= float(Blocks.GOAL_DRAWN_CM + Blocks.PEDESTAL_DRAWN_CM), "The pedestal stands clear of the goal's drawn size (%s)" % [spot.position_cm])
+	var lever := Vector2(300, 100)
+	_check(Vector2(float(spot.position_cm[0]), float(spot.position_cm[1])).distance_to(lever) >= float(Blocks.LEVER_DRAWN_CM + Blocks.PEDESTAL_DRAWN_CM), "The pedestal stands clear of the lever on its floor (%s)" % [spot.position_cm])
+	_check(Solid.fits(spot, [0, -300, 600, 300], Blocks.PEDESTAL.solid, Solid.BODY_CM), "The floor leaves room to walk round the pedestal")
+	# A level's own place wins; a goal without a carried need gets nothing.
+	var nudged := source.duplicate(true)
+	nudged.stages[0].blocks[1]["pedestal"] = [420, -60]
+	_check(Blocks.expand(nudged).item_spots[1].position_cm == [420, -60], "A level may nudge its pedestal")
+	var plain := source.duplicate(true)
+	plain.stages[0].blocks[1]["when"] = {"lever_id": "l"}
+	_check(Blocks.expand(plain).item_spots.size() == 1, "A goal that needs no item carried gets no pedestal")
+	# The sizes the placing assumes cover what the kits draw.
+	_check(GoalKit.drawn_radius("bell", 0.48, 2) <= float(Blocks.GOAL_DRAWN_CM) / 100.0 + 0.001, "A bell goal's drawn size is inside GOAL_DRAWN_CM (%s)" % [GoalKit.drawn_radius("bell", 0.48, 2)])
+	_check(SocketKit.drawn_radius("pedestal", Blocks.PEDESTAL) <= float(Blocks.PEDESTAL_DRAWN_CM) / 100.0 + 0.001, "A pedestal's drawn size is inside PEDESTAL_DRAWN_CM (%s)" % [SocketKit.drawn_radius("pedestal", Blocks.PEDESTAL)])
 
 ## The published stage without what the blocks write, with the blocks added.
 func _rewrite(stage: Dictionary, blocks: Array, also_drop: Array = []) -> Dictionary:

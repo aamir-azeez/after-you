@@ -11,7 +11,8 @@ extends RefCounted
 ##                 title from its definition, the first turn's hint from the
 ##                 first block that has one and the second turn's from the last
 ##   piece_styles  the "style" a pad, lever, selector or bell names, pinned to
-##                 that piece (content/dressing/piece_styles.gd); a piece that
+##                 that piece (and "pedestal" to each pedestal a goal that needs
+##                 an item carried gets, StageBlocks.goal_pedestals) (content/dressing/piece_styles.gd); a piece that
 ##                 names none takes the dressing's or theme's pick. A lever's or
 ##                 selector's sounds follow its style (services/sound_cues.gd LOOK_CUES)
 ##   water_levels  a selector block with "water": true, its values in order
@@ -19,6 +20,7 @@ extends RefCounted
 
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Families = preload("res://services/chapter_families.gd")
+const StageBlocks = preload("res://core/blocks/stage_blocks.gd")
 
 ## Block -> {"cues": what services/chapter_sound_map.gd plays for it with no
 ## chapter override, "hint_a"/"hint_b": PlayerCopy defaults}.
@@ -124,6 +126,10 @@ static func styles(source: Dictionary) -> Dictionary:
 	# A new piece's block names the look of what it places (BLOCK_STYLES).
 	for stage: Dictionary in source.get("stages", []):
 		for block: Dictionary in stage.get("blocks", []):
+			# A goal that needs an item carried gets a pedestal for it (StageBlocks.goal_pedestals).
+			if str(block.get("block", "")) == "ring_bell":
+				for spot: Variant in StageBlocks.goal_pedestals(str(block.get("id", "")), block.get("when", {})).values():
+					if not result.has(str(spot)): result[str(spot)] = "pedestal"
 			var looks: Dictionary = BLOCK_STYLES.get(str(block.get("block", "")), {})
 			for field: String in looks:
 				var given: Variant = block.get(field)

@@ -442,6 +442,20 @@
 				"reach_cm": 20
 			},
 			"surface_id": "office"
+		},
+		{
+			"height_cm": 0,
+			"id": "catch-goal-pedestal",
+			"position_cm": [
+				6750,
+				-390
+			],
+			"radius_cm": 36,
+			"solid": {
+				"radius_cm": 28,
+				"reach_cm": 20
+			},
+			"surface_id": "north"
 		}
 	],
 	"items": [
@@ -745,8 +759,8 @@
 							"lever_id": "north-lantern"
 						},
 						{
-							"carried": true,
-							"item_id": "pipsport"
+							"item_id": "pipsport",
+							"spot_id": "catch-goal-pedestal"
 						}
 					]
 				}
@@ -1078,8 +1092,8 @@
 		}
 	},
 	"turn_limits": {
-		"a_ticks": 3000,
-		"b_ticks": 3000
+		"a_ticks": 3150,
+		"b_ticks": 3150
 	},
 	"version": 1
 }

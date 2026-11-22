@@ -1,9 +1,9 @@
 {
 	"a_recording_hash": "",
 	"b_recording_hash": "",
-	"checkpoint_hash": "87b24ea5ba76a9880e096315ca731e3814154f3e69b1a2da4a90889e7a67f7e7",
+	"checkpoint_hash": "ffde592c93e5bce9bb3e8878d2e2b70a18a62a26f2d06f82fe186d9a1c64bab7",
 	"completed_stage_id": "",
-	"definition_hash": "d761534b5edd20d7564458ac902c125961ef9264c1407cc73296535fea564720",
+	"definition_hash": "9fbd2efa43a370d12ce7ec3559ad64d2075dce86918b868368b3618d882a1f13",
 	"level_id": "fog-marsh",
 	"level_version": 1,
 	"mechanisms": {

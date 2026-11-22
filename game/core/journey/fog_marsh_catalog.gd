@@ -25,7 +25,9 @@ extends RefCounted
 ##     water gate board on the reed island is held, else onto the reed island.
 ##     The stair from the landing is let down from the dock, the north boards
 ##     from the landing; the lantern on the north bank floods the swirl stones
-##     and drains the bend boards. The goal wants it lit and the pipsport carried.
+##     and drains the bend boards. The goal wants it lit and the pipsport resting
+##     on the pedestal in front of it (a goal that needs an item carried gets one,
+##     core/blocks/stage_blocks.gd goal_pedestals).
 ##   3 carry-it-home: both come back down the stair from the north bank and
 ##     over to the lift's landing (0 cm).
 ##     The weight lift rises to the stilts (192 cm) while something heavy is in
@@ -37,7 +39,7 @@ extends RefCounted
 ## stage_copy, so changing them never changes the definition hash.
 ## The turn limits are the fallback until the owner plays it: twice the
 ## longest played carry-over turn of the witness routes, rounded up to whole
-## 5 s, so 100 s every turn (scripts/chapter_turn_limits.py --suggested).
+## 5 s, so 105 s every turn (scripts/chapter_turn_limits.py --suggested).
 
 const StageBlocks = preload("res://core/blocks/stage_blocks.gd")
 const PiecesRules = preload("res://core/physical/pieces_rules.gd")
@@ -49,7 +51,7 @@ static func definition() -> Dictionary:
 
 static func source() -> Dictionary:
 	return {"schema_version": 7, "simulation_version": 9, "id": "fog-marsh", "version": 1, "premium": false, "closing_ticks": 30,
-		"turn_limits": {"a_ticks":3000,"b_ticks":3000},
+		"turn_limits": {"a_ticks":3150,"b_ticks":3150},
 		"starts": {"p0": {"position_cm": [225, -70], "height_cm": 0, "surface_id": "path"}, "p1": {"position_cm": [2175, 504], "height_cm": 0, "surface_id": "boat-steps"}},
 		"props": [], "drops": [],
 		# Stage 1 has no pipsport: it bobs out in the channel until stage 2.

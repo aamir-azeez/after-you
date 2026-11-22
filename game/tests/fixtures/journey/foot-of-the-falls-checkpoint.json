@@ -1,7 +1,7 @@
 {
-	"checkpoint_hash": "d3639b85bc90b2be0986be7e971ae54001a5bb06afc35ac7f16783e96ae5914b",
+	"checkpoint_hash": "6f85a7f55d6255a8822979015212ef79bcf0da4d75799491a920f9333965ef5f",
 	"completed_stage_id": "foot-of-the-falls",
-	"definition_hash": "04bb186a63543d697f77aa42eb0d831e3e6e0d1a3754247531dad45769753ac4",
+	"definition_hash": "f13e2ae6c6b7682869afdf4d214e53de92ada23e094242d297a53a5f42b3f1db",
 	"level_id": "the-falls",
 	"level_version": 1,
 	"mechanisms": {
@@ -11,12 +11,12 @@
 		},
 		"items": {
 			"pipsport": {
-				"height": 0,
-				"holder": "p0",
-				"spot": "",
-				"surface_id": "",
-				"x": 0,
-				"z": 0
+				"height": 120,
+				"holder": "",
+				"spot": "foot-goal-pedestal",
+				"surface_id": "ledge",
+				"x": 1688,
+				"z": -306
 			}
 		},
 		"latched_bridges": [],
@@ -29,8 +29,8 @@
 		"p0": {
 			"height": 120,
 			"surface_id": "ledge",
-			"x": 1688,
-			"z": -360
+			"x": 1640,
+			"z": -406
 		},
 		"p1": {
 			"height": 120,
@@ -39,14 +39,14 @@
 			"z": -406
 		}
 	},
-	"previous_checkpoint_hash": "8fe770706c59b4770772868756a1509e129a83024b4b2c2115d3681b78d1a369",
+	"previous_checkpoint_hash": "3201d2d8c90fe9319dcef497a363133eb62188f5475f9d63697d4046ea664940",
 	"proof": {
 		"checkpoint": {
 			"a_recording_hash": "",
 			"b_recording_hash": "",
-			"checkpoint_hash": "8fe770706c59b4770772868756a1509e129a83024b4b2c2115d3681b78d1a369",
+			"checkpoint_hash": "3201d2d8c90fe9319dcef497a363133eb62188f5475f9d63697d4046ea664940",
 			"completed_stage_id": "",
-			"definition_hash": "04bb186a63543d697f77aa42eb0d831e3e6e0d1a3754247531dad45769753ac4",
+			"definition_hash": "f13e2ae6c6b7682869afdf4d214e53de92ada23e094242d297a53a5f42b3f1db",
 			"level_id": "the-falls",
 			"level_version": 1.0,
 			"mechanisms": {
@@ -91,11 +91,11 @@
 		"turns": [
 			{
 				"catch_assistance": true,
-				"checkpoint_hash": "8fe770706c59b4770772868756a1509e129a83024b4b2c2115d3681b78d1a369",
+				"checkpoint_hash": "3201d2d8c90fe9319dcef497a363133eb62188f5475f9d63697d4046ea664940",
 				"completed": false,
-				"definition_hash": "04bb186a63543d697f77aa42eb0d831e3e6e0d1a3754247531dad45769753ac4",
+				"definition_hash": "f13e2ae6c6b7682869afdf4d214e53de92ada23e094242d297a53a5f42b3f1db",
 				"duration_ticks": 113.0,
-				"final_state_hash": "7e906c675452cf6a5bd0ac680beb90388b64c4f1d91536c5aff0185f143f0dc0",
+				"final_state_hash": "12180412879db6a44ba1e43cd9913cda51b801dc488e2ce1c496e72911c9708c",
 				"handoff_hash": "5e42003c4c566bc26ec9e7dc1976888d23f3a8a05f4aaaac31f54b9e33781f73",
 				"handoff_tick": 0.0,
 				"level_id": "the-falls",
@@ -104,9 +104,9 @@
 					"objective_complete": false,
 					"source_ready": true
 				},
-				"packed": "AQgsnAACtQAWAJwCAM4CAAADAAAWAGSCAWQA0207U6BY8zq7Eu5Wk9AUccmyB/Sd72co",
+				"packed": "AQgsnAACtQAWAJwCAM4CAAADAAAWAGSCAWQAfC+O4NnXAj+c/ZhIZZhUChNQG2BBVDh1",
 				"player_slot": "p0",
-				"recording_hash": "5997037e981d40f6b8a37ac550438bb3811eb8e4544cf2f79f3aa5f49cf320e0",
+				"recording_hash": "3188bcbb91b798615204bff8fdef821e9563eb9998221c0506ff9eeb366c6ff9",
 				"role": "a",
 				"schema_version": 7.0,
 				"simulation_version": 20.0,
@@ -118,11 +118,11 @@
 			},
 			{
 				"catch_assistance": true,
-				"checkpoint_hash": "8fe770706c59b4770772868756a1509e129a83024b4b2c2115d3681b78d1a369",
+				"checkpoint_hash": "3201d2d8c90fe9319dcef497a363133eb62188f5475f9d63697d4046ea664940",
 				"completed": false,
-				"definition_hash": "04bb186a63543d697f77aa42eb0d831e3e6e0d1a3754247531dad45769753ac4",
+				"definition_hash": "f13e2ae6c6b7682869afdf4d214e53de92ada23e094242d297a53a5f42b3f1db",
 				"duration_ticks": 315.0,
-				"final_state_hash": "a0d93dcc26d896b7535b7e087601b2fdc6dca2f9e060e2cc5bd9f383368fe428",
+				"final_state_hash": "e862e3cf8eaf1dd8225d4579e9a091e179fb7642ae9ca3044967dd5c70dc7479",
 				"handoff_hash": "32998c3f0d675305c1267446298fbf3340968b04666df078da3fe27192d3470a",
 				"handoff_tick": 0.0,
 				"level_id": "the-falls",
@@ -131,13 +131,13 @@
 					"objective_complete": false,
 					"source_ready": true
 				},
-				"packed": "AQZQAAACANr6A2QAAhkAJgBkAgA/6hlk7YeepYpYkynU5OO6nInChoeHi1e+nh/fp//XYqa2fGKEZFPLVo7FGW6VX85tBHj3Ni/lHyxvmfXAN1oPlYISK7fnVP4eYPOLf1qMwX/MD4F48HA1IelyEBI327YGTljjf6rf8LZQu3igvgPgLait6gC/WFQPQ1eFOU2Kfpw=",
+				"packed": "AQZQAAACANr6A2QAAhkAJgBkAgA/iax5lNfdG0jbhKis8H+lhOOSV2zdOE7D4evllw1A1hB2dzwsJ66bIvm6ijpzi/lNxJUM5r2jZND5YZJthSmnhMHujwKGubva3/ysp2a1YaWDnn8UbaDisUoC2VdNXJGcyoIeh+wnosfJp36VgzVWkVA9TS3FbGV205XKsq1vAp8=",
 				"player_slot": "p1",
-				"recording_hash": "de5a49234d18becd1130384b6720bdcb75fa5b4a22eddcbd6059f8389e4389ed",
+				"recording_hash": "bc8f0e63fc0ef6ccd433a9798efc65eb09debcd8967dcff7bb1fb355be56ee00",
 				"role": "b",
 				"schema_version": 7.0,
 				"simulation_version": 20.0,
-				"source_recording_hash": "5997037e981d40f6b8a37ac550438bb3811eb8e4544cf2f79f3aa5f49cf320e0",
+				"source_recording_hash": "3188bcbb91b798615204bff8fdef821e9563eb9998221c0506ff9eeb366c6ff9",
 				"stage_id": "foot-of-the-falls",
 				"stage_version": 1.0,
 				"start_hash": "5e42003c4c566bc26ec9e7dc1976888d23f3a8a05f4aaaac31f54b9e33781f73",
@@ -145,12 +145,12 @@
 			},
 			{
 				"catch_assistance": true,
-				"checkpoint_hash": "8fe770706c59b4770772868756a1509e129a83024b4b2c2115d3681b78d1a369",
+				"checkpoint_hash": "3201d2d8c90fe9319dcef497a363133eb62188f5475f9d63697d4046ea664940",
 				"completed": false,
-				"definition_hash": "04bb186a63543d697f77aa42eb0d831e3e6e0d1a3754247531dad45769753ac4",
-				"duration_ticks": 756.0,
-				"final_state_hash": "9863c95fef5d2b5a3e8bdc7e65a2ce5df03e78eb1aa6f0a3376b4de6cf757f53",
-				"handoff_hash": "ec95c2687714270e9178e74ab97bfe07b9a95573cfcd8434b1ba3a5dd8d997cf",
+				"definition_hash": "f13e2ae6c6b7682869afdf4d214e53de92ada23e094242d297a53a5f42b3f1db",
+				"duration_ticks": 796.0,
+				"final_state_hash": "46a492fb71845228305c9c0e336eca51ba6081e2b62f062cf23034a7962b2dc6",
+				"handoff_hash": "b929733f8a4bbb3c1ec7f242a88fb546a6a71f2bc649d286385c2a496211b872",
 				"handoff_tick": 113.0,
 				"level_id": "the-falls",
 				"level_version": 1.0,
@@ -158,13 +158,13 @@
 					"objective_complete": false,
 					"source_ready": true
 				},
-				"packed": "AQrAAQAAhARkAAI/ACoAZAIAMtgEAABSnAACwQBIAJwCALU2cQVrichs+lK5X5uD2F/85cwY5XhhYwAQXrHndz9tka83hNr8UCeYuwLAAkEJNJ1Olx7V00PBiAoWLp6MJoqWCmd0qWIdJsAd1v4PwF1cIdBghzP/P+fa4HyULLgNKzoK82wjeXqMTbw4uKyUy47FAWs64yhzdm2GrfTQBv4wDWRaDcbPMq6PPKFntSh9ZQBRZCWRcVUvg0FTl8chB723WSpbUVO9venl2kJdoB4KjSZc6s+hlDRbYOIMTZhol1l1naaj5j+hUCShV41g6Cfr0eVkPCpejXT2kZX4aHWjmrNVoX2a9GFgOzASBhFo8qweLhwGguODhIGfdNBMliAa72335+cU/qUSbWe6a+W8NlAnphAzO1kVCqwDix2PdSQDngNy8QQm4Ts7Gf2KwBjtaWhzKeYgNfWWND65VTAbkQ==",
+				"packed": "ARPAAQAADABkAgBL9gNkAAI/ABwAZAIAS9gEAABonAACwQAiAJwCAM4WZAACAAADAAAWnAAmAJwCAOcWZADZwJ4im/eie8eN7Ekt0zSlb/umwIsW4Rx3RqcqT/QnRlnjAPFd5ayCcsQrGIXfCv1OPGl3Z402p/yXmmYUW/vPADpwJ+FN1rmKhyIBcXG4o7xdVPXP73ivpaL3lRejVU2m0SxtSxTf11AbGZ5IlgagiDT2YYH3Zw5GwMY6/Q3dyYVaTgrUPVXGh5+JrOOkStWVWsXkIUKajRXcP1ZuhFXomswhPjTisCMrXUDOF4QiIoVAJNk5FUFZRX9CFVuZNtHNbbMyH8mGhIUbnbwW21nETX3d5DHXuGF7c3pdI7tp49WWd4NU2XLZfm2EtgX8GD9tYtNVye97H5XFgEBo6wRsY6D5voiNvHb/zguppMLIX8J9dH+M1A1yZXlQ9UG3nLfGkloAsTv2Ezbd6OJ7llPNwKe8BmULukByR+Du4CxhAwZSkKxjy1eq",
 				"player_slot": "p0",
-				"recording_hash": "9d4b5594c7e71fe81085f0bd0bad25d0e6feae6e250e13ac36d887f0dca13aa9",
+				"recording_hash": "3da21adf2546c3bd3f2df4f693fd9790d39a7a4de3be280b4497e894f7248eef",
 				"role": "b",
 				"schema_version": 7.0,
 				"simulation_version": 20.0,
-				"source_recording_hash": "de5a49234d18becd1130384b6720bdcb75fa5b4a22eddcbd6059f8389e4389ed",
+				"source_recording_hash": "bc8f0e63fc0ef6ccd433a9798efc65eb09debcd8967dcff7bb1fb355be56ee00",
 				"stage_id": "foot-of-the-falls",
 				"stage_version": 1.0,
 				"start_hash": "32998c3f0d675305c1267446298fbf3340968b04666df078da3fe27192d3470a",
@@ -172,11 +172,11 @@
 			},
 			{
 				"catch_assistance": true,
-				"checkpoint_hash": "8fe770706c59b4770772868756a1509e129a83024b4b2c2115d3681b78d1a369",
+				"checkpoint_hash": "3201d2d8c90fe9319dcef497a363133eb62188f5475f9d63697d4046ea664940",
 				"completed": true,
-				"definition_hash": "04bb186a63543d697f77aa42eb0d831e3e6e0d1a3754247531dad45769753ac4",
-				"duration_ticks": 548.0,
-				"final_state_hash": "926437f38356c3bab1b0485139ebb8821f8e4978b8a108123bd2ee56319b6799",
+				"definition_hash": "f13e2ae6c6b7682869afdf4d214e53de92ada23e094242d297a53a5f42b3f1db",
+				"duration_ticks": 588.0,
+				"final_state_hash": "f54f2b2108268c30728674c2748344728acbd828d79227865af016ee51c9b9b2",
 				"handoff_hash": "",
 				"handoff_tick": 202.0,
 				"level_id": "the-falls",
@@ -185,16 +185,16 @@
 					"objective_complete": true,
 					"source_ready": true
 				},
-				"packed": "ARN4AADQAZwAAgAAAwAAbGQAAj8AUACcAgDnAgAAAwAABmQAAlgAPgCcAgDOWpwAAs4AQgCcAgDn0AIAAH6XeTd2V0E8Jl9xyqJfEDGAho1B97BPz2xKw1N5R6xlpWr1SC8fVF1Qp2Erf8r4wbof3DE/3qLq4+IJNvdRA+I0hqWP6XIIfAqzIqXJ5Bb4l94kTq1k8JvFwrv5qmUaKxtj76lQH0h7vuJQd+32d01FxWPFkh1yNDvHfCrHI5I2e6m88Tvx3II2f2KgOg+fVoItBS+65VBcKv0eO7dPCgPeUphs4AzLkTCUl8LCkzF/0NUm7jVo4lbEcxTmytQp1E9NzrrdUSGo3BHm3W1kvflV4IbmDU/08w==",
+				"packed": "ARN4AADQAZwAAgAAAwAAbGQAAj8AUACcAgDnAgAAAwAABmQAAlgAPgCcAgDOQgCcAgDnWpwAAs4AoAMAAGk+j5EG0YagaAoJESyqWUHAS76FKIQElRjP6ypB/wIHjZL4MnNum1rSs5r5HtfHa8ILTFz45ex5Q4ebMypenOh7zuktlTbFkrF2G4IhY+KIZxlwxwrU07BDkCYcRu75iSBLophSenS8kkZDf1iWGHq43VabDaX6a9+CIP+KJZ/B79GAC+2685fl9jNoUvlLrtb/BhG2iPB3kkOYxteQQXRBAulUjnCOKfAikEZljxXgiO7p0OXvNE/Gzo6c2TnIEGPapt7t+r3qzGoDPHvg5CV6CoIMaIHF7oWFoKcx6uYw",
 				"player_slot": "p1",
-				"recording_hash": "488c68036d6acf50de8ee6ffd58e981b2239ffc4e835353f66cc824f4563521e",
+				"recording_hash": "53d72b266dbaf33c2b80586b18be79fc4ef485a5a8124807ba3ad8534e4acf5b",
 				"role": "b",
 				"schema_version": 7.0,
 				"simulation_version": 20.0,
-				"source_recording_hash": "9d4b5594c7e71fe81085f0bd0bad25d0e6feae6e250e13ac36d887f0dca13aa9",
+				"source_recording_hash": "3da21adf2546c3bd3f2df4f693fd9790d39a7a4de3be280b4497e894f7248eef",
 				"stage_id": "foot-of-the-falls",
 				"stage_version": 1.0,
-				"start_hash": "ec95c2687714270e9178e74ab97bfe07b9a95573cfcd8434b1ba3a5dd8d997cf",
+				"start_hash": "b929733f8a4bbb3c1ec7f242a88fb546a6a71f2bc649d286385c2a496211b872",
 				"tick_rate": 30.0
 			}
 		]
@@ -202,9 +202,9 @@
 	"schema_version": 9,
 	"stage_index": 1,
 	"turn_hashes": [
-		"5997037e981d40f6b8a37ac550438bb3811eb8e4544cf2f79f3aa5f49cf320e0",
-		"de5a49234d18becd1130384b6720bdcb75fa5b4a22eddcbd6059f8389e4389ed",
-		"9d4b5594c7e71fe81085f0bd0bad25d0e6feae6e250e13ac36d887f0dca13aa9",
-		"488c68036d6acf50de8ee6ffd58e981b2239ffc4e835353f66cc824f4563521e"
+		"3188bcbb91b798615204bff8fdef821e9563eb9998221c0506ff9eeb366c6ff9",
+		"bc8f0e63fc0ef6ccd433a9798efc65eb09debcd8967dcff7bb1fb355be56ee00",
+		"3da21adf2546c3bd3f2df4f693fd9790d39a7a4de3be280b4497e894f7248eef",
+		"53d72b266dbaf33c2b80586b18be79fc4ef485a5a8124807ba3ad8534e4acf5b"
 	]
 }
