@@ -1012,6 +1012,13 @@ func _after_interact() -> void:
 func _check_hazards() -> void:
 	pass
 
+## A pip knocked off its floor (`record`: the drowned record): into the water
+## in a chapter with water under its floors (WATER_CHAPTERS), else a fall into
+## the sky ("fell" and "sky"). The one rule for every knock-off.
+func knocked_off(record: Dictionary) -> Dictionary:
+	if str(level.get("id", "")) not in WATER_CHAPTERS: record.merge({"fell": true, "sky": true})
+	return record
+
 ## Open turns, once a tick's routes are final: each pip whose floor went from
 ## under it this tick keeps its footing (the rule by WATER_CHAPTERS above).
 ## Only a crossing that stood at the tick's start and is shut now (`was`: the
@@ -1042,8 +1049,7 @@ func _keep_footing(was: Dictionary) -> void:
 ## Open turns: `slot`'s pip lost its floor `surface` and falls into the sky,
 ## or drowns in a water chapter; the turn ends there.
 func _lose_footing(slot: String, surface: String) -> void:
-	_drowned = {"slot": slot, "route": surface, "tick": tick}
-	if str(level.get("id", "")) not in WATER_CHAPTERS: _drowned.merge({"fell": true, "sky": true})
+	_drowned = knocked_off({"slot": slot, "route": surface, "tick": tick})
 	finished = true
 	_events.append(("fell:" if _drowned.has("fell") else "drowned:") + slot)
 
@@ -1055,6 +1061,7 @@ func _lose_footing(slot: String, surface: String) -> void:
 ## pip has done anything, since until then the two worlds are one.
 func _floor_went(previous: Dictionary, x: int, z: int, slot: String, cells: Dictionary) -> Dictionary:
 	if role != "b" or slot != memory_slot or _plays_friend_world or not _live_moved or tick >= replay_ticks() or not _open_turns(): return {}
+	if not _floor_may_differ(x, z): return {}
 	if not Navigation.at(level, _routes, _mechanisms.levers, previous, x, z, slot, PLAYER_RADIUS, true, cells).is_empty(): return {}
 	var floor := _friend_floor()
 	if floor.is_empty(): return {}
@@ -1065,6 +1072,20 @@ func _floor_went(previous: Dictionary, x: int, z: int, slot: String, cells: Dict
 		if bool(floor.routes.get(route.id, false)) and not bool(_routes.get(route.id, false)) and Navigation._circle_rect(Vector2i(x, z), PLAYER_RADIUS, route.rect_cm):
 			return {"at": there, "route": str(route.id)}
 	return {"at": there, "route": str(there.surface_id)}
+
+## Whether a floor at (x, z) can differ between this world and the friend's own
+## (_friend_floor): a floor test reads only which crossings are open and, for a
+## drop, its lever, so only a crossing shut here whose footprint the walker's
+## circle (and its edge samples) reaches, or a drop under the point that a
+## lever works, can. Anywhere else the friend's world has no floor where this
+## one has none, so its own world is never built for a wall or an edge.
+func _floor_may_differ(x: int, z: int) -> bool:
+	var point := Vector2i(x, z)
+	for route: Dictionary in level.get("bridges", []) + level.get("stairs", []):
+		if not bool(_routes.get(route.id, false)) and Navigation._circle_rect(point, PLAYER_RADIUS + 2, route.rect_cm): return true
+	for drop: Dictionary in level.get("drops", []):
+		if not str(drop.get("requires_lever", "")).is_empty() and Navigation.inside(point, drop.rect_cm): return true
+	return false
 
 ## The floor the friend's replay walked on at this tick in the friend's own
 ## world: this turn played from its start with the live pip standing still,

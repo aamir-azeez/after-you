@@ -753,10 +753,18 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	closing_warning.show(state.get("route_progress", {}).get("closing", {}))
 	_present_drowned(state)
 
-## Who drowned or fell, from the snapshot (kit/drowning.gd). The water world
+## Who drowned or fell, from the snapshot (kit/drowning.gd), shoved over the
+## edge first when something knocked it off (_knock_shove). The water world
 ## shows it once its water stands.
 func _present_drowned(state: Dictionary) -> void:
-	drowning.show(state.get("drowned", {}))
+	var drowned: Dictionary = state.get("drowned", {})
+	drowning.show(drowned, _knock_shove(drowned))
+
+## Where the pip the snapshot's drowned record `knocked` names is shoved to
+## before it falls (terrain space), null when nothing knocked it off: a world
+## whose pieces knock pips off says (journey_world's swings).
+func _knock_shove(_knocked: Dictionary) -> Variant:
+	return null
 
 func _should_cutaway(raised: Node3D, state: Dictionary) -> bool:
 	return _uses_lower_cutaway() and _below_raised(raised,state.players[_active_player])

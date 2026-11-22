@@ -14,8 +14,8 @@ extends RefCounted
 ##     bell once the other is over the ropes (under the bell itself the step and
 ##     the bell would draw into each other, tests/test_level_checker.gd). An old crane at the cliff edge swings its bucket across the
 ##     garden plank on a steady beat (core/physical/swings.gd): a pip on the
-##     plank as it swings is knocked into the stream. The brake board on the
-##     cliff path above parks it the next time it swings back, while someone
+##     plank where it passes is knocked off into the sky. The brake board on the
+##     cliff path above parks it the next time it swings up, while someone
 ##     stands there; else the one in the garden dodges on the beat.
 ##   2 back-for-you: the winch has lost its handle, which lies at the bottom of
 ##     the well. One hops in and holds the rope (the rope-walks come down),
@@ -38,8 +38,11 @@ const CLIFF := 160
 const LOOKOUT := [1160, -96]
 const LADDER_STEP := [1060, -96]
 const REUNION := [1616, 16]
-## The garden plank over the stream, which the crane's bucket sweeps.
+## The garden plank over the stream, and the stretch of it the crane's bucket
+## sweeps: the bucket's own width either side of the crane's line, and a
+## pip's half width more.
 const PLANK := [150, 188, 250, 252]
+const BUCKET_LANE := [167, 188, 233, 252]
 
 static func definition() -> Dictionary:
 	return PiecesRules.pin(StageBlocks.expand(source()), CAPS)
@@ -89,7 +92,7 @@ static func _go_on_ahead() -> Dictionary:
 		{"block": "hold_door", "pad": _step("ladder-step", LADDER_STEP, "cliff", CLIFF, 32), "routes": ["well-ladder", "rope-walk-west", "rope-walk-east"]},
 		{"block": "open_route", "routes": ["garden-plank"]},
 		# The crane stands in the gap below the cliff edge, its bucket over the plank.
-		{"block": "swinging_bucket", "id": "well-crane", "pivot": [200, 40], "lane": {"surface": "garden-plank", "rect": PLANK},
+		{"block": "swinging_bucket", "id": "well-crane", "pivot": [200, 40], "lane": {"surface": "garden-plank", "rect": BUCKET_LANE},
 			"brake": _step("brake-board", [200, -72], "cliff", CLIFF, 32)},
 		{"block": "ring_bell", "id": "lookout-bell", "at": LOOKOUT, "surface": "cliff", "owner": "p1", "height": CLIFF, "radius": 28}]
 	return stage

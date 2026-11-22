@@ -41,6 +41,7 @@ const GoalPiece = preload("res://presentation/kit/pieces/goal.gd")
 const BridgeKit = preload("res://presentation/kit/pieces/bridge.gd")
 ## Each family's floors, crossings and spots (services/level_layout.gd).
 const LevelLayout = preload("res://services/level_layout.gd")
+const ThrowMark = preload("res://presentation/kit/throw_mark.gd")
 ## A piece's move players should notice: the view's shake and the phone's buzz.
 const BigChange = preload("res://presentation/kit/big_change.gd")
 ## Gates, stair chains, zone ropes and locks: why a pip is refused.
@@ -1870,7 +1871,15 @@ func _layout_pads() -> Array:
 func _build_pads(pads: Array) -> void:
 	for pad: Dictionary in pads:
 		pad_pieces[str(pad.id)] = _build_pad(pad, _floor_point(pad.position_cm, str(pad.get("surface_id", ""))))
+	# A pad a pip throws from carries the throw icon (kit/throw_mark.gd).
+	for spot: Dictionary in _throw_pads():
+		if pad_pieces.has(spot.pad): ThrowMark.on_pad(pad_pieces[spot.pad], spot.to, str(spot.pad))
 	await _build_step()
+
+## The pads a pip throws from in this family, each with where its throw lands:
+## [{pad (its id), to (terrain space, m)}]. None by default.
+func _throw_pads() -> Array:
+	return []
 
 ## A pad in its style (piece_styles.gd "pad", kit/pieces/pad.gd) in its pip's colour.
 func _build_pad(pad: Dictionary, at: Vector3) -> Variant:
