@@ -769,8 +769,8 @@
 						}
 					},
 					"position_cm": [
-						-150,
-						440
+						-120,
+						420
 					],
 					"radius_cm": 28,
 					"surface_id": "south",
@@ -1082,7 +1082,7 @@
 						"enabled": true,
 						"id": "tower-lamp",
 						"position_cm": [
-							820,
+							790,
 							-60
 						]
 					},
@@ -1276,7 +1276,7 @@
 						"enabled": true,
 						"id": "tower-lamp",
 						"position_cm": [
-							820,
+							790,
 							-60
 						]
 					},

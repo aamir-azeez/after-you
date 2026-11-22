@@ -367,11 +367,11 @@
 		},
 		"sleeping-lighthouse@3": {
 			"definition_fixture": "journey/sleeping-lighthouse-v3-definition.json",
-			"definition_hash": "41330abbae66a6bd915bda965d93b3d513cfe8b1844f87566fe045eccead041c",
+			"definition_hash": "60330e79eae89400b0b2dd96ee36775330c79a389e605ae05cc7c9afde7bc08e",
 			"family": "journey",
 			"flag": "SLEEPING_LIGHTHOUSE_V3_CHAPTER_ENABLED",
 			"hard": false,
-			"initial_checkpoint_hash": "7bde546ba5935f2ce71eb893e6b3cc6f05ec84f16183eb67263b8fae356c04f2",
+			"initial_checkpoint_hash": "35b0e9f581868f19c55412ccf7ef22993ef8494ded2ff0288e7deb955a51e110",
 			"initial_fixture": "journey/sleeping-lighthouse-v3-initial-checkpoint.json",
 			"key": "sleeping-lighthouse@3",
 			"level_id": "sleeping-lighthouse",

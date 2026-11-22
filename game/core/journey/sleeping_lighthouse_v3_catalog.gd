@@ -26,10 +26,11 @@ extends RefCounted
 ##     light pad, or once the south mirror sends the lens's light to the south
 ##     promise. Both promises lit light the goal.
 ##   4 after-the-first-bell: the path lamp on the south isle shines while
-##     someone holds its pad; the path selector steers it to the first path
-##     (to Rest Rock) or the second (to the tower), or puts it out. On Rest
-##     Rock and the tower, mirrors turned keep each path lit for the one who
-##     held the lamp.
+##     someone holds its pad; the path selector a few steps off it steers it
+##     to the first path (to Rest Rock) or the second (to the tower), or puts
+##     it out, so the one holding the lamp steps off to turn it. On Rest Rock
+##     and the tower, mirrors turned keep each path lit for the one who held
+##     the lamp.
 ##   5 what-carried-you: the lens in its cradle lights the way to Rest Rock;
 ##     taken up, that way goes dark, so it is thrown from the court's edge to
 ##     Rest Rock's perch, where it lights the way again. The tower bridge
@@ -126,7 +127,7 @@ static func _after_the_first_bell() -> Dictionary:
 		{"block": "light", "bounds": BOUNDS,
 			"lamps": [_lamp("path-lamp", [-200, 350], "east", {"pad_id": "path-pad"}), _lamp("rest-lamp", [320, -80], "west"), _lamp("beacon-lamp", [800, -120], "west")],
 			"fixed_mirrors": [{"id": "path-mirror", "at": [56, 350], "orientation": "backslash"}],
-			"selectors": [{"id": "path-selector", "at": [-150, 440], "surface": "south", "owner": "p0", "values": ["off", "first", "second"], "initial": "off",
+			"selectors": [{"id": "path-selector", "at": [-120, 420], "surface": "south", "owner": "p0", "values": ["off", "first", "second"], "initial": "off",
 				"optics": {"off": {"path-lamp": {"enabled": false}}, "first": {"path-mirror": {"orientation": "slash"}}, "second": {"path-mirror": {"orientation": "backslash"}}}}],
 			"mirrors": [_mirror("rest-mirror", [260, -80], "rest-rock", "backslash"), _mirror("tower-mirror", [520, -120], "tower", "backslash")],
 			"receivers": [_receiver("first-path", [56, 270]), _receiver("second-path", [56, 460]), _receiver("rest-eye", [260, 70]), _receiver("tower-path", [520, -70])],
@@ -144,7 +145,7 @@ static func _what_carried_you() -> Dictionary:
 		_pad("tower-pad", [800, 150], "tower"),
 		{"block": "light", "bounds": BOUNDS,
 			"lamps": [_lamp("cradle-lamp", [-94, 60], "east", _in("court-cradle")), _lamp("perch-lamp", [320, -60], "west", _in("rest-perch")),
-				_lamp("tower-lamp", [820, -60], "west", {"pad_id": "tower-pad"}), _lamp("projector-lamp", [610, 30], "west", _in("tower-projector"))],
+				_lamp("tower-lamp", [790, -60], "west", {"pad_id": "tower-pad"}), _lamp("projector-lamp", [610, 30], "west", _in("tower-projector"))],
 			"receivers": [_receiver("cradle-eye", [130, 60]), _receiver("perch-eye", [130, -60]), _receiver("tower-eye", [480, -60]), _receiver("projector-eye", [480, 30])],
 			"routes": {"court-rest": ["cradle-eye", "perch-eye"], "rest-tower": ["tower-eye", "projector-eye"]}},
 		{"block": "open_route", "routes": ["harbour-court", "court-north", "court-south"]},
@@ -157,7 +158,7 @@ static func _a_welcome_left_on() -> Dictionary:
 	stage.blocks = [
 		_pad("tower-pad", [800, 150], "tower"),
 		{"block": "light", "bounds": BOUNDS,
-			"lamps": [_lamp("tower-lamp", [820, -60], "west", {"pad_id": "tower-pad"}), _lamp("projector-west", [610, 30], "west", _in("tower-projector")),
+			"lamps": [_lamp("tower-lamp", [790, -60], "west", {"pad_id": "tower-pad"}), _lamp("projector-west", [610, 30], "west", _in("tower-projector")),
 				_lamp("projector-north", [650, -40], "north", _in("tower-projector"))],
 			"mirrors": [_mirror("welcome-mirror", [290, 30], "rest-rock", "backslash"), _mirror("beacon-mirror", [650, -130], "tower", "backslash")],
 			"receivers": [_receiver("tower-eye", [480, -60]), _receiver("welcome-below", [290, 90]), _receiver("beacon", [800, -130])],
