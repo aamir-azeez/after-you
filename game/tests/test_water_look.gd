@@ -1,9 +1,10 @@
 extends SceneTree
 ## How the water looks (presentation/kit/water_look.gd), on Turn of the Tide
 ## and on a bare host with every add-on switched off:
-## - every body and walled stub's flood draws with the water shader; a body
-##   that shows its floor has a seabed sheet in the dressing's style, laid only
-##   under its own water, and the open sea (its "floor": false) has none;
+## - every body and walled stub's flood draws with the water shader; still
+##   water that shows its floor has a seabed sheet in the dressing's style,
+##   laid only under its own water; water whose level moves (the harbour, the
+##   chamber) reads deep and has none, nor has the open sea ("floor": false);
 ## - how deep it reads follows the shown level, and the foam's edge map
 ##   follows it: the stepping stones stand in the water at low and are under
 ##   it at high, and open water reads open;
@@ -66,7 +67,6 @@ func _tide(level: Dictionary) -> void:
 	world.present_history(checkpoint)
 	var waters: WaterBodies = world.waters
 	var look: WaterLook = waters.look
-	var seabed := waters.seabed()
 	for id: String in waters.bodies:
 		var sheet := (waters.bodies[id] as Node3D).get_node("Water") as MeshInstance3D
 		var material := sheet.material_override as ShaderMaterial
@@ -74,28 +74,16 @@ func _tide(level: Dictionary) -> void:
 	for flood: Dictionary in waters.floods.values():
 		var fill := (flood.node as Node3D).get_child(0) as MeshInstance3D
 		_check((fill.material_override as ShaderMaterial).shader == SHADER and (fill.material_override as ShaderMaterial).get_shader_parameter(&"edges") == WaterLook.open_texture(), "A walled stub's flood draws as water with no foam edges")
-	# Seabeds: under the harbour and the chamber, in the dressing's style; none under the open sea.
-	var style := str(world.dressing.get("seabed", ""))
-	_check(style == "sand", "Turn of the Tide's dressing picks the sandy seabed")
+	# The harbour and the chamber rise and fall with their wheels, so they read
+	# deep at every level and draw no seabed (Looks.MOVING_DEPTH): nothing
+	# standing in them shows its foot as the tide moves.
 	for id: String in ["harbour", "chamber"]:
-		var bed: MeshInstance3D = look.bodies[id].bed
-		_check(bed != null and bed.material_override == WaterLook.bed_material(style) and is_equal_approx(bed.position.y, seabed + WaterLook.BED_LIFT), "%s shows its seabed just above the seabed" % id)
-		if bed == null: continue
-		# Over the body's own rectangles, less the basins standing in it.
-		var body := waters.body_data(id)
-		var outside := 0
-		var verts: PackedVector3Array = bed.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
-		for index in range(0, verts.size(), 3):
-			var middle := (verts[index] + verts[index + 1] + verts[index + 2]) / 3.0 * 100.0
-			var mine := WaterBodies.covered(middle.x, middle.z, body.rects)
-			if not bool(body.get("basin", false)) and WaterBodies.covered(middle.x, middle.z, waters.basin_rects()): mine = false
-			if not mine: outside += 1
-		_check(outside == 0, "%s's seabed lies under its own water and no basin's (%d)" % [id, outside])
-		_check(bed.mesh.surface_get_arrays(0)[Mesh.ARRAY_TEX_UV] == null, "%s's seabed carries no UVs: the shader draws it from the plan, no tile repeating" % id)
+		var lowest: float = waters.levels_of(id).values().min()
+		_check(look.bodies[id].bed == null and _param(waters, id, &"floor_on") == 0.0 and is_equal_approx(waters.deep_floor(id), lowest - Looks.MOVING_DEPTH), "%s moves with the tide, so it reads deep and shows no seabed" % id)
 	_check(look.bodies.sea.bed == null and _param(waters, "sea", &"floor_on") == 0.0, "The open sea switches its floor off: no seabed, its tint only")
 	# Depth and edges follow the level.
 	var harbour := "harbour"
-	_check(is_equal_approx(_param(waters, harbour, &"depth_m"), waters.rest_level(harbour) - seabed), "The harbour reads as deep as its level stands over the seabed")
+	_check(is_equal_approx(_param(waters, harbour, &"depth_m"), waters.rest_level(harbour) - waters.deep_floor(harbour)), "The harbour reads as deep as its level stands over its deep floor")
 	var low_map: Variant = _param(waters, harbour, &"edges")
 	var stone := _stone(world)
 	var stones := Vector2(stone.x, stone.y)
@@ -107,7 +95,7 @@ func _tide(level: Dictionary) -> void:
 	var open := _open_spot(maps.high)
 	_check(open.is_finite() and WaterLook._solid_at(maps.high, open) < 0.05, "Open water reads open in the edge map")
 	waters.set_level(harbour, float(waters.levels_of(harbour).high), true)
-	_check(is_equal_approx(_param(waters, harbour, &"depth_m"), float(waters.levels_of(harbour).high) - seabed) and _param(waters, harbour, &"edges") != low_map, "At high the harbour reads deeper and its foam follows the high edges")
+	_check(is_equal_approx(_param(waters, harbour, &"depth_m"), float(waters.levels_of(harbour).high) - waters.deep_floor(harbour)) and _param(waters, harbour, &"edges") != low_map, "At high the harbour reads deeper and its foam follows the high edges")
 	waters.set_level(harbour, float(waters.levels_of(harbour).low), true)
 	# Rings: the moored boats ride the water.
 	look.present()
@@ -160,10 +148,9 @@ func _tide(level: Dictionary) -> void:
 	world.apply_graphics_quality("low")
 	look.present()
 	_check(look.ring_spots().size() <= 4 and _param(waters, harbour, &"detail") == 0.0, "Low draws one ripple layer and at most four ring spots")
-	_check((look.bodies[harbour].bed.material_override as ShaderMaterial).get_shader_parameter(&"detail") == 0.0, "Low draws the seabed's bigger pebbles only")
 	world.apply_graphics_quality("balanced")
 	look.present()
-	_check(_param(waters, harbour, &"detail") == 1.0 and (look.bodies[harbour].bed.material_override as ShaderMaterial).get_shader_parameter(&"detail") == 1.0, "Balanced draws both ripple layers and every pebble again")
+	_check(_param(waters, harbour, &"detail") == 1.0, "Balanced draws both ripple layers again")
 	# The clock moves only with the world, never under Reduce motion.
 	var before := look.clock
 	waters.advance(0.5)
@@ -257,6 +244,21 @@ func _bare() -> void:
 	waters.start({}, block)
 	await waters.build_bodies()
 	_check(waters.look.bodies.pond.bed != null and waters.look.bodies.pond.bed.material_override == WaterLook.bed_material(Looks.DEFAULT_SEABED), "With no seabed pick, a floor shows the default sand")
+	# Still water shows its seabed just above its floor, over its own water only,
+	# drawn from the plan with no tile repeating.
+	var bed: MeshInstance3D = waters.look.bodies.pond.bed
+	if bed != null:
+		var verts: PackedVector3Array = bed.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+		var outside := 0
+		for index in range(0, verts.size(), 3):
+			var middle := (verts[index] + verts[index + 1] + verts[index + 2]) / 3.0 * 100.0
+			if not WaterBodies.covered(middle.x, middle.z, block.bodies[0].rects): outside += 1
+		_check(is_equal_approx(bed.position.y, float(block.seabed) + WaterLook.BED_LIFT) and outside == 0 and bed.mesh.surface_get_arrays(0)[Mesh.ARRAY_TEX_UV] == null, "Still water's seabed lies just above its floor, under its own water, with no UVs (%d outside)" % outside)
+	# Water whose level moves reads deep and draws none.
+	block.bodies[0].levels = {"still": 0.0, "up": 0.3}
+	waters.start({}, block)
+	await waters.build_bodies()
+	_check(waters.look.bodies.pond.bed == null and is_equal_approx(waters.deep_floor("pond"), -Looks.MOVING_DEPTH), "Water whose level moves draws no seabed and reads deep")
 	host.queue_free()
 	await process_frame
 

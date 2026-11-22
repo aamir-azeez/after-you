@@ -147,6 +147,11 @@ func bed(id: String) -> float:
 		if str(body.id) == id: return float(body.get("bed", seabed()))
 	return seabed()
 
+## The floor water body `id` reads as standing on (WaterLook.floor_of): deep
+## under water whose level moves.
+func deep_floor(id: String) -> float:
+	return WaterLook.floor_of(body_data(id), seabed()) if not body_data(id).is_empty() else seabed()
+
 ## The floor under plan point `at` (cm): the bed of the first body whose
 ## rects hold it, else the seabed.
 func bed_at(at: Vector2) -> float:

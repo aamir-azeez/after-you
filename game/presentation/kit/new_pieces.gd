@@ -93,8 +93,8 @@ func lay_deck(definition: Dictionary, deck: Node3D, width: float, depth: float, 
 		# Beside the deck at the deck's own height, so whatever lifts the deck lifts it.
 		_curtains[str(definition.id)] = FallsCurtain.build(_rect(_world.drawn_rect(definition)), deck.position.y, deck.get_parent() as Node3D)
 	elif style == "rope":
-		# The posts stand for good; shut, the slats lie wound in at the gap's
-		# near end (lighthouse_world _rolls_deck, kit/pieces/bridge_roll.gd).
+		# The posts stand for good; shut, the deck hangs slack between them
+		# (lighthouse_world _pulls_deck, kit/pieces/taut_bridge.gd).
 		Deck.rope_ends(deck.get_parent() as Node3D, deck.position, width, depth, across_x, low, high)
 
 ## A one way stair's ladder, in place of the world's treads.

@@ -160,14 +160,30 @@ func dress(id: String, body: Dictionary, sheet: MeshInstance3D, holes: Array) ->
 	material.set_shader_parameter(&"deep_alpha", Looks.DEEP_ALPHA)
 	var shows := {}
 	for key: String in _switches: shows[key] = bool(body.get(key, _switches[key]))
+	# Water whose level moves reads deep and draws no floor (Looks.MOVING_DEPTH).
+	if moves(body): shows.floor = false
 	material.set_shader_parameter(FLOOR_ON, 1.0 if shows.floor else 0.0)
 	material.set_shader_parameter(SPARKLES, 1.0 if shows.sparkles else 0.0)
 	sheet.material_override = material
-	# The body's own floor (its "bed", WaterBodies.bed), else the block's seabed.
-	var floor_y := float(body.get("bed", _seabed))
+	# The body's own floor (its "bed", WaterBodies.bed), else the block's
+	# seabed; deep under water whose level moves.
+	var floor_y := floor_of(body, _seabed)
 	var entry := {"materials": [material], "levels": body.get("levels", {}), "level": 0.0, "maps": {}, "footings": {}, "shown": "", "floor": shows.floor, "rings": shows.rings, "sparkles": shows.sparkles, "bed": null, "floor_y": floor_y}
 	bodies[id] = entry
 	if shows.floor: entry.bed = _bed(body.get("rects", []), holes, floor_y)
+
+## Whether `body`'s level moves: it has more than one level to stand at.
+static func moves(body: Dictionary) -> bool:
+	return (body.get("levels", {}) as Dictionary).size() > 1
+
+## The floor (m) `body` reads as standing on: its "bed", else `seabed`, and
+## for water whose level moves at least Looks.MOVING_DEPTH under its lowest
+## level. Anything standing in it reaches down at least this far.
+static func floor_of(body: Dictionary, seabed: float) -> float:
+	var floor_y := float(body.get("bed", seabed))
+	if not moves(body): return floor_y
+	var lowest: float = (body.levels as Dictionary).values().min()
+	return minf(floor_y, lowest - Looks.MOVING_DEPTH)
 
 ## The material a walled stub's flood draws with: its body's, with no edges
 ## (it fills a walled pit) and its own place in the plan.

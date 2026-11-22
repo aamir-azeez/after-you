@@ -17,7 +17,8 @@ const Goal = preload("res://presentation/kit/pieces/goal.gd")
 const Lift = preload("res://presentation/kit/pieces/lift.gd")
 const Pulley = preload("res://presentation/kit/pieces/pulley.gd")
 const BridgeKit = preload("res://presentation/kit/pieces/bridge.gd")
-const BridgeRoll = preload("res://presentation/kit/pieces/bridge_roll.gd")
+const TautBridge = preload("res://presentation/kit/pieces/taut_bridge.gd")
+const ClosingWarning = preload("res://presentation/kit/closing_warning.gd")
 const Raft = preload("res://presentation/kit/pieces/raft.gd")
 const Swing = preload("res://presentation/kit/pieces/swing.gd")
 const CarriedItem = preload("res://presentation/kit/pieces/carried_item.gd")
@@ -53,7 +54,8 @@ func _run() -> void:
 	_check_goal_pads(holder)
 	_check_arrivals(holder)
 	_check_swings(holder)
-	_check_roll(holder)
+	_check_taut(holder)
+	_check_closing_fade(holder)
 	holder.free()
 	print("PIECE STYLES: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -327,49 +329,95 @@ func _check_arrivals(holder: Node3D) -> void:
 		pad.set_held(true, true)
 		_check(not pad.moving(), "A %s pad held at once never dips" % style)
 
-## A held crossing's deck rolls (kit/pieces/bridge_roll.gd), either way along
-## either axis: shut, the deck is hidden and the roll lies at the near end,
-## its axle across the crossing and its loose end facing the far bank; opening,
-## the deck grows from the near end and the roll runs across over SECONDS; open,
-## the deck is whole and the roll gone; shutting winds it back; an immediate
-## call or reduce motion snaps.
-func _check_roll(holder: Node3D) -> void:
+## A held crossing's deck is pulled taut (kit/pieces/taut_bridge.gd), along
+## either axis: shut, it hangs slack, its middle plank its slack() under the
+## banks and level, the planks toward the ends higher and tilted to the curve,
+## and its long rail drawn as bent lengths along it; opening, the sag eases out
+## over SECONDS, bows up a little past level and settles, after which every
+## part stands exactly as laid and the rail is whole again; shutting sags it
+## back; a part laid later is found; an immediate call or reduce motion snaps.
+func _check_taut(holder: Node3D) -> void:
 	for across_x: bool in [true, false]:
-		for near_high: bool in [false, true]:
-			var deck := Node3D.new()
-			deck.position = Vector3(2.0, 0.0, -1.0)
-			holder.add_child(deck)
-			Parts.box(Vector3(2.0, 0.1, 1.0) if across_x else Vector3(1.0, 0.1, 2.0), Parts.TIMBER, Vector3.ZERO, deck)
-			var piece: RefCounted = BridgeRoll.build(deck, holder, deck.position, 0.9, across_x, -1.0, 1.0, near_high, {"slat": Parts.TIMBER, "slat_dark": Parts.TIMBER_DARK, "rope": Parts.CREAM, "log": Parts.TIMBER_DARK})
-			var run := Vector3.RIGHT if across_x else Vector3.BACK
-			var near := -1.0 if not near_high else 1.0
-			var where := "%s, rolled at its %s end" % ["along x" if across_x else "along z", "high" if near_high else "low"]
-			piece.set_open(false, true)
-			var roll: Node3D = piece.roll
-			var along := (roll.global_position - Vector3(2.0, 0.0, -1.0)).dot(run)
-			var axle := roll.global_basis.x.normalized()
-			var loose := roll.global_basis.z.normalized()
-			_check(not deck.visible and roll.visible and absf(axle.dot(run)) < 0.01 and loose.dot(run) * near < -0.99 and along * near > 0.6, "Shut %s: the deck is gone and the roll lies at the near end, across the crossing, its loose end facing the far bank" % where)
-			piece.set_open(true)
-			var frames := 0
-			var halfway := false
-			while piece.moving() and frames < 600:
-				piece.advance(1.0 / 60.0)
-				frames += 1
-				if frames == int(BridgeRoll.SECONDS * 30.0):
-					var laid: float = deck.scale.x if across_x else deck.scale.z
-					var near_edge := (deck.position - Vector3(2.0, 0.0, -1.0)).dot(run) + near * laid
-					halfway = deck.visible and roll.visible and laid > 0.2 and laid < 0.8 and absf(near_edge - near) < 0.001
-			_check(halfway and absf(frames - BridgeRoll.SECONDS * 60.0) <= 2.0, "Opening %s: the deck grows from the near end while the roll runs across, over %.1f s (%d frames)" % [where, BridgeRoll.SECONDS, frames])
-			_check(deck.visible and not roll.visible and deck.scale == Vector3.ONE and deck.position == Vector3(2.0, 0.0, -1.0), "Open %s: the deck is whole where it was built and the roll gone" % where)
-			piece.set_open(false)
-			piece.advance(BridgeRoll.SECONDS * 0.5)
-			_check(deck.visible and roll.visible and piece.moving(), "Shutting %s: the deck rolls back up" % where)
-			piece.reduced_motion = true
-			piece.set_open(true)
-			_check(not piece.moving() and deck.visible and not roll.visible, "With reduce motion %s, the deck is laid at once" % where)
-			piece.root.free()
-			deck.free()
+		var deck := Node3D.new()
+		deck.position = Vector3(2.0, 0.0, -1.0)
+		holder.add_child(deck)
+		var planks: Array[MeshInstance3D] = []
+		for index in range(8):
+			var along := -0.875 + 0.25 * float(index)
+			planks.append(Parts.box(Vector3(0.24, 0.1, 1.0) if across_x else Vector3(1.0, 0.1, 0.24), Parts.TIMBER, Vector3(along, -0.05, 0.0) if across_x else Vector3(0.0, -0.05, along), deck))
+		var rail := Parts.box(Vector3(2.0, 0.03, 0.03) if across_x else Vector3(0.03, 0.03, 2.0), Parts.CREAM, Vector3(0.0, 0.5, 0.45) if across_x else Vector3(0.45, 0.5, 0.0), deck)
+		var rests: Array = planks.map(func(plank: MeshInstance3D) -> Transform3D: return plank.transform)
+		var piece: RefCounted = TautBridge.build(deck, across_x, -1.0, 1.0)
+		var where := "along x" if across_x else "along z"
+		var middle: MeshInstance3D = planks[4]
+		var end: MeshInstance3D = planks[0]
+		var lengths: Array = (piece.root as Node3D).get_children()
+		var lowest := func() -> float: return lengths.map(func(length: Node3D) -> float: return length.position.y).min()
+		piece.set_open(false, true)
+		var tilt: float = absf(end.basis.get_euler().z if across_x else end.basis.get_euler().x)
+		_check(deck.visible and absf(middle.position.y - (-0.05 - piece.slack() * 0.984375)) < 0.01 and end.position.y > middle.position.y + 0.2 and tilt > 0.2 and absf(middle.basis.get_euler().length()) < 0.3, "Shut %s: the deck hangs slack, its middle under the banks (%.2f m) and its end planks higher and tilted to the curve" % [where, middle.position.y])
+		_check(not rail.visible and lengths.size() == TautBridge.BENDS and lengths.all(func(length: Node3D) -> bool: return length.visible) and lowest.call() < 0.5 - piece.slack() * 0.8, "Shut %s: its rail bends along the curve in short lengths" % where)
+		piece.set_open(true)
+		var frames := 0
+		var halfway := false
+		var bowed := false
+		while piece.moving() and frames < 600:
+			piece.advance(1.0 / 60.0)
+			frames += 1
+			if frames == int(TautBridge.SECONDS * 30.0): halfway = middle.position.y < -0.1 and middle.position.y > -0.05 - piece.slack() + 0.05
+			if middle.position.y > -0.05 + 0.005: bowed = true
+		var laid := range(8).all(func(index: int) -> bool: return planks[index].transform == rests[index])
+		_check(halfway and bowed and absf(frames - (TautBridge.SECONDS + Motion.ARRIVAL_SECONDS) * 60.0) <= 2.0, "Opening %s: the sag eases out over %.1f s and the deck bows past level and settles (%d frames)" % [where, TautBridge.SECONDS, frames])
+		_check(laid and rail.visible and lengths.all(func(length: Node3D) -> bool: return not length.visible), "Open %s: every part stands exactly as laid and the rail is whole" % where)
+		piece.set_open(false)
+		piece.advance(TautBridge.SECONDS * 0.5)
+		_check(piece.moving() and middle.position.y < -0.1 and not rail.visible, "Shutting %s: the deck sags back down" % where)
+		piece.set_open(true, true)
+		var rope := Parts.box(Vector3(2.0, 0.02, 0.02) if across_x else Vector3(0.02, 0.02, 2.0), Parts.CREAM, Vector3(0.0, 0.5, -0.45) if across_x else Vector3(-0.45, 0.5, 0.0), deck)
+		piece.set_open(false, true)
+		_check(not rope.visible and (piece.root as Node3D).get_child_count() > lengths.size(), "A rope laid on the deck %s later bends with it too" % where)
+		piece.reduced_motion = true
+		piece.set_open(true)
+		_check(not piece.moving() and range(8).all(func(index: int) -> bool: return planks[index].transform == rests[index]), "With reduce motion %s, the deck is pulled taut at once" % where)
+		deck.free()
+
+## A closing crossing (kit/closing_warning.gd) fades whole, every mesh the
+## world's closing_parts() names: solid as its warning starts and as it shuts,
+## out to FADED and back every BLINK * 2 ticks, a steady STEADY under Reduce
+## motion, and every mesh back to its own transparency once it is held again.
+func _check_closing_fade(holder: Node3D) -> void:
+	var host := GDScript.new()
+	host.source_code = "extends Node3D
+var reduced_motion := false
+var parts: Array = []
+func closing_parts(_id: String) -> Array:
+	return parts
+"
+	host.reload()
+	var world := Node3D.new()
+	world.set_script(host)
+	holder.add_child(world)
+	var deck := Node3D.new()
+	world.add_child(deck)
+	var plank := Parts.box(Vector3.ONE * 0.2, Parts.TIMBER, Vector3.ZERO, deck)
+	var rope := Parts.box(Vector3.ONE * 0.1, Parts.CREAM, Vector3.UP, deck)
+	rope.transparency = 0.3
+	world.set("parts", [deck])
+	var warning: RefCounted = ClosingWarning.new(world)
+	var seen: Array = []
+	for ticks: int in [25, 24, 23, 22, 21, 20, 15, 10, 5, 1, 0]:
+		warning.show({"bar": ticks})
+		seen.append(plank.transparency)
+	_check(seen[0] == 0.0 and seen[1] > 0.0 and is_equal_approx(seen[6], ClosingWarning.FADED) and is_zero_approx(seen[7]) and is_equal_approx(seen[8], ClosingWarning.FADED) and is_zero_approx(seen[10]), "A closing crossing fades from solid, out to %.1f and back each blink, and is solid as it shuts (%s)" % [ClosingWarning.FADED, seen])
+	_check(rope.transparency >= 0.3, "A mesh already see-through never comes back more solid while its crossing warns")
+	warning.show({})
+	_check(plank.transparency == 0.0 and is_equal_approx(rope.transparency, 0.3), "Held again, every mesh goes back to its own transparency")
+	world.set("reduced_motion", true)
+	warning.show({"bar": 15})
+	var steady := plank.transparency
+	warning.show({"bar": 10})
+	_check(steady == ClosingWarning.STEADY and plank.transparency == ClosingWarning.STEADY, "Under Reduce motion a closing crossing holds a steady half fade")
+	world.free()
 
 ## Every goal stands two pads, one per pip in its colour, wholly inside the
 ## goal. One pip at the goal presses only its own pad and nothing rings; with

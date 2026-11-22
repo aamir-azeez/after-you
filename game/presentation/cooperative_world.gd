@@ -14,7 +14,6 @@ const SelectorPiece = preload("res://presentation/kit/pieces/selector.gd")
 const PulleyPiece = preload("res://presentation/kit/pieces/pulley.gd")
 ## The new pieces' looks (rules 20): decks, platforms, ladders and fog.
 const NewPieces = preload("res://presentation/kit/new_pieces.gd")
-const Deck = preload("res://presentation/kit/pieces/deck.gd")
 const Drowning = preload("res://presentation/kit/drowning.gd")
 const ClosingWarning = preload("res://presentation/kit/closing_warning.gd")
 ## The opening glance at the goal (glance_at_goal): this long easing there and
@@ -63,7 +62,7 @@ const DECK_EDGE := 0.2
 ## A drowning or a fall, shown from the snapshot (kit/drowning.gd): the one
 ## every chapter world shows.
 var drowning := Drowning.new(self)
-## A closing crossing's flashing rim (kit/closing_warning.gd): the one every
+## A closing crossing's blinking fade (kit/closing_warning.gd): the one every
 ## chapter world shows.
 var closing_warning := ClosingWarning.new(self)
 
@@ -273,7 +272,6 @@ func _static_keep() -> Array:
 	for piece: RefCounted in _pulleys.values(): keep.append_array(piece.moving_parts())
 	if new_pieces != null: keep.append_array(new_pieces.moving_nodes())
 	keep.append_array(drowning.moving_nodes())
-	keep.append_array(closing_warning.moving_nodes())
 	return keep
 
 func _configure_shared_view(view: Dictionary) -> void:
@@ -458,30 +456,14 @@ func _stepping_stones() -> Array:
 	return current_level.get("bridges", []).map(func(route: Dictionary) -> String: return str(route.id)).filter(func(id: String) -> bool: return new_pieces.deck_style(id) == "stones")
 
 ## Every plank or rope crossing a gate on the shown stage opens and shuts
-## rolls its deck up while shut (kit/pieces/bridge_roll.gd): a pad, plate,
-## crank or lever holds or works it. Stones, the path behind the falls and a
-## platform's stops show their own cause; a crossing with no gate here stays
-## as it is all stage.
-func _rolls_deck(definition: Dictionary) -> bool:
+## hangs slack while shut and is pulled taut as it opens
+## (kit/pieces/taut_bridge.gd): a pad, plate, crank or lever holds or works
+## it. Stones, the path behind the falls and a platform's stops show their own
+## cause; a crossing with no gate here stays as it is all stage.
+func _pulls_deck(definition: Dictionary) -> bool:
 	var style: String = new_pieces.deck_style(str(definition.id)) if new_pieces != null else "plank"
 	if style not in ["plank", "rope"]: return false
 	return current_level.get("gates", []).any(func(gate: Dictionary) -> bool: return str(gate.get("route_id", "")) == str(definition.id))
-
-## A rope deck's roll keeps the rope bridge's slats and ropes (kit/pieces/deck.gd).
-func _roll_look(definition: Dictionary) -> Dictionary:
-	if new_pieces == null or new_pieces.deck_style(str(definition.id)) != "rope": return super._roll_look(definition)
-	return {"colors": Deck.roll_colors(), "share": Deck.SLAT_SHARE}
-
-## The pads, levers and controls a gate of the shown stage opens crossing
-## `definition` with.
-func _roll_controls(definition: Dictionary) -> Array:
-	var found: Array = []
-	for gate: Dictionary in current_level.get("gates", []):
-		if str(gate.get("route_id", "")) != str(definition.id): continue
-		var named := PairTags.references(gate)
-		for mechanism: Dictionary in current_level.get("pressure_pads", []) + current_level.get("ball_pads", []) + current_level.get("levers", []) + current_level.get("controls", []):
-			if str(mechanism.get("id", "")) in named and mechanism.get("position_cm") is Array: found.append(mechanism)
-	return found
 
 ## A new piece lays its own deck (kit/new_pieces.gd); every other crossing
 ## keeps the Lighthouse planks.
@@ -748,6 +730,13 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	if immediate: _snap_follow()
 	closing_warning.show(state.get("route_progress", {}).get("closing", {}))
 	_present_drowned(state)
+
+## What of crossing `id` goes when it shuts, for the closing warning to fade
+## (kit/closing_warning.gd): its deck, with everything laid on it (planks,
+## stones, rails and ropes). Posts and banks that stay are not in it.
+func closing_parts(id: String) -> Array:
+	var deck: Variant = _decks.get(id)
+	return [deck] if deck is Node3D and is_instance_valid(deck) else []
 
 ## Who drowned or fell, from the snapshot (kit/drowning.gd). The water world
 ## shows it once its water stands.

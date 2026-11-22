@@ -91,12 +91,13 @@ extends SceneTree
 ##     them on every open turns chapter.
 ## (y) water worlds and losses: presentation/cooperative_world.gd alone holds
 ##     presentation/kit/drowning.gd (the one drown and fall, a fall away into the
-##     sky included) and presentation/kit/closing_warning.gd (the one flashing rim
-##     of a closing crossing); presentation/water_world.gd alone floats boats by the
-##     float rule (kit/floats.gd keel, the dressing's "moored_boats" and every
-##     "boat" prop over water) and sinks stepping stones under the water. No other
+##     sky included) and presentation/kit/closing_warning.gd (the one blinking
+##     fade of a closing crossing, over what the host's closing_parts() names);
+##     presentation/water_world.gd alone floats boats by the float rule
+##     (kit/floats.gd keel, the dressing's "moored_boats" and every "boat"
+##     prop over water) and sinks stepping stones under the water. No other
 ##     world reads the snapshot's "drowned" (the water world's stones aside),
-##     builds a drowning or a closing warning, flashes a closing crossing of its
+##     builds a drowning or a closing warning, fades a closing crossing of its
 ##     own, floats a boat or reads "moored_boats".
 ##     Nothing changes size with the water but the water: no function a water
 ##     body's ride() calls sets a scale or a mesh, and in the water world, its
@@ -480,12 +481,12 @@ const CONTACT_SHADOW_LAYER := "res://presentation/island_world.gd"
 const PIECE_KIT_BASE := "res://presentation/kit/pieces/piece.gd"
 const NO_CONTACT_SHADOW := {
 	"res://presentation/kit/pieces/bridge.gd": "a crossing is ground itself",
-	"res://presentation/kit/pieces/bridge_roll.gd": "a crossing's rolled deck is ground itself, hung at the gap's lip",
 	"res://presentation/kit/pieces/current.gd": "chevrons and ripples drawn on the water",
 	"res://presentation/kit/pieces/lift.gd": "its deck is a floor that rides up and down",
 	"res://presentation/kit/pieces/pad.gd": "a board lies flat on the floor and sinks into it, and a goal's two pads stand on the goal's own disc, which casts its shadow",
 	"res://presentation/kit/pieces/raft.gd": "rides the water (the water's rings show it)",
 	"res://presentation/kit/pieces/rope_ladder.gd": "a stair is ground itself",
+	"res://presentation/kit/pieces/taut_bridge.gd": "a crossing's deck is ground itself, slack or taut",
 }
 
 ## Scripts that name the wallet read only to add request headers, never reading its reply:
@@ -1220,12 +1221,13 @@ func _water_worlds() -> void:
 				_check(_found("\\b(?:" + str(kit[1]) + ("|" + alias if not alias.is_empty() else "") + ")\\.new\\(", source) == 0, "%s builds a %s of its own: cooperative_world holds the one (%s)" % [path, kit[1], kit[0]])
 		if not path.begins_with("res://presentation/") or not path.ends_with("_world.gd") or path == LOSS_HOST: continue
 		worlds += 1
-		_check(_found("CLOSING_COLOR|\"warned\"|ClosingWarning_", source) == 0, "%s flashes a closing crossing of its own: kit/closing_warning.gd flashes every one" % path)
+		_check(_found("CLOSING_COLOR|\"warned\"|\\bfunc closing_parts\\(", source) == 0, "%s fades a closing crossing of its own: kit/closing_warning.gd fades every one, over cooperative_world's closing_parts()" % path)
 		if path == WATER_WORLD: continue
 		_check(_found("\"drowned\"|DrownRing|DROWN_", source) == 0, "%s shows a drowning of its own: kit/drowning.gd shows every one, through cooperative_world" % path)
 		_check(_found("\\bFloats\\.keel\\(|\"moored_boats\"", source) == 0, "%s floats boats of its own: presentation/water_world.gd floats every boat by the float rule" % path)
 	var host: String = _sources.get(LOSS_HOST, "")
 	_check(worlds > 10 and _found("Drowning\\.new\\(", host) == 1 and _found("ClosingWarning\\.new\\(", host) == 1 and _found("\"drowned\"", host) > 0 and _found("\"closing\"", host) > 0, "cooperative_world holds the one drowning and closing warning, and every chapter world is scanned (%d)" % worlds)
+	_check(_found("(?m)^func closing_parts\\(", host) == 1 and _found("_world\\.closing_parts\\(", str(_sources.get(CLOSING_WARNING, ""))) == 1, "The closing warning fades what cooperative_world's one closing_parts() names")
 	_water_sizes()
 
 ## (y) Nothing but the water changes size with it.

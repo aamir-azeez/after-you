@@ -27,6 +27,12 @@ const CLEAR_TO := 1.30
 ## How see-through the water is at its clearest, and at its deepest at least.
 const CLEAR_ALPHA := 0.24
 const DEEP_ALPHA := 0.90
+## Water whose level moves (a tide, a lock's pool) reads deep at every level:
+## its floor lies at least this far (m) under its lowest level and is not
+## drawn, so neither the floor nor the foot of anything standing in it (a
+## stepping log, a pile, a sunk deck) shows as the water rises and falls: the
+## water only covers more or less of what stands in it.
+const MOVING_DEPTH := CLEAR_TO
 
 ## Rings spread from a float (a boat, a raft) within this many metres of open
 ## water and this close to its level.
