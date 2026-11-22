@@ -35,7 +35,12 @@ extends SceneTree
 ##    or stands tall over its open height while its water has fallen away
 ##    (journey stage_catalog.gd left_high), a pip on it riding up; a drowning
 ##    on it shows the shared drown and a fall off it the shared fall
-##    (kit/drowning.gd).
+##    (kit/drowning.gd);
+##  - a piece that stretches with the water: with every body at its lowest,
+##    middle and highest level, every mesh but the water's own (WATER_SIZES)
+##    keeps its scale and its mesh's size, so whatever must reach the water or
+##    stand over it is built once at a size that holds for every level and only
+##    moves or shows (water: fixed-size pieces, never stretched).
 ## KNOWN lists what fails on purpose, by the start of its message, with why;
 ## an entry that stops failing fails the suite. The definitions-only half is
 ## tests/test_level_checker.gd.
@@ -58,6 +63,16 @@ const PIP_HALF := WalkReach.PIP_HALF_CM
 ## of the drawn pip's half-width, within this much (m) of the floor's height
 ## there (a stair's steps stand round its slope).
 const COVER_WAYS := 12
+## What may change size with the water, by node name (or name start): only
+## the water and its effects. Everything else is built once and only moves.
+const WATER_SIZES := {
+	"Water": "a body's surface (kit/water_bodies.gd), stretched from its bed to its level",
+	"FloodedStub_": "a walled stub's flood (kit/water_bodies.gd), filled to its water's level",
+	"SpillSheet": "the water falling over a spillway (kit/water_locks.gd), as long as the drop",
+	"FallsSpray": "the mist where a pour lands (kit/water_locks.gd), spread by the drop",
+	"DrownRing": "the ring a drowning spreads on the water (kit/drowning.gd)",
+	"DrownBubble": "the bubbles a drowning raises (kit/drowning.gd)",
+}
 const COVER_SHORT := 3.0
 const COVER_SLACK := 0.08
 ## Drawn ground this near (cm) carries the pip too: the seam between two boards.
@@ -176,6 +191,8 @@ var _cover_short := 0
 ## Boats and stepping stones checked on the water worlds.
 var _boats_seen := 0
 var _stones_seen := 0
+## Meshes on the water worlds held to one size across the water's levels.
+var _sized_seen := 0
 ## The rowboat model's floorboards (its "inside" slot), read once.
 var _rowboat_floor := NAN
 
@@ -198,6 +215,8 @@ func _run() -> void:
 		_check(_meets(Rect2(0, 0, 60, 30), Rect2(50, 10, 60, 30)) and not _meets(Rect2(0, 0, 60, 30), Rect2(61, 0, 60, 30)), "Bubbles that share a corner overlap; bubbles side by side do not")
 		_check(_refusals_seen > 50 and _unshown > 50, "Every refusal is checked for a shown cause (%d), and a world with no barriers leaves many unexplained, so the check can fail (%d)" % [_refusals_seen, _unshown])
 	_check(_boats_seen >= least.boats and _stones_seen >= least.stones, "Every water world's boats float by the float rule (%d boats on stages) and its stepping stones go under, never away (%d)" % [_boats_seen, _stones_seen])
+	_check(_sized_seen >= int(least.get("sized", 0)), "Every water world's pieces keep one size at every water level (%d meshes)" % _sized_seen)
+	print("LEVEL VIEW: %d meshes held to one size across the water's levels" % _sized_seen)
 	_check(_cover_spots > least.cover, "The ground check stands pips at the edges of every world's floors (%d spots, %d over an edge)" % [_cover_spots, _cover_short])
 	_check(_wall_spots >= least.wall_spots and _walls_by_floors >= least.walls, "The wall checks stand pips by the water worlds' walls (%d spots) and read the walls beside floors (%d)" % [_wall_spots, _walls_by_floors])
 	for prefix: String in KNOWN:
@@ -270,6 +289,7 @@ func _chapter(viewport: SubViewport, key: String) -> void:
 		_floats(world, where)
 		_current_marks(world, where, view)
 		_stones(world, where, base)
+		_fixed_sizes(world, where, base)
 		for spot: Dictionary in shots.spots():
 			if not _inside(world, spot.entity): _off_view += 1
 			if spot.kind == "selector" and "_journey_switches" in world and world._journey_switches.has(spot.id):
@@ -665,6 +685,46 @@ func _tall_stone(world: Node3D, where: String, id: String, down: Dictionary, lev
 	_check(world.actor_targets.p0.y < level and world.drowning.ring.visible and _stone_extent(deck).is_equal_approx(size), "%s: then it lands in the water in front of the stone %s, a ring spreading, the stone the same size" % [where, id])
 	world.present(down, true)
 	_check(world.drowning.slot.is_empty() and is_zero_approx(world.actors.p0.rotation.z), "%s: without the fall the pip stands upright again" % where)
+
+## No piece changes size with the water: every body at its lowest, middle and
+## highest level in turn (the locks and riders following), every mesh but the
+## water's own (WATER_SIZES) keeps its scale in the world and its mesh's size.
+func _fixed_sizes(world: Node3D, where: String, base: Dictionary) -> void:
+	var kit: Variant = world.get("waters")
+	if kit == null or kit.water.is_empty(): return
+	var first: Dictionary = {}
+	var reported := 0
+	for step: float in [0.0, 0.5, 1.0]:
+		for id: String in kit.bodies:
+			var levels: Array = kit.levels_of(id).values()
+			kit.set_level(id, lerpf(float(levels.min()), float(levels.max()), step), true)
+		if is_instance_valid(kit.locks): kit.locks.present(kit.lock_levels("target"), true)
+		world._advance_water(0.0)
+		for node: Node in world.find_children("*", "MeshInstance3D", true, false):
+			if _water_sized(node, world): continue
+			var mesh := node as MeshInstance3D
+			var size := [(world.global_transform.affine_inverse() * mesh.global_transform).basis.get_scale(), mesh.get_aabb().size]
+			var key := mesh.get_instance_id()
+			if not first.has(key):
+				if step == 0.0: first[key] = size
+				continue
+			if step == 0.0: continue
+			_sized_seen += 1
+			var ok: bool = (size[0] as Vector3).is_equal_approx(first[key][0]) and (size[1] as Vector3).is_equal_approx(first[key][1])
+			if not ok and reported < 5:
+				reported += 1
+				_check(false, "%s: %s changes size with the water (scale %s to %s, mesh %s to %s): build it once tall enough for every level, and only move or show it" % [where, world.get_path_to(mesh), first[key][0], size[0], first[key][1], size[1]])
+	world.present(base, true)
+
+## Whether `node` is the water's own, or under it (WATER_SIZES).
+static func _water_sized(node: Node, world: Node) -> bool:
+	while node != null and node != world:
+		# A sibling of the same name is told apart by a number on its end.
+		var own := str(node.name).rstrip("0123456789")
+		for name: String in WATER_SIZES:
+			if own == name or (name.ends_with("_") and own.begins_with(name)): return true
+		node = node.get_parent()
+	return false
 
 ## A deck's drawn size: the bounds of its meshes in its own frame.
 static func _stone_extent(deck: Node3D) -> Vector3:

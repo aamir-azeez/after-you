@@ -94,6 +94,12 @@ extends SceneTree
 ##     (kit/floats.gd keel, the dressing's "moored_boats" and every "boat" prop over
 ##     water) and sinks stepping stones under the water; no other world reads the
 ##     snapshot's "drowned", builds a drowning, floats a boat or reads "moored_boats".
+##     Nothing changes size with the water but the water: no function a water
+##     body's ride() calls sets a scale or a mesh, and in the water world, its
+##     worlds and the water kits every scale or mesh set from a level, a lift, a
+##     fall or the shown water is the water's own (WATER_SCALES). A piece that
+##     must reach the water is built once tall enough for every level and only
+##     moves; test_level_view measures the sizes on every water stage.
 ## (z) contact shadows: presentation/kit/contact_shadows.gd alone draws the soft
 ##     shadow where things meet the ground (its shader is preloaded nowhere
 ##     else; the pip's shadow takes its look from it), island_world alone makes
@@ -1155,6 +1161,17 @@ func _contact_shadows() -> void:
 
 const WATER_WORLD := "res://presentation/water_world.gd"
 const DROWNING := "res://presentation/kit/drowning.gd"
+## (y) The only sizes set from the water: the water itself, by script and line.
+const WATER_SCALES := {
+	"res://presentation/kit/water_bodies.gd": {
+		"root.scale.y = maxf(level - bed(id), 0.02)": "a body's water, from its bed to its level",
+		"(flood.node as Node3D).scale.y = maxf(level - bed(str(flood.water)), 0.02)": "a walled stub's flood, from its bed to its level",
+	},
+	"res://presentation/kit/water_locks.gd": {
+		"sheet.mesh = _pour_mesh(_length(run) - 0.04, fall, turn)": "a spillway's pour, as long as its drop",
+		"sheet.scale = Vector3(1, maxf(fall, 0.01), 1)": "a spillway's falling sheet, as long as its drop",
+	},
+}
 
 ## (y) One drowning, one float rule and one way stones go under, in the water world.
 func _water_worlds() -> void:
@@ -1169,6 +1186,36 @@ func _water_worlds() -> void:
 		_check(_found("\"drowned\"|DrownRing|DROWN_", source) == 0, "%s shows a drowning of its own: presentation/water_world.gd shows every one through kit/drowning.gd" % path)
 		_check(_found("\\bFloats\\.keel\\(|\"moored_boats\"", source) == 0, "%s floats boats of its own: presentation/water_world.gd floats every boat by the float rule" % path)
 	_check(worlds > 10 and _found("Drowning\\.new\\(", _sources.get(WATER_WORLD, "")) == 1 and _found("\"drowned\"", _sources.get(WATER_WORLD, "")) > 0, "The water world holds the one drowning and every chapter world is scanned (%d)" % worlds)
+	_water_sizes()
+
+## (y) Nothing but the water changes size with it.
+func _water_sizes() -> void:
+	_check(_sized_lines("\tpost.scale.y = (0.50 + lift) / 0.50\n\tpost.position.y = lift").size() == 1 and _sized_lines("\tpunt.scale = Vector3(length / 1.92, 1.0, 1.0)").is_empty(), "The water size scan finds a scale set from the water, and only that")
+	var scanned := 0
+	for path: String in _sources:
+		var source: String = _sources[path]
+		if not path.begins_with("res://presentation/"): continue
+		# A function a body's ride() calls follows the water: it only moves.
+		for found: RegExMatch in RegEx.create_from_string("\\.ride\\([^,\\n]+,\\s*(\\w+)(?:\\.bind\\(|\\s*[,)])").search_all(source):
+			var body := RegEx.create_from_string("(?ms)^func " + found.get_string(1) + "\\(.*?(?=^func |\\z)").search(source)
+			if body == null: continue
+			_check(_found("\\bscale(?:\\.[xyz])?\\s*=(?!=)|\\.mesh\\s*=(?!=)", body.get_string()) == 0, "%s %s follows the water and sets a size: build the piece once tall enough for every level and only move it (water: fixed-size pieces, never stretched)" % [path, found.get_string(1)])
+		if not (path == WATER_WORLD or path.begins_with("res://presentation/kit/water_") or source.contains("extends \"" + WATER_WORLD + "\"")): continue
+		scanned += 1
+		var allowed: Dictionary = WATER_SCALES.get(path, {})
+		for line: String in _sized_lines(source):
+			_check(allowed.has(line), "%s sets a size from the water: %s (only the water and its effects may, WATER_SCALES; build the piece once tall enough for every level and only move it)" % [path, line])
+	_check(scanned >= 6, "The water size scan reads the water world, its worlds and the water kits (%d)" % scanned)
+	for path: String in WATER_SCALES:
+		for line: String in WATER_SCALES[path]: _check(line in _sized_lines(_sources.get(path, "")), "WATER_SCALES names a line %s no longer has: %s" % [path, line])
+
+## The lines of `source` that set a scale or a mesh from the water: its level,
+## the shown water, a lift or a fall.
+static func _sized_lines(source: String) -> Array[String]:
+	var lines: Array[String] = []
+	for found: RegExMatch in RegEx.create_from_string("(?m)^[^\\n]*(?:\\bscale(?:\\.[xyz])?|\\.mesh)\\s*=(?!=)[^\\n]*\\b(?:level|lift|fall|shown|tide)\\b[^\\n]*$").search_all(source):
+		lines.append(found.get_string().strip_edges())
+	return lines
 
 func _suites() -> void:
 	var shards := {}

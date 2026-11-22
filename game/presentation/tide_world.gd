@@ -95,9 +95,8 @@ var _ramps: Dictionary = {}
 var _ramp_on: Dictionary = {}
 ## Each control, lever and pad of the chapter by id -> its owner slot.
 var _owners: Dictionary = {}
-## Kept-crossing masts, raised with the water that covers their crossing.
+## How far a kept crossing's pennant stands over the highest water over it.
 const MAST_CLEARANCE := 0.25
-var _kept_masts: Array[Dictionary] = []
 ## View-plane boxes of bubbles already placed this frame by _clear_scenery: the
 ## first _scenery_placed_count entries; and the scenery marks it clears, the
 ## first _scenery_mark_count entries, with the control each belongs to. The
@@ -148,7 +147,6 @@ func _forget_stage() -> void:
 	_ramps.clear()
 	_ramp_on.clear()
 	_owners = _mechanism_owners()
-	_kept_masts.clear()
 	_bubbles_placed = false
 
 func _terrain_name() -> String:
@@ -359,8 +357,9 @@ func _ghost(route: Dictionary) -> void:
 ## A mooring post with a pennant, and a gold edge along both sides of the deck,
 ## show a crossing kept for good. They belong to the deck's remembered-footsteps
 ## marker, so they show only while kept. The post and its knob cast no shadow,
-## so nothing dims the pennant, and the post grows to keep the pennant above
-## water that covers the deck.
+## so nothing dims the pennant. The post is built once, tall enough that the
+## pennant stands MAST_CLEARANCE over the highest water over its crossing, and
+## never changes size (water: fixed-size pieces, never stretched).
 func _kept_pennant(route: Dictionary) -> void:
 	var memories: Node3D = _memory_markers.get(route.id)
 	if memories == null: return
@@ -378,20 +377,20 @@ func _kept_pennant(route: Dictionary) -> void:
 	# Ten and a half centimetres in from the deck's west end, clear of the seam
 	# by it and of a remembered route's marker.
 	var at := Vector3(-width / 2.0 + 0.105, 0, depth / 2.0 - 0.10) + shift
-	var post := box(Vector3(0.06, 0.50, 0.06), CREAM, at + Vector3(0, 0.25, 0), memories)
-	post.name = "KeptPost"
-	post.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	var knob := sphere(0.05, GOLD, at + Vector3(0, 0.52, 0), memories)
-	knob.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	var flag := box(Vector3(0.36, 0.22, 0.015), GOLD, at + Vector3(0.19, 0.38, 0), memories)
-	flag.name = "KeptPennant"
-	_glow(flag, GOLD, 1.0)
-	# The mast rides the water over its crossing (the first body's off the water).
+	# The water over its crossing (the first body's off the water) at its highest.
 	var body := waters.body_of(route.rect_cm)
 	if body.is_empty(): body = waters.first_body()
-	var mast := {"deck": float(route.get("height_cm", 0)) / 100.0, "post": post, "knob": knob, "flag": flag}
-	_kept_masts.append(mast)
-	waters.ride(body, _raise_mast.bind(mast))
+	var highest := -INF
+	for level: float in waters.levels_of(body).values(): highest = maxf(highest, level)
+	var tall := maxf(0.50, highest + MAST_CLEARANCE - float(route.get("height_cm", 0)) / 100.0)
+	var post := box(Vector3(0.06, tall, 0.06), CREAM, at + Vector3(0, tall * 0.5, 0), memories)
+	post.name = "KeptPost"
+	post.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var knob := sphere(0.05, GOLD, at + Vector3(0, tall + 0.02, 0), memories)
+	knob.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var flag := box(Vector3(0.36, 0.22, 0.015), GOLD, at + Vector3(0.19, tall - 0.12, 0), memories)
+	flag.name = "KeptPennant"
+	_glow(flag, GOLD, 1.0)
 	for side in [-1, 1]:
 		var edge := box(Vector3(width - 0.05, 0.02, 0.08) if across_x else Vector3(0.08, 0.02, depth - 0.05), GOLD, shift + (Vector3(0, 0.035, side * (depth / 2.0 - 0.075)) if across_x else Vector3(side * (width / 2.0 - 0.075), 0.035, 0)), memories)
 		edge.name = "KeptEdge"
@@ -704,16 +703,6 @@ func _build_slack_mark(route: Dictionary) -> void:
 		_slack_marks.append(wave)
 
 # --- Water, chamber, sea gates, mouth lamps and spout ---
-
-## Keeps a kept crossing's pennant MAST_CLEARANCE above the water at `level`.
-func _raise_mast(level: float, mast: Dictionary) -> void:
-	if not is_instance_valid(mast.post): return
-	var lift := maxf(0.0, level + MAST_CLEARANCE - (float(mast.deck) + 0.50))
-	var post: MeshInstance3D = mast.post
-	post.scale.y = (0.50 + lift) / 0.50
-	post.position.y = (0.50 + lift) * 0.5
-	(mast.knob as Node3D).position.y = 0.52 + lift
-	(mast.flag as Node3D).position.y = 0.38 + lift
 
 func _advance_water(delta: float) -> void:
 	super._advance_water(delta)
@@ -1080,7 +1069,6 @@ func _folds_static_scenery() -> bool:
 func _static_keep() -> Array:
 	var keep := super._static_keep()
 	for group: Dictionary in [_decks, _memory_markers, _ghosts]: keep.append_array(group.values())
-	for mast: Dictionary in _kept_masts: keep.append_array([mast.post, mast.knob, mast.flag])
 	for wheel: Dictionary in _wheels.values(): keep.append(wheel.wheel)
 	for gauge: Dictionary in _gauges.values(): keep.append_array([gauge.post, gauge.icon] + gauge.bands)
 	for lamp: Dictionary in _lever_lamps.values(): keep.append(lamp.lamp)
