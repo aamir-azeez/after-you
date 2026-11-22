@@ -833,8 +833,7 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	_present_celebration(immediate)
 	if _goal_piece != null and is_instance_valid(_bell):
 		_goal_piece.set_lit(GoalPiece.lit(state), immediate or reduced_motion)
-		_goal_piece.present_pips(state.get("players", {}), immediate or reduced_motion)
-		_goal_piece.needs.present(state)
+		_goal_piece.present(state, immediate or reduced_motion, reduced_motion)
 	_present_beams(state.optics.segments)
 	_face_hands(state, immediate)
 

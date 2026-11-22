@@ -3,8 +3,9 @@ extends "res://presentation/kit/pieces/piece.gd"
 ## prop_styles.gd "pad"; content/dressing/piece_styles.gd picks which).
 ##
 ##   "board": the one pad look (every level and version): a flat timber
-##       board of four planks, its rim the ring the world lights, in the
-##       owner's colour. Held, it sinks a little into the floor.
+##       board of four planks, square or (options "size") any rectangle, its
+##       rim a square-cornered frame just inside its edge that the world
+##       lights, in the owner's colour. Held, it sinks a little into the floor.
 ##   "crank_board": the board with a windlass beside it (a crank board that
 ##       keeps a rope bridge tight): its drum turns over while held.
 ##   "pan": a weight lift's pan (rules 16's weight_lift block): a wide brass
@@ -16,7 +17,7 @@ extends "res://presentation/kit/pieces/piece.gd"
 ## immediate (a seek, a retry, reduced motion). A board's top stays above the
 ## floor at the bottom of its dip, so a pad never vanishes under a pip.
 ##
-## A ball pad (heavy) is a gold board with a cream ring at its centre: no
+## A ball pad (heavy) is a gold board with a round cream ring at its centre: no
 ## spirit stands on it. The world lights the pad's `rim` while it is held
 ## (the snapshot's hold_pads, the simulation's own rule).
 ##
@@ -28,8 +29,15 @@ const DEFAULT_STYLE := "board"
 ## Board: its planks' top over the floor, and how far it sinks while held.
 const BOARD_TOP := 0.06
 const BOARD_SINK := 0.025
-## Board: its rim ring's height on the board.
+## Board: its rim's middle height on the board, the frame's height, and the
+## gap between the frame's outer edge and the board's (m).
 const BOARD_RIM := 0.07
+const RIM_HEIGHT := 0.05
+const RIM_EDGE := 0.005
+## A rim's tube: half its width across (m), a pan's ring's; on a small board
+## at most this share of the board's shorter half side.
+const RIM_TUBE := 0.025
+const RIM_TUBE_SHARE := 0.2
 ## Pan: how far the dish sinks while held (m).
 const PAN_SINK := 0.06
 const PAN_RIM := 0.1
@@ -40,11 +48,13 @@ const DIP := 0.01
 const DISH_Y := 0.075
 const DISH_THICK := 0.035
 
-## The ring the world lights while the pad is held.
+## The outline the world lights while the pad is held.
 var rim: MeshInstance3D
 ## The pad's floor point (parent space) and radius (m): where it counts a pip.
 var at := Vector3.ZERO
 var radius := 0.0
+## A board's half extents (x, z; m); zero for a pan.
+var half_size := Vector2.ZERO
 ## A pan's dish or a board's top, which sinks while held; a crank board's drum.
 var _dish: Node3D
 var _drum: Node3D
@@ -57,14 +67,45 @@ var _rim_rest := 0.0
 ## How far from its centre a pad in `pad_style`, `radius_m` across, is drawn
 ## on its floor (metres): a board's corners, a crank board's windlass frame.
 static func drawn_radius(pad_style: String, radius_m: float) -> float:
-	var half := radius_m * 0.8
+	var half := board_half(radius_m)
 	match pad_style:
 		"board": return half * sqrt(2.0)
 		"crank_board": return maxf(half * sqrt(2.0), Vector2(0.205, half + 0.125).length())
 	return radius_m
 
+## Half the side of a board `radius_m` across (m).
+static func board_half(radius_m: float) -> float:
+	return radius_m * 0.8
+
+## Half the width of the frame round a board of half extents `half` (m).
+static func rim_tube(half: Vector2) -> float:
+	return minf(RIM_TUBE, minf(half.x, half.y) * RIM_TUBE_SHARE)
+
+## The half extents of the clear room inside the frame round a board of half
+## extents `half` (m): the frame runs RIM_EDGE inside the board's edge.
+static func frame_inside(half: Vector2) -> Vector2:
+	return half - Vector2.ONE * (RIM_EDGE + rim_tube(half) * 2.0)
+
+## The clear room inside a pad's outline (m): from its centre to the outline's
+## inner edge, on a square board the middle of the frame's side, on a pan its
+## ring's. The goal beacon's ring breathes inside it (kit/goal_beacon.gd).
+static func rim_inside(pad_style: String, radius_m: float) -> float:
+	if pad_style == "pan": return radius_m - RIM_TUBE
+	return frame_inside(Vector2.ONE * board_half(radius_m)).x
+
+## Whether `point` (parent space, m) stands over a pad at `spot`: within
+## `slack` of a board's rectangle (half extents `half`), or of a pan's
+## `radius_m` when `half` is zero, and within `height` above or below it.
+static func covers(spot: Vector3, radius_m: float, half: Vector2, point: Vector3, slack: float, height: float) -> bool:
+	if absf(point.y - spot.y) > height: return false
+	var offset := Vector2(point.x - spot.x, point.z - spot.z)
+	if half == Vector2.ZERO: return offset.length() <= radius_m + slack
+	return absf(offset.x) <= half.x + slack and absf(offset.y) <= half.y + slack
+
 ## A pad in `style` on the spot `at` (parent space) under `parent`, `radius_m`
 ## across. `options`: "owner" ("p0"/"p1"), "heavy" (a ball pad), "id",
+## "size": a board's size (Vector2, x and z; square, 2 board_half across, by
+## default),
 ## "shadow": false for no contact shadow (a pad on a goal's disc); a board
 ## never casts one.
 static func build(pad_style: String, at: Vector3, radius_m: float, parent: Node3D, options: Dictionary = {}) -> RefCounted:
@@ -123,7 +164,7 @@ func _make(pad_style: String, at_point: Vector3, radius_m: float, parent: Node3D
 	else: _root("Pad_" + pad_style, at_point, parent, false)
 	anchor = root
 	if pad_style == "pan": _make_pan(radius_m, color)
-	else: _make_board(radius_m, color, heavy)
+	else: _make_board(options.get("size", Vector2.ONE * board_half(radius_m) * 2.0), color, heavy)
 	_rim_rest = rim.position.y
 	# The planks (or the dish) draw as one batch under the part that sinks.
 	StaticBatch.fold(_dish, [self])
@@ -138,20 +179,22 @@ func _make_pan(radius_m: float, color: Color) -> void:
 	Parts.disc(radius_m * 0.9, DISH_THICK, Parts.BRASS, Vector3(0, DISH_Y, 0), _dish, radius_m * 0.96)
 	rim = Parts.ring(radius_m, color, Vector3(0, PAN_RIM, 0), _dish)
 
-## A square timber board the pad's size, four thick planks standing on the
-## floor that sink into it as one while held, its rim ring lit while
-## held (a ball pad's with a cream ring at its centre); a crank board adds a
-## windlass on a frame at its north edge.
-func _make_board(radius_m: float, color: Color, heavy: bool) -> void:
-	var side := radius_m * 1.6
+## A timber board `size` across (x, z), four thick planks standing on the
+## floor that sink into it as one while held, its square-cornered rim (one
+## frame mesh, Primitives.frame_mesh) lit while held (a ball pad's with a
+## round cream ring at its centre); a crank board adds a windlass on a frame
+## at its north edge.
+func _make_board(size: Vector2, color: Color, heavy: bool) -> void:
+	half_size = size * 0.5
 	_dish = Node3D.new()
 	root.add_child(_dish)
 	for index in range(4):
-		Parts.box(Vector3(side, BOARD_TOP, side / 4.0 - 0.012), Parts.TIMBER_LIGHT.darkened(0.06 * float(index % 2)), Vector3(0, BOARD_TOP * 0.5, -side * 0.5 + (float(index) + 0.5) * side / 4.0), _dish)
-	rim = Parts.ring(radius_m, color, Vector3(0, BOARD_RIM, 0), _dish)
+		Parts.box(Vector3(size.x, BOARD_TOP, size.y / 4.0 - 0.012), Parts.TIMBER_LIGHT.darkened(0.06 * float(index % 2)), Vector3(0, BOARD_TOP * 0.5, -size.y * 0.5 + (float(index) + 0.5) * size.y / 4.0), _dish)
+	var frame := (half_size - Vector2.ONE * RIM_EDGE) * 2.0
+	rim = Parts.Primitives.mesh_node(Parts.Primitives.frame_mesh(frame, rim_tube(half_size) * 2.0, RIM_HEIGHT), Parts.Primitives.shared_material(color), Vector3(0, BOARD_RIM, 0), _dish)
 	if heavy: Parts.ring(0.16, Parts.CREAM, Vector3(0, BOARD_RIM - 0.005, 0), _dish)
 	if style != "crank_board": return
-	var frame_z := -side * 0.5 - 0.1
+	var frame_z := -size.y * 0.5 - 0.1
 	for x: float in [-0.18, 0.18]: Parts.box(Vector3(0.05, 0.42, 0.05), Parts.TIMBER_DARK, Vector3(x, 0.21, frame_z), root)
 	_drum = Node3D.new()
 	_drum.position = Vector3(0, 0.36, frame_z)

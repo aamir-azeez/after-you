@@ -12,6 +12,9 @@ const GOLD := OwnerMark.GOLD
 const TEAL := OwnerMark.TEAL
 ## A lit goal's and a held pad's glow.
 const LIGHT := Color("ffe4a5")
+## What a goal still waits for while a pip stands on it (kit/pieces/goal.gd
+## present_missing).
+const MISSING := Color("e5484d")
 ## Timber, iron and brass of the machines (winch, bolt, valve) and the harbour.
 const TIMBER := Color("7a5d45")
 const TIMBER_DARK := Color("5f4a38")

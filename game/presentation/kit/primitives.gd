@@ -179,6 +179,22 @@ static func ring_mesh(radius: float) -> TorusMesh:
 	shape.ring_segments = 8
 	return shape
 
+## A flat square-cornered frame `outer` across (x, z), its bars `bar` wide and
+## `height` tall, centred on its middle: one mesh, cached per size (a pad
+## board's rim, kit/pieces/pad.gd).
+static func frame_mesh(outer: Vector2, bar: float, height: float) -> Mesh:
+	var key := "frame|%.4f|%.4f|%.4f|%.4f" % [outer.x, outer.y, bar, height]
+	var cached: Mesh = _meshes.get(key)
+	if cached != null: return cached
+	var tool := SurfaceTool.new()
+	tool.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for side: float in [-1.0, 1.0]:
+		tool.append_from(box_mesh(Vector3(outer.x, height, bar)), 0, Transform3D(Basis(), Vector3(0, 0, side * (outer.y - bar) * 0.5)))
+		tool.append_from(box_mesh(Vector3(bar, height, outer.y - bar * 2.0)), 0, Transform3D(Basis(), Vector3(side * (outer.x - bar) * 0.5, 0, 0)))
+	cached = tool.commit()
+	_meshes[key] = cached
+	return cached
+
 ## Cached meshes for static scenery only; a shared mesh is never resized.
 static func shared_mesh(kind: String, a: float, b: float = 0.0, c: float = 0.0) -> Mesh:
 	var key := "%s|%.4f|%.4f|%.4f" % [kind, a, b, c]

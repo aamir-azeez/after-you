@@ -100,7 +100,7 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	_present_seed(state.seed, immediate)
 	var garden_complete := bool(state.get("complete", false)) and str(state.get("stage_id", "")) == str(current_level.stages[-1].id)
 	for piece: RefCounted in goal_pieces.values(): piece.set_lit(garden_complete, immediate or reduced_motion)
-	_present_goal_pips(state.players, immediate or reduced_motion)
+	_present_goal_pips(state, immediate or reduced_motion)
 	_present_garden(true, garden_complete, immediate)
 	_present_stage_marks(state)
 	_present_follow(state, immediate)
