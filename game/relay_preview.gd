@@ -4,6 +4,9 @@ const SafeArea = preload("res://presentation/safe_area.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 ## The same chapter presentation can use local practice or a retained online owner.
 signal closed
+## Start over on a room this phone cannot verify: sent just before closed, for a
+## new room of `chapter` (main.gd hosts it through room_hub_flow.gd host_again).
+signal new_room_requested(chapter: String)
 
 const Registry = preload("res://services/chapter_registry.gd")
 const LetterView = preload("res://presentation/letter/letter_view.gd")
@@ -3608,7 +3611,30 @@ func _add_preview_retry(card: VBoxContainer, previous: String) -> void:
 func _show_error(message: String) -> void:
 	mode = "error"
 	var card := _card(PlayerCopy.LIGHTHOUSE_PREVIEW_CE5202BED332, message)
+	if _start_over_offered(): card.add_child(_action_button("start_over", _start_over))
 	card.add_child(_action_button("back", _leave))
+
+## Start over, beside Back on a save that could not be verified: a solo
+## journal (RelayJourney.can_start_over), or a room this phone holds read only
+## (not a duel's, which goes back to its duel).
+func _start_over_offered() -> bool:
+	if journey == null or _journal_loader != null or not journey.read_only: return false
+	if online_session != null: return journey == online_session.coordinator and not _duel_room()
+	return journey.has_method("can_start_over") and journey.can_start_over()
+
+## A solo journal moves aside whole and the chapter opens fresh from its first
+## stage; a room is left for a new room of its chapter (the hub's Host flow),
+## and stays in the room list as it was.
+func _start_over() -> void:
+	if mode != "error" or _leaving or not _start_over_offered(): return
+	if online_session != null:
+		new_room_requested.emit(chapter_key)
+		_leave()
+		return
+	if not journey.start_over():
+		_show_error(journey.last_error)
+		return
+	_show_ready()
 
 
 func _show_save_problem(message: String, after_retry: String) -> void:

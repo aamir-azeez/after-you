@@ -2558,6 +2558,10 @@ const LOCAL_SAVE_27DCFA34F3AD := "Recovered the last saved progress after an int
 const LOCAL_SAVE_34FCC2945DC1 := "The existing save could not be read. It is stored for retrieval."
 # Local progress save status — Note after an unreadable save was moved aside (start fresh if unreadable)
 const LOCAL_SAVE_STARTED_FRESH := "After You could not read your saved progress, so it started a new save. Your old save file is still on this phone."
+## Start over on a chapter save that could not be verified (action_buttons.gd
+## "start_over"): its hint, and the line when the old save could not be moved.
+const START_OVER_HINT := "Play this chapter from the start. The old save stays on this phone."
+const START_OVER_FAILED := "The old save could not be put aside, so nothing was changed."
 # Local progress save status — Status or error (flush)
 const LOCAL_SAVE_D4B7ABA2BF24 := "The progress was not saved due to an invalid format."
 # Local progress save status — Status or error (flush)

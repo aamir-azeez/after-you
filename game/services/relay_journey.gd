@@ -183,6 +183,28 @@ func load_data() -> void:
 		last_error = PlayerCopy.LIGHTHOUSE_JOURNEY_02EA99BBE9D2
 
 
+## Start over on a held journal (relay_preview.gd): only a chapter on its own
+## path, with a copy saved there, can start over.
+func can_start_over() -> bool:
+	_ensure_loaded()
+	if not read_only or _level.is_empty() or _simulation == null or _path.is_empty() or _wrong_path(): return false
+	return AtomicFile.read_candidates(_path).any(func(candidate: String) -> bool: return FileAccess.file_exists(candidate))
+
+
+## Moves every copy of this held journal aside whole (AtomicFile.set_aside,
+## under a recovery name nothing reads) and opens the chapter fresh from its
+## first stage. Archived attempts, keepsakes and every other chapter's journal
+## stay. False when it cannot start over or a copy could not move.
+func start_over() -> bool:
+	if not can_start_over(): return false
+	finish_live_draft_save()
+	if not AtomicFile.set_aside(_path, AtomicFile.STARTED_OVER):
+		_hold(PlayerCopy.START_OVER_FAILED)
+		return false
+	load_data()
+	return not read_only
+
+
 func checkpoint() -> Dictionary:
 	_ensure_loaded()
 	return {} if read_only else _checkpoint.duplicate(true)
