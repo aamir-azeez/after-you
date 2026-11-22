@@ -16,6 +16,9 @@ import type { MutationV2, RoomSnapshotV2 } from "../src/v2/room";
 import chain from "../../game/tests/fixtures/lighthouse/v2-chain.json";
 import bundledDefinition from "../src/v2/sleeping-lighthouse-v2.json";
 import bundledInitial from "../src/v2/sleeping-lighthouse-v2-initial.json";
+import { LEGACY_CHAPTERS } from "../src/v2/legacy-chapters";
+// The published chapters as older apps hold them, which room level 2 lists after the rows (legacy-chapters.ts).
+const current = <T extends { definition_hash: string }>(items: T[]): T[] => items.filter(item => !LEGACY_CHAPTERS.some(entry => entry.key.definition_hash === item.definition_hash));
 
 // sleeping-lighthouse@2: one six-stage chapter on the shared format. Fixtures come from
 // game/tests/test_lighthouse_v2_proof.gd.
@@ -72,7 +75,7 @@ describe("sleeping-lighthouse@2: one six-stage chapter", () => {
     expect(legacy.every(entry => !("stage_count" in entry) && (entry.supported_simulation_versions?.length ?? 1) <= 8)).toBe(true);
     const level2 = advertisedChapters(env, 2);
     expect(level2.find(entry => entry.level_id === "sleeping-lighthouse")).toEqual({ ...sleepingLighthouseV2.key, premium: true, recording_version: 8, simulation_version: 11, supported_simulation_versions: [11], stage_count: 6 });
-    expect(level2.filter(entry => entry.stage_count === 2).map(({ stage_count: _s, ...rest }) => { void _s; return rest; })).toEqual(legacy);
+    expect(current(level2).filter(entry => entry.stage_count === 2).map(({ stage_count: _s, ...rest }) => { void _s; return rest; })).toEqual(legacy);
     const viewer = await account();
     // Headerless capabilities leave it out, and say nothing of room levels.
     const plain = await (await call("/v2/capabilities", "GET", viewer)).json<Any>();

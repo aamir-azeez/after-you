@@ -1,0 +1,33 @@
+{
+	"a_recording_hash": "",
+	"b_recording_hash": "",
+	"checkpoint_hash": "e12981bd6eee5a6b92b2fa64b09cdd3400f32a6721dacfdd8ad301634e02563c",
+	"completed_stage_id": "",
+	"definition_hash": "4418a6f1ad6bdc3f1adee6d07d48184d03867a56a1b2d1d42c189584cfec5a94",
+	"level_id": "the-wishing-well",
+	"level_version": 1,
+	"mechanisms": {
+		"latched_bridges": [],
+		"levers": {},
+		"props": {}
+	},
+	"next_stage_id": "go-on-ahead",
+	"players": {
+		"p0": {
+			"height": 0,
+			"surface_id": "garden",
+			"x": -1216,
+			"z": 200
+		},
+		"p1": {
+			"height": 0,
+			"surface_id": "garden",
+			"x": -1168,
+			"z": 232
+		}
+	},
+	"previous_checkpoint_hash": "",
+	"proof": {},
+	"schema_version": 6,
+	"stage_index": 0
+}

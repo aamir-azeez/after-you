@@ -130,6 +130,10 @@
 						112
 					],
 					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
 					"surface_id": "shore"
 				},
 				{
@@ -139,6 +143,10 @@
 						-128
 					],
 					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
 					"surface_id": "loft"
 				}
 			],
@@ -225,6 +233,10 @@
 						-128
 					],
 					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
 					"surface_id": "loft"
 				},
 				{
@@ -234,6 +246,10 @@
 						-112
 					],
 					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
 					"surface_id": "garden"
 				}
 			],

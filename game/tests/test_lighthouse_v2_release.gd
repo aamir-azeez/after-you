@@ -3,7 +3,10 @@ extends SceneTree
 ## carried over on first open (or kept in @1 when it cannot be), @2 progress
 ## earns the same six keepsake places, and the together keepsakes and the paid
 ## gallery's "Together" follow the chapter's release. A hard run never carries
-## the @1 journey. Recordings are the frozen @1 fixtures (rules 3).
+## the @1 journey. Recordings are the frozen @1 fixtures (rules 3). Since
+## @2's mirrors and selector went solid (core/solid_footprint.gd), an @1 turn
+## that works one plays differently in @2, so only a journey of the first
+## stage's light pad turn carries over; the rest stay in @1 or start @2 anew.
 const Registry = preload("res://services/chapter_registry.gd")
 const Migration = preload("res://services/lighthouse_migration.gd")
 const V1Journey = preload("res://services/lighthouse_journey.gd")
@@ -59,23 +62,28 @@ func _conversion() -> void:
 	var v2 := "user://lighthouse-v2-%s.json" % stamp
 	_v1(v1, 6, false)
 	var before := Migration._digest(v1)
-	var converted := Migration.convert_v1(v1)
-	_check(converted.get("status") == "converted" and converted.pairs.size() == 6 and converted.complete, "All six frozen @1 stages convert: " + str(converted.get("status")))
+	var finished := Migration.convert_v1(v1)
+	_check(finished.get("status") == "fallback" and finished.complete, "A finished @1 journey that turned the plain mirrors does not convert, so @2 starts anew: " + str(finished.get("status")))
+	_check(Migration._digest(v1) == before, "The @1 save is not changed")
+	_v1(v1, 3, true)
+	_check(Migration.convert_v1(v1).get("status") == "fallback", "Nor does an unfinished one, so it stays in @1")
+	# A whole journey that did convert (the @2 chain) is saved complete.
+	var chain: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/lighthouse/v2-chain.json"))
+	var whole := {"status": "converted", "pairs": chain.pairs, "a": {}, "checkpoint": chain.checkpoints[6], "complete": true}
 	var journey := Journey.new(v2, null, KEY)
 	journey.load_data()
-	_check(Migration.adopt(journey, converted) and journey.chapter_complete(), "The converted journey is saved complete in @2")
+	_check(Migration.adopt(journey, whole) and journey.chapter_complete(), "A converted journey is saved complete in @2")
 	var cold := Journey.new(v2, null, KEY)
 	cold.load_data()
 	_check(not cold.read_only and cold.chapter_complete() and cold.pairs().size() == 6, "...and loads complete from a cold start")
-	_check(Migration._digest(v1) == before, "The @1 save is not changed")
-	_check(not Migration.adopt(cold, converted), "A journal that already has turns is never overwritten")
-	_v1(v1, 3, true)
+	_check(not Migration.adopt(cold, whole), "A journal that already has turns is never overwritten")
+	_v1(v1, 0, true)
 	var partial := Migration.convert_v1(v1)
-	_check(partial.get("status") == "converted" and partial.pairs.size() == 3 and not partial.a.is_empty() and not partial.complete, "Three stages and a waiting A turn convert")
+	_check(partial.get("status") == "converted" and partial.pairs.is_empty() and not partial.a.is_empty() and not partial.complete, "The first stage's light pad turn converts")
 	_remove(v2)
 	var resumed := Journey.new(v2, null, KEY)
 	resumed.load_data()
-	_check(Migration.adopt(resumed, partial) and resumed.pairs().size() == 3 and resumed.role() == "b" and resumed.stage_id() == Registry.definition(KEY).stages[3].id, "@2 resumes at stage 4, B's turn")
+	_check(Migration.adopt(resumed, partial) and resumed.pairs().is_empty() and resumed.role() == "b" and resumed.stage_id() == Registry.definition(KEY).stages[0].id, "@2 resumes at stage 1, B's turn")
 	_remove(v1)
 	_check(Migration.convert_v1(v1).get("status") == "empty", "No @1 journey, nothing to carry over")
 	_remove(v2)
@@ -133,12 +141,12 @@ func _screen() -> void:
 	var v2 := str(Registry.descriptor(KEY).local_path)
 	_remove(v2)
 	_remove(Migration.MARKER_PATH)
-	_v1(Migration.V1_PATH, 3, true)
+	_v1(Migration.V1_PATH, 0, true)
 	_check(Migration.plan() == "migrate", "The first open plans a carry-over")
 	var scene := _open()
 	_check(scene.mode == "loading", "The carry-over runs on the journal worker")
 	_check(await _wait_mode(scene, ["ready"]), "The screen opens at the carried-over turn")
-	_check(scene.journey.pairs().size() == 3 and scene.journey.role() == "b", "Three stages and the waiting A are in @2")
+	_check(scene.journey.pairs().is_empty() and scene.journey.role() == "b", "The waiting A is in @2")
 	_check(Migration.plan() == "v2", "Later opens go straight to @2")
 	_check(Registry.open_scene(KEY) == Registry.solo_scene(KEY), "The Lighthouse's Solo card opens @2")
 	scene.queue_free()

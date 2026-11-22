@@ -6,6 +6,7 @@ extends SceneTree
 const Codec = preload("res://core/v2/recording_codec.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const PackedRun = preload("res://tests/packed_run_check.gd")
+const WholeRuns = preload("res://tests/whole_runs.gd")
 ## The board that gets every check: short, two stages, a physical chapter.
 const FULL_BOARD := "high-and-low@1"
 
@@ -22,9 +23,8 @@ func _check(okay: bool, message: String) -> void:
 func _run() -> void:
 	_golden()
 	_canonical_only()
-	var ghosts: Array = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/whole_runs.json")).ghosts
-	var row: Array = ghosts.filter(func(item: Dictionary) -> bool: return item.board == FULL_BOARD)
-	_check(row.size() == 1 and PackedRun.run(row[0], _check, true), "%s plays again packed" % FULL_BOARD)
+	var row := WholeRuns.row(FULL_BOARD)
+	_check(not row.is_empty() and PackedRun.run(row, _check, true), "%s plays again packed" % FULL_BOARD)
 	print("AFTER YOU RECORDING CODEC: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 

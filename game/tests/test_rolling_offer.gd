@@ -39,8 +39,9 @@ func _offer_before_lever() -> void:
 	_check(int(offered_ball.x) == int(handoff.position_cm[0]) and int(offered_ball.z) == int(handoff.position_cm[1]) and offered_ball.surface_id == handoff.surface_id, "The offered ball snaps to the authored handoff")
 	_check(not a.can_commit(), "A still needs to open the partner's final route before saving")
 	# Return via the authored middle bridge and p1's upper lane. This is the
-	# same real-input return route already covered by the comfort overlap case.
-	for target: Array in [[208,-80],[352,-80],[352,0],[608,0],[608,128],[896,128],[896,96]]:
+	# same real-input return route already covered by the comfort overlap case,
+	# ending beside the home lever's solid footprint.
+	for target: Array in [[208,-80],[352,-80],[352,0],[608,0],[608,128],[896,128]]:
 		if not _move(a, target): return
 	_tap(a)
 	if not _check(a.error.is_empty() and a.can_commit() and bool(a.snapshot().levers.get(lever_id, false)), "A pulls the lever after leaving the ball and can save a viable turn"): return

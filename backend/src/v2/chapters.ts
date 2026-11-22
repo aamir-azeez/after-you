@@ -5,6 +5,7 @@ import * as FirstSteps from "./protocol-first-steps";
 import { highAndLow, highAndLowV2, rollingHome, rollingHomeV2, houseForTwo, houseForTwoV2, wishingWell, wishingWellV2 } from "./protocol-cooperative";
 import { conservatory, conservatoryV2, firstStepsV2, fogMarsh, longWayHome, longWayHomeV2, longWayHomeV3, relayIslesV3, theFalls, turnOfTheTide, turnOfTheTideV2, turnOfTheTideV3 } from "./protocol-journey";
 import { sleepingLighthouseV2 } from "./protocol-lighthouse";
+import { LEGACY_CHAPTERS } from "./legacy-chapters";
 import { LEGACY_STAGE_COUNT, type ChapterAdapter, type ChapterKey } from "./chapter-types";
 
 export const RELAY_KEY: Readonly<ChapterKey> = Object.freeze({ level_id: Relay.RELAY.id, level_version: Relay.RELAY.version, definition_hash: Relay.DEFINITION_HASH });
@@ -53,7 +54,13 @@ export const CHAPTERS: readonly { readonly adapter: ChapterAdapter; readonly fla
   { adapter: fogMarsh, flag: "FOG_MARSH_CHAPTER_ENABLED" },
   { adapter: relayIslesV3, flag: "RELAY_ISLES_V3_CHAPTER_ENABLED" },
 ]);
-const entries: readonly ChapterAdapter[] = CHAPTERS.map(row => row.adapter);
+const rows: readonly ChapterAdapter[] = CHAPTERS.map(row => row.adapter);
+/** Every chapter the server plays: the rows, then the published chapters as older apps
+ * hold them (legacy-chapters.ts). Room level 2 also advertises those after the rows, so
+ * an older app still finds its own hash and starts rooms on it, and a newer app skips
+ * hashes it does not know (chapter_registry.gd supported_capabilities). Room level 1
+ * (0.5.x, a list of at most 16) never lists them. */
+const entries: readonly ChapterAdapter[] = [...rows, ...LEGACY_CHAPTERS];
 
 /** Exact immutable authored registry; unknown versions never fall back. */
 export function chapter(value: unknown): ChapterAdapter {
@@ -72,7 +79,7 @@ export function paid(entry: ChapterAdapter): boolean {
 }
 /** The flag gating this chapter: "" if always creatable, undefined if unknown. */
 export function chapterFlag(entry: ChapterAdapter): FlagVar | "" | undefined {
-  return CHAPTERS.find(row => row.adapter === entry)?.flag;
+  return CHAPTERS.find(row => row.adapter === entry)?.flag ?? (LEGACY_CHAPTERS.includes(entry) ? "" : undefined);
 }
 export function creatable(entry: ChapterAdapter, env: Env): boolean {
   const flag = chapterFlag(entry);
@@ -82,5 +89,5 @@ export function creatable(entry: ChapterAdapter, env: Env): boolean {
  * two-stage list, byte-identical to before. Room level 2 adds chapters with more
  * stages and names each chapter's stage count. */
 export function advertisedChapters(env: Env, roomLevel = 1) {
-  return entries.filter(entry => creatable(entry, env) && (roomLevel >= 2 || entry.stages.length === LEGACY_STAGE_COUNT)).map(entry => ({ ...entry.key, premium: entry.premium, recording_version: entry.recording_version, simulation_version: entry.simulation_version, ...(entry.supported_simulation_versions ? { supported_simulation_versions: entry.supported_simulation_versions } : {}), ...(roomLevel >= 2 ? { stage_count: entry.stages.length } : {}) }));
+  return (roomLevel >= 2 ? entries : rows).filter(entry => creatable(entry, env) && (roomLevel >= 2 || entry.stages.length === LEGACY_STAGE_COUNT)).map(entry => ({ ...entry.key, premium: entry.premium, recording_version: entry.recording_version, simulation_version: entry.simulation_version, ...(entry.supported_simulation_versions ? { supported_simulation_versions: entry.supported_simulation_versions } : {}), ...(roomLevel >= 2 ? { stage_count: entry.stages.length } : {}) }));
 }

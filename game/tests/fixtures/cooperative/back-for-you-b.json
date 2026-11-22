@@ -2,7 +2,7 @@
 	"actions": [
 		{
 			"action": false,
-			"ticks": 233,
+			"ticks": 229,
 			"x": 0,
 			"z": 0
 		},
@@ -56,17 +56,17 @@
 		},
 		{
 			"action": false,
-			"ticks": 104,
+			"ticks": 100,
 			"x": 0,
 			"z": 0
 		}
 	],
 	"catch_assistance": true,
-	"checkpoint_hash": "497140755e4e4e1659580aea3734f944b270bfc1c787555533e6ffa338c93e74",
+	"checkpoint_hash": "fc9a86f900c1812f1f6e7ff240f7a2158432e879ed85750a3d56aab4b7f5c006",
 	"completed": true,
-	"definition_hash": "4418a6f1ad6bdc3f1adee6d07d48184d03867a56a1b2d1d42c189584cfec5a94",
-	"duration_ticks": 400,
-	"final_state_hash": "ca6edcce87cb68efef57631715f23335783a9c9af4d6e1d6502e7c957c82461e",
+	"definition_hash": "14cfffbdd9b23cee06056548f29bbae7f1e95c348315ff3ff0098b7190ee5f3e",
+	"duration_ticks": 392,
+	"final_state_hash": "266aae89aea2ec2bda55401bdc5b8a4358cc436a1a8f1d3f81b29b89aa90a791",
 	"level_id": "the-wishing-well",
 	"level_version": 1,
 	"outcome": {
@@ -74,69 +74,69 @@
 		"source_ready": true
 	},
 	"player_slot": "p0",
-	"recording_hash": "40e550fb49dbc4b628075127186e37c0401db2a61f91379f764c2f053353cb0d",
+	"recording_hash": "5656e3ba01156e656a6d67e0b98d129a4fc1f3ccfaea0bf58e69550d67dfadb8",
 	"replay_checks": [
 		{
-			"state_hash": "60560a32515a766d1afff2a3c46900009a4b4fb5cebce3ab56ed625d8f8f33f3",
+			"state_hash": "0f73b6199de3e3b8f9668ef7d79576564535b79f629aa42ad79ee21219c38b9f",
 			"tick": 30
 		},
 		{
-			"state_hash": "af0b6a97c83da972d344adc4ce0adec0510683f32d14bb093db3d7a2eab48a92",
+			"state_hash": "e2f16ebf8ce2cb8eeae698828030743a99e1e9819ba0d747cd1c8d6781a35f41",
 			"tick": 60
 		},
 		{
-			"state_hash": "19327a3be8930177bc84e643166d72710634663f0a79551d961566d2eec088ca",
+			"state_hash": "ec9a98f81e66064fa4480a424a54bf81a96652fd0dbfc3e65e42bfa27acf929e",
 			"tick": 90
 		},
 		{
-			"state_hash": "0bd8379ee1f08af1df2e79a70d667968135448fd4ce6409d4dd4f7cf0eb0fe7d",
+			"state_hash": "c01e0e6d67b6f3f41b78833dbd9d0bf5cd0477523ecd4d1a23ddbc70ff01e40b",
 			"tick": 120
 		},
 		{
-			"state_hash": "2ffbee2173ec415d43c8f92a525a0a416066fe67073a79aa38471b58e0e7c491",
+			"state_hash": "8b1e969c8efb767c1e6df24f820741f7029f85c816a2260ebf5690bf5ab7af79",
 			"tick": 150
 		},
 		{
-			"state_hash": "56671e157852fd2673066bfdd05043f36c16d910da9c67ec39f06a72db209f72",
+			"state_hash": "1763a904eb818bcbf70332927f9c3316bfecae316ffe3dfaae9ce425d4e35d2c",
 			"tick": 180
 		},
 		{
-			"state_hash": "4070d370f8a46ff860273b7fd7f23b60599e47709a3fa4510a4e4412344d501b",
+			"state_hash": "9bf338470c3c244e4ac77ddfe462520d3c08547f27fe3c4fc61d1c290b2ad71c",
 			"tick": 210
 		},
 		{
-			"state_hash": "8a176115a0cac1233446a96c11d5c81bee6d487c0978eda16f6859d5b46376c2",
+			"state_hash": "40fb0ec62080d41c8e5d222c8ade0901fa2f715eb57a3d52ae349f9aef8befbe",
 			"tick": 240
 		},
 		{
-			"state_hash": "0a45991bcca5f24c287933aa0c7404e1a208377684b9a966a9487fac5130e814",
+			"state_hash": "53fac5e873691abf6834fd73a31d550791c5f79310bbe9161796a15139f2fc4c",
 			"tick": 270
 		},
 		{
-			"state_hash": "1d16d2640638ad591bb4fc470a13c7787379d2fec5d848dfeba8c0a88c5c25a6",
+			"state_hash": "6457baabb5fa15d8beac93c9baee5f60f3e0391839c5581ec1e5a8085266c060",
 			"tick": 300
 		},
 		{
-			"state_hash": "a7745328873d4abe043bb3e7888382747b64342266f5fbb7c01136c2cf651376",
+			"state_hash": "590aff4f7bc91de8936a7c5a7093fc93315fb835ad81170c2b3b10d040cb00e9",
 			"tick": 330
 		},
 		{
-			"state_hash": "e885269640d41f91749bc8d4add744cec1d5c3a9b9c960ac6fa6a4ed4285e73e",
+			"state_hash": "a15bcc331bb65b112a75e4e3f8fa3b93f5271f0c7e500034a1c2e9f0b1013a2f",
 			"tick": 360
 		},
 		{
-			"state_hash": "fb9c5f15c298996c043bce6517f40ab108bfc68b0296f0fe55e075021d8d5725",
+			"state_hash": "4e87151ca42ebde2320256b4c75fc6b6906bbd859a66843d35105e2a836c50ed",
 			"tick": 390
 		},
 		{
-			"state_hash": "ca6edcce87cb68efef57631715f23335783a9c9af4d6e1d6502e7c957c82461e",
-			"tick": 400
+			"state_hash": "266aae89aea2ec2bda55401bdc5b8a4358cc436a1a8f1d3f81b29b89aa90a791",
+			"tick": 392
 		}
 	],
 	"role": "b",
 	"schema_version": 6,
 	"simulation_version": 9,
-	"source_recording_hash": "650baa22b3ca34cd872d127e9bf4b26a01dca07f30aa30542d6f17b62b0bfdc0",
+	"source_recording_hash": "b4b962a0dbbea3a760ddfdd639fc1bfef305bb799e17287e124b36d51588fa85",
 	"stage_id": "back-for-you",
 	"stage_version": 1,
 	"tick_rate": 30

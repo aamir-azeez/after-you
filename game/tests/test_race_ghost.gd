@@ -3,9 +3,10 @@ extends SceneTree
 ## every chapter's stages and roles, the same on every build of it; the replay
 ## kept from the race's first turn to its end and let go after; the ghost's
 ## look and name; the see-through pip, its faint name and the timer mark.
-## Real whole runs come from tests/fixtures/whole_runs.json (each a final
-## checkpoint in the shared blob format). Synthetic ids only.
+## Real whole runs come from tests/whole_runs.gd (each a final checkpoint in
+## the shared blob format). Synthetic ids only.
 const Track = preload("res://services/race_ghost_track.gd")
+const WholeRuns = preload("res://tests/whole_runs.gd")
 const RaceGhost = preload("res://services/race_ghost.gd")
 const TheirRun = preload("res://services/duel_their_run.gd")
 const DuelsClient = preload("res://services/duels_client.gd")
@@ -47,7 +48,7 @@ class FakeWorld extends Node3D:
 
 func _run() -> void:
 	_clear()
-	var ghosts: Array = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/whole_runs.json")).ghosts
+	var ghosts: Array = WholeRuns.rows()
 	_check(ghosts.size() >= 12, "the whole runs load: %d" % ghosts.size())
 	for row: Dictionary in ghosts: _tracks(row)
 	var relay: Dictionary = ghosts.filter(func(row: Dictionary) -> bool: return row.board == "relay-isles@2")[0]

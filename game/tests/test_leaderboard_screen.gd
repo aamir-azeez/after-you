@@ -23,6 +23,8 @@ const PLACINGS_PATH := "user://leaderboard-placings-test.json"
 const LOOKS_PATH := "user://leaderboard-looks-test.json"
 const PARTNER := "GGGGGGGGGGGGGGGGGGGGGG"
 
+## The Lighthouse's current board (its mirrors went solid, so it opened again by definition).
+var lighthouse_board := Runs.board_key(Registry.LIGHTHOUSE_V2)
 var checks := 0
 var failures := 0
 func _initialize() -> void: _run.call_deferred()
@@ -67,11 +69,14 @@ func _clear(path: String) -> void:
 func _ids_and_times() -> void:
 	# backend/test/leaderboards.test.ts pins the same id for the same room and branch.
 	_check(Runs.entry_id(ROOM, 3) == "950c0a948aa0ab431b848fba650fa348", "a run's id is the server's hash of its room and branch")
-	_check(Runs.board_key(Registry.RELAY) == "relay-isles@2" and Runs.board_key(Registry.LIGHTHOUSE_V2) == "sleeping-lighthouse@2", "a board is a chapter version")
+	_check(Runs.board_key(Registry.RELAY) == "relay-isles@2" and Runs.board_key(Registry.LIGHTHOUSE_V2) == "sleeping-lighthouse-%s@2" % str(Registry.descriptor(Registry.LIGHTHOUSE_V2).definition_hash).left(8), "a board is a chapter version, by definition once the chapter changed")
+	# backend/test/legacy-chapters.test.ts pins the same keys: a chapter changed since its board opened ranks on a fresh one.
+	var high := Registry.descriptor(Registry.HIGH_AND_LOW)
+	_check(Runs.board_key(Registry.HIGH_AND_LOW) == "high-and-low-%s@1" % str(high.definition_hash).left(8) and Runs.chapter_of(Runs.board_key(Registry.HIGH_AND_LOW)) == Registry.HIGH_AND_LOW and Runs.chapter_of(Registry.HIGH_AND_LOW).is_empty(), "a changed chapter's board names its definition, and the board it opened on is no chapter here")
 	var relay: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/v2/final-checkpoint.json"))
 	_check(Runs.run_time(Registry.RELAY, relay) == {"ticks": 588, "assisted": true}, "a run's time sums every turn, and catch assistance marks it")
 	var chain: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/lighthouse/v2-chain.json"))
-	_check(Runs.run_time(Registry.LIGHTHOUSE_V2, chain.checkpoints[-1]) == {"ticks": 1470, "assisted": false}, "a Lighthouse run is never assisted")
+	_check(Runs.run_time(Registry.LIGHTHOUSE_V2, chain.checkpoints[-1]) == {"ticks": 1473, "assisted": false}, "a Lighthouse run is never assisted")
 	_check(Runs.run_time(Registry.LIGHTHOUSE_V2, chain.checkpoints[-2]).is_empty(), "an unfinished run has no time")
 	_check(Runs.time_text(0) == "0:00.0" and Runs.time_text(1470) == "0:49.0" and Runs.time_text(1801) == "1:00.0" and Runs.time_text(1803) == "1:00.1", "times read as minutes, seconds and tenths")
 
@@ -87,17 +92,17 @@ func _own_runs() -> void:
 	Runs.note(OWNER, _snapshot(ROOM, 1, final), Registry.LIGHTHOUSE_V2)
 	Runs.note(OWNER, _snapshot(ROOM, 1, final), Registry.LIGHTHOUSE_V2)
 	Runs.note(OWNER, _snapshot(ROOM, 2, final), Registry.LIGHTHOUSE_V2)
-	var mine := Runs.on_board(OWNER, "sleeping-lighthouse@2")
-	_check(mine.size() == 2 and mine[0].entry_id == Runs.entry_id(ROOM, 1) and mine[0].ticks == 1470, "each finished branch is one run, kept once: %s" % [mine])
+	var mine := Runs.on_board(OWNER, lighthouse_board)
+	_check(mine.size() == 2 and mine[0].entry_id == Runs.entry_id(ROOM, 1) and mine[0].ticks == 1473, "each finished branch is one run, kept once: %s" % [mine])
 	Runs.use_path(RUNS_PATH)
-	_check(Runs.on_board(OWNER, "sleeping-lighthouse@2").size() == 2 and Runs.runs_of("someone-else").is_empty(), "runs survive a restart and stay per player")
+	_check(Runs.on_board(OWNER, lighthouse_board).size() == 2 and Runs.runs_of("someone-else").is_empty(), "runs survive a restart and stay per player")
 	# Account deletion forgets one player's runs, straight after a start too; the other players' runs stay.
 	Runs.note(PARTNER, _snapshot(ROOM, 1, final), Registry.LIGHTHOUSE_V2)
 	_check(Runs.runs_of(PARTNER).size() == 1, "the partner keeps their own run on a shared phone")
 	Runs.use_path(RUNS_PATH)
 	Runs.clear_owner(PARTNER)
 	Runs.use_path(RUNS_PATH)
-	_check(Runs.runs_of(PARTNER).is_empty() and Runs.on_board(OWNER, "sleeping-lighthouse@2").size() == 2, "forgetting a player (account deletion) drops only their runs")
+	_check(Runs.runs_of(PARTNER).is_empty() and Runs.on_board(OWNER, lighthouse_board).size() == 2, "forgetting a player (account deletion) drops only their runs")
 	var damaged := "user://leaderboard-runs-damaged-test.json"
 	var file := FileAccess.open(damaged, FileAccess.WRITE)
 	file.store_string("{damaged")
@@ -166,12 +171,12 @@ func _screen() -> void:
 	var api := FakeApi.new()
 	root.add_child(api)
 	var mine := Runs.entry_id(ROOM, 1)
-	var view := {"schema_version": 1, "board": "sleeping-lighthouse@2", "checking": [Runs.entry_id(ROOM, 2)], "top": [
+	var view := {"schema_version": 1, "board": lighthouse_board, "checking": [Runs.entry_id(ROOM, 2)], "top": [
 		{"rank": 1, "entry_id": "a".repeat(32), "ticks": 900, "finished_on": "2026-10-19", "names": ["Ada", "Bo"], "gold_leaf": true},
 		{"rank": 2, "entry_id": mine, "ticks": 1470, "finished_on": "2026-10-20", "names": null, "gold_leaf": false, "looks": [{"hat": "daisy"}, {"hat": "seashell"}]},
 		{"rank": 3, "entry_id": "c".repeat(32), "ticks": 1500, "finished_on": "2026-10-21", "names": null, "gold_leaf": false, "looks": [{"hat": "straw_hat"}, {"hat": "daisy"}]}]}
 	TurnLooks.shared().note_member(PARTNER, {"hat": "straw_hat"})
-	api.replies["GET /v1/leaderboards/sleeping-lighthouse@2"] = {"ok": true, "data": view}
+	api.replies["GET /v1/leaderboards/" + lighthouse_board] = {"ok": true, "data": view}
 	api.replies["GET /v1/leaderboards/me"] = {"ok": true, "data": {"schema_version": 1, "show_name": false}}
 	var screen := Screen.new()
 	screen.client = Client.new(api, OWNER, CHOICE_PATH)
@@ -206,10 +211,10 @@ func _screen() -> void:
 	_check(screen.find_child(Celebration.NODE_NAME, true, false) != null, "this player's confirmed second place is celebrated")
 	var avatars := screen.find_children("*", "", true, false).filter(func(node: Node) -> bool: return node is PipAvatar)
 	_check(avatars.size() == 8 and avatars.all(func(pip: Node) -> bool: return pip.still), "two still pips a row: %d" % avatars.size())
-	var reads := api.requests.filter(func(item: Array) -> bool: return item[1] == "/v1/leaderboards/sleeping-lighthouse@2").size()
+	var reads := api.requests.filter(func(item: Array) -> bool: return item[1] == "/v1/leaderboards/" + lighthouse_board).size()
 	screen._load(false)
 	for frame in range(4): await process_frame
-	_check(api.requests.filter(func(item: Array) -> bool: return item[1] == "/v1/leaderboards/sleeping-lighthouse@2").size() == reads, "a board read a moment ago is not asked for again")
+	_check(api.requests.filter(func(item: Array) -> bool: return item[1] == "/v1/leaderboards/" + lighthouse_board).size() == reads, "a board read a moment ago is not asked for again")
 	screen.go_back()
 	await process_frame
 	_check(is_instance_valid(screen) and not screen.is_queued_for_deletion(), "Back leaves the celebration first")
@@ -229,7 +234,7 @@ func _waiting_first() -> void:
 	var relay := Runs.entry_id("RRRRRRRRRRRRRRRRRRRRRR", 1)
 	var file := FileAccess.open(path, FileAccess.WRITE)
 	file.store_string(JSON.stringify({"schema_version": 1, "players": {OWNER: [
-		{"board": "sleeping-lighthouse@2", "entry_id": waiting, "ticks": 1470, "assisted": false, "finished_at": Time.get_datetime_string_from_unix_time(int(Time.get_unix_time_from_system()) - 30) + "Z", "partner": PARTNER},
+		{"board": lighthouse_board, "entry_id": waiting, "ticks": 1470, "assisted": false, "finished_at": Time.get_datetime_string_from_unix_time(int(Time.get_unix_time_from_system()) - 30) + "Z", "partner": PARTNER},
 		{"board": "relay-isles@2", "entry_id": relay, "ticks": 5000, "assisted": false, "finished_at": "2026-10-20T10:00:00Z", "partner": PARTNER}]}}))
 	file.close()
 	Runs.use_path(path)
@@ -237,7 +242,7 @@ func _waiting_first() -> void:
 	root.add_child(api)
 	var top := [{"rank": 1, "entry_id": "f".repeat(32), "ticks": 2000, "finished_on": "2026-10-19", "names": ["Cy", "Di"], "gold_leaf": true},
 		{"rank": 2, "entry_id": "e".repeat(32), "ticks": 2100, "finished_on": "2026-10-19", "names": null, "gold_leaf": false}]
-	api.replies["GET /v1/leaderboards/sleeping-lighthouse@2"] = {"ok": true, "data": {"schema_version": 1, "board": "sleeping-lighthouse@2", "top": top, "checking": [waiting]}}
+	api.replies["GET /v1/leaderboards/" + lighthouse_board] = {"ok": true, "data": {"schema_version": 1, "board": lighthouse_board, "top": top, "checking": [waiting]}}
 	var screen := Screen.new()
 	screen.client = Client.new(api, OWNER, CHOICE_PATH)
 	screen.client._choice = {"show": true, "pending": false, "synced": true}
@@ -258,7 +263,7 @@ func _waiting_first() -> void:
 	var card: Control = screen.find_child("LeaderboardChecking", true, false)
 	_check(card != null and card.visible and _texts(card).has(Runs.time_text(1470)), "the checking card shows the waiting run's time")
 	# The check fails: the board lists it nowhere.
-	api.replies["GET /v1/leaderboards/sleeping-lighthouse@2"] = {"ok": true, "data": {"schema_version": 1, "board": "sleeping-lighthouse@2", "top": top, "checking": []}}
+	api.replies["GET /v1/leaderboards/" + lighthouse_board] = {"ok": true, "data": {"schema_version": 1, "board": lighthouse_board, "top": top, "checking": []}}
 	screen._load(true)
 	for frame in range(6): await process_frame
 	first = board.find_child("LeaderboardRow1", true, false)

@@ -102,7 +102,7 @@ def _run_writers(game: Game, chapter: Chapter, staged: dict[str, bytes]) -> tupl
     return changes, written, sorted(bakes.glob(f"{key}-*.json"))
 
 
-def plan(game: Game, chapter: Chapter, staged: dict[str, bytes] | None = None) -> tuple[dict[str, bytes], list[str]]:
+def plan(game: Game, chapter: Chapter, staged: dict[str, bytes] | None = None, republish: bool = False) -> tuple[dict[str, bytes], list[str]]:
     """Runs the writers in `game` with `staged` ({repository path: bytes}, such as
     new routes or a new catalog) in place, and returns ({repository path: new
     bytes}, notes). The repository is left as it was; apply() writes."""
@@ -112,10 +112,12 @@ def plan(game: Game, chapter: Chapter, staged: dict[str, bytes] | None = None) -
     changes, written, baked = _run_writers(game, chapter, staged)
     changes.update(staged)
     moved = sorted(other for other, earlier in old["chapters"].items() if other != key and written["chapters"].get(other) != earlier)
-    if moved:
+    if moved and not republish:
         raise ToolError(f"{key}: the manifest rows of {', '.join(moved)} would change too; only {key}'s row may (see test_chapter_manifest)")
     row = written["chapters"][key]
-    if old["chapters"].get(key) != row:
+    if republish and moved:
+        changes[MANIFEST] = manifest_text({"keys": written["keys"], "chapters": {**old["chapters"], **{k: written["chapters"][k] for k in [key] + moved}}})
+    elif old["chapters"].get(key) != row:
         spliced = {"keys": [k for k in written["keys"] if k in old["chapters"] or k == key], "chapters": {**old["chapters"], key: row}}
         changes[MANIFEST] = manifest_text(spliced)
     notes = [f"water locks: {len(baked)} stage bake(s)" if baked else "water locks: none in this chapter's world"]
@@ -159,9 +161,10 @@ def plan(game: Game, chapter: Chapter, staged: dict[str, bytes] | None = None) -
     return changes, notes
 
 
-def apply(root: Path, chapter: Chapter, changes: dict[str, bytes], notes: list[str]) -> list[str]:
-    """Writes the planned changes (refused for a released chapter) and returns what to print."""
-    if chapter.released and changes:
+def apply(root: Path, chapter: Chapter, changes: dict[str, bytes], notes: list[str], republish: bool = False) -> list[str]:
+    """Writes the planned changes (refused for a released chapter unless
+    `republish`) and returns what to print."""
+    if chapter.released and changes and not republish:
         raise ToolError(f"{chapter.key} is released and would change: {', '.join(sorted(changes))}. Published chapters never change; nothing written.")
     lines = []
     for relative, data in sorted(changes.items()):
@@ -171,9 +174,9 @@ def apply(root: Path, chapter: Chapter, changes: dict[str, bytes], notes: list[s
     return lines + notes
 
 
-def refresh(game: Game, chapter: Chapter) -> list[str]:
-    changes, notes = plan(game, chapter)
-    return apply(chapter.root, chapter, changes, notes)
+def refresh(game: Game, chapter: Chapter, republish: bool = False) -> list[str]:
+    changes, notes = plan(game, chapter, republish=republish)
+    return apply(chapter.root, chapter, changes, notes, republish)
 
 
 def main(argv: list[str]) -> int:
@@ -183,12 +186,14 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--root", default=str(ROOT), help="the repository (default: this one)")
     parser.add_argument("--in-place", action="store_true", help="run in the repository's own imported game/ instead of a temporary copy")
     parser.add_argument("--keep", action="store_true", help="keep the temporary copy")
+    parser.add_argument("--republish", action="store_true", help="let a released chapter change in place: only on the owner's word that a"
+                        " shared rule moves published definitions (2026-11-20: solid hand controls on every chapter)")
     args = parser.parse_args(argv)
     root = Path(args.root).resolve()
     try:
         chapter = Chapter(root, args.key)
         with Game(binary(args.godot), root / "game", args.in_place, args.keep) as game:
-            lines = refresh(game, chapter)
+            lines = refresh(game, chapter, args.republish)
     except ToolError as error:
         print(f"chapter_fixtures.py: {error}", file=sys.stderr)
         return 1

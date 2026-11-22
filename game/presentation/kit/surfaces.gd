@@ -1,14 +1,17 @@
 extends RefCounted
 ## World kit: warm ground styles for a walkable island. The visible top is
-## exactly the authored rectangle at the parent's height; trims and the rock
-## below stay outside or under it, so nothing new looks walkable. Each floor
-## registers its top as a ground (kit/contact_shadows.gd), so what stands on
-## it is baked into it; a "worn" style (grass) wears round a base.
+## the island's drawn shape at the parent's height: its rectangle reaching
+## past the walkable edge by what the drawn pip reaches over it
+## (kit/walk_reach.gd), cut round its neighbours; trims run along that shape's
+## outer edges and the rock stays under the walkable rectangle. Each floor
+## registers its drawn top as a ground (kit/contact_shadows.gd), so what stands
+## on it is baked into it; a "worn" style (grass) wears round a base.
 ## Every piece but the rock is one of the kit's cached boxes (nothing resizes
 ## a floor), so a chapter opened again makes none of them again (while the
 ## kit keeps them, Primitives.KEPT_SHAPES).
 
 const Primitives = preload("res://presentation/kit/primitives.gd")
+const WalkReach = preload("res://presentation/kit/walk_reach.gd")
 const ContactShadows = preload("res://presentation/kit/contact_shadows.gd")
 
 const STYLES := {
@@ -53,46 +56,133 @@ static func soil(name: String) -> Dictionary:
 	return style if style.has("soil") else {}
 
 ## Builds the island's floor in the named style under parent (whose origin is
-## the island's height). Node names match the plain shore: <id>Floor and
-## <id>LowerRock.
-static func build(island: Dictionary, style_name: String, parent: Node3D, with_rock: bool = true) -> void:
+## the island's height), as `shape`: the rectangles (cm) it is drawn as
+## (WalkReach.pieces), its own rectangle when left empty. Node names match the
+## plain shore: <id>Floor (the first piece's top) and <id>LowerRock.
+static func build(island: Dictionary, style_name: String, parent: Node3D, with_rock: bool = true, shape: Array = []) -> void:
 	var style: Dictionary = STYLES[style_name]
-	var r: Array = island.rect_cm
-	var width := float(r[2] - r[0]) / 100.0
-	var depth := float(r[3] - r[1]) / 100.0
-	var center := Vector3(float(r[0] + r[2]) / 200.0, 0, float(r[1] + r[3]) / 200.0)
-	var floor := Primitives.mesh_node(Primitives.cached_box(Vector3(width, 0.20, depth)), Primitives.shared_material(style.top), center + Vector3(0, -0.10, 0), parent)
-	floor.name = str(island.id) + "Floor"
-	ContactShadows.ground(parent, Rect2(center.x - width / 2.0, center.z - depth / 2.0, width, depth), 0.0, bool(style.get("worn", false)))
-	# A soft lip just outside the rectangle, a little below the walking surface.
-	Primitives.mesh_node(Primitives.cached_box(Vector3(width + 0.10, 0.12, depth + 0.10)), Primitives.shared_material(style.skirt), center + Vector3(0, -0.085, 0), parent)
-	Primitives.mesh_node(Primitives.cached_box(Vector3(width + 0.04, 0.12, depth + 0.04)), Primitives.shared_material(style.band), center + Vector3(0, -0.24, 0), parent)
+	if shape.is_empty(): shape = [island.rect_cm]
+	var whole: Array = shape[0].duplicate()
+	for piece: Array in shape:
+		whole = [mini(whole[0], piece[0]), mini(whole[1], piece[1]), maxi(whole[2], piece[2]), maxi(whole[3], piece[3])]
+	# Seams and planks line up across the pieces from the walkable
+	# rectangle's corner, where the pieces laid on the floor are placed from.
+	var origin := Vector2(float(island.rect_cm[0]), float(island.rect_cm[1])) / 100.0
+	# One ground over the whole drawn shape, its shade only over the pieces.
+	ContactShadows.ground_cm(parent, shape, 0.0, bool(style.get("worn", false)))
+	for index in range(shape.size()):
+		var r: Array = shape[index]
+		# Each side: on the whole shape's bounds (1), met by another piece (0),
+		# or cut round a neighbour (-1).
+		var outer := outer_sides(r, shape)
+		var sides: Array = range(4).map(func(side: int) -> int: return (1 if r[side] == whole[side] else -1) if outer[side] else 0)
+		# The top runs a centimetre into the next piece's (one look, so no
+		# seam), so its side there never lies on what stands by the join.
+		var low := Vector2(float(r[0]) / 100.0 - (0.01 if sides[0] == 0 else 0.0), float(r[1]) / 100.0 - (0.01 if sides[1] == 0 else 0.0))
+		var high := Vector2(float(r[2]) / 100.0 + (0.01 if sides[2] == 0 else 0.0), float(r[3]) / 100.0 + (0.01 if sides[3] == 0 else 0.0))
+		var floor := Primitives.mesh_node(Primitives.cached_box(Vector3(high.x - low.x, 0.20, high.y - low.y)), Primitives.shared_material(style.top), Vector3((low.x + high.x) * 0.5, -0.10, (low.y + high.y) * 0.5), parent)
+		if index == 0: floor.name = str(island.id) + "Floor"
+		# A soft lip just outside the shape, a little below the walking surface,
+		# grown only past the piece's sides on the bounds. Where another piece
+		# meets a side, the two would overlap in one plane; a cut side stays
+		# clear of what stands there and of the wall a world stands a
+		# centimetre in under it.
+		# The skirt grows 5 cm; the band 1, short of a neighbour's cut round
+		# this floor (WalkReach NOTCH_CLEAR_CM) and of the water marks round a
+		# wall under it (1.5).
+		_grown(r, sides, 0.05, 0.12, -0.085, style.skirt, parent)
+		_grown(r, sides, 0.01, 0.12, -0.24, style.band, parent)
+		var lines := str(style.lines)
+		if lines.contains("x"): _seams(style, r, origin, true, parent)
+		if lines == "x" and style.has("alt"): _planks(style, r, origin, parent)
+		if lines.contains("z"): _seams(style, r, origin, false, parent)
 	# Trims start at the walking surface, so their outer faces never share the
-	# floor's sides (coplanar faces flicker as the camera moves).
-	for side in [-1, 1]:
-		Primitives.mesh_node(Primitives.cached_box(Vector3(width, 0.014, 0.04)), Primitives.shared_material(style.trim), center + Vector3(0, 0.007, side * (depth / 2.0 - 0.02)), parent)
-		Primitives.mesh_node(Primitives.cached_box(Vector3(0.04, 0.014, depth)), Primitives.shared_material(style.trim), center + Vector3(side * (width / 2.0 - 0.02), 0.007, 0), parent)
-	var lines := str(style.lines)
-	if lines.contains("x"):
-		var spacing := float(style.spacing)
-		var x := -width / 2.0 + spacing
-		while x < width / 2.0 - 0.05:
-			Primitives.mesh_node(Primitives.cached_box(Vector3(0.012, 0.006, depth - 0.06)), Primitives.shared_material(style.line), center + Vector3(x, 0.003, 0), parent)
-			x += spacing
-	if lines == "x" and style.has("alt"): _planks(style, width, depth, center, parent)
-	if lines.contains("z"):
-		var spacing := float(style.spacing)
-		var z := -depth / 2.0 + spacing
-		while z < depth / 2.0 - 0.05:
-			Primitives.mesh_node(Primitives.cached_box(Vector3(width - 0.06, 0.006, 0.012)), Primitives.shared_material(style.line), center + Vector3(0, 0.003, z), parent)
-			z += spacing
+	# floor's sides (coplanar faces flicker as the camera moves), and stand a
+	# centimetre in from the edge, clear of a deck, tread or lock wall there. They
+	# run along the shape's outer edges only, each a centimetre short of its
+	# ends, so an end never lies on the face of what stands at a corner (a
+	# hatch's rim, a post, a frame).
+	for edge: Array in joined(WalkReach.outline(shape)):
+		var span: Array = edge[0]
+		var length := (float(span[1]) - float(span[0])) / 100.0 - 0.02
+		var middle := (float(span[0]) + float(span[1])) / 200.0
+		var line := float(edge[1]) / 100.0 - float(edge[2]) * 0.03
+		var along_x: bool = edge[3]
+		Primitives.mesh_node(Primitives.cached_box(Vector3(length, TRIM_TOP, 0.04) if along_x else Vector3(0.04, TRIM_TOP, length)), Primitives.shared_material(style.trim), Vector3(middle, TRIM_TOP * 0.5, line) if along_x else Vector3(line, TRIM_TOP * 0.5, middle), parent)
+	# The skirts of a rockless floor run under the whole drawn shape; the rock
+	# stays under the walkable rectangle.
 	if not with_rock or style.get("rockless", false):
+		var span := Vector2(float(whole[2] - whole[0]), float(whole[3] - whole[1])) / 100.0
+		var middle := Vector3(float(whole[0] + whole[2]) / 200.0, 0, float(whole[1] + whole[3]) / 200.0)
+		# Half a centimetre off the whole centimetres the pieces and their lips end on.
 		for z_side in [-1, 1]:
-			Primitives.mesh_node(Primitives.cached_box(Vector3(width - 0.1, 0.16, 0.12)), Primitives.shared_material(style.skirt), center + Vector3(0, -0.36, z_side * (depth / 2.0 - 0.3)), parent)
+			Primitives.mesh_node(Primitives.cached_box(Vector3(span.x - 0.1, 0.16, 0.12)), Primitives.shared_material(style.skirt), middle + Vector3(0, -0.36, z_side * (span.y / 2.0 - 0.295)), parent)
 		return
-	var rock := lower_rock(center, width, depth, style.rock)
-	rock.name = str(island.id) + "LowerRock"
-	parent.add_child(rock)
+	# A floor round an opening names the rectangles its rock stands under ("rocks_cm").
+	for a: Array in island.get("rocks_cm", [island.rect_cm]):
+		var width := float(a[2] - a[0]) / 100.0
+		var depth := float(a[3] - a[1]) / 100.0
+		var center := Vector3(float(a[0] + a[2]) / 200.0, 0, float(a[1] + a[3]) / 200.0)
+		var rock := lower_rock(center, width, depth, style.rock)
+		if not parent.has_node(str(island.id) + "LowerRock"): rock.name = str(island.id) + "LowerRock"
+		parent.add_child(rock)
+
+## `edges` (WalkReach outline) with the stretches of one line that meet end
+## to end joined into one.
+static func joined(edges: Array) -> Array:
+	var sorted := edges.duplicate(true)
+	sorted.sort_custom(func(a: Array, b: Array) -> bool: return [int(a[3]), float(a[1]), float(a[2]), float(a[0][0])] < [int(b[3]), float(b[1]), float(b[2]), float(b[0][0])])
+	var found: Array = []
+	for edge: Array in sorted:
+		var last: Array = found[-1] if not found.is_empty() else []
+		if not last.is_empty() and last[1] == edge[1] and last[2] == edge[2] and last[3] == edge[3] and float(last[0][1]) == float(edge[0][0]): last[0] = [last[0][0], edge[0][1]]
+		else: found.append(edge)
+	return found
+
+## Which sides of `piece` (west, north, east, south) no other piece of
+## `shape` meets.
+static func outer_sides(piece: Array, shape: Array) -> Array:
+	var outer := [true, true, true, true]
+	for other: Array in shape:
+		if other == piece: continue
+		for side in range(4):
+			var along := 1 - side % 2
+			if other[(side + 2) % 4] == piece[side] and other[along] < piece[along + 2] and other[along + 2] > piece[along]: outer[side] = false
+	return outer
+
+## A box `tall` high centred `y` under `piece` (cm), grown `grow` (m) past
+## each side `sides` marks 1, a centimetre short of each it marks 0 and two
+## short of each it marks -1, so no face of it lies on the piece's own sides,
+## on the next piece's lip or on a wall under a cut.
+static func _grown(piece: Array, sides: Array, grow: float, tall: float, y: float, color: Color, parent: Node3D) -> void:
+	var by: Array = sides.map(func(side: int) -> float: return grow if side == 1 else -0.01 if side == 0 else -0.02)
+	var low := Vector2(float(piece[0]) / 100.0 - by[0], float(piece[1]) / 100.0 - by[1])
+	var high := Vector2(float(piece[2]) / 100.0 + by[2], float(piece[3]) / 100.0 + by[3])
+	# A sliver of a piece has no lip under it.
+	if high.x - low.x < 0.01 or high.y - low.y < 0.01: return
+	Primitives.mesh_node(Primitives.cached_box(Vector3(high.x - low.x, tall, high.y - low.y)), Primitives.shared_material(color), Vector3((low.x + high.x) * 0.5, y, (low.y + high.y) * 0.5), parent)
+
+## The seam lines of an "x" (along_x: lines across x, every "spacing" along
+## it) or "z" style over the piece `r` (cm), counted from `origin` (m), each
+## short of the piece's edges.
+static func _seams(style: Dictionary, r: Array, origin: Vector2, along_x: bool, parent: Node3D) -> void:
+	var spacing := float(style.spacing)
+	var low := Vector2(float(r[0]), float(r[1])) / 100.0
+	var high := Vector2(float(r[2]), float(r[3])) / 100.0
+	var axis := 0 if along_x else 1
+	var at := origin[axis] + spacing * ceilf((low[axis] + 0.05 - origin[axis]) / spacing)
+	if is_equal_approx(at, low[axis]): at += spacing
+	while at < high[axis] - 0.05:
+		var size := Vector3(0.012, 0.006, high.y - low.y - 0.06) if along_x else Vector3(high.x - low.x - 0.06, 0.006, 0.012)
+		var center := Vector3(at, 0.003, (low.y + high.y) * 0.5) if along_x else Vector3((low.x + high.x) * 0.5, 0.003, at)
+		Primitives.mesh_node(Primitives.cached_box(size), Primitives.shared_material(style.line), center, parent)
+		at += spacing
+
+## The trims' top over the floor (m), and the lowest a step laid over a
+## floor's edge stands: clear of the trims by more than the depth buffer
+## tells apart (test_dressing_lint min_gap).
+const TRIM_TOP := 0.014
+const DECAL_TOP := TRIM_TOP + 0.006
 
 ## Planks between the seams of an "x" style: every other one a shade darker
 ## (its top PLANK_TOP over the floor, clear of the seams' and the trims'
@@ -103,20 +193,30 @@ static func build(island: Dictionary, style_name: String, parent: Node3D, with_r
 const PLANK_TOP := 0.010
 const JOINT_TOP := 0.006
 
-static func _planks(style: Dictionary, width: float, depth: float, center: Vector3, parent: Node3D) -> void:
+static func _planks(style: Dictionary, r: Array, origin: Vector2, parent: Node3D) -> void:
 	var spacing := float(style.spacing)
 	var joints := float(style.get("joints", 0.0))
-	var x := -width / 2.0 + spacing
-	var index := 0
-	while x + spacing < width / 2.0 - 0.05:
+	var low := Vector2(float(r[0]), float(r[1])) / 100.0
+	var high := Vector2(float(r[2]), float(r[3])) / 100.0
+	var depth := high.y - low.y
+	var middle_z := (low.y + high.y) * 0.5
+	# Counted from the whole floor's corner, so the light and dark planks carry
+	# on from piece to piece.
+	var index := int(ceilf((low.x + 0.05 - origin.x) / spacing))
+	var x := origin.x + spacing * float(index)
+	if is_equal_approx(x, low.x):
+		x += spacing
+		index += 1
+	index -= 1
+	while x + spacing < high.x - 0.05:
 		var middle := x + spacing * 0.5
-		var dark := index % 2 == 1
-		if dark: Primitives.mesh_node(Primitives.cached_box(Vector3(spacing - 0.03, PLANK_TOP, depth - 0.10)), Primitives.shared_material(style.alt), center + Vector3(middle, PLANK_TOP * 0.5, 0), parent)
+		var dark := posmod(index, 2) == 1
+		if dark: Primitives.mesh_node(Primitives.cached_box(Vector3(spacing - 0.03, PLANK_TOP, depth - 0.10)), Primitives.shared_material(style.alt), Vector3(middle, PLANK_TOP * 0.5, middle_z), parent)
 		if joints > 0.0 and not dark:
 			var top := JOINT_TOP
-			var z := -depth / 2.0 + joints * (0.35 + 0.5 * float(index % 3) / 2.0)
-			while z < depth / 2.0 - 0.15:
-				Primitives.mesh_node(Primitives.cached_box(Vector3(spacing - 0.04, top, 0.012)), Primitives.shared_material(style.line), center + Vector3(middle, top * 0.5, z), parent)
+			var z := low.y + joints * (0.35 + 0.5 * float(posmod(index, 3)) / 2.0)
+			while z < high.y - 0.15:
+				Primitives.mesh_node(Primitives.cached_box(Vector3(spacing - 0.04, top, 0.012)), Primitives.shared_material(style.line), Vector3(middle, top * 0.5, z), parent)
 				z += joints
 		x += spacing
 		index += 1

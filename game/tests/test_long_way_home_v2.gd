@@ -22,7 +22,9 @@ func _run() -> void:
 	_check(not level.is_empty() and Catalog.known(level) and level.version == 2 and level.simulation_version == 9, "@2 is a known version 2 definition pinned to rules 9")
 	var first := _pair(Witness.PATH, initial, Witness.S1A, Witness.S1B, "stage one")
 	if not first.is_empty():
-		_check(first.a.duration_ticks == 332 and first.b.duration_ticks == 332, "Stage one plays exactly as in @1")
+		var earlier_a := _load(DIRECTORY + "the-path-you-leave-a.json")
+		var earlier_b := _load(DIRECTORY + "the-path-you-leave-b.json")
+		_check(first.a.duration_ticks == int(earlier_a.get("duration_ticks", -1)) and first.b.duration_ticks == int(earlier_b.get("duration_ticks", -1)), "Stage one plays exactly as in @1 (its fixtures)")
 		exported["the-path-you-leave"] = first
 		var start: Dictionary = first.checkpoint
 		_ways(start)

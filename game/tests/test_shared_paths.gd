@@ -447,7 +447,9 @@ const GOAL_BEACON_BUILDER := "res://presentation/cooperative_world.gd"
 const CONTACT_SHADOWS := "res://presentation/kit/contact_shadows.gd"
 const CONTACT_SHADOW_SHADERS := ["res://presentation/kit/contact_shadow.gdshader", "res://presentation/kit/ground_shade.gdshader"]
 ## (z) The shared floor builders, each registering the floor tops it lays as
-## grounds (ContactShadows.ground), with what they lay.
+## grounds (ContactShadows.ground, or ground_cm for a floor drawn in pieces),
+## with what they lay.
+const GROUND_CALL := "\\bContactShadows\\.ground(_cm)?\\("
 const FLOOR_GROUNDS := {
 	"res://presentation/kit/surfaces.gd": "every ground style's floor",
 	"res://presentation/island_world.gd": "the floating grass shell (plain floors, Home's isles)",
@@ -1133,7 +1135,7 @@ func _contact_shadows() -> void:
 		var source: String = _sources[path]
 		for shader: String in CONTACT_SHADOW_SHADERS:
 			_check(path == CONTACT_SHADOWS or _found("\"" + shader + "\"", source) == 0, "%s draws a contact shadow itself: use kit/contact_shadows.gd (mark a root, register a floor, or single_material for one quad)" % path)
-		if path != CONTACT_SHADOWS and _found("\\bContactShadows\\.ground\\(", source) > 0: _check(FLOOR_GROUNDS.has(path), "%s registers floor grounds: add it to FLOOR_GROUNDS with what it lays" % path)
+		if path != CONTACT_SHADOWS and _found(GROUND_CALL, source) > 0: _check(FLOOR_GROUNDS.has(path), "%s registers floor grounds: add it to FLOOR_GROUNDS with what it lays" % path)
 		var kit := _alias(source, CONTACT_SHADOWS)
 		_check(path == CONTACT_SHADOW_LAYER or kit.is_empty() or _found("\\b" + kit + "\\.new\\(", source) == 0, "%s makes a contact shadow layer: island_world makes one per world" % path)
 		if not path.begins_with(PIECE_KITS) or _found("^extends\\s+\"" + PIECE_KIT_BASE + "\"", source) == 0: continue
@@ -1144,7 +1146,7 @@ func _contact_shadows() -> void:
 	for path: String in NO_CONTACT_SHADOW:
 		_check(opted.has(path), "NO_CONTACT_SHADOW names %s, which casts its shadow now: delete it" % path)
 	for path: String in FLOOR_GROUNDS:
-		_check(_found("\\bContactShadows\\.ground\\(", str(_sources.get(path, ""))) > 0, "FLOOR_GROUNDS names %s, which registers no ground now: delete it" % path)
+		_check(_found(GROUND_CALL, str(_sources.get(path, ""))) > 0, "FLOOR_GROUNDS names %s, which registers no ground now: delete it" % path)
 	_check(_found("\\bContactShadows\\.mark\\(root\\)", str(_sources.get(PIECE_KIT_BASE, ""))) > 0, "piece.gd _root() marks every piece root for a contact shadow")
 	_check(_found("\\bContactShadows\\.prop\\(root, spec\\)", str(_sources.get("res://presentation/kit/props.gd", ""))) > 0, "kit/props.gd build() marks every dressing prop for a contact shadow")
 	_check(_found("\\bContactShadows\\.(?:single_material|pip_quad)\\(", str(_sources.get("res://presentation/spirit_visual.gd", ""))) > 0, "A pip's shadow takes the contact shadows' look")

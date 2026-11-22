@@ -181,7 +181,14 @@ static func _a_welcome_left_on() -> Dictionary:
 	}
 
 static func controls(stage_id: String) -> Array:
-	var stage := definition(stage_id)
-	if stage_id == "borrowed-light":
-		return [{"id": stage.mirror_control.id, "kind": "mirror", "position_cm": stage.mirror_control.position_cm, "radius_cm": stage.mirror_control.radius_cm, "owner_slot": stage.mirror_control.owner_slot, "optical_id": stage.mirror_control.id}]
-	return stage.get("controls", []).duplicate(true)
+	return controls_of(definition(stage_id))
+
+## `stage`'s hand controls (Borrowed Light's one mirror_control as a mirror),
+## each with its solid footprint where it has one (core/solid_footprint.gd).
+static func controls_of(stage: Dictionary) -> Array:
+	if not stage.has("mirror_control"):
+		return stage.get("controls", []).duplicate(true)
+	var mirror: Dictionary = stage.mirror_control
+	var control := {"id": mirror.id, "kind": "mirror", "position_cm": mirror.position_cm, "radius_cm": mirror.radius_cm, "owner_slot": mirror.owner_slot, "optical_id": mirror.id}
+	if mirror.has("solid"): control["solid"] = mirror.solid.duplicate()
+	return [control]

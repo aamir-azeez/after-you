@@ -6,6 +6,9 @@ import { canonicalJson, digest } from "../src/protocol";
 import { CHAPTERS, RELAY_KEY, advertisedChapters, chapter, chapterFlag, paid } from "../src/v2/chapters";
 import manifest from "../../game/tests/fixtures/golden/chapter_manifest.json";
 import { withConfig } from "./config";
+import { LEGACY_CHAPTERS } from "../src/v2/legacy-chapters";
+// The published chapters as older apps hold them, which room level 2 lists after the rows (legacy-chapters.ts).
+const current = <T extends { definition_hash: string }>(items: T[]): T[] => items.filter(item => !LEGACY_CHAPTERS.some(entry => entry.key.definition_hash === item.definition_hash));
 
 // The game writes this manifest from its chapter registry (game/tests/test_chapter_manifest.gd).
 // Every server chapter must agree with it, or the game drops the chapter from Play with a friend.
@@ -76,7 +79,7 @@ describe("chapter manifest shared with the game", () => {
   });
   it("advertises exactly the manifest's chapters with every server flag on, in any order", () => {
     expect(CHAPTERS).toHaveLength(rows.length);
-    const advertised = advertisedChapters(ALL_FLAGS_ON(), 2);
+    const advertised = current(advertisedChapters(ALL_FLAGS_ON(), 2));
     expect(new Set(advertised.map(entry => `${entry.level_id}@${entry.level_version}`))).toEqual(new Set(manifest.keys));
     expect(advertised).toHaveLength(rows.length);
     for (const entry of advertised) expect(rows.find(row => row.definition_hash === entry.definition_hash)?.stage_count).toBe(entry.stage_count);

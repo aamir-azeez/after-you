@@ -22,10 +22,13 @@ const SLACK := "slack-water"
 const WAYS := ["boom", "sea-lock", "punt"]
 ## history -> way -> [budget, latest hold_start, p1 presses, p1 ticks bound,
 ## the same two sea first, the same two with every mooring made fast].
+## The p1 ticks bounds are the walks measured since every control is solid
+## (2026-11-21): the witness steps round the levers, a few ticks over the
+## model's straight lines.
 const MODEL := {
-	"low": {"boom": [564,2435,4,382,8,522,6,543], "sea-lock": [644,2355,3,400,7,413,5,543], "punt": [528,2471,5,500,9,530,7,546]},
-	"half": {"boom": [548,2451,5,389,9,448,7,550], "sea-lock": [660,2339,8,339,8,339,10,560], "punt": [544,2455,6,417,10,456,8,554]},
-	"high": {"boom": [580,2419,8,480,8,503,10,579], "sea-lock": [628,2371,7,392,7,394,9,580], "punt": [544,2455,5,409,9,511,7,573]},
+	"low": {"boom": [564,2435,4,397,8,543,6,544], "sea-lock": [644,2355,3,402,7,421,5,543], "punt": [528,2471,5,513,9,535,7,555]},
+	"half": {"boom": [548,2451,5,403,9,472,7,550], "sea-lock": [660,2339,8,350,8,350,10,561], "punt": [544,2455,6,431,10,461,8,563]},
+	"high": {"boom": [580,2419,8,495,8,509,10,582], "sea-lock": [628,2371,7,394,7,394,9,583], "punt": [544,2455,5,422,9,516,7,578]},
 }
 var checks := 0
 var failures := 0

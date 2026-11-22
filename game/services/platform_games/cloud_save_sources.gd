@@ -201,6 +201,9 @@ static func _exists(path: String) -> bool:
 ## clean with the same finished stages is written to the real path (over a stale local copy only
 ## when `replace`, keeping it as the file's backup). Anything else is skipped.
 func _adopt_journal(target: Dictionary, entry: Dictionary, replace: bool = false) -> bool:
+	# A cloud journal on an earlier definition of its level (Registry.retired) would only start
+	# the chapter over here, so it never replaces anything.
+	if entry.get("envelope") is Dictionary and Registry.retired(entry.envelope.get("relay")): return false
 	DirAccess.make_dir_recursive_absolute(staging)
 	var staged := staging.path_join(str(target.path).get_file())
 	AtomicFile.remove(staged)

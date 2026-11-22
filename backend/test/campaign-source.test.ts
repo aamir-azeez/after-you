@@ -20,12 +20,12 @@ import type { CampaignDefinition, CampaignKey, CampaignView } from "../src/v2/ca
 import type { RoomSnapshotV2 } from "../src/v2/room";
 import fixture from "./fixtures/campaign-control-v2.json";
 import legacy from "./fixtures/campaign-contract.json";
-import highA from "../../game/tests/fixtures/cooperative/upper-path-a.json";
-import highB from "../../game/tests/fixtures/cooperative/upper-path-b.json";
-import middle from "../../game/tests/fixtures/cooperative/upper-path-checkpoint.json";
-import lowA from "../../game/tests/fixtures/cooperative/down-and-around-a.json";
-import lowB from "../../game/tests/fixtures/cooperative/down-and-around-b.json";
-import final from "../../game/tests/fixtures/cooperative/high-and-low-final-checkpoint.json";
+import highA from "./fixtures/published-runs/cooperative/upper-path-a.json";
+import highB from "./fixtures/published-runs/cooperative/upper-path-b.json";
+import middle from "./fixtures/published-runs/cooperative/upper-path-checkpoint.json";
+import lowA from "./fixtures/published-runs/cooperative/down-and-around-a.json";
+import lowB from "./fixtures/published-runs/cooperative/down-and-around-b.json";
+import final from "./fixtures/published-runs/cooperative/high-and-low-final-checkpoint.json";
 import { acceptTerms } from "./terms";
 
 const definition = fixture.definition as CampaignDefinition, view = fixture.active_view as CampaignView;

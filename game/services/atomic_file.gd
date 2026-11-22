@@ -12,6 +12,8 @@ extends RefCounted
 
 const TMP := ".tmp"
 const BACKUP := ".backup"
+## The recovery label of a save the player started over from (set_aside).
+const STARTED_OVER := ".started-over-"
 
 ## How a write keeps the previous file as `path.backup`. MOVE renames it there
 ## and renames it back if the new copy cannot land. COPY copies it there, so
@@ -118,6 +120,17 @@ static func move_aside(source: String, stem: String, expected: String = "") -> b
 	if FileAccess.file_exists(aside):
 		return FileAccess.get_sha256(aside) == digest and DirAccess.remove_absolute(source) == OK
 	return DirAccess.rename_absolute(source, aside) == OK and FileAccess.get_sha256(aside) == digest
+
+## Moves the file and every copy a write may have left beside it aside with
+## move_aside, each to `<copy>` + `label` + its SHA-256 + ".json", the file
+## itself last, so a set-aside cut off part way leaves the file where it was.
+## Nothing is deleted. False when a move cannot be confirmed.
+static func set_aside(path: String, label: String, tmp_suffix: String = TMP) -> bool:
+	var copies := read_candidates(path, tmp_suffix)
+	copies.reverse()
+	for candidate: String in copies:
+		if FileAccess.file_exists(candidate) and not move_aside(candidate, candidate + label): return false
+	return true
 
 ## Copies a file that does not read to `path` + ".unreadable-" + its SHA-256,
 ## a recovery name no store reads or writes, before anything replaces it. A

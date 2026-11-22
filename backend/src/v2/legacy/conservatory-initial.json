@@ -1,0 +1,43 @@
+{
+	"a_recording_hash": "",
+	"b_recording_hash": "",
+	"checkpoint_hash": "1c0fd08cb85e46316f37c818797aefad42935a67a1ed98b4dfcbe5e8acdf147b",
+	"completed_stage_id": "",
+	"definition_hash": "fd9fce12c4facd5fd659eedd5a510ea6b0ad796925458ccb73b4b37a893530d5",
+	"level_id": "conservatory",
+	"level_version": 1,
+	"mechanisms": {
+		"controls": {
+			"court-fork": "backslash",
+			"crossing-return": "backslash",
+			"final-mirror": "backslash",
+			"gallery-fork": "backslash",
+			"garden-return": "backslash",
+			"high-return": "backslash",
+			"lower-fork": "backslash",
+			"preserved-turn": "backslash"
+		},
+		"latched_bridges": [],
+		"levers": {},
+		"props": {}
+	},
+	"next_stage_id": "a-light-above",
+	"players": {
+		"p0": {
+			"height": 0,
+			"surface_id": "court",
+			"x": -528,
+			"z": 144
+		},
+		"p1": {
+			"height": 0,
+			"surface_id": "court",
+			"x": -208,
+			"z": -256
+		}
+	},
+	"previous_checkpoint_hash": "",
+	"proof": {},
+	"schema_version": 7,
+	"stage_index": 0
+}

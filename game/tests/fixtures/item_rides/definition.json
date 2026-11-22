@@ -118,6 +118,10 @@
             900.0
           ],
           "radius_cm": 28.0,
+          "solid": {
+            "radius_cm": 20.0,
+            "reach_cm": 20.0
+          },
           "surface_id": "isle",
           "values": [
             "NORTH",

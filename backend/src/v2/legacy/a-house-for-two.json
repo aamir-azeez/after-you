@@ -1,0 +1,411 @@
+{
+	"bridges": [
+		{
+			"from_surface": "foyer",
+			"height_cm": 0,
+			"id": "workshop-entry",
+			"owner_slot": "p0",
+			"rect_cm": [
+				-192,
+				64,
+				-128,
+				160
+			],
+			"to_surface": "workshop"
+		},
+		{
+			"from_surface": "foyer",
+			"height_cm": 0,
+			"id": "workshop-return",
+			"owner_slot": "",
+			"rect_cm": [
+				-192,
+				-160,
+				-128,
+				-64
+			],
+			"to_surface": "workshop"
+		},
+		{
+			"from_surface": "workshop",
+			"height_cm": 0,
+			"id": "lower-hall-passage",
+			"owner_slot": "",
+			"rect_cm": [
+				192,
+				-48,
+				384,
+				48
+			],
+			"to_surface": "lower-hall"
+		},
+		{
+			"from_surface": "lower-hall",
+			"height_cm": 0,
+			"id": "sunroom-entry",
+			"owner_slot": "",
+			"rect_cm": [
+				704,
+				-48,
+				768,
+				48
+			],
+			"to_surface": "sunroom"
+		}
+	],
+	"drops": [
+		{
+			"destination_surface": "lower-hall",
+			"height_cm": 0,
+			"id": "loft-hatch",
+			"rect_cm": [
+				464,
+				64,
+				528,
+				128
+			],
+			"requires_lever": "loft-lever",
+			"surface_id": "loft"
+		}
+	],
+	"id": "a-house-for-two",
+	"islands": [
+		{
+			"height_cm": 0,
+			"id": "foyer",
+			"rect_cm": [
+				-640,
+				-256,
+				-192,
+				256
+			]
+		},
+		{
+			"height_cm": 0,
+			"id": "workshop",
+			"rect_cm": [
+				-128,
+				-256,
+				192,
+				256
+			]
+		},
+		{
+			"height_cm": 160,
+			"id": "loft",
+			"rect_cm": [
+				384,
+				-256,
+				704,
+				256
+			]
+		},
+		{
+			"height_cm": 0,
+			"id": "lower-hall",
+			"rect_cm": [
+				384,
+				-256,
+				704,
+				256
+			]
+		},
+		{
+			"height_cm": 0,
+			"id": "sunroom",
+			"rect_cm": [
+				768,
+				-256,
+				1152,
+				256
+			]
+		}
+	],
+	"obstacles": [
+		{
+			"id": "workshop-bench",
+			"rect_cm": [
+				-16,
+				-16,
+				80,
+				80
+			],
+			"surface_id": "workshop"
+		}
+	],
+	"premium": true,
+	"props": [
+		{
+			"id": "house-ball",
+			"kind": "ball",
+			"position_cm": [
+				-448,
+				112
+			],
+			"radius_cm": 20,
+			"surface_id": "foyer"
+		}
+	],
+	"schema_version": 6,
+	"simulation_version": 6,
+	"stages": [
+		{
+			"ball_pads": [
+				{
+					"id": "entry-weight",
+					"position_cm": [
+						-288,
+						112
+					],
+					"prop_id": "house-ball",
+					"radius_cm": 36,
+					"surface_id": "foyer"
+				},
+				{
+					"id": "stair-weight",
+					"position_cm": [
+						-352,
+						-112
+					],
+					"prop_id": "house-ball",
+					"radius_cm": 36,
+					"surface_id": "foyer"
+				}
+			],
+			"first_player_slot": "p0",
+			"gates": [
+				{
+					"ball_pad_id": "entry-weight",
+					"lever_id": "",
+					"pad_id": "",
+					"route_id": "workshop-entry"
+				},
+				{
+					"ball_pad_id": "",
+					"lever_id": "workshop-lever",
+					"pad_id": "",
+					"route_id": "workshop-entry"
+				},
+				{
+					"ball_pad_id": "",
+					"lever_id": "workshop-lever",
+					"pad_id": "",
+					"route_id": "workshop-return"
+				},
+				{
+					"ball_pad_id": "stair-weight",
+					"lever_id": "workshop-lever",
+					"pad_id": "",
+					"route_id": "loft-stairs"
+				}
+			],
+			"goal": {
+				"id": "loft-bell",
+				"owner_slot": "p1",
+				"position_cm": [
+					576,
+					-128
+				],
+				"radius_cm": 28,
+				"surface_id": "loft"
+			},
+			"goal_policy": {
+				"kind": "ring"
+			},
+			"hint_a": "There's more than one way through the workshop.",
+			"hint_b": "Go to the bell in the loft.",
+			"id": "open-the-house",
+			"kind": "weight_switch",
+			"levers": [
+				{
+					"id": "workshop-lever",
+					"owner_slot": "p0",
+					"position_cm": [
+						32,
+						144
+					],
+					"radius_cm": 28,
+					"surface_id": "workshop"
+				}
+			],
+			"pressure_pads": [],
+			"receiver_action_ticks": 1,
+			"receiver_route_cm": [
+				[
+					-528,
+					-112
+				],
+				[
+					-528,
+					-192
+				],
+				[
+					-240,
+					-192
+				],
+				[
+					-240,
+					-112
+				],
+				[
+					128,
+					-112
+				],
+				[
+					576,
+					-112
+				],
+				[
+					576,
+					-128
+				]
+			],
+			"source_policy": {
+				"ball_pad_id": "stair-weight",
+				"kind": "weight_switch",
+				"lever_id": "workshop-lever",
+				"minimum_hold_ticks": 15,
+				"prop_id": "house-ball"
+			},
+			"title": "Open the House",
+			"version": 1
+		},
+		{
+			"ball_pads": [
+				{
+					"id": "sunroom-weight",
+					"position_cm": [
+						592,
+						0
+					],
+					"prop_id": "house-ball",
+					"radius_cm": 36,
+					"surface_id": "lower-hall"
+				}
+			],
+			"first_player_slot": "p1",
+			"gates": [
+				{
+					"ball_pad_id": "",
+					"lever_id": "loft-lever",
+					"pad_id": "",
+					"route_id": "lower-hall-passage"
+				},
+				{
+					"ball_pad_id": "sunroom-weight",
+					"lever_id": "",
+					"pad_id": "",
+					"route_id": "sunroom-entry"
+				}
+			],
+			"goal": {
+				"id": "sunroom-bell",
+				"owner_slot": "p0",
+				"position_cm": [
+					960,
+					112
+				],
+				"radius_cm": 28,
+				"surface_id": "sunroom"
+			},
+			"goal_policy": {
+				"kind": "ring"
+			},
+			"handoff": {
+				"id": "lower-hall-handoff",
+				"owner_slot": "p1",
+				"position_cm": [
+					464,
+					0
+				],
+				"radius_cm": 36,
+				"surface_id": "lower-hall"
+			},
+			"hint_a": "Look for a way down and retrieve the ball.",
+			"hint_b": "Open the sunroom.",
+			"id": "the-room-below",
+			"kind": "offer_ball",
+			"levers": [
+				{
+					"id": "loft-lever",
+					"owner_slot": "p1",
+					"position_cm": [
+						560,
+						80
+					],
+					"radius_cm": 28,
+					"surface_id": "loft"
+				}
+			],
+			"pressure_pads": [],
+			"receiver_action_ticks": 2,
+			"receiver_route_cm": [
+				[
+					416,
+					0
+				],
+				[
+					560,
+					0
+				],
+				[
+					560,
+					96
+				],
+				[
+					656,
+					96
+				],
+				[
+					656,
+					0
+				],
+				[
+					960,
+					0
+				],
+				[
+					960,
+					112
+				]
+			],
+			"source_policy": {
+				"kind": "offer_ball",
+				"lever_id": "loft-lever",
+				"prop_id": "house-ball",
+				"release_socket_id": "lower-hall-handoff"
+			},
+			"title": "The Room Below",
+			"version": 1
+		}
+	],
+	"stairs": [
+		{
+			"axis": "x",
+			"from_height_cm": 0,
+			"from_surface": "workshop",
+			"id": "loft-stairs",
+			"owner_slot": "p1",
+			"rect_cm": [
+				192,
+				-160,
+				384,
+				-64
+			],
+			"to_height_cm": 160,
+			"to_surface": "loft"
+		}
+	],
+	"starts": {
+		"p0": [
+			-528,
+			112
+		],
+		"p1": [
+			-528,
+			-112
+		]
+	},
+	"title": "A House for Two",
+	"version": 1
+}

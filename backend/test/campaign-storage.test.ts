@@ -18,12 +18,12 @@ import { campaignContinueKey, campaignRequestHash } from "../src/v2/campaign-pro
 import type { CampaignContinue, CampaignContinueReceipt, CampaignDefinition, CampaignKey, CampaignOrigin, CampaignView } from "../src/v2/campaign-types";
 import fixture from "./fixtures/campaign-control-v2.json";
 import legacy from "./fixtures/campaign-contract.json";
-import highA from "../../game/tests/fixtures/cooperative/upper-path-a.json";
-import highB from "../../game/tests/fixtures/cooperative/upper-path-b.json";
-import highMiddle from "../../game/tests/fixtures/cooperative/upper-path-checkpoint.json";
-import lowA from "../../game/tests/fixtures/cooperative/down-and-around-a.json";
-import lowB from "../../game/tests/fixtures/cooperative/down-and-around-b.json";
-import highFinal from "../../game/tests/fixtures/cooperative/high-and-low-final-checkpoint.json";
+import highA from "./fixtures/published-runs/cooperative/upper-path-a.json";
+import highB from "./fixtures/published-runs/cooperative/upper-path-b.json";
+import highMiddle from "./fixtures/published-runs/cooperative/upper-path-checkpoint.json";
+import lowA from "./fixtures/published-runs/cooperative/down-and-around-a.json";
+import lowB from "./fixtures/published-runs/cooperative/down-and-around-b.json";
+import highFinal from "./fixtures/published-runs/cooperative/high-and-low-final-checkpoint.json";
 
 const definition=fixture.definition as CampaignDefinition, view=fixture.active_view as CampaignView;
 const host=view.host_id,guest=view.guest_id!,anchorId=view.campaign_room_id,invite=view.invite_code!,commit="d".repeat(40);

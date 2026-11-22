@@ -3,8 +3,12 @@ extends RefCounted
 ## the shared record and checkpoint format. Each stage embeds its native
 ## definition, so the chapter hash covers the content directly and the backend
 ## can read the structure it checks. The native catalog stays the source the
-## engine plays; a test pins every embedded copy to it.
+## engine plays; a test pins every embedded copy to it. The mirrors and the
+## selector are solid by the one hand rule (core/solid_footprint.gd
+## with_hands), so a pip works one from beside it; the room engine plays the
+## embedded stage (room_simulation.gd), solo @1 the plain catalog.
 const Canonical = preload("res://core/v2/canonical.gd")
+const Solid = preload("res://core/solid_footprint.gd")
 const LightCatalog = preload("res://core/lighthouse/stage_catalog.gd")
 const Native = preload("res://core/lighthouse/borrowed_light.gd")
 const ID := "sleeping-lighthouse"
@@ -22,9 +26,9 @@ static func definition(_key: String = "") -> Dictionary:
 	for slot: String in ["p0", "p1"]:
 		var p: Dictionary = start.players[slot]
 		players[slot] = {"x": int(p.x), "z": int(p.z), "height": 0, "surface_id": str(p.surface_id)}
-	return {"schema_version": SCHEMA, "simulation_version": RULES, "id": ID, "version": VERSION, "title": "Sleeping Lighthouse",
+	return Solid.with_hands({"schema_version": SCHEMA, "simulation_version": RULES, "id": ID, "version": VERSION, "title": "Sleeping Lighthouse",
 		"premium": true, "start": {"players": players, "mechanisms": {"latched_bridges": [], "mirrors": {}, "props": {}, "flags": {}}},
-		"stages": stages}
+		"stages": stages})
 
 static func known(value: Dictionary) -> bool:
 	return value.get("id") == ID and value.get("version") == VERSION and Canonical.same(value, definition())

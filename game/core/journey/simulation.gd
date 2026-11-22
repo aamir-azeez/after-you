@@ -18,6 +18,9 @@ const COMFORT_ALIAS_VERSION := 9
 ## definition's "closing_ticks", then shuts; a spirit standing on a shut
 ## crossing then drowns and the turn ends there. A completed stage keeps no
 ## routes for the next one. Only a definition that pins 10 plays them.
+## A stepping stone its water leaves standing too tall (stage_catalog.gd
+## tall_stones) drowns no one: a spirit on it as it shuts stays up there, one
+## that walks off it or onto it falls, and the turn ends as a drowning does.
 const TIDE_RULES_VERSION := 10
 ## Open controls (core/physical/open_controls.gd): the comfort rules (9) with
 ## open controls are 12, the tide rules (10) with open controls 13. Only a
@@ -30,13 +33,22 @@ const OPEN_RULES := OpenControls.OPEN_RULES
 ## lines): the player's own spirit, or the memory's.
 const DROWNED_YOU := "Oh no, you drowned! Try again?"
 const DROWNED_FRIEND := "Oh no, your friend drowned! Try again?"
+## What a turn that ends in a fall says, the same way.
+const FELL_YOU := "Your pip fell! Try again?"
+const FELL_FRIEND := "Your friend fell! Try again?"
+## A turn that would end with a spirit left high on a stone.
+const LEFT_HIGH := "A pip is stuck up on the stones."
 ## A turn that would end with a spirit on a closing crossing.
 const ON_CLOSING := "Step off the crossing before it shuts."
 var _entry_latches: Dictionary = {}
 ## Tide rules: route id -> the tick its crossing shuts, while it closes.
 var _closing: Dictionary = {}
-## Tide rules: {"slot", "route", "tick"} once a spirit has drowned.
+## Tide rules: {"slot", "route", "tick"} once a spirit has drowned, with
+## "fell": true when it fell off a stone left high instead.
 var _drowned: Dictionary = {}
+## Tide rules: slot -> where that spirit stood, left high on a stone, as the
+## last tick ended.
+var _high: Dictionary = {}
 var _ready_branch := ""
 ## Rules 16's carried items and currents (core/physical/carried_items.gd),
 ## set at reset: whether they play, the items in order, the crossings that
@@ -132,6 +144,7 @@ func _reset_mechanics() -> void:
 	_entry_latches = {}
 	_closing = {}
 	_drowned = {}
+	_high = {}
 	_ready_branch = ""
 	_optics = {"segments":[],"signals":{}}
 	_platforms = []
@@ -287,12 +300,26 @@ func _close_slowly(was: Dictionary) -> void:
 			_events.append("closing:" + id)
 
 ## Tide rules: a spirit standing on a crossing that is now shut drowns, the
-## player's own or the memory's, and the turn ends.
+## player's own or the memory's, and the turn ends. On a stone left high it
+## stays up there; walking off it, or onto it, it falls where it stood, and
+## the turn ends the same way.
 func _check_hazards() -> void:
 	if not _tide_rules() or not _drowned.is_empty(): return
 	for slot: String in ["p0", "p1"]:
 		var surface := str(_players[slot].surface_id)
-		if _routes.has(surface) and not bool(_routes[surface]):
+		var stood: Dictionary = _high.get(slot, {})
+		if not _walked(slot) or not (_left_high(surface) or (not stood.is_empty() and _left_high(str(stood.surface_id)))): continue
+		if not stood.is_empty(): _players[slot] = stood
+		_drowned = {"slot": slot, "route": str(_players[slot].surface_id), "tick": tick, "fell": true}
+		finished = true
+		_events.append("fell:" + slot)
+		return
+	_high = {}
+	for slot: String in ["p0", "p1"]:
+		var surface := str(_players[slot].surface_id)
+		if _left_high(surface):
+			_high[slot] = _players[slot].duplicate()
+		elif _routes.has(surface) and not bool(_routes[surface]):
 			_drowned = {"slot": slot, "route": surface, "tick": tick}
 			finished = true
 			_events.append("drowned:" + slot)
@@ -308,6 +335,21 @@ func _check_hazards() -> void:
 		_events.append("sank:" + stone)
 		_events.append("drowned:" + slot)
 
+## Tide rules: whether crossing `id` is a stepping stone shut and left standing
+## too tall by its water.
+func _left_high(id: String) -> bool:
+	return _routes.has(id) and not bool(_routes[id]) and Catalog.left_high(level, id, _mechanisms.controls)
+
+## Whether `slot` walks this tick: the live pip by its input, the memory by
+## its recorded one (a step _move would take).
+func _walked(slot: String) -> bool:
+	var frame: Variant = null
+	if slot == active_slot: frame = _actions.back() if not _actions.is_empty() else null
+	elif role == "b" and tick < _prior_frames.size(): frame = quantize_input(_prior_frames[tick])
+	if not frame is Dictionary: return false
+	var direction := Vector2(float(frame.x), float(frame.z)).limit_length(100.0)
+	return Vector2i(roundi(direction.x * MOVE_PER_TICK / 100.0), roundi(direction.y * MOVE_PER_TICK / 100.0)) != Vector2i.ZERO
+
 func _keeps_routes_at_completion() -> bool:
 	return not _tide_rules()
 
@@ -320,11 +362,12 @@ func _on_closing() -> bool:
 
 func _may_complete() -> bool:
 	# Rules 16: never while an item flies, so a checkpoint never holds one.
-	return not _on_closing() and _source_holds() and _flights.is_empty()
+	return not _on_closing() and _high.is_empty() and _source_holds() and _flights.is_empty()
 
-## Open turns: a turn never passes with a spirit on a closing crossing or drowned.
+## Open turns: a turn never passes with a spirit on a closing crossing, left
+## high or drowned.
 func _may_pass() -> bool:
-	return not _on_closing() and _drowned.is_empty()
+	return not _on_closing() and _high.is_empty() and _drowned.is_empty()
 
 ## Open turns: the goal holds for a pip only while the goal's light holds.
 func _at_goal(slot: String) -> bool:
@@ -406,8 +449,10 @@ func _objective_display() -> Dictionary:
 ## Snapshot text only. A harbour hold that began too late to leave the partner
 ## their budget says so, instead of the generic "keep the crossing ready".
 func commit_reason() -> String:
+	if not _drowned.is_empty() and _drowned.has("fell"): return FELL_YOU if _drowned.slot == active_slot else FELL_FRIEND
 	if not _drowned.is_empty(): return DROWNED_YOU if _drowned.slot == active_slot else DROWNED_FRIEND
 	if _on_closing(): return ON_CLOSING
+	if not _high.is_empty(): return LEFT_HIGH
 	if level.get("id", "") == "turn-of-the-tide" and error.is_empty() and role == "a" and not can_commit() and not _ready_branch.is_empty() and _hold_start >= 0 and _hold_start + source_budget_ticks() >= receiver_deadline():
 		return "Try again with more time left for your partner."
 	return super.commit_reason()
@@ -462,7 +507,7 @@ func source_budget_ticks() -> int:
 	return budget
 
 func can_commit() -> bool:
-	if level.is_empty() or not error.is_empty() or tick==0 or not _drowned.is_empty() or _on_closing(): return false
+	if level.is_empty() or not error.is_empty() or tick==0 or not _drowned.is_empty() or _on_closing() or not _high.is_empty(): return false
 	if role=="b": return complete
 	# Open turns: a first turn may end at any time (runtime.gd can_commit).
 	return _open_turns() or _source_ready()

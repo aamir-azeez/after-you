@@ -1,0 +1,663 @@
+{
+	"bridges": [
+		{
+			"from_surface": "source-court",
+			"height_cm": 0,
+			"id": "court-landing",
+			"owner_slot": "p0",
+			"rect_cm": [
+				-256,
+				-48,
+				-64,
+				48
+			],
+			"to_surface": "selector-landing"
+		},
+		{
+			"from_surface": "partner-bank",
+			"height_cm": 0,
+			"id": "friend-crossing",
+			"owner_slot": "p1",
+			"rect_cm": [
+				-256,
+				224,
+				-64,
+				320
+			],
+			"to_surface": "selector-landing"
+		},
+		{
+			"from_surface": "selector-landing",
+			"height_cm": 0,
+			"id": "home-shortcut",
+			"owner_slot": "",
+			"rect_cm": [
+				192,
+				32,
+				384,
+				128
+			],
+			"to_surface": "garden"
+		},
+		{
+			"from_surface": "drop-landing",
+			"height_cm": 0,
+			"id": "drop-garden",
+			"owner_slot": "p0",
+			"rect_cm": [
+				528,
+				-160,
+				624,
+				-96
+			],
+			"to_surface": "garden"
+		},
+		{
+			"from_surface": "garden",
+			"height_cm": 0,
+			"id": "near-crossing",
+			"owner_slot": "p0",
+			"rect_cm": [
+				768,
+				176,
+				896,
+				272
+			],
+			"to_surface": "near-porch"
+		},
+		{
+			"from_surface": "near-porch",
+			"height_cm": 0,
+			"id": "porch-door",
+			"owner_slot": "p0",
+			"rect_cm": [
+				1024,
+				176,
+				1120,
+				272
+			],
+			"to_surface": "home-room"
+		},
+		{
+			"from_surface": "garden",
+			"height_cm": 0,
+			"id": "garden-arch",
+			"owner_slot": "p0",
+			"rect_cm": [
+				704,
+				320,
+				768,
+				384
+			],
+			"to_surface": "garden-walk"
+		},
+		{
+			"from_surface": "garden-walk",
+			"height_cm": 0,
+			"id": "garden-door",
+			"owner_slot": "p0",
+			"rect_cm": [
+				1120,
+				320,
+				1184,
+				384
+			],
+			"to_surface": "home-room"
+		}
+	],
+	"drops": [
+		{
+			"destination_surface": "drop-landing",
+			"height_cm": 0,
+			"id": "garden-descent",
+			"rect_cm": [
+				536,
+				-264,
+				584,
+				-216
+			],
+			"surface_id": "upper-lane"
+		}
+	],
+	"id": "long-way-home",
+	"islands": [
+		{
+			"height_cm": 0,
+			"id": "source-court",
+			"rect_cm": [
+				-640,
+				-352,
+				-256,
+				160
+			]
+		},
+		{
+			"height_cm": 0,
+			"id": "partner-bank",
+			"rect_cm": [
+				-640,
+				224,
+				-256,
+				544
+			]
+		},
+		{
+			"height_cm": 0,
+			"id": "selector-landing",
+			"rect_cm": [
+				-64,
+				-64,
+				192,
+				320
+			]
+		},
+		{
+			"height_cm": 160,
+			"id": "upper-lane",
+			"rect_cm": [
+				-64,
+				-352,
+				640,
+				-160
+			]
+		},
+		{
+			"height_cm": 0,
+			"id": "drop-landing",
+			"rect_cm": [
+				512,
+				-320,
+				640,
+				-160
+			]
+		},
+		{
+			"height_cm": 0,
+			"id": "recovery-landing",
+			"rect_cm": [
+				288,
+				32,
+				384,
+				128
+			]
+		},
+		{
+			"height_cm": 0,
+			"id": "garden",
+			"rect_cm": [
+				384,
+				-96,
+				768,
+				320
+			]
+		},
+		{
+			"height_cm": 96,
+			"id": "service-landing",
+			"rect_cm": [
+				864,
+				-128,
+				1024,
+				64
+			]
+		},
+		{
+			"height_cm": 0,
+			"id": "near-porch",
+			"rect_cm": [
+				896,
+				160,
+				1024,
+				288
+			]
+		},
+		{
+			"height_cm": 0,
+			"id": "garden-walk",
+			"rect_cm": [
+				704,
+				384,
+				1184,
+				480
+			]
+		},
+		{
+			"height_cm": 0,
+			"id": "home-room",
+			"rect_cm": [
+				1120,
+				-96,
+				1504,
+				320
+			]
+		}
+	],
+	"premium": true,
+	"props": [],
+	"schema_version": 7,
+	"simulation_version": 7,
+	"stages": [
+		{
+			"ball_pads": [],
+			"controls": [
+				{
+					"height_cm": 0,
+					"id": "path-selector",
+					"initial": "home",
+					"kind": "selector",
+					"owner_slot": "p0",
+					"position_cm": [
+						64,
+						64
+					],
+					"radius_cm": 28,
+					"surface_id": "selector-landing",
+					"values": [
+						"home",
+						"friend"
+					]
+				},
+				{
+					"height_cm": 0,
+					"id": "return-selector",
+					"initial": "bank",
+					"kind": "selector",
+					"owner_slot": "p1",
+					"position_cm": [
+						128,
+						224
+					],
+					"radius_cm": 28,
+					"surface_id": "selector-landing",
+					"values": [
+						"bank",
+						"garden"
+					]
+				}
+			],
+			"entry_latch_routes": [
+				"friend-crossing",
+				"home-shortcut"
+			],
+			"first_player_slot": "p0",
+			"gates": [
+				{
+					"route_id": "court-landing"
+				},
+				{
+					"route_id": "upper-stair"
+				},
+				{
+					"route_id": "recovery-stair"
+				},
+				{
+					"route_id": "drop-garden"
+				},
+				{
+					"route_id": "friend-crossing",
+					"when": {
+						"all": [
+							{
+								"control_id": "path-selector",
+								"value": "friend"
+							},
+							{
+								"control_id": "return-selector",
+								"value": "bank"
+							}
+						]
+					}
+				},
+				{
+					"route_id": "home-shortcut",
+					"when": {
+						"any": [
+							{
+								"control_id": "path-selector",
+								"value": "home"
+							},
+							{
+								"control_id": "return-selector",
+								"value": "garden"
+							}
+						]
+					}
+				}
+			],
+			"goal": {
+				"height_cm": 0,
+				"id": "garden-window",
+				"owner_slot": "p1",
+				"position_cm": [
+					640,
+					224
+				],
+				"radius_cm": 28,
+				"surface_id": "garden"
+			},
+			"goal_policy": {
+				"kind": "ring",
+				"when": {
+					"control_id": "return-selector",
+					"value": "garden"
+				}
+			},
+			"hint_a": "Leave a trail for your partner and then go to the garden on your own.",
+			"hint_b": "Reach the garden.",
+			"id": "the-path-you-leave",
+			"kind": "route_endpoint",
+			"levers": [],
+			"pressure_pads": [],
+			"receiver_action_ticks": 2,
+			"receiver_route_cm": [
+				[
+					-416,
+					304
+				],
+				[
+					-16,
+					304
+				],
+				[
+					128,
+					224
+				],
+				[
+					128,
+					80
+				],
+				[
+					512,
+					80
+				],
+				[
+					640,
+					224
+				]
+			],
+			"source_policy": {
+				"endpoint": {
+					"height_cm": 0,
+					"id": "garden-wait",
+					"owner_slot": "p0",
+					"position_cm": [
+						640,
+						32
+					],
+					"radius_cm": 64,
+					"surface_id": "garden"
+				},
+				"kind": "route_endpoint",
+				"when": {
+					"control_id": "path-selector",
+					"value": "friend"
+				}
+			},
+			"title": "The Path You Leave",
+			"version": 1
+		},
+		{
+			"ball_pads": [],
+			"controls": [],
+			"entry_latch_routes": [
+				"near-crossing",
+				"porch-door",
+				"garden-arch",
+				"garden-door"
+			],
+			"first_player_slot": "p1",
+			"gates": [
+				{
+					"route_id": "service-up"
+				},
+				{
+					"route_id": "service-down"
+				},
+				{
+					"route_id": "near-crossing",
+					"when": {
+						"pad_id": "near-window"
+					}
+				},
+				{
+					"route_id": "porch-door",
+					"when": {
+						"all": [
+							{
+								"pad_id": "near-window"
+							},
+							{
+								"lever_id": "porch-shutter"
+							}
+						]
+					}
+				},
+				{
+					"route_id": "garden-arch",
+					"when": {
+						"pad_id": "garden-window"
+					}
+				},
+				{
+					"route_id": "garden-door",
+					"when": {
+						"pad_id": "garden-window"
+					}
+				}
+			],
+			"goal": {
+				"height_cm": 0,
+				"id": "second-window",
+				"owner_slot": "p0",
+				"position_cm": [
+					1408,
+					96
+				],
+				"radius_cm": 28,
+				"surface_id": "home-room"
+			},
+			"goal_policy": {
+				"kind": "ring"
+			},
+			"hint_a": "Pick a window to greet your partner when they come home.",
+			"hint_b": "Follow the open path and light the second window.",
+			"id": "a-place-beside-you",
+			"kind": "choice_pad",
+			"levers": [
+				{
+					"height_cm": 0,
+					"id": "porch-shutter",
+					"owner_slot": "p0",
+					"position_cm": [
+						960,
+						224
+					],
+					"radius_cm": 28,
+					"surface_id": "near-porch"
+				}
+			],
+			"pressure_pads": [
+				{
+					"height_cm": 0,
+					"id": "near-window",
+					"owner_slot": "p1",
+					"position_cm": [
+						1200,
+						32
+					],
+					"radius_cm": 36,
+					"surface_id": "home-room"
+				},
+				{
+					"height_cm": 0,
+					"id": "garden-window",
+					"owner_slot": "p1",
+					"position_cm": [
+						1200,
+						144
+					],
+					"radius_cm": 36,
+					"surface_id": "home-room"
+				}
+			],
+			"receiver_action_ticks": 2,
+			"receiver_route_cm": [
+				[
+					704,
+					224
+				],
+				[
+					960,
+					224
+				],
+				[
+					1168,
+					224
+				],
+				[
+					1408,
+					96
+				]
+			],
+			"source_policy": {
+				"branches": [
+					{
+						"id": "near",
+						"pad_id": "near-window",
+						"receiver_action_ticks": 2,
+						"receiver_route_cm": [
+							[
+								704,
+								224
+							],
+							[
+								960,
+								224
+							],
+							[
+								1168,
+								224
+							],
+							[
+								1408,
+								96
+							]
+						]
+					},
+					{
+						"id": "garden",
+						"pad_id": "garden-window",
+						"receiver_action_ticks": 1,
+						"receiver_route_cm": [
+							[
+								736,
+								288
+							],
+							[
+								736,
+								432
+							],
+							[
+								1152,
+								432
+							],
+							[
+								1152,
+								272
+							],
+							[
+								1408,
+								96
+							]
+						]
+					}
+				],
+				"kind": "choice_pad"
+			},
+			"title": "A Place Beside You",
+			"version": 1
+		}
+	],
+	"stairs": [
+		{
+			"axis": "x",
+			"from_height_cm": 0,
+			"from_surface": "source-court",
+			"id": "upper-stair",
+			"owner_slot": "p0",
+			"rect_cm": [
+				-256,
+				-288,
+				-64,
+				-192
+			],
+			"to_height_cm": 160,
+			"to_surface": "upper-lane"
+		},
+		{
+			"axis": "z",
+			"from_height_cm": 160,
+			"from_surface": "upper-lane",
+			"id": "recovery-stair",
+			"owner_slot": "p0",
+			"rect_cm": [
+				288,
+				-160,
+				384,
+				32
+			],
+			"to_height_cm": 0,
+			"to_surface": "recovery-landing"
+		},
+		{
+			"axis": "x",
+			"from_height_cm": 0,
+			"from_surface": "garden",
+			"id": "service-up",
+			"owner_slot": "p1",
+			"rect_cm": [
+				768,
+				-64,
+				864,
+				32
+			],
+			"to_height_cm": 96,
+			"to_surface": "service-landing"
+		},
+		{
+			"axis": "x",
+			"from_height_cm": 96,
+			"from_surface": "service-landing",
+			"id": "service-down",
+			"owner_slot": "p1",
+			"rect_cm": [
+				1024,
+				-64,
+				1120,
+				32
+			],
+			"to_height_cm": 0,
+			"to_surface": "home-room"
+		}
+	],
+	"starts": {
+		"p0": {
+			"height_cm": 0,
+			"position_cm": [
+				-528,
+				64
+			],
+			"surface_id": "source-court"
+		},
+		"p1": {
+			"height_cm": 0,
+			"position_cm": [
+				-416,
+				400
+			],
+			"surface_id": "partner-bank"
+		}
+	},
+	"title": "Long Way Home",
+	"version": 1
+}
