@@ -12,9 +12,9 @@ extends SceneTree
 ##   arc, nobody can pick it up, the stage cannot complete while it flies, and
 ##   with nobody at the landing it lands at the landing spot;
 ## - catches: the live pip catches the friend's replayed throw (the witness's
-##   turn 2), and on carry-over turns nothing is thrown twice: turn 3 takes
-##   over after the catch, so its replay throws nothing again (turn 3); every
-##   turn replays exactly.
+##   turn 2), and the friend's replay catches a seed still flying at the
+##   hand-off (turn 3); on carry-over turns nothing is thrown twice. Every turn
+##   replays exactly.
 const Registry = preload("res://services/chapter_registry.gd")
 const CarriedItems = preload("res://core/physical/carried_items.gd")
 const Solid = preload("res://core/solid_footprint.gd")
@@ -125,8 +125,9 @@ func _throw_and_land() -> void:
 	_check(landed_at >= 0 and str(sim._mechanisms.items.seed.spot) == str(thrown.to) and sim._may_complete(), "With nobody at the landing it lands there, and the stage may complete again")
 
 ## The witness's turns: the memory throws and the live pip catches (turn 2);
-## turn 3 starts from turn 2's world after the catch, so nobody throws or
-## catches again (carry-over turns: nothing acts twice). Each replays exactly.
+## turn 3 takes over from turn 2's world while the seed is still in the air,
+## so the friend's replay makes that catch and nobody throws again (carry-over
+## turns: nothing acts twice). Each replays exactly.
 func _catches(turns: Array) -> void:
 	_check(turns.size() == 3, "The witness's stage takes three turns")
 	if turns.size() != 3: return
@@ -141,5 +142,5 @@ func _catches(turns: Array) -> void:
 			if "item_caught:seed" in snap.events: catcher = str(sim._mechanisms.items.seed.holder)
 		var live := str(sim.active_slot)
 		if index == 1: _check(thrower == sim.memory_slot and catcher == live, "Turn 2: the memory throws and the live pip catches (%s, %s)" % [thrower, catcher])
-		else: _check(thrower.is_empty() and catcher.is_empty(), "Turn 3: the seed flew once, so nothing is thrown or caught again (%s, %s)" % [thrower, catcher])
+		else: _check(thrower.is_empty() and catcher == sim.memory_slot, "Turn 3: nothing is thrown again, and the friend's replay catches the seed still flying at the hand-off (%s, %s)" % [thrower, catcher])
 		_check(Canonical.same(sim.export_recording(), turns[index]), "Turn %d replays exactly" % [index + 1])
