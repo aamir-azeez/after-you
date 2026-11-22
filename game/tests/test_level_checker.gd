@@ -51,8 +51,9 @@ extends SceneTree
 ##    size each with its gate, stones and stops that are bridges). The new
 ##    pieces' own rules and their witness are tests/test_pieces.gd's.
 ##  - Props (content/dressing, kit/props.gd extents): two props standing in
-##    each other on a stage, and two controls drawn into each other: a lever,
-##    selector, pad or goal and what its world builds beside it (Tide's lever
+##    each other on a stage, and two controls or pieces drawn into each other: a
+##    lever, selector, pad, goal, item spot, throw mark or landing as wide as
+##    its look draws it, and what its world builds beside it (Tide's lever
 ##    lamps), each swept up its height toward the camera
 ##    (kit/prop_rules.gd control_bodies). Props against routes, pads, levers, goals and
 ##    starts, and the camera's view of them, are tests/test_dressing_lint.gd's.
@@ -73,6 +74,7 @@ const Seven = preload("res://core/journey/seven_mechanisms.gd")
 const PropRules = preload("res://presentation/kit/prop_rules.gd")
 const PiecesRules = preload("res://core/physical/pieces_rules.gd")
 const PiecesWitness = preload("res://tests/pieces_witness.gd")
+const PieceStyles = preload("res://content/dressing/piece_styles.gd")
 ## Known failures: {failure id: why it is left}. Published worlds never change
 ## to clear one; a new chapter fixes its own.
 const KNOWN := {
@@ -85,6 +87,11 @@ const KNOWN := {
 	"sleeping-lighthouse@2 a-welcome-left-on controls beacon-upper-mirror and beacon-hold": "published: the beacon's mirrors stand close round its tower on purpose",
 	"sleeping-lighthouse@2 a-welcome-left-on controls beacon-lower-mirror and tower-projector": "published: the beacon's mirrors stand close round its tower on purpose",
 	"sleeping-lighthouse@2 a-welcome-left-on controls beacon-lower-mirror and beacon-crest": "published: the beacon's mirrors stand close round its tower on purpose",
+	"first-steps@1 a-little-lift controls seed-pedestal and loft-bell": "published before pieces were judged as drawn (2026-11-21): the loft bell's frame stands beside the seed's pedestal on the loft",
+	"first-steps@1 a-place-to-grow controls seed-pedestal and loft-bell": "published before pieces were judged as drawn (2026-11-21): the loft bell's frame stands beside the seed's pedestal on the loft",
+	"the-wishing-well@1 back-for-you controls tower-step and reunion-bell": "published before pieces were judged as drawn (2026-11-21): the tower step stands under the reunion bell's frame",
+	"first-steps@2 a-place-to-grow controls garden and landing": "unreleased, found when pieces were first judged as drawn (2026-11-21): the landing's ticks reach the planter; its own branch moves them apart when it next re-lays the shore",
+	"turn-of-the-tide@3 set-the-tide controls stone-bar and harbour-bell": "unreleased, found when pieces were first judged as drawn (2026-11-21): the stone bar's knob leans toward the harbour bell's frame; its own branch moves them apart when it next re-lays the terrace",
 }
 ## Published one-pip spots the other pip can reach, each shown by the route
 ## barriers (a gate, a stair's chain, a zone's rope or a lock) rather than
@@ -729,8 +736,10 @@ func _props(key: String) -> void:
 				var id := "%s props %s and %s" % [where, _prop(one.spec), _prop(two.spec)]
 				_expect(share <= PropRules.PROP_SHARE, id, "%s: the %s and the %s stand in each other (%d%% of the smaller)" % [where, _prop(one.spec), _prop(two.spec), roundi(share * 100.0)])
 
-## Two controls of a stage whose bodies draw into each other on screen (a
-## lever's knob over the housing of the lever behind it). Dressing props are
+## Two controls or pieces of a stage drawn into each other on screen (a
+## lever's knob over the housing of the lever behind it, a nest inside a
+## landing's ticks, a crank board's windlass on a bell's frame), each as wide
+## as its look draws it in the chapter's piece styles. Dressing props are
 ## _props'; controls and the pieces a world builds beside them are never
 ## dressing, so this is where they meet.
 func _controls_apart(key: String) -> void:
@@ -738,8 +747,11 @@ func _controls_apart(key: String) -> void:
 	var extras := Callable()
 	if world != null and world.get_script_method_list().any(func(method: Dictionary) -> bool: return method.name == "control_extras"):
 		extras = func(spot: Dictionary) -> Array: return world.call("control_extras", spot)
+	var descriptor := Index.data(key)
+	var dressing := Dressing.for_key(key)
+	var styles := func(slot: String, id: String) -> String: return PieceStyles.style(slot, id, descriptor, dressing)
 	for item: Dictionary in _stages_of(key):
-		var bodies := PropRules.control_bodies(item.view, extras)
+		var bodies := PropRules.control_bodies(item.view, extras, styles)
 		for a in range(bodies.size()):
 			for b in range(a + 1, bodies.size()):
 				var one: Dictionary = bodies[a]
@@ -758,6 +770,19 @@ func _controls_rule() -> void:
 	var below := front.merged({"y": 0.48}, true)
 	_check(PropRules.bodies_touch(back, front), "A lever just in front of another draws its knob over the other's housing")
 	_check(not PropRules.bodies_touch(back, beside) and not PropRules.bodies_touch(back, below), "Levers side by side, or on different floors, stay apart")
+	# Pieces as drawn: a nest beside a landing (Relay @3 as it stood: nest at
+	# 40 cm, landing at -10 cm) sits inside the landing's ticks, though their
+	# reaches alone would not touch; a crank board's windlass reaches past it.
+	var styles := func(slot: String, _id: String) -> String: return {"item_spot": "nest", "pad": "crank_board"}.get(slot, "")
+	var crowded := {"throws": [{"id": "t", "mark": {"position_cm": [-300, 0], "surface_id": "f", "radius_cm": 30}, "to": "landing"}],
+		"islands": [{"id": "f", "rect_cm": [-400, -200, 200, 200], "height_cm": 0}],
+		"item_spots": [{"id": "nest", "surface_id": "f", "position_cm": [40, 0], "radius_cm": 30, "solid": {"radius_cm": 22, "reach_cm": 20}},
+			{"id": "landing", "surface_id": "f", "position_cm": [-10, 0], "radius_cm": 20}]}
+	var bodies := PropRules.control_bodies(crowded, Callable(), styles)
+	var nest: Dictionary = bodies.filter(func(body: Dictionary) -> bool: return body.id == "nest")[0]
+	var landing: Dictionary = bodies.filter(func(body: Dictionary) -> bool: return body.id == "landing")[0]
+	_check(PropRules.bodies_touch(nest, landing) and not PropRules.bodies_touch(nest.merged({"radius": 0.3}, true), landing.merged({"radius": 0.2}, true)), "A nest inside a landing's ticks draws into it, though their reaches stand apart")
+	_check(bodies.size() == 3 and PropRules.drawn_radius(crowded, {"kind": "pressure_pads", "id": "c", "radius_cm": 32}, styles, {}) > 0.36, "Throw marks and item spots are pieces too, and a crank board is drawn wider than its reach")
 
 ## The prop rule on small cases, so it can fail at all.
 func _share_rule() -> void:

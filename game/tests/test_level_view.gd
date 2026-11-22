@@ -176,6 +176,8 @@ var _cover_short := 0
 ## Boats and stepping stones checked on the water worlds.
 var _boats_seen := 0
 var _stones_seen := 0
+## Rolled decks checked (kit/pieces/bridge_roll.gd), shut and open.
+var _rolls_seen := 0
 ## The rowboat model's floorboards (its "inside" slot), read once.
 var _rowboat_floor := NAN
 
@@ -197,6 +199,7 @@ func _run() -> void:
 	if _runs_shared():
 		_check(_meets(Rect2(0, 0, 60, 30), Rect2(50, 10, 60, 30)) and not _meets(Rect2(0, 0, 60, 30), Rect2(61, 0, 60, 30)), "Bubbles that share a corner overlap; bubbles side by side do not")
 		_check(_refusals_seen > 50 and _unshown > 50, "Every refusal is checked for a shown cause (%d), and a world with no barriers leaves many unexplained, so the check can fail (%d)" % [_refusals_seen, _unshown])
+	_check(_rolls_seen >= int(least.get("rolls", 0)), "Every held crossing's rolled deck is checked shut and open (%d)" % _rolls_seen)
 	_check(_boats_seen >= least.boats and _stones_seen >= least.stones, "Every water world's boats float by the float rule (%d boats on stages) and its stepping stones go under, never away (%d)" % [_boats_seen, _stones_seen])
 	_check(_cover_spots > least.cover, "The ground check stands pips at the edges of every world's floors (%d spots, %d over an edge)" % [_cover_spots, _cover_short])
 	_check(_wall_spots >= least.wall_spots and _walls_by_floors >= least.walls, "The wall checks stand pips by the water worlds' walls (%d spots) and read the walls beside floors (%d)" % [_wall_spots, _walls_by_floors])
@@ -225,7 +228,7 @@ func _runs_shared() -> bool:
 
 ## The least this suite's chapters give each proof that its checks ran.
 func _least() -> Dictionary:
-	return {"spots": 100, "bubbles": 60, "cut": 0, "boats": 0, "stones": 0, "cover": 3000, "wall_spots": 0, "walls": 0}
+	return {"spots": 100, "bubbles": 60, "cut": 0, "boats": 0, "stones": 0, "cover": 3000, "wall_spots": 0, "walls": 0, "rolls": 4}
 
 func _check(ok: bool, message: String) -> void:
 	checks += 1
@@ -270,6 +273,7 @@ func _chapter(viewport: SubViewport, key: String) -> void:
 		_floats(world, where)
 		_current_marks(world, where, view)
 		_stones(world, where, base)
+		_rolls(world, where, view, base)
 		for spot: Dictionary in shots.spots():
 			if not _inside(world, spot.entity): _off_view += 1
 			if spot.kind == "selector" and "_journey_switches" in world and world._journey_switches.has(spot.id):
@@ -611,6 +615,40 @@ func _current_marks(world: Node3D, where: String, view: Dictionary) -> void:
 
 ## A stepping stone that is down stays in view just under its water, at once
 ## for a snap and by sinking otherwise; a drowning on it shows the shared drown.
+## Every crossing the world rolls up (kit/pieces/bridge_roll.gd: each held or
+## toggled plank or rope crossing): shut, its deck is gone and its roll lies
+## on the crossing at one end, the log across the crossing and the loose end
+## facing across the gap to the far bank, whichever way the crossing runs;
+## open, the deck is laid whole and the roll gone.
+func _rolls(world: Node3D, where: String, view: Dictionary, base: Dictionary) -> void:
+	var to_terrain: Transform3D = world.terrain.global_transform.affine_inverse()
+	for id: String in world.crossing_pieces:
+		var piece: RefCounted = world.crossing_pieces[id]
+		if not "roll" in piece: continue
+		_rolls_seen += 1
+		var route: Dictionary = {}
+		for candidate: Dictionary in view.get("bridges", []):
+			if str(candidate.id) == id: route = candidate
+		var run := Vector3.RIGHT if WalkReach.run_axis(route, WalkReach.walkable(view)) == 0 else Vector3.BACK
+		var rect := Rect2(float(route.rect_cm[0]), float(route.rect_cm[1]), float(route.rect_cm[2] - route.rect_cm[0]), float(route.rect_cm[3] - route.rect_cm[1]))
+		var shut := base.duplicate(true)
+		shut.bridges[id] = false
+		world.present(shut, true)
+		var roll: Transform3D = to_terrain * (piece.roll as Node3D).global_transform
+		var at := Vector2(roll.origin.x, roll.origin.z) * 100.0
+		# The gap's ends as the world laid them, flat on the floor.
+		var ends: Array = piece.gap_ends().map(func(end: Vector3) -> Vector3: return Vector3(end.x, 0.0, end.z))
+		var flat := Vector3(roll.origin.x, 0.0, roll.origin.z)
+		var across: Vector3 = (ends[1] - ends[0]).normalized()
+		var loose := roll.basis.z.normalized()
+		var lined_up := absf(across.dot(run)) > 0.99 and absf(roll.basis.x.normalized().dot(run)) < 0.01 and loose.dot(across) > 0.99 and flat.distance_to(ends[0]) <= flat.distance_to(ends[1]) + 0.001
+		_check(not (piece.deck as Node3D).visible and (piece.roll as Node3D).is_visible_in_tree() and rect.grow(1.0).has_point(at) and lined_up, "%s: the shut crossing %s rolls up on itself at its near end (roll at %s cm), the log across it and the loose end facing the far bank" % [where, id, Vector2i(at)])
+		var open := base.duplicate(true)
+		open.bridges[id] = true
+		world.present(open, true)
+		_check((piece.deck as Node3D).is_visible_in_tree() and not (piece.roll as Node3D).visible and (piece.deck as Node3D).scale == Vector3.ONE, "%s: the open crossing %s is laid whole, its roll gone" % [where, id])
+	world.present(base, true)
+
 func _stones(world: Node3D, where: String, base: Dictionary) -> void:
 	var stones: Variant = world.get("_stones")
 	if stones == null: return

@@ -221,6 +221,11 @@ func _route(id: String) -> Dictionary:
 
 # --- Crossings: decks at their own height ---
 
+## The tide's decks show the water: dry and laid, or flooded with their ghost
+## (_present_water). None rolls up.
+func _rolls_deck(_definition: Dictionary) -> bool:
+	return false
+
 func _build_bridge(definition: Dictionary) -> void:
 	# The water world lifts the deck to its height.
 	super._build_bridge(definition)

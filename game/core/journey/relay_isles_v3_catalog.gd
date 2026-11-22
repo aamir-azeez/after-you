@@ -4,7 +4,9 @@ extends RefCounted
 ## passes back and forth until both pips end a turn at its goal, up to its cap.
 ## relay-isles@2 keeps its own engine (core/v2/) and replays unchanged. The
 ## same three isles in cm: the west shore, the plank relay isle in the middle
-## and the east garden, with @2's bridges between them. Either pip holds a
+## (as deep as the shores, so its pieces stand apart as drawn:
+## tests/test_level_checker.gd) and the east garden, with @2's bridges
+## between them. Either pip holds a
 ## plate, takes, carries, throws, catches and places the seed; nothing is one
 ## pip's own.
 ##   1 relay (orange first, the host's pip): the seed waits on a stone pedestal
@@ -36,7 +38,7 @@ const PiecesRules = preload("res://core/physical/pieces_rules.gd")
 ## Turns a stage may take: the first teaches the plates, ten; the ending, twenty.
 const CAPS := {"relay": 10, "garden": 20}
 ## Each stage's goal: the relay isle's bell, the garden's lamp.
-const BELL := [-60, 110]
+const BELL := [-60, 160]
 const LAMP := [720, 40]
 
 static func definition() -> Dictionary:
@@ -52,12 +54,12 @@ static func source() -> Dictionary:
 		# 20 cm off the drum's edge, on any side. The landings keep @2's rings.
 		"item_spots": [
 			{"id": "seed-pedestal", "surface_id": "west", "position_cm": [-620, 40], "height_cm": 0, "radius_cm": 36, "solid": {"radius_cm": 28, "reach_cm": 20}},
-			{"id": "relay-socket", "surface_id": "relay", "position_cm": [40, 0], "height_cm": 0, "radius_cm": 30, "solid": {"radius_cm": 22, "reach_cm": 20}},
+			{"id": "relay-socket", "surface_id": "relay", "position_cm": [130, 110], "height_cm": 0, "radius_cm": 30, "solid": {"radius_cm": 22, "reach_cm": 20}},
 			{"id": "relay-landing", "surface_id": "relay", "position_cm": [-10, 0], "height_cm": 0, "radius_cm": 66},
 			{"id": "garden", "surface_id": "east", "position_cm": [620, 120], "height_cm": 0, "radius_cm": 55},
 			{"id": "garden-landing", "surface_id": "east", "position_cm": [420, 0], "height_cm": 0, "radius_cm": 66}],
 		"islands": [{"id": "west", "rect_cm": [-720, -220, -260, 220], "height_cm": 0},
-			{"id": "relay", "rect_cm": [-140, -180, 220, 180], "height_cm": 0},
+			{"id": "relay", "rect_cm": [-140, -220, 220, 220], "height_cm": 0},
 			{"id": "east", "rect_cm": [340, -220, 780, 220], "height_cm": 0}],
 		"bridges": [{"id": "west-relay", "rect_cm": [-260, -65, -140, 65], "from_surface": "west", "to_surface": "relay", "height_cm": 0},
 			{"id": "relay-east", "rect_cm": [220, -65, 340, 65], "from_surface": "relay", "to_surface": "east", "height_cm": 0}],
@@ -80,10 +82,10 @@ static func _relay() -> Dictionary:
 ## garden.
 static func _garden() -> Dictionary:
 	var stage := _stage("garden", "p1", LAMP)
-	stage.throws = [{"id": "garden-throw", "mark": {"position_cm": [150, 100], "surface_id": "relay", "height_cm": 0, "radius_cm": 30}, "to": "garden-landing", "flight_ticks": 120, "catch_cm": 100}]
+	stage.throws = [{"id": "garden-throw", "mark": {"position_cm": [140, -80], "surface_id": "relay", "height_cm": 0, "radius_cm": 30}, "to": "garden-landing", "flight_ticks": 120, "catch_cm": 100}]
 	stage.blocks = [
 		{"block": "crank_bridge", "pads": [
-			{"id": "relay-crank", "at": [-60, -100], "surface": "relay", "owner": "p0", "height": 0, "radius": 32},
+			{"id": "relay-crank", "at": [-60, -130], "surface": "relay", "owner": "p0", "height": 0, "radius": 32},
 			{"id": "garden-crank", "at": [640, -60], "surface": "east", "owner": "p0", "height": 0, "radius": 32}], "routes": ["relay-east"]},
 		{"block": "ring_bell", "id": "garden-lamp", "at": LAMP, "surface": "east", "owner": "p1", "height": 0, "radius": 48, "style": "crest",
 			"when": {"item_id": "seed", "spot_id": "garden"}}]
