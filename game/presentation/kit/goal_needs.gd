@@ -11,7 +11,8 @@ extends RefCounted
 ## Needs come from the definition alone: "all" is read as its parts, each a
 ## need; anything else ("any", "not", a leaf) is one need, met exactly when
 ## the rule says. Each kind of need has an icon (ICONS); a kind not listed
-## gets DEFAULT_ICON. An item's icon is the item itself, in its style, small.
+## gets DEFAULT_ICON. An item's icon is the item itself, in its style, small
+## (a seed, which only a world draws, a small gold seed).
 ##
 ## Presentation only: it reads the snapshot with the rules' own predicate
 ## (pure, on the snapshot's mechanisms) and never feeds back.
@@ -28,7 +29,7 @@ const TOKEN := 0.07
 const TOKEN_HEIGHT := 0.02
 const GAP := 0.17
 const FRONT := 0.6
-const ITEM_SCALE := 0.45
+const ITEM_SCALE := 0.6
 const SLATE := Color("6b7480")
 
 ## Per need: {term, disc (the token that lights), met}.
@@ -93,7 +94,11 @@ func _icon(kind: String, term: Dictionary, at: Vector3, root: Node3D, item_style
 	match kind:
 		"item":
 			var id := str(term.item_id)
-			var item: RefCounted = CarriedItemKit.build(str(item_style.call(id)) if item_style.is_valid() else "", at, root, {"id": "need-" + id})
+			var look := str(item_style.call(id)) if item_style.is_valid() else ""
+			if look == "seed":
+				Parts.sphere(0.035, Parts.GOLD, at + Vector3(0, 0.035, 0), root)
+				return
+			var item: RefCounted = CarriedItemKit.build(look, at, root, {"id": "need-" + id})
 			item.root.scale = Vector3.ONE * ITEM_SCALE
 		"lamp":
 			Parts.box(Vector3(0.02, 0.06, 0.02), Parts.TIMBER_DARK, at + Vector3(0, 0.03, 0), root)
@@ -104,5 +109,4 @@ func _icon(kind: String, term: Dictionary, at: Vector3, root: Node3D, item_style
 		"ring":
 			Parts.torus(0.04, 0.008, Parts.CREAM, at + Vector3(0, 0.008, 0), root)
 		_:
-			var stone := Parts.box(Vector3(0.05, 0.03, 0.05), Parts.CREAM, at + Vector3(0, 0.015, 0), root)
-			stone.rotation.y = PI / 4.0
+			Parts.disc(0.03, 0.03, Parts.CREAM, at + Vector3(0, 0.015, 0), root, 0.022, 6)

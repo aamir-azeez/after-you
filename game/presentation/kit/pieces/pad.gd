@@ -3,8 +3,8 @@ extends "res://presentation/kit/pieces/piece.gd"
 ## prop_styles.gd "pad"; content/dressing/piece_styles.gd picks which).
 ##
 ##   "board": the one pad look (every level and version): a flat timber
-##       board on two bearers, its rim the ring the world lights, in the
-##       owner's colour. Held, it sinks a little.
+##       board of four planks, its rim the ring the world lights, in the
+##       owner's colour. Held, it sinks a little into the floor.
 ##   "crank_board": the board with a windlass beside it (a crank board that
 ##       keeps a rope bridge tight): its drum turns over while held.
 ##   "pan": a weight lift's pan (rules 16's weight_lift block): a wide brass
@@ -20,20 +20,16 @@ extends "res://presentation/kit/pieces/piece.gd"
 ## spirit stands on it. The world lights the pad's `rim` while it is held
 ## (the snapshot's hold_pads, the simulation's own rule).
 ##
-## Cost: the bearers fold with the scenery around them; the board's planks
-## fold into one batch under the part that sinks (kit/static_batch.gd), so a
-## board draws its planks and its rim.
+## Cost: the board's planks fold into one batch under the part that sinks
+## (kit/static_batch.gd), so a board draws its planks and its rim.
 const StaticBatch = preload("res://presentation/kit/static_batch.gd")
 const STYLES := ["board", "crank_board", "pan"]
 const DEFAULT_STYLE := "board"
 ## Board: its planks' top over the floor, and how far it sinks while held.
 const BOARD_TOP := 0.06
 const BOARD_SINK := 0.025
-## Board: its rim ring's height on the board, and its bearers' height: their
-## tops stand clear of the cables lying on the floor beside (tops 2.8 and
-## 3.3 cm, test_dressing_lint COPLANAR), hidden in the planks.
+## Board: its rim ring's height on the board.
 const BOARD_RIM := 0.07
-const BEARER := 0.038
 ## Pan: how far the dish sinks while held (m).
 const PAN_SINK := 0.06
 const PAN_RIM := 0.1
@@ -56,7 +52,8 @@ var _rim_rest := 0.0
 
 ## A pad in `style` on the spot `at` (parent space) under `parent`, `radius_m`
 ## across. `options`: "owner" ("p0"/"p1"), "heavy" (a ball pad), "id",
-## "shadow": false for no contact shadow (a pad on a goal's disc).
+## "shadow": false for no contact shadow (a pad on a goal's disc); a board
+## never casts one.
 static func build(pad_style: String, at: Vector3, radius_m: float, parent: Node3D, options: Dictionary = {}) -> RefCounted:
 	var piece: RefCounted = load("res://presentation/kit/pieces/pad.gd").new()
 	var heavy := bool(options.get("heavy", false))
@@ -102,7 +99,8 @@ func _make(pad_style: String, at_point: Vector3, radius_m: float, parent: Node3D
 	at = at_point
 	radius = radius_m
 	var color := Parts.GOLD if heavy else Parts.owner_color(str(options.get("owner", "p0")))
-	if bool(options.get("shadow", true)): _root("Pad_" + pad_style, at_point, parent)
+	# A board lies flat on the floor and sinks into it: no contact shadow.
+	if pad_style != "board" and bool(options.get("shadow", true)): _root("Pad_" + pad_style, at_point, parent)
 	else: _root("Pad_" + pad_style, at_point, parent, false)
 	anchor = root
 	if pad_style == "pan": _make_pan(radius_m, color)
@@ -121,16 +119,16 @@ func _make_pan(radius_m: float, color: Color) -> void:
 	Parts.disc(radius_m * 0.9, 0.035, Parts.BRASS, Vector3(0, 0.075, 0), _dish, radius_m * 0.96)
 	rim = Parts.ring(radius_m, color, Vector3(0, PAN_RIM, 0), _dish)
 
-## A square timber board the pad's size on two bearers, its rim ring lit while
+## A square timber board the pad's size, four thick planks standing on the
+## floor that sink into it as one while held, its rim ring lit while
 ## held (a ball pad's with a cream ring at its centre); a crank board adds a
 ## windlass on a frame at its north edge.
 func _make_board(radius_m: float, color: Color, heavy: bool) -> void:
 	var side := radius_m * 1.6
-	for x: float in [-0.35, 0.35]: Parts.box(Vector3(0.06, BEARER, side), Parts.TIMBER_DARK, Vector3(x * side, BEARER * 0.5, 0), root)
 	_dish = Node3D.new()
 	root.add_child(_dish)
 	for index in range(4):
-		Parts.box(Vector3(side, 0.03, side / 4.0 - 0.012), Parts.TIMBER_LIGHT.darkened(0.06 * float(index % 2)), Vector3(0, BOARD_TOP - 0.015, -side * 0.5 + (float(index) + 0.5) * side / 4.0), _dish)
+		Parts.box(Vector3(side, BOARD_TOP, side / 4.0 - 0.012), Parts.TIMBER_LIGHT.darkened(0.06 * float(index % 2)), Vector3(0, BOARD_TOP * 0.5, -side * 0.5 + (float(index) + 0.5) * side / 4.0), _dish)
 	rim = Parts.ring(radius_m, color, Vector3(0, BOARD_RIM, 0), _dish)
 	if heavy: Parts.ring(0.16, Parts.CREAM, Vector3(0, BOARD_RIM - 0.005, 0), _dish)
 	if style != "crank_board": return
