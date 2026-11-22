@@ -46,7 +46,7 @@ func _saved_turn() -> void:
 	_check(app.mode == "ready" and _panel(app) != null and _texts(app) == ["Record", OVER], "An older-rules chapter's first page has the panel with Record and Start over: " + str(_texts(app)))
 	_check(app.overlay.find_child("TurnNewsHeading", true, false) == null, "Nothing has happened yet, so no heading leads the panel")
 	await _play(app, _fixture("relay-a"))
-	_check(_texts(app).filter(func(text: String) -> bool: return text != "React") == ["Preview", "Retry", "Save turn", "Back"], "The review card matches the room's, Retry above Save turn: " + str(_texts(app)))
+	_check(_texts(app).filter(func(text: String) -> bool: return text != "React") == ["Preview", "Try again", "Save turn", "Back"], "The review card matches the room's, Retry above Save turn: " + str(_texts(app)))
 	await _tap(app, "Save turn")
 	_check(app.mode == "ready" and app.role == "b" and _heading(app) == SAVED, "After Save turn the panel says Your turn is saved")
 	_check(_texts(app) == ["Record", AGAIN, OVER], "Record, Play my turn again and Start over, in the room's order: " + str(_texts(app)))
@@ -104,7 +104,7 @@ func _pause_and_review() -> void:
 	for input: Dictionary in inputs.slice(0, 20): app.advance_input(input)
 	var tick: int = app.sim.tick
 	app._pause()
-	_check(app.mode == "paused" and _texts(app) == ["Resume", "Retry", "Back"], "The pause card matches the room's: " + str(_texts(app)))
+	_check(app.mode == "paused" and _texts(app) == ["Resume", "Try again", "Back"], "The pause card matches the room's: " + str(_texts(app)))
 	_check(app.journey.has_draft() and Canonical.same(bytes, _save_bytes(path)), "A turn played again keeps its draft in memory")
 	await _tap(app, "Resume")
 	_check(app.mode == "play" and app.sim.tick == tick, "Resume goes on from the paused turn")

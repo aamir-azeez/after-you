@@ -16,7 +16,7 @@ const ICONS := {
 const DEFINITIONS := {
 	"record": {"label": "Record", "icon": "record", "primary": true, "hint": PlayerCopy.ACTION_BUTTONS_720AD17C8CC7},
 	"resume": {"label": "Resume", "icon": "play", "primary": true, "hint": PlayerCopy.ACTION_BUTTONS_B35F6908BD12},
-	"retry": {"label": "Retry", "icon": "retry", "primary": false, "hint": PlayerCopy.ACTION_BUTTONS_E434AB682F32},
+	"retry": {"label": "Try again", "icon": "retry", "primary": false, "hint": PlayerCopy.ACTION_BUTTONS_E434AB682F32},
 	"preview": {"label": "Preview", "icon": "play", "primary": false, "hint": PlayerCopy.ACTION_BUTTONS_7AD5ED12D806},
 	"save": {"label": "Save turn", "icon": "save", "primary": true, "hint": PlayerCopy.ACTION_BUTTONS_6FB275114778},
 	"finish": {"label": "Finish", "icon": "finish", "primary": false, "hint": PlayerCopy.ACTION_BUTTONS_7B0D22BC0FEC},
@@ -25,7 +25,7 @@ const DEFINITIONS := {
 	"back": {"label": "Back", "icon": "back", "primary": false, "hint": PlayerCopy.ACTION_BUTTONS_09F37563336D},
 	"leave_draft": {"label": "Back", "icon": "back", "primary": false, "hint": PlayerCopy.ACTION_BUTTONS_D37398B29BC6},
 	# A turn ending's card (turn_endings.gd): trying again is the way on.
-	"try_again": {"label": "Retry", "icon": "retry", "primary": true, "hint": PlayerCopy.ACTION_BUTTONS_E434AB682F32},
+	"try_again": {"label": "Try again", "icon": "retry", "primary": true, "hint": PlayerCopy.ACTION_BUTTONS_E434AB682F32},
 	"retry_save": {"label": "Retry save", "icon": "retry", "primary": true, "hint": PlayerCopy.ACTION_BUTTONS_DCBA5AB65E41},
 	# A chapter save that could not be verified (relay_preview.gd _show_error).
 	"start_over": {"label": "Start over", "icon": "retry", "primary": true, "hint": PlayerCopy.START_OVER_HINT},

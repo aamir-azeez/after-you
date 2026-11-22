@@ -91,7 +91,7 @@ func _run() -> void:
 	_check(not preview.running and preview.mode=="redo_requests" and not preview.action_pressed,"Gameplay input and time do not advance under the request panel")
 	await _tap(viewport,_find_button(screen,"Ask for a redo"))
 	_check(server_request is Dictionary and server_request.status=="pending","The visible request sends an advisory request pinned to the current A")
-	_check(_find_button(screen,"Cancel request")!=null and _find_button(screen,"Play my turn again")==null,"B can cancel but cannot accept their own request")
+	_check(_find_button(screen,"Cancel request")!=null and _find_button(screen,"Redo last turn")==null,"B can cancel but cannot accept their own request")
 	screen.close()
 	await _settle()
 	preview._begin()
@@ -133,16 +133,16 @@ func _run() -> void:
 	await preview._service_online_refresh()
 	var reads: Array=api.calls.slice(before)
 	_check(reads.size()==2 and reads.all(func(call: Dictionary) -> bool: return call.method==HTTPClient.METHOD_GET),"Existing waiting-room poll reads the room and its request without sending a mutation")
-	_check(_find_button(preview.overlay,"Play my turn again")!=null,"A's ordinary waiting view displays the partner request")
+	_check(_find_button(preview.overlay,"Redo last turn")!=null,"A's ordinary waiting view displays the partner request")
 	before=api.calls.size()
 	await preview._service_online_refresh()
 	_check(api.calls.size()==before,"No second request poll occurs before the current room timer is due")
 	preview._open_redo()
 	await _settle()
 	screen=preview._redo_screen
-	_check(_find_button(screen,"Play my turn again")!=null and _find_button(screen,"Keep it as it is")!=null,"The first player has explicit consent and decline actions")
+	_check(_find_button(screen,"Redo last turn")!=null and _find_button(screen,"Keep it as it is")!=null,"The first player has explicit consent and decline actions")
 	api.hold_next=true
-	var accept := _find_button(screen,"Play my turn again")
+	var accept := _find_button(screen,"Redo last turn")
 	_pointer(viewport,accept.get_global_rect().get_center(),true)
 	_pointer(viewport,accept.get_global_rect().get_center(),false)
 	_check(api.busy,"Acceptance holds an actual asynchronous callback")
@@ -171,7 +171,7 @@ func _run() -> void:
 	await _settle()
 	screen=preview._redo_screen
 	api.drop_next=true
-	await _tap(viewport,_find_button(screen,"Play my turn again"))
+	await _tap(viewport,_find_button(screen,"Redo last turn"))
 	var pending: Dictionary=app.relay_session.redo_client().pending()
 	_check(server_branch==2 and not pending.is_empty() and _find_button(screen,"Retry request")!=null,"Lost acceptance reply retains the exact request and exposes recovery")
 	screen.close()

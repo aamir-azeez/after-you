@@ -239,8 +239,8 @@ func _facts() -> void:
 func _labels() -> void:
 	_check(RoomActions.label("record") == "Record" and RoomActions.label("refresh") == "Refresh", "Shared buttons keep their own labels")
 	_check(RoomActions.label("share") == "Share current room" and RoomActions.SHARE_SCOPE == "All friends", "Share keeps its labels")
-	_check(RoomActions.label("redo_self") == "Play my turn again" and RoomActions.label("start_over") == "Start over", "Solo and rooms share Play my turn again and Start over")
-	_check(RoomActions.label("redo") == "Ask for a redo" and RoomActions.label("redo_play") == "Play my turn again" and RoomActions.label("redo_keep") == "Keep it as it is" and RoomActions.label("redo_retry") == "Retry request", "The redo rows' labels")
+	_check(RoomActions.label("redo_self") == "Redo last turn" and RoomActions.label("start_over") == "Start over", "Solo and rooms share Play my turn again and Start over")
+	_check(RoomActions.label("redo") == "Ask for a redo" and RoomActions.label("redo_play") == "Redo last turn" and RoomActions.label("redo_keep") == "Keep it as it is" and RoomActions.label("redo_retry") == "Retry request", "The redo rows' labels")
 	for path: String in ["res://presentation/friends_screen.gd"]:
 		var text := FileAccess.get_file_as_string(path)
 		_check(not text.contains("\"Share current room\"") and not text.contains("\"All friends\"") and not text.contains("\"Ask for a redo\"") and not text.contains("\"Play my turn again\""), "Uses the table's Share and redo labels: " + path)
