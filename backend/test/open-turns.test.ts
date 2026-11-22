@@ -569,9 +569,9 @@ describe("open turns: a hard room", () => {
     return { room: joined, first: host, second: guest };
   }
   /** A slip's reset; under open turns a slip over a pass brings the turns under its memory from the phone's copy (`chain`). */
-  const reset = (room: RoomSnapshotV2, who: Account, slip: Rec, chain?: Rec[]) => call(`/v2/rooms/${room.room_id}/hard-reset`, "POST", who,
-    { base_revision: room.revision, branch: room.branch, idempotency_key: key(), reason: "failed_turn", stage_index: room.stage_index, role: room.active_role, slip, ...(chain ? { chain } : {}) });
-  const slipped = (room: RoomSnapshotV2, who: Account, slip: Rec, chain?: Rec[]) => json<Reset>(reset(room, who, slip, chain));
+  const reset = (room: RoomSnapshotV2, who: Account, slip: Rec, chain?: Rec[], reason = "failed_turn") => call(`/v2/rooms/${room.room_id}/hard-reset`, "POST", who,
+    { base_revision: room.revision, branch: room.branch, idempotency_key: key(), reason, stage_index: room.stage_index, role: room.active_role, slip, ...(chain ? { chain } : {}) });
+  const slipped = (room: RoomSnapshotV2, who: Account, slip: Rec, chain?: Rec[], reason?: string) => json<Reset>(reset(room, who, slip, chain, reason));
   const slips = (room: RoomSnapshotV2, who: Account, seen = 0) => json<Slips>(call(`/v2/rooms/${room.room_id}/hard/${seen}`, "GET", who));
   /** Stage one's first three turns from `room`: two passes over turn 1, so turns 1 and 2 are fingerprints and turn 3 is full. */
   async function threeTurns(room: RoomSnapshotV2, first: Account, second: Account, turns: Rec[]): Promise<RoomSnapshotV2> {
@@ -612,6 +612,18 @@ describe("open turns: a hard room", () => {
     current = (await send(current, slackFirst, next.turns[0])).room;
     current = (await send(current, slackFirst === first ? second : first, next.turns[1], next.checkpoint)).room;
     expect(current.active_role).toBe("complete");
+  });
+  it("takes a turn ended by the friend's replay falling or drowning as that turn's end: a drowned slip, kept whole, and the run starts again", async () => {
+    // The phone decides the fall (a replay walking where the live pip took its floor away); the room never runs
+    // physics, so the turn reaches it as a slip with the drowning reason, one request like any other slip.
+    const { room: joined, first, second } = await hardRoom();
+    const { turns } = await chain(0, initial(), 2);
+    const three = await threeTurns(joined, first, second, turns);
+    const slip = await later(setB, "p0", turns.slice(0, 3), false, initial().checkpoint_hash, 9);
+    const done = await slipped(three, second, slip, [turns[0], turns[1]], "drowned");
+    expect(done.room).toMatchObject({ branch: 1, stage_index: 0, active_role: "a", hard: { failures: 1, over: false, last: { by: second.player_id, role: "b", reason: "drowned" } } });
+    expect(done.room.open_turns).toMatchObject({ turn: 1, turn_hashes: [], newest: null });
+    expect((await slips(joined, first)).list[0]).toMatchObject({ reason: "drowned", slip: { recording: slip, prior: turns[2], chain: [turns[0], turns[1]] } });
   });
   it("drops a slip whose turns under its memory are not the room's, and still starts the run again", async () => {
     const { room: joined, first, second } = await hardRoom();
