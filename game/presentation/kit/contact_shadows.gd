@@ -42,6 +42,15 @@ extends Node3D
 ## before any leaf is folded away (FEET_META); a root measured later (a world
 ## that never folds) is measured on the layer's next gather, past the same
 ## parts (its world's _static_keep()), so feet never depend on which came first.
+## A part that changes as its thing plays (changes(): a keepsake's arm, door
+## or bucket) is measured then too, on its own (MOVER_META). At rest it is
+## baked where it stands; while its thing plays (set_playing()) it leaves the
+## bake and draws a live soft shadow in the same MultiMesh, shaped from its
+## footprint, following it each frame and fading as it shows or hides; where
+## it ends is baked again. Moving parts bake into their floor's second
+## texture (ground_shade.gdshader keeps the darker of the two), only round
+## what changed (patch()), so a play bakes its own few parts and never the
+## scenery round them; nothing runs a frame for them once their thing is still.
 ##
 ## A bake is the same on every machine and in any order: its inputs are
 ## snapped to a fixed grid (SNAP) and it uses no trigonometry (a foot's turn is
@@ -52,12 +61,14 @@ extends Node3D
 ## The layer (one per world, island_world._ready) gathers the marked roots
 ## and grounds under its world whenever one comes or goes, shows or hides, or
 ## calls touch(), and bakes again only the floors whose feet changed, a few
-## floors a frame. Between gathers it looks at a few roots a
+## floors a frame, each only where its stamps changed when that is a small
+## part of it (PATCH_SHARE). Between gathers it looks at a few roots a
 ## frame: a still root that moved on its floor is baked where it settles; one
 ## that keeps moving becomes live. A live item lifted off its rest fades its
 ## shadow out; a carried or floating item sets_off() its own (the pip's
 ## shadow and the water's rings show those). Low keeps every shadow, a little
-## lighter, without the grass detail (services/graphics_policy.gd).
+## lighter, without the grass detail or the sun's shadows, so a playing part's
+## live shadow is a blob under it alone (services/graphics_policy.gd).
 const SHADER = preload("res://presentation/kit/contact_shadow.gdshader")
 const SHADE_SHADER = preload("res://presentation/kit/ground_shade.gdshader")
 const SessionRelease = preload("res://presentation/kit/session_release.gd")
@@ -85,8 +96,34 @@ const OFF_META := &"contact_shadow_off"
 ## On a marked root: it moves, so it gets a quad instead of being baked.
 const LIVE_META := &"contact_shadow_live"
 ## On a part under a marked root that moves, shows or hides as it plays (a
-## keepsake's spinning arm, a lamp that lights): it never counts (changes()).
+## keepsake's spinning arm, a lamp that lights): it is no foot of its root
+## (changes()), but a mover of its own.
 const CHANGES_META := &"contact_shadow_changes"
+## On a marked root: its changing parts and the level they stand on in its
+## space, {"movers": [Node3D], "ground": y}, measured with its feet.
+const MOVERS_META := &"contact_shadow_movers"
+## On a changing part: its solid meshes in its own space, measured with its
+## root's feet (before any fold), {"parts": [[box, mesh, transform]], "box":
+## all of them}.
+const MOVER_META := &"contact_shadow_mover"
+## On a marked root: its thing plays now (set_playing()).
+const PLAYING_META := &"contact_shadow_playing"
+## On a marked root at rest: its changing parts' [feet, casters] in its space
+## where they stand now, measured once until it plays again.
+const SETTLED_META := &"contact_shadow_settled"
+## A playing part's live shadow eases in or out over this long (seconds) as
+## the part shows or hides.
+const PART_FADE := 0.2
+## A raised playing part's live shadow, cast along the sun, is as dark beside
+## a resting one as a floor's sun shadow beside its contact shade
+## (ground_shade.gdshader cast_strength over contact_strength).
+const PART_CAST := 0.30 / 0.62
+## A floor's two baked textures: what stands still, and its resting
+## changing parts (ground_shade.gdshader's shade and moving).
+const KINDS: Array[String] = ["still", "moving"]
+## A floor whose changed stamps cover at most this share of it bakes again
+## only there (patch()); more, and it bakes whole.
+const PATCH_SHARE := 0.5
 ## On a dressing root (prop()): "soft" for a kind in PROP_SOFT, else "firm".
 const LOOK_META := &"contact_shadow_look"
 ## On a still root: how often it moved on its floor and settled.
@@ -180,6 +217,9 @@ const PROP_SOFT := {
 }
 
 static var _touches := 0
+## Bumped when a thing starts or stops playing (set_playing()): each layer
+## redoes only its playing things' changing parts, never a whole gather.
+static var _plays := 0
 static var _material: ShaderMaterial
 static var _singles: Dictionary = {}
 static var _quads: Dictionary = {}
@@ -195,10 +235,21 @@ static func mark(root: Node3D, live: bool = false) -> void:
 	if live: root.set_meta(LIVE_META, true)
 	root.add_to_group(GROUP)
 
-## Marks `part` as one that moves, shows or hides as its thing plays: the
-## bake leaves it out, as it leaves out what the fold keeps.
+## Marks `part` as one that moves, shows or hides as its thing plays: no foot
+## of its root, but baked on its own where it rests and drawn live while its
+## thing plays (set_playing()).
 static func changes(part: Node) -> void:
 	part.set_meta(CHANGES_META, true)
+
+## Whether root's thing is playing: while it plays its changing parts draw
+## live shadows that follow them; once it stops they are baked where they
+## stand, the floor again only round them.
+static func set_playing(root: Node3D, on: bool) -> void:
+	if not is_instance_valid(root) or root.has_meta(PLAYING_META) == on: return
+	if on: root.set_meta(PLAYING_META, true)
+	else: root.remove_meta(PLAYING_META)
+	root.remove_meta(SETTLED_META)
+	if not (root.get_meta(MOVERS_META, {}).get("movers", []) as Array).is_empty(): _plays += 1
 
 ## Marks a dressing prop of `spec`, unless its kind gets none or it stands
 ## below its floor (in water or mud).
@@ -295,35 +346,78 @@ static func measure_under(root: Node, kept: Dictionary = {}) -> void:
 static func feet(root: Node3D, kept: Dictionary = {}) -> Array:
 	if root.has_meta(FEET_META): return root.get_meta(FEET_META)
 	var parts: Array = []
-	_parts(root, Transform3D.IDENTITY, kept, parts)
-	var result: Array = []
-	var casters: Array = []
+	var movers: Array[Node3D] = []
+	_parts(root, Transform3D.IDENTITY, kept, parts, movers)
+	var measured := [[], []]
+	# A post sunk into the floor meets it at the root's own level.
+	var ground_y := 0.0
 	if not parts.is_empty():
 		var lowest := INF
 		for part: Array in parts: lowest = minf(lowest, (part[0] as AABB).position.y)
-		if lowest <= GROUND_REACH:
-			# A post sunk into the floor meets it at the root's own level.
-			var ground_y := maxf(lowest, 0.0)
-			var top := ground_y
-			for part: Array in parts: top = maxf(top, (part[0] as AABB).end.y)
-			var look := str(root.get_meta(LOOK_META, ""))
-			var tiny := not look.is_empty() and top - ground_y < TINY_HEIGHT
-			var soft := look == "soft"
-			for part: Array in parts:
-				var box: AABB = part[0]
-				if box.end.y - ground_y >= CAST_HEIGHT and not tiny: casters.append([Vector2(box.get_center().x, box.get_center().z), Vector2(box.size.x, box.size.z) * 0.5, maxf(box.position.y, ground_y), box.end.y])
-				if box.position.y > ground_y + BAND or box.end.y < ground_y: continue
-				var foot := _foot(part[1], part[2])
-				if (foot[1] as Vector2).x < 0.0025 or (foot[1] as Vector2).y < 0.0025: continue
-				result.append([foot[0], foot[1], ground_y, 1.0 if soft else foot[2], foot[3], 1.0, not soft])
-			if tiny and not result.is_empty(): result = [_tiny_foot(result, ground_y)]
+		ground_y = maxf(lowest, 0.0)
+		if lowest <= GROUND_REACH: measured = _measure(parts, ground_y, str(root.get_meta(LOOK_META, "")))
+		else: movers.clear()
+	root.set_meta(CASTERS_META, measured[1])
+	root.set_meta(FEET_META, measured[0])
+	# Each changing part on its own, in its own space, nested ones too.
+	var found: Array[Node3D] = []
+	var index := 0
+	while index < movers.size():
+		var mover := movers[index]
+		index += 1
+		var own: Array = []
+		if mover is MeshInstance3D and _solid(mover as MeshInstance3D): own.append([(mover as MeshInstance3D).mesh.get_aabb(), (mover as MeshInstance3D).mesh, Transform3D.IDENTITY])
+		_parts(mover, Transform3D.IDENTITY, kept, own, movers)
+		if own.is_empty(): continue
+		var box: AABB = own[0][0]
+		for part: Array in own: box = box.merge(part[0])
+		mover.set_meta(MOVER_META, {"parts": own, "box": box})
+		found.append(mover)
+	root.set_meta(MOVERS_META, {"movers": found, "ground": ground_y})
+	return measured[0]
+
+## The feet and casters of `parts` ([box, mesh, transform] in a root's space)
+## standing on `ground_y`, for a root of `look`: [feet, casters].
+static func _measure(parts: Array, ground_y: float, look: String) -> Array:
+	var result: Array = []
+	var casters: Array = []
+	var top := ground_y
+	for part: Array in parts: top = maxf(top, (part[0] as AABB).end.y)
+	var tiny := not look.is_empty() and top - ground_y < TINY_HEIGHT
+	var soft := look == "soft"
+	for part: Array in parts:
+		var box: AABB = part[0]
+		if box.end.y - ground_y >= CAST_HEIGHT and not tiny: casters.append([Vector2(box.get_center().x, box.get_center().z), Vector2(box.size.x, box.size.z) * 0.5, maxf(box.position.y, ground_y), box.end.y])
+		if box.position.y > ground_y + BAND or box.end.y < ground_y: continue
+		var foot := _foot(part[1], part[2])
+		if (foot[1] as Vector2).x < 0.0025 or (foot[1] as Vector2).y < 0.0025: continue
+		result.append([foot[0], foot[1], ground_y, 1.0 if soft else foot[2], foot[3], 1.0, not soft])
+	if tiny and not result.is_empty(): result = [_tiny_foot(result, ground_y)]
 	# The biggest shadow first (a tall post before a low wide plinth, so an
 	# arch's shadow keeps its legs); equal ones by where they stand, so the
 	# same few win whatever order the parts were found in.
 	casters.sort_custom(func(a: Array, b: Array) -> bool: return _before([-_q(_cast_size(a)), _q((a[0] as Vector2).x), _q((a[0] as Vector2).y), _q(float(a[3]))], [-_q(_cast_size(b)), _q((b[0] as Vector2).x), _q((b[0] as Vector2).y), _q(float(b[3]))]))
-	root.set_meta(CASTERS_META, casters.slice(0, CASTS_MOST))
-	root.set_meta(FEET_META, result)
-	return result
+	return [result, casters.slice(0, CASTS_MOST)]
+
+## root's changing parts where they stand now, at rest: [feet, casters] in its
+## space, measured once until it plays again (set_playing()). A hidden part
+## has none, and none wears the grass.
+static func _settled(root: Node3D) -> Array:
+	if root.has_meta(SETTLED_META): return root.get_meta(SETTLED_META)
+	var movers: Dictionary = root.get_meta(MOVERS_META, {})
+	var parts: Array = []
+	var from_root := root.global_transform.affine_inverse()
+	for mover: Variant in movers.get("movers", []):
+		if not is_instance_valid(mover) or not (mover as Node3D).is_visible_in_tree(): continue
+		var to_root := from_root * (mover as Node3D).global_transform
+		for part: Array in (mover as Node3D).get_meta(MOVER_META).parts:
+			var xform := to_root * (part[2] as Transform3D)
+			parts.append([xform * (part[1] as Mesh).get_aabb(), part[1], xform])
+	var settled := [[], []] if parts.is_empty() else _measure(parts, float(movers.get("ground", 0.0)), str(root.get_meta(LOOK_META, "")))
+	# A part that comes and goes wears no grass.
+	for foot: Array in settled[0]: foot[6] = false
+	root.set_meta(SETTLED_META, settled)
+	return settled
 
 ## How big a caster's sun shadow is: its longer side by its height.
 static func _cast_size(caster: Array) -> float:
@@ -343,15 +437,20 @@ static func _tiny_foot(feet_list: Array, ground_y: float) -> Array:
 	return [outline.get_center(), outline.size * 0.5 * TINY_SHARE, ground_y, 1.0, Vector2.RIGHT, TINY_STRENGTH, false]
 
 ## The solid meshes under node, past any kept, changing or hidden part or
-## another marked root, each as [box in root's space, mesh, transform in root's space].
-static func _parts(node: Node, to_root: Transform3D, kept: Dictionary, parts: Array) -> void:
+## another marked root, each as [box in root's space, mesh, transform in root's
+## space]; the changing parts met on the way (shown or not) go in `movers`.
+static func _parts(node: Node, to_root: Transform3D, kept: Dictionary, parts: Array, movers: Array[Node3D] = []) -> void:
 	for child: Node in node.get_children():
-		if not child is Node3D or not (child as Node3D).visible or child.has_meta(CHANGES_META) or kept.has(child.get_instance_id()) or child.is_in_group(GROUP) or child.is_in_group(GROUND_GROUP): continue
+		if not child is Node3D or kept.has(child.get_instance_id()) or child.is_in_group(GROUP) or child.is_in_group(GROUND_GROUP): continue
+		if child.has_meta(CHANGES_META):
+			movers.append(child as Node3D)
+			continue
+		if not (child as Node3D).visible: continue
 		var xform := to_root * (child as Node3D).transform
 		if child is MeshInstance3D and _solid(child as MeshInstance3D):
 			var mesh := (child as MeshInstance3D).mesh
 			parts.append([xform * mesh.get_aabb(), mesh, xform])
-		_parts(child, xform, kept, parts)
+		_parts(child, xform, kept, parts, movers)
 
 ## A mesh's foot in root space: [centre, half, round, across (unit)]. Its
 ## bottom's outline (bottom()) turned with it; a tilted part keeps its box's.
@@ -526,24 +625,85 @@ static func worn_for(half: Vector2) -> float:
 ## `pieces`: the rectangles of rect the floor is drawn as (all of it when
 ## empty); its tiles are drawn only over them.
 static func bake(rect: Rect2, feet_list: Array, casts: Array, worn: bool, pieces: Array = []) -> Dictionary:
-	var width := maxi(1, ceili(rect.size.x / TEXEL))
-	var height := maxi(1, ceili(rect.size.y / TEXEL))
+	var size := _texels(rect)
 	var data := PackedByteArray()
-	data.resize(width * height * 3)
-	var per_tile := maxi(1, roundi(TILE / TEXEL))
-	var tiles_across := ceili(float(width) / per_tile)
-	var marked: Dictionary = {}
+	data.resize(size.x * size.y * 3)
+	var records := _records(feet_list, casts, worn)
+	var boxes: Array[Rect2i] = []
+	for record: Array in records: boxes.append(_stamp(data, size, rect, record))
+	return _baked_image(rect, pieces, size, data, records, boxes)
+
+## bake() again from `before` (a bake() or patch() of the same floor with what
+## stood on it then): only the texels round the stamps that came or went are
+## cleared and stamped again, by every stamp that reaches them, so every
+## texel and tile is what bake() would make, for a few stamps' work. With
+## nothing baked before, or more than PATCH_SHARE of the floor changed, it
+## bakes whole. The result also gives "stamped": the stamps it drew.
+static func patch(rect: Rect2, before: Dictionary, feet_list: Array, casts: Array, worn: bool, pieces: Array = []) -> Dictionary:
+	var size := _texels(rect)
+	var records := _records(feet_list, casts, worn)
+	if not before.has("image") or (before.image as Image).get_size() != size: return _whole(rect, feet_list, casts, worn, pieces, records.size())
+	# The stamps that came or went, by value (snapped, so exact).
+	var left: Dictionary = {}
+	for record: Array in before.records: left[record] = int(left.get(record, 0)) + 1
+	var changed: Array = []
+	for record: Array in records:
+		if int(left.get(record, 0)) > 0: left[record] = int(left[record]) - 1
+		else: changed.append(record)
+	for record: Array in left:
+		for count in range(int(left[record])): changed.append(record)
+	if changed.is_empty(): return before.merged({"records": records, "stamped": 0}, true)
+	var region := Rect2i(0, 0, -1, -1)
+	for record: Array in changed:
+		var box := _stamp_box(size, rect, record)
+		if box.size.x >= 0: region = box if region.size.x < 0 else region.merge(box)
+	if region.size.x >= 0 and (region.size.x + 1) * (region.size.y + 1) > size.x * size.y * PATCH_SHARE: return _whole(rect, feet_list, casts, worn, pieces, records.size())
+	var cleared := (before.image as Image).duplicate() as Image
+	if region.size.x >= 0: cleared.fill_rect(Rect2i(region.position, region.size + Vector2i.ONE), Color.BLACK)
+	var data := cleared.get_data()
+	var boxes: Array[Rect2i] = []
+	var stamped := 0
+	for record: Array in records: boxes.append(_stamp_box(size, rect, record))
+	if region.size.x >= 0:
+		for index in range(records.size()):
+			if _meets(boxes[index], region):
+				_stamp(data, size, rect, records[index], region)
+				stamped += 1
+	var baked := _baked_image(rect, pieces, size, data, records, boxes)
+	return baked if baked.is_empty() else baked.merged({"stamped": stamped})
+
+## bake(), saying it drew `stamps`; {} when nothing shows.
+static func _whole(rect: Rect2, feet_list: Array, casts: Array, worn: bool, pieces: Array, stamps: int) -> Dictionary:
+	var baked := bake(rect, feet_list, casts, worn, pieces)
+	return baked if baked.is_empty() else baked.merged({"stamped": stamps})
+
+## A floor's size in texels.
+static func _texels(rect: Rect2) -> Vector2i:
+	return Vector2i(maxi(1, ceili(rect.size.x / TEXEL)), maxi(1, ceili(rect.size.y / TEXEL)))
+
+## The stamps `feet_list` and `casts` make on a floor, every input snapped
+## (SNAP): [centre, across (unit), half, corner, fade, reach, worn, strength]
+## for _stamp().
+static func _records(feet_list: Array, casts: Array, worn: bool) -> Array:
+	var records: Array = []
 	for foot: Array in feet_list:
 		var half := _snapped2(foot[1])
 		var fade := fade_for(half)
 		var wears := worn and (bool(foot[5]) if foot.size() > 5 else true)
-		var reach := worn_for(half) if wears else fade
-		var box := _stamp(data, width, height, rect, _snapped2(foot[0]), _snapped2(foot[3]), half, _snapped(float(foot[2])) * minf(half.x, half.y), fade, reach, 0 if wears else -1, _strength(foot, 4))
-		_mark_tiles(box, per_tile, tiles_across, marked)
+		records.append([_snapped2(foot[0]), _snapped2(foot[3]), half, _snapped(float(foot[2])) * minf(half.x, half.y), fade, worn_for(half) if wears else fade, 0 if wears else -1, _strength(foot, 4)])
 	for cast: Array in casts:
 		var cast_half := _snapped2(cast[2])
 		var soft := _snapped(float(cast[3]))
-		_mark_tiles(_stamp(data, width, height, rect, _snapped2(cast[0]), _snapped2(cast[1]), cast_half, minf(cast_half.x, cast_half.y), soft, soft, -2), per_tile, tiles_across, marked)
+		records.append([_snapped2(cast[0]), _snapped2(cast[1]), cast_half, minf(cast_half.x, cast_half.y), soft, soft, -2, 1.0])
+	return records
+
+## A baked floor's image and the tiles its stamps' boxes touch: {image, tiles,
+## records}, or {} when nothing shows.
+static func _baked_image(rect: Rect2, pieces: Array, size: Vector2i, data: PackedByteArray, records: Array, boxes: Array[Rect2i]) -> Dictionary:
+	var per_tile := maxi(1, roundi(TILE / TEXEL))
+	var tiles_across := ceili(float(size.x) / per_tile)
+	var marked: Dictionary = {}
+	for box: Rect2i in boxes: _mark_tiles(box, per_tile, tiles_across, marked)
 	if marked.is_empty(): return {}
 	var tiles: Array[Rect2] = []
 	for key: int in marked:
@@ -553,24 +713,53 @@ static func bake(rect: Rect2, feet_list: Array, casts: Array, worn: bool, pieces
 			if part.has_area(): tiles.append(part)
 	if tiles.is_empty(): return {}
 	tiles.sort_custom(func(a: Rect2, b: Rect2) -> bool: return a.position.y < b.position.y or (a.position.y == b.position.y and a.position.x < b.position.x))
-	return {"image": Image.create_from_data(width, height, false, Image.FORMAT_RGB8, data), "tiles": tiles}
+	return {"image": Image.create_from_data(size.x, size.y, false, Image.FORMAT_RGB8, data), "tiles": tiles, "records": records}
 
-## Stamps one soft rounded box into data, keeping the darker of what is there
-## and what it adds: centre, its across axis (unit), half size, corner radius,
-## how far its own channel fades out past it and how far the worn channel
-## does. `worn`: 0 also writes the worn channel, -1 only the contact channel,
-## -2 the sun's (b) channel alone. `strength` scales how dark its own channel
-## gets. Returns the texel box it touched (a negative size when it lies off the
-## floor).
-static func _stamp(data: PackedByteArray, width: int, height: int, rect: Rect2, centre: Vector2, across: Vector2, half: Vector2, corner: float, fade: float, reach: float, worn: int, strength: float = 1.0) -> Rect2i:
+## Whether two texel boxes (their end texels inside them) share a texel.
+static func _meets(a: Rect2i, b: Rect2i) -> bool:
+	return a.size.x >= 0 and b.size.x >= 0 and a.position.x <= b.end.x and b.position.x <= a.end.x and a.position.y <= b.end.y and b.position.y <= a.end.y
+
+## The texels a stamp (_records()) reaches on a floor of `size` over `rect`,
+## its last texel at its end (a negative size when it lies off the floor).
+static func _stamp_box(size: Vector2i, rect: Rect2, record: Array) -> Rect2i:
+	var centre: Vector2 = record[0]
+	var across: Vector2 = record[1]
+	var half: Vector2 = record[2]
 	var deep := Vector2(-across.y, across.x)
-	var outer := half + Vector2.ONE * maxf(fade, reach)
+	var outer := half + Vector2.ONE * maxf(float(record[4]), float(record[5]))
 	var spread := Vector2(absf(across.x) * outer.x + absf(deep.x) * outer.y, absf(across.y) * outer.x + absf(deep.y) * outer.y)
 	var from := Vector2i(floori((centre.x - spread.x - rect.position.x) / TEXEL), floori((centre.y - spread.y - rect.position.y) / TEXEL))
 	var to := Vector2i(ceili((centre.x + spread.x - rect.position.x) / TEXEL), ceili((centre.y + spread.y - rect.position.y) / TEXEL))
-	if to.x < 0 or to.y < 0 or from.x >= width or from.y >= height: return Rect2i(0, 0, -1, -1)
-	from = from.clamp(Vector2i.ZERO, Vector2i(width - 1, height - 1))
-	to = to.clamp(Vector2i.ZERO, Vector2i(width - 1, height - 1))
+	if to.x < 0 or to.y < 0 or from.x >= size.x or from.y >= size.y: return Rect2i(0, 0, -1, -1)
+	from = from.clamp(Vector2i.ZERO, size - Vector2i.ONE)
+	to = to.clamp(Vector2i.ZERO, size - Vector2i.ONE)
+	return Rect2i(from, to - from)
+
+## Stamps one soft rounded box (a _records() stamp: centre, its across axis
+## (unit), half size, corner radius, how far its own channel fades out past it
+## and how far the worn channel does, worn, strength) into data, keeping the
+## darker of what is there and what it adds, only inside `clip` when it has
+## one. `worn`: 0 also writes the worn channel, -1 only the contact channel,
+## -2 the sun's (b) channel alone. `strength` scales how dark its own channel
+## gets. Returns the texel box it reaches (_stamp_box()).
+static func _stamp(data: PackedByteArray, size: Vector2i, rect: Rect2, record: Array, clip: Rect2i = Rect2i(0, 0, -1, -1)) -> Rect2i:
+	var box := _stamp_box(size, rect, record)
+	if box.size.x < 0 or (clip.size.x >= 0 and not _meets(box, clip)): return box
+	var centre: Vector2 = record[0]
+	var across: Vector2 = record[1]
+	var half: Vector2 = record[2]
+	var corner: float = record[3]
+	var fade: float = record[4]
+	var reach: float = record[5]
+	var worn: int = record[6]
+	var strength: float = record[7]
+	var width := size.x
+	var deep := Vector2(-across.y, across.x)
+	var from := box.position
+	var to := box.end
+	if clip.size.x >= 0:
+		from = from.max(clip.position)
+		to = to.min(clip.end)
 	corner = minf(corner, minf(half.x, half.y))
 	var inner := (half - Vector2.ONE * corner).max(Vector2.ZERO)
 	var channel := 2 if worn == -2 else 0
@@ -592,7 +781,7 @@ static func _stamp(data: PackedByteArray, width: int, height: int, rect: Rect2, 
 				var wear := clampf(1.0 - outside / reach, 0.0, 1.0)
 				var level := int(wear * wear * (3.0 - 2.0 * wear) * 255.0)
 				if level > data[at + 1]: data[at + 1] = level
-	return Rect2i(from, to - from)
+	return box
 
 static func _mark_tiles(box: Rect2i, per_tile: int, across: int, marked: Dictionary) -> void:
 	if box.size.x < 0: return
@@ -636,7 +825,22 @@ var _shown: Array = []
 ## Per still root baked: [root, its ground, its transform in the ground's
 ## space last seen].
 var _still: Array = []
-## Per ground node: {signature, image (null when it holds no shade)}.
+## Per playing part drawn live (after the live shadows in the MultiMesh):
+## {part, box (its MOVER_META box), ground (its floor's height in the layer's
+## space), sun (the floor offset per metre of height, x and z in the layer's
+## space; zero without the sun's shadows), seen, strength (its fade), drawn:
+## {transform, strength, half}}.
+var _movers: Array[Dictionary] = []
+## Per still root with changing parts, in the gather's order (_mover_entry()).
+var _mover_roots: Array[Dictionary] = []
+## The visible floors in their fixed order, and the sun's floor offset, as
+## the last gather found them.
+var _grounds: Array[Node3D] = []
+var _sun := Vector3.ZERO
+var _played := -1
+## Per ground node: {key (what the floor is), tiles (drawn now), "still" and
+## "moving" (its two textures, KINDS): {signature, bake (what bake() or
+## patch() gave, to patch next time)}}.
 var _baked: Dictionary = {}
 ## Grounds waiting to bake, in a fixed order: [ground, feet, casts, signature].
 var _to_bake: Array = []
@@ -669,7 +873,9 @@ func set_quality(quality: String) -> void:
 	var casts := GraphicsPolicy.cast_shadows(_quality)
 	_quality = GraphicsPolicy.normalize(quality)
 	if casts != GraphicsPolicy.cast_shadows(_quality):
-		for ground: Variant in _baked: _baked[ground].signature = 0
+		for ground: Variant in _baked:
+			for kind: String in KINDS:
+				if (_baked[ground] as Dictionary).has(kind): _baked[ground][kind].signature = 0
 		_dirty = true
 	if _draw == null: return
 	_draw.set_instance_shader_parameter("shadow_strength", GraphicsPolicy.contact_shadow_strength(_quality))
@@ -703,35 +909,50 @@ func shadows_of(root: Node3D) -> Array[int]:
 		if _shown[index][0] == root: found.append(index)
 	return found
 
+## The playing parts' live shadows as drawn: [{part, transform (in the
+## layer's space), strength, half}].
+func part_shadows() -> Array:
+	var found: Array = []
+	for mover: Dictionary in _movers: found.append((mover.drawn as Dictionary).merged({"part": mover.part}))
+	return found
+
 ## The roots baked into a floor, each with its ground: [[root, ground]].
 func baked_roots() -> Array:
 	var found: Array = []
 	for still: Array in _still: found.append([still[0], still[1]])
 	return found
 
-## The floors drawn with an overlay now, each {ground, overlay, image}.
+## The floors drawn with an overlay now, each {ground, overlay, image (what
+## stands still, or null), moving (changing parts at rest, or null)}.
 func overlays() -> Array:
 	var found: Array = []
 	for ground: Variant in _baked:
-		if is_instance_valid(ground) and _baked[ground].image != null: found.append({"ground": ground, "overlay": overlay_of(ground as Node3D), "image": _baked[ground].image})
+		if not is_instance_valid(ground): continue
+		var images := {}
+		for kind: String in KINDS: images[kind] = _baked[ground].get(kind, {}).get("bake", {}).get("image")
+		if images.still != null or images.moving != null: found.append({"ground": ground, "overlay": overlay_of(ground as Node3D), "image": images.still, "moving": images.moving})
 	return found
 
 ## Whether every floor waiting to bake has baked.
 func settled() -> bool:
 	return not _dirty and _to_bake.is_empty()
 
-func _process(_delta: float) -> void:
-	refresh()
+func _process(delta: float) -> void:
+	refresh(delta)
 
 ## Gathers again when something marked came, went, showed, hid or was
-## touched, then bakes what changed; otherwise follows whatever moved.
-func refresh() -> void:
+## touched, then bakes what changed; otherwise follows whatever moved, and
+## every playing part `step` seconds on.
+func refresh(step: float = 0.0) -> void:
 	if _draw == null or not is_inside_tree(): return
 	var members := get_tree().get_node_count_in_group(GROUP)
 	var grounds := get_tree().get_node_count_in_group(GROUND_GROUP)
 	if _dirty or members != _members or grounds != _grounds_seen or _touches != _touched:
 		_gather(members, grounds)
-	else: _follow()
+	else:
+		if _plays != _played: _replay()
+		_follow()
+	if not _movers.is_empty(): _follow_parts(step)
 	if not _to_bake.is_empty(): _bake_some()
 
 func _on_member_shown() -> void:
@@ -742,6 +963,7 @@ func _gather(members: int, grounds_count: int) -> void:
 	_members = members
 	_grounds_seen = grounds_count
 	_touched = _touches
+	_played = _plays
 	_hot.clear()
 	_hot_still.clear()
 	_poll = 0
@@ -763,10 +985,14 @@ func _gather(members: int, grounds_count: int) -> void:
 	# its fold measures them (static_batch.gd start()).
 	var kept: Variant = null
 	var on_ground: Dictionary = {}
+	# Per floor: what stands still on it (feet, casts, what each is).
 	for ground: Node3D in grounds: on_ground[ground] = [[], [], []]
 	var live: Array = []
 	var still: Array = []
 	var sun := _sun_offset()
+	_grounds = grounds
+	_sun = sun
+	_mover_roots.clear()
 	for found: Node in get_tree().get_nodes_in_group(GROUP):
 		if not world.is_ancestor_of(found): continue
 		var root := found as Node3D
@@ -795,6 +1021,7 @@ func _gather(members: int, grounds_count: int) -> void:
 			live.append_array(off)
 			continue
 		var to_stood := stood.global_transform.affine_inverse() * root.global_transform
+		if not (root.get_meta(MOVERS_META, {}).get("movers", []) as Array).is_empty(): _mover_roots.append(_mover_entry(root, stood))
 		for caster: Array in root.get_meta(CASTERS_META, []):
 			var cast := _cast(caster, to_stood, (stood.global_transform.basis.inverse() * sun))
 			if not cast.is_empty(): (on_ground[stood][1] as Array).append(cast)
@@ -810,10 +1037,78 @@ func _gather(members: int, grounds_count: int) -> void:
 	for ground: Node3D in grounds:
 		_shade_quality(ground)
 		var entry: Array = on_ground[ground]
-		var signature := hash([entry[2], entry[1], ground.get_meta(GROUND_RECT_META), ground.get_meta(GROUND_PIECES_META), ground.get_meta(GROUND_WORN_META)])
-		if _baked.has(ground) and int(_baked[ground].signature) == signature: continue
-		_to_bake.append([ground, entry[0], entry[1], signature])
+		_queue(ground, "still", entry[0], entry[1], entry[2])
+		_queue_moving(ground)
 	_place_live(live)
+
+## Queues one of a floor's textures (KINDS) to bake when what it holds
+## (`made_of`: what each stamp is) changed since it was last baked; a moving
+## texture that never held anything and holds nothing now has nothing to bake.
+func _queue(ground: Node3D, kind: String, feet_list: Array, casts: Array, made_of: Array) -> void:
+	var signature := hash([made_of, casts, ground.get_meta(GROUND_RECT_META), ground.get_meta(GROUND_PIECES_META), ground.get_meta(GROUND_WORN_META)])
+	var last: Dictionary = _baked.get(ground, {}).get(kind, {})
+	if last.has("signature") and int(last.signature) == signature: return
+	if kind == "moving" and feet_list.is_empty() and casts.is_empty() and (last.get("bake", {}) as Dictionary).is_empty(): return
+	_to_bake = _to_bake.filter(func(job: Array) -> bool: return job[0] != ground or job[4] != kind)
+	_to_bake.append([ground, feet_list, casts, signature, kind])
+
+## Queues a floor's moving texture from the resting changing parts standing on it.
+func _queue_moving(ground: Node3D) -> void:
+	var feet_list: Array = []
+	var casts: Array = []
+	var made_of: Array = []
+	for entry: Dictionary in _mover_roots:
+		for foot: Array in entry.feet:
+			if foot[0] != ground: continue
+			feet_list.append(foot[1])
+			made_of.append(foot[2])
+		if entry.stood == ground:
+			casts.append_array(entry.casts)
+			made_of.append_array(entry.casts)
+	_queue(ground, "moving", feet_list, casts, made_of)
+
+## A still root's changing parts: {root, stood (its floor), playing, feet:
+## [[ground, foot in its space, what it is]], casts (on stood)}, none while it
+## plays (they are drawn live then).
+func _mover_entry(root: Node3D, stood: Node3D) -> Dictionary:
+	var entry := {"root": root, "stood": stood, "playing": root.has_meta(PLAYING_META), "feet": [], "casts": []}
+	if entry.playing: return entry
+	var settled := _settled(root)
+	for foot: Array in settled[0]:
+		var ground := _ground_for(root, foot, _grounds)
+		if ground == null: continue
+		var to_ground := ground.global_transform.affine_inverse() * root.global_transform
+		(entry.feet as Array).append([ground, _ground_foot(foot, to_ground), [root.get_instance_id(), to_ground, foot]])
+	var to_stood := stood.global_transform.affine_inverse() * root.global_transform
+	for caster: Array in settled[1]:
+		var cast := _cast(caster, to_stood, (stood.global_transform.basis.inverse() * _sun))
+		if not cast.is_empty(): (entry.casts as Array).append(cast)
+	return entry
+
+## A thing started or stopped playing (set_playing()): only the changing
+## parts of those that did are measured again, their floors' moving textures
+## baked round them and the live shadows drawn again.
+func _replay() -> void:
+	_played = _plays
+	var floors := {}
+	var changed := false
+	for index in range(_mover_roots.size()):
+		var entry: Dictionary = _mover_roots[index]
+		var root: Variant = entry.root
+		if not is_instance_valid(root) or not (root as Node3D).is_inside_tree() or not is_instance_valid(entry.stood):
+			_dirty = true
+			return
+		var playing := (root as Node3D).has_meta(PLAYING_META)
+		if playing == entry.playing and (playing or (root as Node3D).has_meta(SETTLED_META)): continue
+		var now := _mover_entry(root as Node3D, entry.stood)
+		for foot: Array in (entry.feet as Array) + (now.feet as Array): floors[foot[0]] = true
+		floors[entry.stood] = true
+		_mover_roots[index] = now
+		changed = true
+	if not changed: return
+	for ground: Node3D in _grounds:
+		if floors.has(ground): _queue_moving(ground)
+	_place_parts()
 
 ## The floor top a foot of root stands on: the one whose rect holds its
 ## centre at its height, the nearest under it; null for none.
@@ -888,33 +1183,64 @@ func _bake_some() -> void:
 	while not _to_bake.is_empty() and stamps < BAKE_STAMPS:
 		var job: Array = _to_bake.pop_front()
 		if not is_instance_valid(job[0]): continue
-		stamps += maxi(1, (job[1] as Array).size() + (job[2] as Array).size())
-		_bake_ground(job[0] as Node3D, job[1], job[2], int(job[3]))
+		stamps += maxi(1, _bake_ground(job[0] as Node3D, job[1], job[2], int(job[3]), str(job[4])))
 	bake_usec += Time.get_ticks_usec() - started
 
-func _bake_ground(ground: Node3D, feet_list: Array, casts: Array, signature: int) -> void:
+## Bakes one of a floor's textures (KINDS), only where its stamps changed
+## when it was baked before as it is now (patch()). Returns the stamps it
+## took: a whole floor counts its feet and casts.
+func _bake_ground(ground: Node3D, feet_list: Array, casts: Array, signature: int, kind: String) -> int:
 	var rect: Rect2 = ground.get_meta(GROUND_RECT_META)
-	var baked := bake(rect, feet_list, casts if GraphicsPolicy.cast_shadows(_quality) else [], bool(ground.get_meta(GROUND_WORN_META)), ground.get_meta(GROUND_PIECES_META))
-	_baked[ground] = {"signature": signature, "image": null}
-	if baked.is_empty():
-		_clear(ground)
-		return
+	var key := [rect, ground.get_meta(GROUND_PIECES_META), ground.get_meta(GROUND_WORN_META)]
+	var entry: Dictionary = _baked.get(ground, {})
+	if entry.get("key") != key: entry = {"key": key}
+	var before: Dictionary = entry.get(kind, {}).get("bake", {})
+	var baked := patch(rect, before, feet_list, casts if GraphicsPolicy.cast_shadows(_quality) else [], bool(key[2]), key[1])
+	var stamps: int = baked.get("stamped", feet_list.size() + casts.size()) if not before.is_empty() else feet_list.size() + casts.size()
+	entry[kind] = {"signature": signature, "bake": baked}
+	_baked[ground] = entry
 	var overlay := overlay_of(ground)
-	if overlay == null: return
-	overlay.mesh = overlay_mesh(rect, baked.tiles)
-	(overlay.material_override as ShaderMaterial).set_shader_parameter("shade", ImageTexture.create_from_image(baked.image))
+	if overlay == null: return stamps
+	var still: Dictionary = entry.get("still", {}).get("bake", {})
+	var moving: Dictionary = entry.get("moving", {}).get("bake", {})
+	if still.is_empty() and moving.is_empty():
+		_clear(ground)
+		entry.erase("tiles")
+		return stamps
+	var look := overlay.material_override as ShaderMaterial
+	var param := "shade" if kind == "still" else "moving"
+	var shade: Variant = look.get_shader_parameter(param)
+	if baked.is_empty(): look.set_shader_parameter(param, null)
+	elif shade is ImageTexture and (shade as ImageTexture).get_size() == Vector2((baked.image as Image).get_size()):
+		if baked.image != before.get("image"): (shade as ImageTexture).update(baked.image)
+	else: look.set_shader_parameter(param, ImageTexture.create_from_image(baked.image))
+	if look.get_shader_parameter("has_moving") != not moving.is_empty(): look.set_shader_parameter("has_moving", not moving.is_empty())
+	# Drawn over the tiles either texture shades, each once.
+	var tiles: Array[Rect2] = []
+	var seen := {}
+	for tile: Rect2 in (still.get("tiles", []) as Array) + (moving.get("tiles", []) as Array):
+		if seen.has(tile): continue
+		seen[tile] = true
+		tiles.append(tile)
+	tiles.sort_custom(func(a: Rect2, b: Rect2) -> bool: return a.position.y < b.position.y or (a.position.y == b.position.y and a.position.x < b.position.x))
+	if entry.get("tiles") != tiles or overlay.layers == 0:
+		overlay.mesh = overlay_mesh(rect, tiles)
+		entry.tiles = tiles
 	overlay.layers = SHADE_LAYERS
-	_baked[ground].image = baked.image
+	return stamps
 
 ## Empties a floor's overlay: it draws nothing until it bakes again.
 func _clear(ground: Node3D) -> void:
 	var overlay := overlay_of(ground)
 	if overlay == null or overlay.layers == 0: return
 	_empty_overlay(ground)
-	(overlay.material_override as ShaderMaterial).set_shader_parameter("shade", null)
+	var look := overlay.material_override as ShaderMaterial
+	look.set_shader_parameter("shade", null)
+	look.set_shader_parameter("moving", null)
+	look.set_shader_parameter("has_moving", false)
 
 ## Draws the live shadows: the biggest first, equal ones by where they stand
-## (never by the order they were found).
+## (never by the order they were found); then the playing parts'.
 func _place_live(entries: Array) -> void:
 	var to_layer := global_transform.affine_inverse()
 	for entry: Array in entries:
@@ -922,9 +1248,6 @@ func _place_live(entries: Array) -> void:
 		var at := to_layer * (entry[0] as Node3D).global_transform * Vector3((foot[0] as Vector2).x, float(foot[2]), (foot[0] as Vector2).y)
 		entry.append([-_q(float(entry[2])), _q(at.x), _q(at.z), _q(at.y)])
 	entries.sort_custom(func(a: Array, b: Array) -> bool: return _before(a[3], b[3]))
-	var many := _draw.multimesh
-	many.instance_count = 0
-	many.instance_count = entries.size()
 	_shown = []
 	for index in range(entries.size()):
 		var entry: Array = entries[index]
@@ -933,7 +1256,82 @@ func _place_live(entries: Array) -> void:
 		var foot: Array = entry[1]
 		# Where it rests now: its feet's ground in the layer's space.
 		_shown.append([root, foot, seen, (seen * Vector3((foot[0] as Vector2).x, float(foot[2]), (foot[0] as Vector2).y)).y, {}])
-		_place(index, seen)
+	_place_parts()
+
+## Sizes the MultiMesh for the live shadows and the playing things' changing
+## parts after them, and draws them all.
+func _place_parts() -> void:
+	var to_layer := global_transform.affine_inverse()
+	var playing: Array = []
+	for entry: Dictionary in _mover_roots:
+		if not entry.playing: continue
+		for mover: Variant in (entry.root as Node3D).get_meta(MOVERS_META).movers:
+			if is_instance_valid(mover): playing.append([mover, entry.stood])
+	var many := _draw.multimesh
+	many.instance_count = 0
+	many.instance_count = _shown.size() + playing.size()
+	for index in range(_shown.size()): _place(index, _shown[index][2])
+	# A playing part's shadow falls along the sun as it rises (none on Low).
+	var sun := to_layer.basis * _sun if GraphicsPolicy.cast_shadows(_quality) else Vector3.ZERO
+	var was := {}
+	for mover: Dictionary in _movers: was[mover.part] = mover.strength
+	_movers.clear()
+	for entry: Array in playing:
+		var part: Node3D = entry[0]
+		_movers.append({"part": part, "box": part.get_meta(MOVER_META).box, "ground": (to_layer * (entry[1] as Node3D).global_transform).origin.y, "sun": Vector2(sun.x, sun.z),
+			"seen": to_layer * part.global_transform, "strength": was.get(part, 1.0 if part.is_visible_in_tree() else 0.0), "drawn": {}})
+		_place_part(_movers.size() - 1)
+
+## Follows every playing part (refresh()): where it stands, and its shadow
+## easing in or out over PART_FADE as it shows or hides; one that stands still
+## and shown as it was costs one look.
+func _follow_parts(step: float) -> void:
+	var to_layer := global_transform.affine_inverse()
+	for index in range(_movers.size()):
+		var mover: Dictionary = _movers[index]
+		var part: Variant = mover.part
+		# Gone with its set: gather again next frame.
+		if not is_instance_valid(part) or not (part as Node3D).is_inside_tree():
+			_dirty = true
+			continue
+		var seen := to_layer * (part as Node3D).global_transform
+		var strength := move_toward(float(mover.strength), 1.0 if (part as Node3D).is_visible_in_tree() else 0.0, step / PART_FADE)
+		if seen == mover.seen and strength == mover.strength: continue
+		mover.seen = seen
+		mover.strength = strength
+		_place_part(index)
+
+## Draws playing part `index`'s live shadow where it stands now: its
+## footprint turned with it on its root's floor, as dark as it is near it
+## (none once it sinks below it).
+## Raised, it slides along the sun as far as it is high and softens, as dark
+## as the floor's sun shadows (PART_CAST) while it is tall enough to cast one
+## (CAST_HEIGHT).
+func _place_part(index: int) -> void:
+	var mover: Dictionary = _movers[index]
+	var seen: Transform3D = mover.seen
+	var box: AABB = mover.box
+	var middle := box.get_center()
+	var flat := _ground_foot([Vector2(middle.x, middle.z), Vector2(box.size.x, box.size.z) * 0.5, middle.y, 1.0, Vector2.RIGHT], seen)
+	var half: Vector2 = flat[1]
+	var reach := seen * box
+	var ground: float = mover.ground
+	var raised := maxf(reach.get_center().y - ground, 0.0)
+	# Sunk below its floor (a bucket down a well), it has none.
+	var contact := clampf(1.0 - maxf(reach.position.y - ground, 0.0) / LIFT_FADE, 0.0, 1.0) if reach.end.y >= ground else 0.0
+	var cast := PART_CAST if mover.sun != Vector2.ZERO and reach.end.y - ground >= CAST_HEIGHT else 0.0
+	var centre: Vector2 = (flat[0] as Vector2) + (mover.sun as Vector2) * raised * (1.0 - contact)
+	var fade := lerpf(fade_for(half), lerpf(CAST_SOFT.x, CAST_SOFT.y, clampf(raised, 0.0, 2.0) * 0.5), 1.0 - contact)
+	var strength := maxf(contact, cast) * float(mover.strength)
+	var outer := half + Vector2.ONE * fade
+	var across: Vector2 = flat[3]
+	var placed := Transform3D(Basis(Vector3(across.x, 0, across.y), Vector3.UP, Vector3(-across.y, 0, across.x)) * Basis.from_scale(Vector3(outer.x, 1.0, outer.y)), Vector3(centre.x, ground + SHADE_TOP, centre.y))
+	mover.drawn = {"transform": placed, "strength": strength, "half": half}
+	var at := _shown.size() + index
+	var many := _draw.multimesh
+	many.set_instance_transform(at, placed)
+	many.set_instance_custom_data(at, Color(half.x, half.y, fade, 1.0))
+	many.set_instance_color(at, Color(1, 1, 1, strength))
 
 ## Draws live shadow `index` where its root stands now (`seen`, in the
 ## layer's space): flat, turned with its foot, at its feet. Lifted off its
