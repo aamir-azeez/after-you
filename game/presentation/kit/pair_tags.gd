@@ -11,7 +11,8 @@ extends RefCounted
 ## beside it, as no pop-up carries its letter. A light receiver is a result,
 ## not an input: its letter is on a plaque on its own lamp post (no floor tile
 ## beside it), which lights only while one of its gates stands open, and its
-## inputs are the mirrors on the paths that light it (_light_inputs), which
+## inputs are what a pip works to light it (_light_inputs: the mirrors and
+## selectors on its paths, the pads and levers that light their lamps), which
 ## carry its letter in the pop-up and show its pair near. A gate several controls work
 ## shows their tiles side by side in one short row; a control whose tile and
 ## gate tile would touch shows it once, and every row is placed on its own
@@ -49,8 +50,8 @@ extends RefCounted
 ## shows what play showed. Cost: one mesh and one material per stage (a sign
 ## tile adds one small mesh; plaques share a second material, each a small
 ## mesh and four shared-material parts); present() works out the states, a few distance
-## checks, and sets the material only when they change. The mirrors that light
-## a receiver are traced once per stage, every way its mirrors can turn. The letter meshes, the
+## checks, and sets the material only when they change. What lights a
+## receiver is traced once per stage, every way its mirrors and selectors can turn. The letter meshes, the
 ## pop-up's font and the shader are made once a session and let go through
 ## SessionRelease. The pop-up chip redraws only when its letter or state changes.
 const SessionRelease = preload("res://presentation/kit/session_release.gd")
@@ -144,9 +145,9 @@ const LOOK := {&"faint_alpha": FAINT_ALPHA, &"near_lighten": NEAR_LIGHTEN, &"pal
 ## slot on share its state.
 const MAX_STATES := 64
 const MAX_PAIRS := 30
-## Receivers are traced every way at most this many mirrors can turn (2^n
-## traces); a stage with more traces the first this many.
-const LIGHT_MIRRORS := 10
+## Receivers are traced every way the stage's mirrors and light selectors can
+## turn, at most this many traces; a control that would pass it is not traced.
+const LIGHT_WAYS := 1024
 ## A spirit this close (cm, across the floor) and this near in height (under a
 ## terrace's step) shows its pair.
 const NEAR_CM := 120
@@ -248,7 +249,7 @@ func tag(control_id: String, side: StringName, at: Vector3, parent: Node3D) -> v
 ## shows in the action pop-up, not on the floor), gates (route dictionaries),
 ## values (route id -> the values a gate needs of a selector, [] for any),
 ## inputs (what a pip works for it: [{id, entity, group}], the control itself,
-## or a receiver's mirrors), index}, in the order the gates meet them.
+## or what lights a receiver), index}, in the order the gates meet them.
 static func pairs_of(view: Dictionary, skips: Array = []) -> Array[Dictionary]:
 	var groups: Dictionary = {}
 	var entities := _entities(view, groups)
@@ -268,36 +269,64 @@ static func pairs_of(view: Dictionary, skips: Array = []) -> Array[Dictionary]:
 			by_control[control].values[route_id] = _values(gate.get("when", {}), control)
 	var lights := _light_inputs(view)
 	for pair: Dictionary in found:
-		# A receiver no mirror lights (a fixed beam) is read at itself.
+		# A receiver nothing a pip works lights (a fixed beam) is read at itself.
 		var ids: Array = lights.get(pair.control, [pair.control]) if pair.group == "receivers" else [pair.control]
 		pair["inputs"] = ids.filter(func(id: String) -> bool: return entities.has(id)).map(func(id: String) -> Dictionary: return {"id": id, "entity": entities[id], "group": groups[id]})
 	return found
 
-## Per receiver, the turnable mirrors (controls of kind mirror) on any path
-## that lights it, every way they can turn (BeamField, the game's own rule),
-## in the stage's order: receiver id -> [mirror ids].
+## Per receiver, what a pip works to light it (LightPieces' rules, traced by
+## BeamField, the game's own rule), in the stage's order: the turnable
+## mirrors (controls of kind mirror) and the selectors whose optics set a
+## lamp or mirror on any path that lights it, every way they can turn, then
+## the pads and levers that light those lamps (their lit_when): receiver id
+## -> [control ids].
 static func _light_inputs(view: Dictionary) -> Dictionary:
 	var field: Variant = view.get("optical_field", view.get("optics", {}))
-	if not field is Dictionary or (field as Dictionary).get("mirrors", []).is_empty(): return {}
-	var turnable: Array[String] = []
+	if not field is Dictionary or (field as Dictionary).get("emitters", []).is_empty(): return {}
+	# Each control that changes the light: its id, the optical ids it sets and
+	# the BeamField overrides of each of its values.
+	var turners: Array[Dictionary] = []
+	var ways := 1
 	for control: Dictionary in view.get("controls", []):
-		if str(control.get("kind", "")) == "mirror": turnable.append(str(control.id))
-	var traced := turnable.slice(0, LIGHT_MIRRORS)
+		var choices: Array = []
+		if str(control.get("kind", "")) == "mirror":
+			choices = ["slash", "backslash"].map(func(way: String) -> Dictionary: return {str(control.id): {"orientation": way}})
+		elif control.get("optics") is Dictionary and not (control.optics as Dictionary).is_empty():
+			choices = control.get("values", []).map(func(value: Variant) -> Dictionary: return control.optics.get(str(value), {}))
+		if choices.is_empty() or ways * choices.size() > LIGHT_WAYS: continue
+		ways *= choices.size()
+		var sets: Array = []
+		for choice: Dictionary in choices:
+			for id: String in choice:
+				if id not in sets: sets.append(id)
+		turners.append({"id": str(control.id), "sets": sets, "choices": choices})
+	var lit_when: Dictionary = view.get("lit_when", {})
 	var found: Dictionary = {}
-	for way in range(1 << traced.size()):
+	for way in range(ways):
 		var overrides: Dictionary = {}
-		for bit in range(traced.size()):
-			overrides[traced[bit]] = {"orientation": "slash" if way & (1 << bit) else "backslash"}
+		var rest := way
+		for turner: Dictionary in turners:
+			var choice: Dictionary = turner.choices[rest % turner.choices.size()]
+			@warning_ignore("integer_division")
+			rest /= turner.choices.size()
+			for id: String in choice: overrides[id] = (overrides.get(id, {}) as Dictionary).merged(choice[id], true)
 		var light := BeamField.evaluate(field, overrides)
 		if not bool(light.get("valid", false)): continue
 		for receiver: String in light.signals:
 			if not light.signals[receiver]: continue
+			if not found.has(receiver): found[receiver] = []
 			for segment: Dictionary in light.segments:
-				if segment.hit_kind == "mirror" and segment.emitter_id in light.sources[receiver] and segment.hit_id in turnable:
-					if not found.has(receiver): found[receiver] = []
-					if segment.hit_id not in found[receiver]: found[receiver].append(segment.hit_id)
-	for receiver: String in found:
-		found[receiver] = turnable.filter(func(id: String) -> bool: return id in found[receiver])
+				if segment.emitter_id not in light.sources[receiver]: continue
+				for turner: Dictionary in turners:
+					if (segment.emitter_id in turner.sets or (segment.hit_kind == "mirror" and segment.hit_id in turner.sets)) and turner.id not in found[receiver]: found[receiver].append(turner.id)
+			for emitter: String in light.sources[receiver]:
+				for id: String in predicate_references(lit_when.get(emitter, {})):
+					if id not in found[receiver]: found[receiver].append(id)
+	var order: Array = turners.map(func(turner: Dictionary) -> String: return turner.id)
+	for receiver: String in found.keys():
+		var switches: Array = found[receiver].filter(func(id: String) -> bool: return id not in order)
+		found[receiver] = order.filter(func(id: String) -> bool: return id in found[receiver]) + switches
+		if found[receiver].is_empty(): found.erase(receiver)
 	return found
 
 ## The controls a gate names: its GATE_KEYS and every reference in its `when` tree.
@@ -609,7 +638,8 @@ func prompt(state: Dictionary) -> Dictionary:
 		for input: Dictionary in pair.inputs:
 			if input.group != "pressure_pads" or str(input.entity.get("owner_slot", slot)) != slot: continue
 			var across := _across(input, player)
-			if across <= nearest:
+			# A pad several receivers' lamps hang on names the first pair it works.
+			if across < nearest or (across == nearest and best.is_empty()):
 				nearest = across
 				best = [pair, input]
 	return {} if best.is_empty() else _badge(best[0], state, best[1])

@@ -20,7 +20,8 @@ extends SceneTree
 ##   play showed), a lit tile's pool of light never under another tile;
 ##   a selector's tile at a gate glows only at a value that gate
 ##   asks, and a receiver's plaque only while one of its gates is open;
-## - a receiver lit through turnable mirrors has those mirrors as its inputs.
+## - a receiver has what a pip works to light it as its inputs: the mirrors
+##   and selectors on its paths, the pads and levers that light its lamps.
 ## The same sweep checks every goal of every stage of every chapter and
 ## version (its family's layout "goal") is drawn by the goal kit
 ## (kit/pieces/goal.gd, the world's goal_pieces) at its exact spot, two pip
@@ -328,6 +329,18 @@ func _pure() -> void:
 	var kinds := PairTags.pairs_of({"bridges": [{"id": "r"}], "pressure_pads": [{"id": "p", "position_cm": [0, 0]}], "ball_pads": [{"id": "b", "position_cm": [0, 0]}], "controls": [{"id": "s", "position_cm": [0, 0]}], "optical_field": {"receivers": [{"id": "e", "position_cm": [0, 0]}]}, "gates": [{"route_id": "r", "pad_id": "p", "ball_pad_id": "b", "when": {"all": [{"control_id": "s", "value": "x"}, {"signal_id": "e"}]}}]})
 	var read := kinds.map(func(pair: Dictionary) -> Array: return [pair.control, pair.group, pair.prompted])
 	_check(read == [["p", "pressure_pads", true], ["b", "ball_pads", false], ["s", "controls", true], ["e", "receivers", false]], "Pads and selectors are named in the pop-up; ball pads keep a floor tile and receivers a plaque: %s" % [read])
+	# A lamp a pad lights, steered by a selector to either receiver; another lamp shines on its own.
+	var steered := {"bridges": [{"id": "r"}], "pressure_pads": [{"id": "pad", "position_cm": [0, 100]}],
+		"controls": [{"id": "sel", "position_cm": [100, 100], "kind": "selector", "values": ["off", "a", "b"], "initial": "off",
+			"optics": {"off": {"lamp": {"enabled": false}}, "a": {"m": {"orientation": "slash"}}, "b": {"m": {"orientation": "backslash"}}}}],
+		"lit_when": {"lamp": {"pad_id": "pad"}},
+		"optical_field": {"schema_version": 1, "bounds_cm": [-500, -500, 500, 500], "blockers": [],
+			"emitters": [{"id": "lamp", "position_cm": [0, 0], "enabled": true, "direction": "east"}, {"id": "glow", "position_cm": [-100, 300], "enabled": true, "direction": "west"}],
+			"mirrors": [{"id": "m", "position_cm": [200, 0], "enabled": true, "orientation": "slash"}],
+			"receivers": [{"id": "r1", "position_cm": [200, 200], "enabled": true}, {"id": "r2", "position_cm": [200, -200], "enabled": true}, {"id": "r3", "position_cm": [-300, 300], "enabled": true}]},
+		"gates": [{"route_id": "r", "when": {"any": [{"signal_id": "r1"}, {"signal_id": "r2"}, {"signal_id": "r3"}]}}]}
+	var lit_by := PairTags.pairs_of(steered).map(func(pair: Dictionary) -> Array: return [pair.control, pair.inputs.map(func(input: Dictionary) -> String: return input.id)])
+	_check(lit_by == [["r1", ["sel", "pad"]], ["r2", ["sel", "pad"]], ["r3", ["r3"]]], "A receiver's inputs are the selector that steers its light and the pad that lights the lamp; a lamp nobody works leaves it read at itself: %s" % [lit_by])
 	_check(pairs.size() == 25, "Twenty-five wired levers make twenty-five pairs; a missing control makes none: %d" % pairs.size())
 	_check(pairs[0].gates.map(func(r: Dictionary) -> String: return r.id) == ["route-0", "route-1"] and pairs[2].gates.size() == 2, "A control that works two gates shows at both; a `when` tree is read through all and any")
 	var seen := {}
@@ -428,7 +441,7 @@ func _stage(world: Node3D, key: String, view: Dictionary) -> int:
 	var turnable: Array = view.get("controls", []).filter(func(control: Dictionary) -> bool: return str(control.get("kind", "")) == "mirror")
 	for pair: Dictionary in wired:
 		if pair.group == "receivers" and not turnable.is_empty():
-			_check(pair.inputs.all(func(input: Dictionary) -> bool: return input.group == "controls") and not pair.inputs.is_empty(), "%s: the receiver %s has the mirrors that light it as its inputs: %s" % [where, pair.control, pair.inputs.map(func(input: Dictionary) -> String: return input.id)])
+			_check(pair.inputs.all(func(input: Dictionary) -> bool: return input.group in PairTags.PROMPTED) and not pair.inputs.is_empty(), "%s: the receiver %s has what a pip works to light it as its inputs: %s" % [where, pair.control, pair.inputs.map(func(input: Dictionary) -> String: return input.id)])
 	_states(world, where, wired)
 	return placed.size()
 

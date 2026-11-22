@@ -12,6 +12,8 @@ extends "res://presentation/kit/pieces/piece.gd"
 ##       (tools/blender/models/winch_handle.py). It lies on its side on the
 ##       ground and in a pip's hands; fitted (resting at a solid spot: a winch,
 ##       socket.gd winch()) it stands with its stub in the socket (fit()).
+##   "lens": the Lighthouse's portable lens: a sea-glass disc in a brass ring
+##       with three notches (lighthouse_world.gd's lens), standing on its edge.
 ##
 ## The world shows each snapshot's item state (journey_world _present_items):
 ## over a spirit's head (carry: held the one way a seed or a lens is, its
@@ -30,11 +32,15 @@ extends "res://presentation/kit/pieces/piece.gd"
 const Floats = preload("res://presentation/kit/floats.gd")
 const Models = preload("res://presentation/kit/models.gd")
 const SpiritVisual = preload("res://presentation/spirit_visual.gd")
-const STYLES := ["parcel", "pipsport", "raft", "seed", "winch_handle"]
+const STYLES := ["parcel", "pipsport", "raft", "seed", "winch_handle", "lens"]
 const HANDLE := "res://assets/models/winch_handle.glb"
 ## The handle lying on its side: turned onto its grip's flat, its 5 cm iron
 ## half over the floor, the middle of its length over its spot.
 const HANDLE_LIE := Transform3D(Basis(Vector3.BACK, PI / 2.0), Vector3(0.12, 0.026, 0))
+## The lens: its glass and ring radii (m) and colours, lighthouse_world.gd's.
+const LENS_RADIUS := 0.18
+const LENS_GLASS := Color("99dfd9")
+const LENS_RING := Color("d5b876")
 ## How long a pick-up or a set-down takes between the ground and the head (s).
 const HANDOFF := 0.2
 const NAVY := Color("2f3e66")
@@ -94,6 +100,16 @@ func _make(item_style: String, at: Vector3, parent: Node3D, options: Dictionary)
 			_pose.transform = HANDLE_LIE
 			root.add_child(_pose)
 			Models.moving(HANDLE, "winch_handle", {"metal": Parts.IRON, "grip": Color("b08a62")}, _pose)
+		"lens":
+			# On its edge, its lowest point on the ground, facing the camera.
+			var lens := Node3D.new()
+			lens.position = Vector3(0, LENS_RADIUS + 0.03, 0)
+			root.add_child(lens)
+			Parts.disc(LENS_RADIUS, 0.035, LENS_GLASS, Vector3.ZERO, lens).rotation.x = PI / 2.0
+			Parts.disc(LENS_RADIUS + 0.025, 0.02, LENS_RING, Vector3(0, 0, -0.01), lens).rotation.x = PI / 2.0
+			for index in range(3):
+				var angle := float(index) * TAU / 3.0
+				Parts.box(Vector3(0.05, 0.07, 0.05), Parts.LIGHT, Vector3(sin(angle) * (LENS_RADIUS + 0.03), cos(angle) * (LENS_RADIUS + 0.03), 0), lens)
 		"raft":
 			# The log raft model at the float's 0.8 by 0.72 m, resting on its spot.
 			var raft := Models.moving("res://assets/models/raft.glb", "raft", {"log_a": Parts.TIMBER, "log_b": Parts.TIMBER_LIGHT, "lashing": Color("c9b48a"), "bearer": Parts.TIMBER_DARK}, root)
@@ -189,8 +205,8 @@ func rest(at: Vector3, parent: Node3D, floating: bool, flying: bool = false, imm
 	if posed: _shown = true
 	else: place(Vector3(at.x, Floats.keel(style, at.y), at.z) if floating else at)
 	# Set down it has its shadow again, where it now rests; afloat, the water's
-	# rings show it.
-	ContactShadows.set_off(root, floating)
+	# rings show it, and in a throw's flight it has none.
+	ContactShadows.set_off(root, floating or flying)
 	ContactShadows.touch()
 
 ## Where it rests now (a deck it rests on moves it), a handoff aside.

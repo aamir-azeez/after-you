@@ -203,6 +203,7 @@ level_view_water 3
 license_catalog 2
 licenses 3
 lifecycle 2
+light_pieces 3
 lighthouse_admission 2
 lighthouse_compatibility 3
 lighthouse_finale 3
@@ -404,6 +405,8 @@ shared_replays 2
 shared_room_followups 2
 simulation_v2 1
 skins_trails 2
+sleeping_lighthouse_v3 1
+sleeping_lighthouse_v3_world 3
 solid_footprint 1
 solo_draft_writer 3
 solo_redo 2
