@@ -458,10 +458,11 @@
 			],
 			"current_legs": [
 				{
-					"control_id": "pool",
 					"from": "bucket",
 					"to": "bucket-top",
-					"value": "HIGH"
+					"when": {
+						"pad_id": "winch"
+					}
 				}
 			],
 			"entry_latch_routes": [],
@@ -517,6 +518,16 @@
 			"kind": "route_endpoint",
 			"levers": [],
 			"pressure_pads": [
+				{
+					"height_cm": 120,
+					"id": "winch",
+					"position_cm": [
+						2380,
+						-250
+					],
+					"radius_cm": 32,
+					"surface_id": "ledge"
+				},
 				{
 					"height_cm": 0,
 					"id": "pan",
