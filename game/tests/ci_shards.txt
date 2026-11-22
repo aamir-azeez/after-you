@@ -108,6 +108,7 @@ first_steps_v2 2
 first_steps_v2_world 2
 first_steps_world 2
 fog_marsh 2
+fog_marsh_desk 2
 fog_marsh_world 2
 fog_reveal 2
 fold_present 2

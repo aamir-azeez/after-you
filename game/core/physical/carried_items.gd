@@ -185,6 +185,24 @@ static func held_by(items: Dictionary, slot: String) -> String:
 		if str(items[id].holder) == slot: return str(id)
 	return ""
 
+## The id of the item `stage` wants resting at item spot `spot_id` (a goal's
+## or pad's {"item_id", "spot_id"} term anywhere in its rules), or "".
+static func wanted(stage: Dictionary, spot_id: String) -> String:
+	return _wanted(stage, spot_id)
+
+static func _wanted(value: Variant, spot_id: String) -> String:
+	if value is Dictionary:
+		if value.has("item_id") and str(value.get("spot_id", "")) == spot_id and not spot_id.is_empty(): return str(value.item_id)
+		for key: Variant in value:
+			if str(key) in ["item_spots", "items", "stages"]: continue
+			var found := _wanted(value[key], spot_id)
+			if not found.is_empty(): return found
+	elif value is Array:
+		for entry: Variant in value:
+			var found := _wanted(entry, spot_id)
+			if not found.is_empty(): return found
+	return ""
+
 ## The ids of `level`'s crossings that need both hands.
 static func hands_routes(level: Dictionary) -> Dictionary:
 	var found: Dictionary = {}

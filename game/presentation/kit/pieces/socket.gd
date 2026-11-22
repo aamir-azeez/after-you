@@ -24,7 +24,7 @@ extends RefCounted
 ##   item_spot(): a rules 20 item spot (core/physical/carried_items.gd) in the
 ##       "item_spot" style its piece resolves to (content/dressing/piece_styles.gd):
 ##       "pedestal", "planter" (garden()), "nest" (relay()), "winch" (winch()),
-##       "cradle" (cradle()) or "none". A solid
+##       "cradle" (cradle()), "desk" (desk(): a ring round a solid desk) or "none". A solid
 ##       spot (core/solid_footprint.gd) sizes a pedestal's drum to its solid
 ##       circle; a planter takes the spot's radius. rest_height() is how high an
 ##       item resting there sits.
@@ -35,10 +35,18 @@ extends RefCounted
 ##       spot where a resting lens lights a lamp): a low slate drum with a
 ##       ring the colour the world gives and three brass notches round where
 ##       the lens stands on its edge, CRADLE_TOP up (lighthouse_world.gd's).
+##   desk(): a ring on the floor round a solid spot (the stamp desk, drawn by
+##       the dressing) exactly where the game counts a put down: between the
+##       solid circle and its reach, so a pip standing on the ring sets the
+##       item down. An item rests on the desk's top, DESK_TOP up.
+##   outline(): the dotted shape of the item a spot wants, lying where it goes
+##       (an item_spot's last step, for any style); the world hides it while
+##       the item rests there.
 ## drawn_radius() and landing_radius() are how far from its centre each look
 ## reaches on the floor, so the level checker keeps the pieces on one floor
 ## apart as drawn (kit/prop_rules.gd control_bodies).
 const Primitives = preload("res://presentation/kit/primitives.gd")
+const Solid = preload("res://core/solid_footprint.gd")
 const Models = preload("res://presentation/kit/models.gd")
 const Parts = preload("res://presentation/kit/pieces/parts.gd")
 const ContactShadows = preload("res://presentation/kit/contact_shadows.gd")
@@ -95,7 +103,16 @@ const WINCH_AXLE := 0.40
 const WINCH_REACH := 0.38
 const WINCH_COLORS := {"stone": Color("9a8d76"), "wood": Color("7a5d45"), "wood_dark": Color("5f4a38"), "rope": Color("d1b98c"), "metal": Color("4f5458")}
 ## How high an item resting at a spot of each "item_spot" style sits (metres).
-const REST := {"pedestal": PEDESTAL_TOP, "planter": PLANTER + 0.02, "nest": NEST_REST, "winch": WINCH_AXLE, "cradle": CRADLE_TOP}
+const REST := {"pedestal": PEDESTAL_TOP, "planter": PLANTER + 0.02, "nest": NEST_REST, "winch": WINCH_AXLE, "cradle": CRADLE_TOP, "desk": DESK_TOP}
+## A stamp desk's top (kit/props.gd _stamp_desk) and the ring's tube a pip
+## stands on (m).
+const DESK_TOP := 0.69
+## The dotted outline: dash length, gap, thickness and height over its floor (m).
+const DASH := Vector3(0.04, 0.006, 0.018)
+const DASH_GAP := 0.03
+const OUTLINE_GROW := 0.03
+const OUTLINE_COLOR := Color("f4ecd8")
+const CarriedItemKit = preload("res://presentation/kit/pieces/carried_item.gd")
 
 ## A stand under `root` (the spot's node, on its floor): a base `radius`
 ## across in `base_color`, a ring in `ring_color` round it (none when
@@ -163,7 +180,7 @@ static func pedestal(root: Node3D, radius: float) -> void:
 
 ## Item spot `spot` (a definition's item spot) in `style` under `root`, the
 ## node at the spot's place: nothing for "none" or a style it does not know.
-static func item_spot(style: String, root: Node3D, spot: Dictionary) -> void:
+static func item_spot(style: String, root: Node3D, spot: Dictionary, item_style: String = "") -> Node3D:
 	var solid: Variant = spot.get("solid", {})
 	var radius := float(solid.radius_cm if solid is Dictionary and solid.has("radius_cm") else spot.get("radius_cm", 30)) / 100.0
 	match style:
@@ -173,6 +190,43 @@ static func item_spot(style: String, root: Node3D, spot: Dictionary) -> void:
 		"nest": relay(root, nest_base(spot))
 		"winch": winch(root)
 		"cradle": cradle(root, float(spot.get("radius_cm", 30)) / 100.0, Parts.CREAM)
+		"desk": desk(root, spot)
+	return outline(root, item_style, rest_height(style)) if CarriedItemKit.FOOTPRINTS.has(item_style) and style != "none" else null
+
+## The reach of a solid spot (m): its circle, a pip's body and its reach.
+static func reach(spot: Dictionary) -> float:
+	var solid: Dictionary = Solid.of(spot)
+	return float(int(solid.radius_cm) + Solid.BODY_CM + int(solid.get("reach_cm", 0))) / 100.0 if not solid.is_empty() else float(spot.get("radius_cm", 30)) / 100.0
+
+## The ring round a solid desk spot: on the middle of the band a pip's centre
+## may stand in to put down (past the solid circle and its body, inside the reach).
+static func desk(root: Node3D, spot: Dictionary) -> void:
+	ContactShadows.mark(root)
+	var solid: Dictionary = Solid.of(spot)
+	var inner := float(int(solid.radius_cm) + Solid.BODY_CM) / 100.0 if not solid.is_empty() else 0.0
+	Parts.ring((inner + reach(spot)) * 0.5, Parts.CREAM, Vector3(0, 0.012, 0), root)
+
+## The dotted outline of `item_style` lying `lift` metres up under `root`.
+## Returns its node, which the world hides while the item rests there.
+static func outline(root: Node3D, item_style: String, lift: float) -> Node3D:
+	var node := Node3D.new()
+	node.name = "Outline"
+	node.position = Vector3(0, lift + 0.008, 0)
+	root.add_child(node)
+	var size: Vector2 = CarriedItemKit.FOOTPRINTS[item_style] + Vector2.ONE * OUTLINE_GROW
+	var material := Primitives.shared_material(OUTLINE_COLOR)
+	var corners := [Vector2(-size.x, -size.y), Vector2(size.x, -size.y), Vector2(size.x, size.y), Vector2(-size.x, size.y)]
+	for side in range(4):
+		var from: Vector2 = corners[side] * 0.5
+		var to: Vector2 = corners[(side + 1) % 4] * 0.5
+		var length := from.distance_to(to)
+		var count := maxi(1, int(length / (DASH.x + DASH_GAP)))
+		var step := length / float(count)
+		for index in range(count):
+			var middle := from.lerp(to, (float(index) + 0.5) / float(count))
+			var dash := Primitives.mesh_node(Primitives.cached_box(Vector3(minf(DASH.x, step - DASH_GAP * 0.5), DASH.y, DASH.z)), material, Vector3(middle.x, 0, middle.y), node)
+			if absf(to.y - from.y) > absf(to.x - from.x): dash.rotation.y = PI / 2.0
+	return node
 
 ## A winch under `root`, its socket facing the camera over the spot.
 static func winch(root: Node3D) -> void:
@@ -194,6 +248,7 @@ static func drawn_radius(style: String, spot: Dictionary) -> float:
 		"nest": return radius
 		"winch": return WINCH_REACH
 		"cradle": return maxf(CRADLE_DRUM, radius + 0.025)
+		"desk": return (float(int(Solid.of(spot).get("radius_cm", 0)) + Solid.BODY_CM) / 100.0 + reach(spot)) * 0.5 + RING_TUBE
 	return 0.0
 
 ## How far from its centre a landing mark `radius` across is drawn (metres).

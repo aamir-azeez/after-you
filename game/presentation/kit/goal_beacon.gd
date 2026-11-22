@@ -48,9 +48,11 @@ const NEAR_CM := 100
 ## outward (goal_beacon.gdshader, part 1: the mesh grows to 1 + BREATH).
 const RING_RADIUS := 0.30
 const BREATH := 0.12
-## On a pad the ring keeps this clear of the pad's edge at its widest, inside
-## the pad's rim.
+## On a pad the ring keeps this clear of the inner edge of the pad's outline
+## at its widest.
 const INSIDE_CLEAR := 0.05
+## Round a goal the ring's middle lies this far past its disc (m), on the floor.
+const AROUND_CLEAR := 0.03
 ## A beacon's pieces, in build order.
 enum {RING, MAST_PIECE, LAMP, PENNANT}
 ## The pointer keeps inside this share of the screen: clear of the title (top
@@ -71,7 +73,9 @@ var guide := false
 var _guide := WAITING
 
 ## The spots by role: {"a": [{"at": Vector3, "surface": String, "slot": String}], "b": [...]};
-## a spot on a pad also has "inside", the pad's radius in metres, and
+## a spot on a pad also has "inside", the clear room inside the pad's outline
+## in metres (kit/pieces/pad.gd rim_inside), a goal "around", its disc's
+## radius in metres (kit/pieces/goal.gd base_radius), and
 ## "ring": false when a seat fills the pad and leaves its ring no room.
 var _spots: Dictionary = {}
 ## {slot: Color}, the spirits' colours.
@@ -113,7 +117,8 @@ static func spots_of(stage: Dictionary, role: String) -> Array:
 ## Builds both roles' beacons, hidden. The beacon stands at its parent's
 ## origin. `spots`: {role: [{"at": the floor point in the parent's space,
 ## "surface": the floor's id, "slot": the spirit's slot, and on a pad
-## "inside": its radius in metres, and "ring": false for no floor ring}]};
+## "inside": the clear room inside its outline in metres, at a goal
+## "around": its disc's radius, and "ring": false for no floor ring}]};
 ## `colors`: {slot: Color}.
 func build(spots: Dictionary, colors: Dictionary) -> void:
 	name = "GoalBeacon"
@@ -144,7 +149,7 @@ func _beacon(spot: Dictionary, color: Color) -> Dictionary:
 	var materials: Array[ShaderMaterial] = []
 	var tints: Array[Color] = []
 	# RING, MAST_PIECE, LAMP, PENNANT: [shader part, mesh, position, tint].
-	for piece: Array in [[1, ring_mesh(float(spot.get("inside", 0.0))), Vector3(0, ring_lift(float(spot.get("inside", 0.0))), 0), color],
+	for piece: Array in [[1, ring_mesh(float(spot.get("inside", 0.0)), float(spot.get("around", 0.0))), Vector3(0, ring_lift(float(spot.get("inside", 0.0))), 0), color],
 			[0, Primitives.cylinder_mesh(0.022, MAST_HEIGHT), Vector3(0, MAST_HEIGHT * 0.5, 0), MAST],
 			[3, Primitives.sphere_mesh(0.085), Vector3(0, MAST_HEIGHT + 0.06, 0), LAMP_LIT],
 			[2, Primitives.box_mesh(Vector3(0.34, 0.20, 0.012)), Vector3(0.19, MAST_HEIGHT - 0.16, 0), color]]:
@@ -163,10 +168,12 @@ func _beacon(spot: Dictionary, color: Color) -> Dictionary:
 	if not bool(spot.get("ring", true)): nodes[RING].visible = false
 	return {"root": root, "nodes": nodes, "materials": materials, "tints": tints, "ring": bool(spot.get("ring", true))}
 
-## The floor ring: RING_RADIUS, or on a pad of radius `inside` one
-## whose outer edge stays INSIDE_CLEAR inside it at its widest breath.
-static func ring_mesh(inside: float) -> TorusMesh:
-	if inside <= 0.0: return Primitives.ring_mesh(RING_RADIUS)
+## The floor ring: RING_RADIUS, round a goal's disc `around` across at least
+## AROUND_CLEAR past its edge, or on a pad with `inside` clear room inside
+## its outline (kit/pieces/pad.gd rim_inside) one whose outer edge stays
+## INSIDE_CLEAR inside that at its widest breath.
+static func ring_mesh(inside: float, around: float = 0.0) -> TorusMesh:
+	if inside <= 0.0: return Primitives.ring_mesh(maxf(RING_RADIUS, around + AROUND_CLEAR))
 	var shape := TorusMesh.new()
 	shape.outer_radius = (inside - INSIDE_CLEAR) / (1.0 + BREATH)
 	shape.inner_radius = shape.outer_radius - 0.03
@@ -175,7 +182,7 @@ static func ring_mesh(inside: float) -> TorusMesh:
 	return shape
 
 ## The floor ring's height: on a pad, lying on its board (kit/pieces/pad.gd
-## BOARD_TOP, 6 cm) inside its rim.
+## BOARD_TOP, 6 cm) inside its outline.
 static func ring_lift(inside: float) -> float:
 	return 0.035 if inside <= 0.0 else 0.075
 

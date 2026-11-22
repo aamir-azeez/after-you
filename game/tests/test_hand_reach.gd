@@ -256,10 +256,11 @@ func _check_spot(level: Dictionary, routes: Dictionary, cells: Dictionary, solid
 			if not found.is_empty() and str(found.surface_id) == surface and not _blocked(solids, found): return
 	_check(false, "%s: a hand control's footprint leaves no floor to stand on inside it for %s" % [where, slot])
 
-## A bell goal's two pads (presentation/kit/pieces/goal.gd), one per pip: each
-## lies wholly inside the goal's radius, so a pip on it is at the goal, and its
-## centre is floor that pip stands on, on the goal's floor, clear of every
-## solid footprint. Returns how many pads it checked.
+## A goal's plate halves (presentation/kit/pieces/goal.gd), one per pip: the
+## middle of each lies inside the goal's radius with a pip's body to spare, so
+## a pip standing in the middle of its half is at the goal, and that middle is
+## floor that pip stands on, on the goal's floor, clear of every solid
+## footprint. Returns how many halves it checked.
 func _check_goal_pads(level: Dictionary, routes: Dictionary, cells: Dictionary, solids: Array, stage: Dictionary, where: String) -> int:
 	var goal: Variant = stage.get("goal")
 	if not goal is Dictionary or not goal.has("surface_id") or str(stage.get("goal_policy", {}).get("kind", "")) != "ring": return 0
@@ -268,7 +269,7 @@ func _check_goal_pads(level: Dictionary, routes: Dictionary, cells: Dictionary, 
 	var height := int(goal.get("height_cm", _floor_height(level, surface)))
 	for slot: String in GoalPiece.PAD_SLOTS:
 		var offset := GoalPiece.pad_offset(slot, radius)
-		_check(offset.length() + GoalPiece.pad_radius(radius) <= radius, "%s: %s's goal pad lies inside the goal" % [where, slot])
+		_check(offset.length() + BODY <= radius, "%s: the middle of %s's goal half lies inside the goal" % [where, slot])
 		var centre := Vector2i(int(goal.position_cm[0]) + roundi(offset.x), int(goal.position_cm[1]) + roundi(offset.z))
 		var found := Navigation.at(level, routes, {}, {"height": height, "surface_id": surface}, centre.x, centre.y, slot, BODY, false, cells)
 		_check(not found.is_empty() and str(found.surface_id) == surface and not _blocked(solids, found), "%s: %s's goal pad stands on floor that pip stands on" % [where, slot])
