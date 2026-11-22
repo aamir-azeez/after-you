@@ -19,6 +19,7 @@ const DATA := {
 	# The cover is the whole fog; no low banks (kit/fog.gd) over it.
 	"fog": "none",
 	"carried_item": "pipsport",
+	"lift": "rope_tower",
 	"current": "chevrons",
 	"props": {"*": [
 		# Reeds standing thick in the marsh along the backs and sides of the

@@ -47,6 +47,11 @@ extends SceneTree
 ##    each pip a part only it can reach: floor behind a crossing the other
 ##    opens, or a pad away from the crossing it holds, so the pip on it cannot
 ##    walk that crossing too. Published chapters are not on open turns.
+##    A friend's replay that walks where the live pip took its floor away
+##    falls (runtime.gd _floor_went) instead of stopping at the edge. That only
+##    ever ends a turn, so it never lets one pip finish alone and never adds a
+##    way to the goal: every check here holds as it is, and so do the design
+##    solver's plans, which wait out the replay before acting.
 ##    On the shared ball (rules 21) a ball pad holds only where a pip that
 ##    works could push the ball, and a ball home stage needs the ball rolled
 ##    to the cradle's floor with both pips there (level_graph.gd _reach_balls).

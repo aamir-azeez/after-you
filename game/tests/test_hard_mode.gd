@@ -63,6 +63,8 @@ func _rules() -> void:
 	_check(HardMode.failure({"valid": true, "snapshot": {"can_commit": true}}).is_empty(), "A turn that can be kept goes on")
 	_check(HardMode.failure({"valid": true, "snapshot": {"can_commit": false}}) == "failed_turn", "A turn that cannot be kept ends the run")
 	_check(HardMode.failure({"valid": true, "snapshot": {"can_commit": false, "drowned": {"slot": "p0"}}}) == "drowned", "A drowning ends the run as a drowning")
+	_check(HardMode.failure({"valid": true, "snapshot": {"can_commit": false, "drowned": {"slot": "p0", "dropped": "pipsport"}}}) == "dropped" and HardMode.REASONS.has("dropped"), "A dropped item ends the run as a drop")
+	_check(HardModeView.failure_line({"by": "friend", "friend": "Sam", "reason": "dropped", "stage_index": 0}) == PlayerCopy.HARD_FRIEND_DROPPED % ["Sam", 1] and HardModeView.failure_line({"by": "me", "reason": "dropped", "stage_index": 2}) == PlayerCopy.HARD_YOU_DROPPED % 3, "A drop says who dropped it and where")
 	_check(HardMode.failure({"valid": false, "error": "x"}) == "failed_turn", "A turn that fails its check ends the run rather than leaving no way on")
 	_check(HardMode.tries_key(KEY) != KEY and HardMode.tries_key(KEY).begins_with(KEY), "A solo hard run counts tries apart from the chapter")
 	var solo: RefCounted = HardRun.solo(KEY, _path("rules-marks"))

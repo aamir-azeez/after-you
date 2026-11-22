@@ -28,9 +28,11 @@ extends RefCounted
 ## it starts, works no control or lever, and holds only a pad it starts on,
 ## except that a platform it starts on may carry it (rules 20: a memory rides
 ## too): then it may stand at the same spot on any open stop of that platform.
-## The probe also lights beams exactly: each settable mirror at each of its
-## values through the engine's own BeamField, where reach otherwise counts a
-## beam signal as always lit.
+## The probe also lights beams exactly: each signal becomes the settings of
+## the mirrors, selectors and lamps that light it (LightPieces.signal_whens,
+## through the engine's own BeamField), each settable one tried at each of its
+## values and a lamp's light pad held only where a pip may stand on it, where
+## reach otherwise counts a beam signal as always lit.
 ##
 ## The new pieces (rules 20, core/physical/pieces_rules.gd): a gate may hold
 ## while a lever is off ("not"), so a settable lever a gate reads is tried
@@ -51,7 +53,7 @@ extends RefCounted
 const Navigation = preload("res://core/cooperative/navigation.gd")
 const Seven = preload("res://core/journey/seven_mechanisms.gd")
 const OpenControls = preload("res://core/physical/open_controls.gd")
-const BeamField = preload("res://core/beam_field.gd")
+const LightPieces = preload("res://core/physical/light_pieces.gd")
 const CarriedItems = preload("res://core/physical/carried_items.gd")
 const Solid = preload("res://core/solid_footprint.gd")
 const RADIUS := 12
@@ -72,6 +74,7 @@ var _frozen: Dictionary = {}      # reach's frozen pip: {"slot", "at": player} o
 var _walker := ""                 # reach's walking pip, or ""
 var _beside := ""                 # while judging a gate for the presser's own walking: its route
 var shared_ball := false          # the definition pins the shared ball (rules 21)
+var _signal_whens: Dictionary = {}  # a stage's light (its hash) -> LightPieces.signal_whens
 
 func _init(definition: Dictionary) -> void:
 	level = definition
@@ -356,6 +359,13 @@ func gate_can_hold(gate: Dictionary, stage: Dictionary, settable: Dictionary, me
 		var ball_pad := str(gate.get("ball_pad_id", ""))
 		return not shared_ball or ball_pad.is_empty() or ball_can_hold(stage, ball_pad, settable)
 	var when: Dictionary = gate.get("when", {})
+	# The frozen and walking probes light beams exactly: each signal becomes
+	# what lights it, its lamps' item terms judged by reach as with_items does.
+	if _exact_beams() and stage.has("optical_field") and LightPieces._reads_signal(when):
+		# By what the light reads: a checker may hand one graph edited copies of a stage.
+		var key := [stage.optical_field, stage.get("lit_when", {}), stage.get("controls", [])].hash()
+		if not _signal_whens.has(key): _signal_whens[key] = LightPieces.signal_whens(stage)
+		when = _judge_items(_lit(when, _signal_whens[key]), settable, str(gate.get("surface_id", "")))
 	var references: Dictionary = {"controls": {}, "pads": {}, "signals": {}, "levers": {}}
 	_references(when, references)
 	# A settable lever is simply on, unless a gate holds only while one is off
@@ -367,11 +377,6 @@ func gate_can_hold(gate: Dictionary, stage: Dictionary, settable: Dictionary, me
 	var signals: Dictionary = {}
 	for id: String in references.signals: signals[id] = true
 	var choices: Array = []
-	# The frozen probe lights beams exactly, so every settable mirror is a choice.
-	var exact: bool = _exact_beams() and stage.has("optical_field") and not references.signals.is_empty()
-	if exact:
-		for control: Dictionary in stage.get("controls", []):
-			if str(control.get("kind", "")) == "mirror" and not references.controls.has(str(control.id)): references.controls[str(control.id)] = true
 	for id: String in references.controls:
 		var values: Variant = settable.get(id, [""])
 		choices.append([id, values if values is Array else [""]])
@@ -380,6 +385,16 @@ func gate_can_hold(gate: Dictionary, stage: Dictionary, settable: Dictionary, me
 			if settable.has(id): choices.append([LEVER_CHOICE + id, [true, false]])
 	var pads: Array = references.pads.keys().filter(func(id: String) -> bool: return settable.has(id))
 	return _any_assignment(when, stage, choices, 0, {}, levers, signals, _pad_placings(stage, pads, floors))
+
+## `value` with each signal term replaced by the when that lights it
+## (`whens`, LightPieces.signal_whens); a signal nothing lights never holds.
+static func _lit(value: Dictionary, whens: Dictionary) -> Dictionary:
+	if value.has("signal_id"): return whens.get(str(value.signal_id), {"any": []}).duplicate(true)
+	var result := value.duplicate()
+	for key: String in ["all", "any"]:
+		if value.has(key): result[key] = value[key].map(func(child: Dictionary) -> Dictionary: return _lit(child, whens))
+	if value.get("not") is Dictionary: result["not"] = _lit(value["not"], whens)
+	return result
 
 func _references(value: Dictionary, found: Dictionary) -> void:
 	for key: String in ["all", "any"]:
@@ -401,13 +416,6 @@ func _any_assignment(when: Dictionary, stage: Dictionary, choices: Array, at: in
 			if _any_assignment(when, stage, choices, at + 1, controls, levers, signals, placings): return true
 		return false
 	var mechanisms := {"controls": controls, "levers": levers}
-	if _exact_beams() and stage.has("optical_field") and not signals.is_empty():
-		var overrides: Dictionary = {}
-		for control: Dictionary in stage.get("controls", []):
-			if str(control.get("kind", "")) == "mirror": overrides[control.id] = {"orientation": str(controls.get(str(control.id), control.get("initial", "")))}
-		var lit: Dictionary = BeamField.evaluate(stage.optical_field, overrides).get("signals", {})
-		signals = {}
-		for id: Variant in lit: signals[id] = bool(lit[id])
 	for placing: Dictionary in placings:
 		if Seven.predicate(when, stage, placing, mechanisms, signals, open_controls): return true
 	return false
@@ -554,7 +562,8 @@ func ball_reaches_goal(stage: Dictionary, settable: Dictionary) -> bool:
 ## hold it on and the item spots it could rest at, written into `settable` as
 ## "item:<id>": {"carried": [floors], "spots": [spot ids]}. A pip that reaches
 ## a floor the item rests on may pick it up; a carrier walks every open
-## crossing but those needing both hands; across one of those it is handed up
+## crossing but those needing both hands (stepping onto one loaded drops the
+## item and ends the turn: a dead end); across one of those it is handed up
 ## when some pip reaches the far end; it rests at an item spot on any floor it
 ## is carried to; a current leg carries it on once the leg's selector can show
 ## the leg's value (`when` and `stop` are not judged: an over-approximation);

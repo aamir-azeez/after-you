@@ -38,16 +38,16 @@ const LIFT := 1.4
 const MARGIN := 40.0
 ## The pocket round the played pip: clear within POCKET_CLEAR (m), full fog
 ## from POCKET_FULL.
-const POCKET_CLEAR := 1.2
-const POCKET_FULL := 3.4
+const POCKET_CLEAR := 0.8
+const POCKET_FULL := 2.2
 ## A control's thinned patch (m, at least; its own radius plus SPOT_ROOM).
 const SPOT_RADIUS := 0.75
 const SPOT_ROOM := 0.45
 ## How much fog is left where it has been opened.
-const HAZE := 0.16
+const HAZE := 0.08
 ## How far round a pip's path the fog opens (m), and round a lit lantern,
 ## which pushes it back over LANTERN_GROW seconds.
-const PATH_RADIUS := 2.2
+const PATH_RADIUS := 1.3
 const LANTERN_REACH := 5.5
 const LANTERN_GROW := 1.8
 ## The mask: metres a texel, metres past the floors, a stamp each STAMP_STEP
@@ -76,9 +76,9 @@ uniform sampler2D noise : filter_linear, repeat_enable;
 uniform float drift_time = 0.0;
 uniform bool detail = true;
 uniform vec3 pocket = vec3(0.0, -100.0, 0.0);
-uniform float pocket_clear = 1.2;
-uniform float pocket_full = 3.4;
-uniform float haze = 0.16;
+uniform float pocket_clear = 0.8;
+uniform float pocket_full = 2.2;
+uniform float haze = 0.08;
 uniform sampler2D reveal_map : filter_linear, repeat_disable;
 uniform vec4 reveal_rect = vec4(0.0, 0.0, 1.0, 1.0);
 uniform float reveal_base = 0.0;

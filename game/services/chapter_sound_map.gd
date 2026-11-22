@@ -121,6 +121,8 @@ static func cues(chapter_key: String, state: Dictionary, seen: Dictionary = {}) 
 		elif event.begins_with("closing:"): cue = "crossing_closing"
 		elif event.begins_with("drowned:"): cue = "spirit_drowned"
 		elif event.begins_with("fell:"): cue = "well_plunk" if not str(chapter.get("water", "")).is_empty() else "spirit_fell_away"
+		# The pieces rules: a carrier on a crossing needing both hands lets its item go, which lands with a thud.
+		elif event.begins_with("dropped:"): cue = "seed_landed"
 		# A swing (core/physical/swings.gd) creaks on its rope as it draws back
 		# (the winch's pawl, low) and swishes across its lane (a throw's swish).
 		elif event.begins_with("swing_creak:"): cue = "winch_unwound"
