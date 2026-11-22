@@ -24,6 +24,7 @@ func _run() -> void:
 	_test_completion_dance()
 	_test_happy_eyes()
 	_test_lighthouse_carry()
+	_test_teeter()
 	print("AFTER YOU SPIRIT MOTION: %d checks, %d failures" % [checks,failures])
 	quit(1 if failures>0 else 0)
 
@@ -485,6 +486,50 @@ func _test_foot_contacts() -> void:
 		spirit.advance_motion(Vector3(2.4,0,0),1.0,false)
 		_check(contacts[0]==7,"A delayed render frame does not play a burst of old footsteps")
 		spirit.free()
+
+## A teeter at a drop (play_teeter): it leans out toward the drop, rocks and
+## stretches, startled, then rests exactly; walking on mid-wobble walks and
+## turns as ever; Reduce motion keeps a small lean and nothing else.
+func _test_teeter() -> void:
+	var spirit := Spirit.new()
+	root.add_child(spirit)
+	var placed := spirit.transform
+	spirit.play_teeter(Vector2(0, -1), false)
+	var lean := 0.0
+	var rock := 0.0
+	var stretch := 0.0
+	for _frame in range(12):
+		spirit.advance_motion(Vector3.ZERO, 1.0 / 60.0, false)
+		var pose: Vector3 = spirit.teeter_pose()
+		lean = maxf(lean, pose.x)
+		rock = maxf(rock, absf(pose.y))
+		stretch = minf(stretch, pose.z)
+	_check(spirit._expression_target() == Look.SURPRISED, "A teeter startles the face")
+	_check(lean > 0.2 and rock > 0.05 and stretch < -0.03, "A teeter tips out over the edge, rocks and stretches up (lean %.2f, rock %.2f, stretch %.2f)" % [lean, rock, stretch])
+	# Leaning toward -z: the facing turned to the drop, and the body tips forward.
+	_check(absf(angle_difference(spirit.facing.rotation.y, PI)) < 0.6 and spirit.upper_body.rotation.x > 0.1, "A teeter faces the drop and leans out over it")
+	_check(spirit.transform == placed, "A teeter never moves the gameplay root")
+	# Walking away mid-wobble: the gait runs and the facing follows the walk.
+	var phase := spirit.stride_phase
+	for _frame in range(20):
+		spirit.advance_motion(Vector3(0.04, 0, 0), 1.0 / 60.0, false)
+	_check(spirit.stride_phase != phase and spirit.motion_blend > 0.3, "Walking on during a teeter walks (blend %.2f)" % spirit.motion_blend)
+	_check(absf(angle_difference(spirit.facing.rotation.y, PI / 2.0)) < 0.3, "Walking on during a teeter turns the way it walks")
+	for _frame in range(60):
+		spirit.advance_motion(Vector3.ZERO, 1.0 / 60.0, false)
+	_check(spirit.teeter_pose() == Vector3.ZERO, "A teeter ends at rest")
+	var reduced := Spirit.new()
+	root.add_child(reduced)
+	reduced.play_teeter(Vector2(1, 0), true)
+	var most := Vector3.ZERO
+	for _frame in range(30):
+		reduced.advance_motion(Vector3.ZERO, 1.0 / 60.0, true)
+		var pose: Vector3 = reduced.teeter_pose()
+		most = Vector3(maxf(most.x, pose.x), maxf(most.y, absf(pose.y)), maxf(most.z, absf(pose.z)))
+	_check(most.x > 0.03 and most.x < 0.12 and most.y == 0.0 and most.z == 0.0, "Reduce motion keeps only a small lean: %s" % most)
+	_check(reduced.facing.rotation.y == 0.0 and reduced.upper_body.scale == Vector3.ONE, "Reduce motion neither turns nor squashes for a teeter")
+	spirit.free()
+	reduced.free()
 
 func _check(condition: bool, message: String) -> void:
 	checks+=1

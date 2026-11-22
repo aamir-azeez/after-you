@@ -46,6 +46,9 @@ const OWNER := &"owner"
 const STAIR := &"stair"
 const ZONE := &"zone"
 const LOCK := &"lock"
+## A step cut at a drop (barrier_refusals.gd drop_off): no barrier wiggles;
+## the spirit teeters.
+const EDGE := &"edge"
 ## Layers, as bits of a slot's mask (the shader's UV2.y).
 const POSTS := 1
 const SHUT := 2
