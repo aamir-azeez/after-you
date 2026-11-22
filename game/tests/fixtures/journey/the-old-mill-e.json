@@ -1,10 +1,10 @@
 {
 	"catch_assistance": true,
-	"checkpoint_hash": "1ddb54aaef099af1a04649eb5f270de526191240b10d447caf7ebaada64840e7",
+	"checkpoint_hash": "d3639b85bc90b2be0986be7e971ae54001a5bb06afc35ac7f16783e96ae5914b",
 	"completed": true,
 	"definition_hash": "04bb186a63543d697f77aa42eb0d831e3e6e0d1a3754247531dad45769753ac4",
 	"duration_ticks": 408,
-	"final_state_hash": "4e29c66764d96e65bdb9d2fde9489c9b2583697c53e713028fac906ac2b67a81",
+	"final_state_hash": "a59f294873377a34f4f32ffa2b2bfa65ecd4461c56c8090b8306946f88b47aab",
 	"handoff_hash": "b29871c116b2b9c61e1a0e84f9391e1264bf75b32c142dc06d61cc94ee37e3f2",
 	"handoff_tick": 10,
 	"level_id": "the-falls",
@@ -13,15 +13,15 @@
 		"objective_complete": true,
 		"source_ready": true
 	},
-	"packed": "AQnwAQAAjAEAnAIA2twBnAACzgBoAJxkZAACMgAGAJz7AmcXF0VyquGdmmotXcnXHUwT2A/g494pggn0I0hsu1jbYHcRgZXvT3PwesMCuVhfzFm/YKfo3t5KEZW/r1zbkefD2cRehNquIoJQmI6sNT415qFuazSqsnMoeu0w8EEOvQ5t2tes/dzGtKY+MHtYd2XjZlDAwInEz7InZugbjbXyZcmpVe/zO1OomwgyKXKlJqGT8V3I4Q==",
+	"packed": "AQnwAQAAjAEAnAIA2twBnAACzgBoAJxkZAACMgAGAJxURcfYFjirbwoeyiFTyiw9g6PJQhKWDBX62VXfnJiPpTDhqX16f2vYdYoNLnDaDzVmy3Bm+5ckp+A2Ints7EnO3jRN6OSjItsd8uyLPZwGJUKpfpmJ6oJ8LVKPGJ05fEJsuI+jHrY2RIAE7AfARQ5DAiRDJopykcTg+2P+gn8LICdQ7E8BneO0/azDXO/KEvmL+zJuGDciFg==",
 	"player_slot": "p0",
-	"recording_hash": "95391775e6074c6b3a3684087255d3245f4b6e99739b5a3a5dde8376ed3ce561",
+	"recording_hash": "5a50da00ccadd6d175c6b2af551774b3fd25e830cdd64507cec2d2da95fb1f53",
 	"role": "b",
 	"schema_version": 7,
 	"simulation_version": 20,
-	"source_recording_hash": "541cfeefddb5a5712e0342743059961567c8234cfec794751b980e5075c44f03",
+	"source_recording_hash": "3f4977870d02e4e4d3a69ab17176370d8d56082cb0dbb82efb6ccfde56140dcd",
 	"stage_id": "the-old-mill",
 	"stage_version": 1,
-	"start_hash": "bf3186338b0e49cf0d46df0762d60b654de2c4f18e24cf736aa524369baadafe",
+	"start_hash": "dba8655bf7e9a3f14730e16abfea226169c77298554d10613218a407b5f56aad",
 	"tick_rate": 30
 }

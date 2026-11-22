@@ -1,5 +1,5 @@
 {
-	"checkpoint_hash": "43e96af690a581ef129c6716967ac14289ff7c46a878e53d4dafc9afd1afde87",
+	"checkpoint_hash": "545f50c6f5c6a568d6ec60c2b5e748a30442fcf605804d0665727fb1a403b2a4",
 	"completed_stage_id": "the-way-light-returns",
 	"definition_hash": "f72e035f86687403b8c5057266db33b4fa1211d2100bb5b021cc3678db83845f",
 	"level_id": "conservatory",
@@ -267,9 +267,9 @@
 					"objective_complete": false,
 					"source_ready": true
 				},
-				"packed": "AQgeAJxYnAA0AGTgAwAANACcWGQACABkAgAynZ1PDqZpU/fJUgVV6HMo1PdEvyhZDptZnbKIAvWIaIMQiiw12jgbvjVhRcGhx9LOApq5GQLjItrbdVD5AxtHh40k3E9exLVX6EIN+M4EzEmrIUfV2B94v7E1RGHYM/wZcIQeBg0miZnpeyj/69puLL7syNZ/GxaH6s83JgrpClkzba06dbOmoRaUc7igcBJ/cFX2hq0FbAk=",
+				"packed": "AQgeAJxYnAA0AGTgAwAANACcWGQACABkAgAynZ1PDqZpU/fJUgVV6HMo1PdEvyhZDptZnbKIAvWIaIMQiiw12jgbvjVhRcGhx9LOApq5GQLjItrbdVD5AxtHh40k3E9exLVX6EIN+M4EzEmrIUfV2B94v7E1RGHYM/wZcIQeBg0miZnpeyj/69puLL7syNZ/GxaH6s83JgrpClkXHNM/QFx55haUc7igcBJ/cFX2hq0FbAk=",
 				"player_slot": "p0",
-				"recording_hash": "5751e4e373b76489b60d494bf07a9920c878c136688271c53683473ef84a4ea6",
+				"recording_hash": "b969425f89618e6c26e85f8f7a2c5a126da60cb62b58501b79cb7cf39ca539c4",
 				"role": "b",
 				"schema_version": 7.0,
 				"simulation_version": 18.0,
@@ -285,7 +285,7 @@
 				"completed": true,
 				"definition_hash": "f72e035f86687403b8c5057266db33b4fa1211d2100bb5b021cc3678db83845f",
 				"duration_ticks": 307.0,
-				"final_state_hash": "84c8ad038ffc81b95cdbc011a89177f7a5c9e3186d54837c03b74086a0c3e68e",
+				"final_state_hash": "43bfba793021747740bb4d85737f5eb54e40aef643a831e3e891af164e323423",
 				"handoff_hash": "",
 				"handoff_tick": 91.0,
 				"level_id": "conservatory",
@@ -294,13 +294,13 @@
 					"objective_complete": true,
 					"source_ready": true
 				},
-				"packed": "AQ9EnAAQAGRgnAAGAJwCALUCAAADAAAGAGQCAEtgZAAMAJxcZAAOAGQCADLGAQAAfUvTBYgjtkY98WzsouOvVaHqHA2t5vRLeaFoVIA/6b3ngYJi/WSbpft0D6bkV5ECunnXxTAvAvoU+fJIe1stbkwZRFq+3L3zTDAnjapC9VT78zeyJqOWjI9HdRR6HvBGYPgI21ygOU54t55Dof/OMHeEQEzYePy1S3uZqM6Mlrg=",
+				"packed": "AQ9EnAAQAGRgnAAGAJwCALUCAAADAAAGAGQCAEtgZAAMAJxcZAAOAGQCADLGAQAAx4sbDDNdZfCAvCiN0MqKJ+zvmfwmTn0SBHEBHA2soRjrzRE9YMiaOX3O14ak6YNIxkpFUYo3ZiOP8kJY0VnQgApLgItw16c/Bl8jDzZCzIDIhpCF/HYspOJbdLalT56VY/kXU9lNmFPSOfWlP9UoZ8K4gRaFgsZHiRN3bLCEeng=",
 				"player_slot": "p1",
-				"recording_hash": "66d7a8d0272ee383a2754a2b8d48b91760cd6c740ec079d74edc625c85efa5dd",
+				"recording_hash": "12f7cb021f49c1f1a8c930ce5b4eabf04a21b8623f07298b73f92e77f2b90348",
 				"role": "b",
 				"schema_version": 7.0,
 				"simulation_version": 18.0,
-				"source_recording_hash": "5751e4e373b76489b60d494bf07a9920c878c136688271c53683473ef84a4ea6",
+				"source_recording_hash": "b969425f89618e6c26e85f8f7a2c5a126da60cb62b58501b79cb7cf39ca539c4",
 				"stage_id": "the-way-light-returns",
 				"stage_version": 1.0,
 				"start_hash": "c2791ac7d728fef2204a56028fba5d3eb48a9cf74213dbde2acd5bb2d1a04474",
@@ -312,7 +312,7 @@
 	"stage_index": 2,
 	"turn_hashes": [
 		"27dc13ed3a10785845a486c3d5b3262bff53d8e9d36597f5ca4ef139e354adba",
-		"5751e4e373b76489b60d494bf07a9920c878c136688271c53683473ef84a4ea6",
-		"66d7a8d0272ee383a2754a2b8d48b91760cd6c740ec079d74edc625c85efa5dd"
+		"b969425f89618e6c26e85f8f7a2c5a126da60cb62b58501b79cb7cf39ca539c4",
+		"12f7cb021f49c1f1a8c930ce5b4eabf04a21b8623f07298b73f92e77f2b90348"
 	]
 }

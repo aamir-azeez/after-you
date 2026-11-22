@@ -326,7 +326,7 @@
 			"to_surface": "quay-catwalk"
 		}
 	],
-	"closing_ticks": 45,
+	"closing_ticks": 25,
 	"drops": [
 		{
 			"destination_surface": "e-beach",
