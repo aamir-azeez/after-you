@@ -24,15 +24,21 @@ const T := ["t"]
 const MODEL_STAGE_ONE := {
 	"budget": {"low": 460, "half": 418, "high": 494},
 	"deadline": {"low": 2539, "half": 2581, "high": 2505},
-	"a_ticks": {"low": 462, "low-half-first": 618, "half": 464, "half-via-high": 454, "high": 418},
-	"b_real": {"low": 330, "half": 288, "high": 364},
+	# low: 503 and high: 427 (b_real high: 380) since the tide wheel and levers are
+	# solid (2026-11-20), low-half-first: 623 and half-via-high: 470 since every
+	# control is (2026-11-21): the witness walks round them between presses (the
+	# model's straight lines still say 462, 418, 364, 618 and 454).
+	"a_ticks": {"low": 503, "low-half-first": 623, "half": 464, "half-via-high": 470, "high": 427},
+	"b_real": {"low": 330, "half": 288, "high": 380},
 }
 ## history -> way -> budget, deadline (latest hold_start), p0 presses, p0 real
-## ticks, p1 presses and p1 optimum ticks, from the same model.
+## ticks, p1 presses and p1 optimum ticks, from the same model; half sea-lock
+## and high boom p1 ticks walk round the solid levers (2026-11-20; the model
+## says 334 and 494).
 const MODEL_CELLS := {
 	"low": {"boom": [564,2435,4,425,4,410], "sea-lock": [644,2355,5,478,3,406], "punt": [528,2471,2,367,5,499]},
-	"half": {"boom": [580,2419,3,417,5,412], "sea-lock": [628,2371,4,430,8,334], "punt": [544,2455,4,381,6,411]},
-	"high": {"boom": [548,2451,2,379,8,494], "sea-lock": [660,2339,6,518,7,376], "punt": [544,2455,3,385,5,403]},
+	"half": {"boom": [580,2419,3,417,5,412], "sea-lock": [628,2371,4,430,8,346], "punt": [544,2455,4,381,6,411]},
+	"high": {"boom": [548,2451,2,379,8,496], "sea-lock": [660,2339,6,518,7,376], "punt": [544,2455,3,385,5,403]},
 }
 
 ## Stage 1, A (p0). From the beach start over sand-1 at low water, up the
@@ -668,25 +674,40 @@ static func play(sim: RefCounted, ops: Array, probe: Callable = Callable()) -> S
 	return ""
 
 ## Same inputs as cooperative_witness.walk; false when the walker stops short.
+## A walk aimed into a solid lever or selector stops beside it, and a leg
+## that runs into one steps round it (cooperative_witness.gd walk).
 static func walk(sim: RefCounted, destination: Array) -> bool:
+	var hands := Walk.hands_of(sim)
+	destination = Walk.beside(hands, sim._players[sim.active_slot], destination)
 	for axis: String in ["x", "z"]:
 		var index := 0 if axis == "x" else 1
 		var still := 0
+		var line := Walk.Line.new(sim, axis)
 		for _tick in range(sim.duration_limit()):
 			if sim.finished or not sim.error.is_empty(): return false
 			var before := int(sim._players[sim.active_slot][axis])
 			var distance := int(destination[index]) - before
-			if absi(distance) <= 1: break
+			# Exact: a narrow crossing (the punt ferry) takes a pip only on its line.
+			if distance == 0: break
+			if line.rejoin(sim, hands, sim._players[sim.active_slot].duplicate(), signi(distance)): continue
 			var input := {"move_x": 0.0, "move_z": 0.0}
 			input["move_" + axis] = clampf(float(distance) / 8.0, -1.0, 1.0)
 			sim.step(input)
 			still = still + 1 if int(sim._players[sim.active_slot][axis]) == before else 0
+			if still > 0 and Walk.against(hands, sim._players[sim.active_slot], axis, signi(distance)):
+				line.detour = Walk.sidestep(sim, hands, axis, signi(distance))
+				if line.detour.is_empty(): break
+				still = 0
 			if still >= STUCK_TICKS: return false
 	return true
 
 ## Both axes at once: full input on each moves 6 cm a tick on each, one axis
 ## alone 8 cm. A blocked step slides along the edge (runtime _move).
+## A diagonal held up by a solid lever or selector goes on by axis legs
+## (walk), which step round it.
 static func walk_both(sim: RefCounted, destination: Array) -> bool:
+	var hands := Walk.hands_of(sim)
+	destination = Walk.beside(hands, sim._players[sim.active_slot], destination)
 	var still := 0
 	for _tick in range(sim.duration_limit()):
 		if sim.finished or not sim.error.is_empty(): return false
@@ -702,6 +723,9 @@ static func walk_both(sim: RefCounted, destination: Array) -> bool:
 		sim.step(input)
 		var after := Vector2i(int(sim._players[sim.active_slot].x), int(sim._players[sim.active_slot].z))
 		still = still + 1 if after == before else 0
+		if still > 0:
+			var at: Dictionary = sim._players[sim.active_slot]
+			if (absi(dx) > 1 and Walk.against(hands, at, "x", signi(dx))) or (absi(dz) > 1 and Walk.against(hands, at, "z", signi(dz))): return walk(sim, destination)
 		if still >= STUCK_TICKS: return false
 	return true
 

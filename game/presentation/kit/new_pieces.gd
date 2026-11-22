@@ -86,14 +86,14 @@ func lay_deck(definition: Dictionary, deck: Node3D, width: float, depth: float, 
 		# The rock lip over the path and the falls' water pouring off it, shown
 		# while the path is shut (kit/pieces/falls_curtain.gd).
 		# Beside the deck at the deck's own height, so whatever lifts the deck lifts it.
-		_curtains[str(definition.id)] = FallsCurtain.build(_rect(definition.rect_cm), deck.position.y, deck.get_parent() as Node3D)
+		_curtains[str(definition.id)] = FallsCurtain.build(_rect(_world.drawn_rect(definition)), deck.position.y, deck.get_parent() as Node3D)
 	elif style == "rope":
 		# The posts stand for good; shut, the slats lie wound in at the gap's end.
 		_wound[str(definition.id)] = Deck.rope_ends(deck.get_parent() as Node3D, deck.position, width, depth, across_x, low, high)
 
 ## A one way stair's ladder, in place of the world's treads.
 func build_ladder(stair: Dictionary) -> void:
-	var rect := _rect(stair.rect_cm)
+	var rect := _rect(_world.drawn_rect(stair))
 	var foot := float(stair.from_height_cm) / 100.0
 	var head := float(stair.to_height_cm) / 100.0
 	var rising := head >= foot
@@ -110,12 +110,13 @@ func build(lantern_spots: Dictionary) -> void:
 	for bridge: Dictionary in _view.get("bridges", []): bridges[str(bridge.id)] = bridge
 	for platform: Dictionary in _view.get("platforms", []):
 		var stops: Array = Array(platform.stops).map(func(id: Variant) -> Dictionary: return bridges[str(id)])
-		var rect := _rect(stops[0].rect_cm)
+		# Drawn past the stop's walkable edge (island_world drawn_rect).
+		var rect := _rect(_world.drawn_rect(stops[0]))
 		var heights: Array = stops.map(func(stop: Dictionary) -> float: return float(stop.get("height_cm", 0)) / 100.0)
 		var lift: bool = stops.all(func(stop: Dictionary) -> bool: return stop.rect_cm == stops[0].rect_cm)
 		var anchors: Array = []
 		for index in range(stops.size()): anchors.append(Vector3(_rect(stops[index].rect_cm).get_center().x, heights[index], _rect(stops[index].rect_cm).get_center().y))
-		var entry := {"stops": Array(platform.stops).map(func(id: Variant) -> String: return str(id)), "heights": heights, "anchors": anchors, "half": rect.size / 2.0, "lift": lift, "shown": heights[0], "target": heights[0], "at": 0, "hurry": false}
+		var entry := {"stops": Array(platform.stops).map(func(id: Variant) -> String: return str(id)), "heights": heights, "anchors": anchors, "half": _rect(stops[0].rect_cm).size / 2.0, "lift": lift, "shown": heights[0], "target": heights[0], "at": 0, "hurry": false}
 		if lift:
 			entry.piece = Lift.build(_world._piece_style("lift", str(platform.id)), rect, heights.min(), heights.max(), _world.terrain, _drive(platform))
 			entry.piece.set_height(heights[0])

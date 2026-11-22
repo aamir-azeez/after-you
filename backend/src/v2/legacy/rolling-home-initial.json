@@ -1,0 +1,43 @@
+{
+	"a_recording_hash": "",
+	"b_recording_hash": "",
+	"checkpoint_hash": "543c6afed01ec41e692ac9dadc37bdc0e6b63d57b8e6bb8e8764985934e9ae1e",
+	"completed_stage_id": "",
+	"definition_hash": "d6aaa6006597dd5e4ce4dbc641d94c81c2ab17c55bd80b50c6a240e0e91cff87",
+	"level_id": "rolling-home",
+	"level_version": 1,
+	"mechanisms": {
+		"latched_bridges": [],
+		"levers": {},
+		"props": {
+			"round-ball": {
+				"height": 0,
+				"holder_slot": "",
+				"socket_id": "",
+				"status": "free",
+				"surface_id": "shore",
+				"x": -464,
+				"z": 0
+			}
+		}
+	},
+	"next_stage_id": "weight-of-a-friend",
+	"players": {
+		"p0": {
+			"height": 0,
+			"surface_id": "shore",
+			"x": -528,
+			"z": 0
+		},
+		"p1": {
+			"height": 0,
+			"surface_id": "shore",
+			"x": -528,
+			"z": 144
+		}
+	},
+	"previous_checkpoint_hash": "",
+	"proof": {},
+	"schema_version": 6,
+	"stage_index": 0
+}

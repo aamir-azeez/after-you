@@ -2,11 +2,11 @@ extends RefCounted
 ## Proposed House routes use only actual control inputs. No state injection.
 const Simulation = preload("res://core/cooperative/simulation.gd")
 const Catalog = preload("res://core/cooperative/stage_catalog.gd")
-const House = preload("res://core/cooperative/house_catalog.gd")
+const House = preload("res://core/cooperative/stage_catalog.gd")
 const Walk = preload("res://tests/cooperative_witness.gd")
 
 static func chapter() -> Dictionary:
-	var level := House.definition()
+	var level := House.definition("a-house-for-two@1")
 	var checkpoint := Catalog.initial_checkpoint(level)
 	var result := {"definition": level, "checkpoints": [checkpoint], "pairs": [], "error": ""}
 	for stage: Dictionary in level.stages:

@@ -15,8 +15,8 @@ const Main = preload("res://main.gd")
 const V1 := "turn-of-the-tide@1"
 const V2 := "turn-of-the-tide@2"
 ## The hashes the server pins (backend/src/v2/protocol-journey.ts).
-const HASH_V1 := "3a6d111455aa69e60c440cc6f04a0656292ed9c40b31c66a7f999c85cd2a911a"
-const HASH_V2 := "1f88aabb592fbf14640b50dd0644755d6afe522cae39d844524ac68b491f0a43"
+const HASH_V1 := "bddd92903e047286630ebe9f71a0e20946b929a9bb50952d34157fe45b16d5d0"
+const HASH_V2 := "8e29d35f0f968b3a4f056802794437787c1077883fafc316d285b5edf40edb80"
 const PLACES := ["turn-of-the-tide/set-the-tide", "turn-of-the-tide/slack-water"]
 var checks := 0
 var failures := 0

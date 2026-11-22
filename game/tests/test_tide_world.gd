@@ -4,7 +4,7 @@ extends SceneTree
 ## snapshot without changing it, the wheels show three and four values, the
 ## camera reaches the whole harbour, the dressing passes the scenery lint, and
 ## every mesh has its geometry and material.
-const TideCatalog = preload("res://core/journey/turn_of_the_tide_catalog.gd")
+const TideCatalog = preload("res://core/journey/stage_catalog.gd")
 const KEY := "turn-of-the-tide@1"
 const JourneyCatalog = preload("res://core/journey/stage_catalog.gd")
 const Simulation = preload("res://core/journey/simulation.gd")
@@ -40,7 +40,7 @@ func _initialize() -> void: _run.call_deferred()
 
 func _run() -> void:
 	root.size = Vector2i(1280, 720)
-	var level := TideCatalog.definition()
+	var level := TideCatalog.definition("turn-of-the-tide@1")
 	var digest := Canonical.digest(level)
 	await _first_stage(level)
 	_memory_camera(level)
@@ -475,7 +475,7 @@ func _walls(world: Node3D, level: Dictionary, index: int) -> void:
 		for rect: Rect2 in _water_rects(body):
 			for id: String in world.waters.walled:
 				var r: Array = world._route(id).rect_cm
-				if rect.grow(-0.01).intersects(Rect2(Vector2(float(r[0]), float(r[1])) / 100.0, Vector2(float(r[2] - r[0]), float(r[3] - r[1])) / 100.0)):
+				if rect.intersects(Rect2(Vector2(float(r[0]), float(r[1])) / 100.0, Vector2(float(r[2] - r[0]), float(r[3] - r[1])) / 100.0).grow(-0.01)):
 					_check(false, "Stage %d: no water strip covers walled %s" % [index + 1, id])
 					return
 		var water := body.get_child(0) as MeshInstance3D
@@ -974,7 +974,7 @@ func _dry_decks(world: Node3D, level: Dictionary) -> bool:
 		for rect: Rect2 in _water_rects(body):
 			for island: Dictionary in level.islands:
 				var r: Array = island.rect_cm
-				if rect.grow(-0.01).intersects(Rect2(Vector2(float(r[0]), float(r[1])) / 100.0, Vector2(float(r[2] - r[0]), float(r[3] - r[1])) / 100.0)): return false
+				if rect.intersects(Rect2(Vector2(float(r[0]), float(r[1])) / 100.0, Vector2(float(r[2] - r[0]), float(r[3] - r[1])) / 100.0).grow(-0.01)): return false
 	return true
 
 ## The way each triangle of a mesh turns against its normal: 1, -1 or both.

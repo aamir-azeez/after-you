@@ -1,9 +1,9 @@
 {
   "a_recording_hash": "",
   "b_recording_hash": "",
-  "checkpoint_hash": "3a1b45ec23071229786b841b1a5ef293dece0032d146bd96bdfe611f1603110b",
+  "checkpoint_hash": "aa9384067135560852efef9c25864a09caec3629fefbad037891e09197a20baf",
   "completed_stage_id": "",
-  "definition_hash": "f4c5ae4b9b1ba742fb4b33a3baca27f2360e723e6f87d01c31bff157182e2527",
+  "definition_hash": "8d5cc51f3ac0d2f6531552b366a22978e87c7586cac6e6f71769061c57eefc3c",
   "level_id": "item-ride-witness",
   "level_version": 1.0,
   "mechanisms": {

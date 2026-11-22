@@ -445,6 +445,10 @@
 						-406
 					],
 					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
 					"surface_id": "mill",
 					"values": [
 						"HIGH",
@@ -625,6 +629,10 @@
 						-574
 					],
 					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
 					"surface_id": "loft"
 				}
 			],
@@ -740,6 +748,10 @@
 						-280
 					],
 					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
 					"surface_id": "etop"
 				}
 			],
@@ -792,6 +804,10 @@
 						-140
 					],
 					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
 					"surface_id": "look",
 					"values": [
 						"HIGH",
@@ -903,6 +919,10 @@
 						-574
 					],
 					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
 					"surface_id": "far"
 				}
 			],

@@ -2,8 +2,14 @@
 	"actions": [
 		{
 			"action": false,
-			"ticks": 10,
+			"ticks": 5,
 			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 75,
 			"z": 0
 		},
 		{
@@ -20,7 +26,43 @@
 		},
 		{
 			"action": false,
-			"ticks": 22,
+			"ticks": 2,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 3,
+			"x": 0,
+			"z": 100
+		},
+		{
+			"action": false,
+			"ticks": 3,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 0,
+			"z": 100
+		},
+		{
+			"action": false,
+			"ticks": 2,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 75,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 18,
 			"x": 0,
 			"z": 100
 		},
@@ -38,11 +80,11 @@
 		}
 	],
 	"catch_assistance": true,
-	"checkpoint_hash": "d97c4bf6e6d03b92dac32e56a164ba19e18d12975ee11b101283834ec113a5e6",
+	"checkpoint_hash": "cd14c228dfd15a52c8cc8d7c27b3b8a8965ddc59e1c444cef1a9ff035e55fb12",
 	"completed": false,
-	"definition_hash": "6aa907e802c92445745a6452c6ec0850dd8e98724e689b58a8ec82915fb08956",
-	"duration_ticks": 75,
-	"final_state_hash": "c36aeddd8a3d2459ceedadc56a84ef8ad7025baf86cba83df555b8e32c327cfd",
+	"definition_hash": "3b6576badcdd214630373a0f51040706e014845d9b8bc17483bd887f04a9ff40",
+	"duration_ticks": 79,
+	"final_state_hash": "d25f573db8cae2bcfce958177c92cf6de80e7aeeccca0702e9b78899aef0bbd7",
 	"level_id": "high-and-low",
 	"level_version": 1,
 	"outcome": {
@@ -50,19 +92,19 @@
 		"source_ready": true
 	},
 	"player_slot": "p1",
-	"recording_hash": "55effb0df95c38eb7b9dbb5a105d12d46e76806fdd4ad31bee35fc802ca401a7",
+	"recording_hash": "597d2fc20523dcd66e76ca109e45ddc103c3b8d3eee33ade69857249abe2e6dd",
 	"replay_checks": [
 		{
-			"state_hash": "4e0c5e0c52a18d7bb649369bec2dff75b566039f8d6108627666dbe406aa31c7",
+			"state_hash": "f4f63f3fe7dd508aaec2edbd18c05fd0db02acef7e31af179b1944c5c934641e",
 			"tick": 30
 		},
 		{
-			"state_hash": "3807abdd4764a24d38801b3db0239ea235d874751c10a5d4f5d9db1f041e9ca3",
+			"state_hash": "52425ffce1da313c57c1def2243e1ef2d16bfcdcee45f7671910ec95153120e6",
 			"tick": 60
 		},
 		{
-			"state_hash": "c36aeddd8a3d2459ceedadc56a84ef8ad7025baf86cba83df555b8e32c327cfd",
-			"tick": 75
+			"state_hash": "d25f573db8cae2bcfce958177c92cf6de80e7aeeccca0702e9b78899aef0bbd7",
+			"tick": 79
 		}
 	],
 	"role": "a",

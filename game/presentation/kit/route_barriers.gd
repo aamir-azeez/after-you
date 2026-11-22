@@ -31,6 +31,7 @@ extends RefCounted
 ## a kit-cached mesh and look (Primitives, released through SessionRelease).
 ## The layout functions are static and read only stage data, so the screen's
 ## refusal finder and the tests use the very same rules.
+const Solid = preload("res://core/solid_footprint.gd")
 const OwnerMark = preload("res://presentation/kit/owner_mark.gd")
 const FloorSpots = preload("res://presentation/kit/floor_spots.gd")
 const Primitives = preload("res://presentation/kit/primitives.gd")
@@ -369,6 +370,8 @@ static func at_control(entity: Dictionary, player: Variant) -> bool:
 	if entity.has("surface_id"):
 		if str(player.get("surface_id", "")) != str(entity.surface_id): return false
 	elif absf(float(player.get("height", 0)) - float(entity.get("height_cm", 0))) > NEAR_HEIGHT_CM: return false
+	# A solid control is worked from beside it, as the engine's reach says.
+	if not Solid.of(entity).is_empty(): return Solid.within_reach(entity, Vector2i(int(player.x), int(player.z)), Solid.BODY_CM)
 	var position: Array = entity.position_cm
 	return Vector2(float(player.x), float(player.z)).distance_to(Vector2(float(position[0]), float(position[1]))) <= float(entity.get("radius_cm", 40))
 

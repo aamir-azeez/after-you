@@ -1,6 +1,7 @@
 extends SceneTree
 ## sleeping-lighthouse@2: the six Lighthouse stages as one shared-format
-## chapter. Replays the frozen six-stage solo inputs through the facade, checks
+## chapter. Plays the frozen six-stage solo turns, walked beside the solid
+## mirrors and selector (lighthouse_v2_witness.gd), through the facade, checks
 ## the shared record and checkpoint shape, rebuilds the committed v2 fixture,
 ## refuses tampering at every depth, and checks the verified-checkpoint memo.
 ## With --write-fixtures it writes the fixture (scripts/chapter_fixtures.py
@@ -13,11 +14,16 @@ const RoomProof = preload("res://core/lighthouse/room_proof.gd")
 const Proof = preload("res://core/physical/two_pair_proof.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const Controls = preload("res://core/first_steps/simulation.gd")
+const Solid = preload("res://core/solid_footprint.gd")
+const Witness = preload("res://tests/lighthouse_v2_witness.gd")
 const FIXTURE := "res://tests/fixtures/lighthouse/v2-chain.json"
-## Solo @1 stays byte-identical: LF-normalized md5 of the engine and catalog.
-## Editing either also needs RoomProof.VERIFIER_VERSION bumped.
-const ENGINE_MD5 := "d9c36f858582a39f1c06ced43647a559"
-const NATIVE_CATALOG_MD5 := "0a04ea684908e0cd7174558d3328856e"
+const DEFINITION_FIXTURE := "res://tests/fixtures/lighthouse/sleeping-lighthouse-v2-definition.json"
+const INITIAL_FIXTURE := "res://tests/fixtures/lighthouse/sleeping-lighthouse-v2-initial-checkpoint.json"
+## Pins the engine and the native catalog: LF-normalized md5 of each. Solo
+## @1 plays the plain catalog exactly as before (the v3 chain below still
+## verifies). Editing either also needs RoomProof.VERIFIER_VERSION bumped.
+const ENGINE_MD5 := "0e387952ee816a1471ba634abe41d594"
+const NATIVE_CATALOG_MD5 := "df5ee1302f28112fab1e259fde2a3ead"
 ## Backend LIGHTHOUSE_LIMITS (protocol-lighthouse.ts) and published bounds.
 const LIMIT_CHECKPOINT_BYTES := 393216
 const LIMIT_CHECKPOINT_VALUES := 40000
@@ -32,6 +38,8 @@ var fixture: Dictionary = {}
 var level: Dictionary = {}
 var chain: Array = []
 var checkpoints: Array = []
+## The witness inputs, [{"a": inputs, "b": inputs}] a stage.
+var turns: Array = []
 
 func _initialize() -> void:
 	_run.call_deferred()
@@ -39,14 +47,17 @@ func _initialize() -> void:
 func _run() -> void:
 	fixture = _json("res://tests/fixtures/lighthouse/complete-six-v3.json")
 	_check(not fixture.is_empty(), "solo six-stage fixture parses")
-	_check(_md5("res://core/lighthouse/borrowed_light.gd") == ENGINE_MD5, "borrowed_light.gd is unchanged")
-	_check(_md5("res://core/lighthouse/stage_catalog.gd") == NATIVE_CATALOG_MD5, "native stage_catalog.gd is unchanged")
+	_check(_md5("res://core/lighthouse/borrowed_light.gd") == ENGINE_MD5, "borrowed_light.gd is as pinned")
+	_check(_md5("res://core/lighthouse/stage_catalog.gd") == NATIVE_CATALOG_MD5, "native stage_catalog.gd is as pinned")
 	_check(Native.checkpoint_from_pairs(fixture.pairs).valid, "the solo six-stage v3 chain still verifies natively")
 	level = Catalog.definition()
 	_definition_checks()
+	var errors: Array = []
+	turns = Witness.turns(errors)
+	_check(turns.size() == 6, "the witness walks all six stages beside the solid controls (%s)" % [errors])
 	RoomProof.clear_memo()
 	var started := Time.get_ticks_msec()
-	_play_chain()
+	if turns.size() == 6: _play_chain()
 	print("LIGHTHOUSE_V2 phase _play_chain: %d ms" % [Time.get_ticks_msec() - started])
 	if checkpoints.size() == 7:
 		for phase: Callable in [_fixture_checks, _final_checks, _negative, _memo_checks, _index_checks, _sizes]:
@@ -61,8 +72,12 @@ func _definition_checks() -> void:
 	_check(Catalog.known(level), "the catalog knows its own definition")
 	var roundtrip: Variant = JSON.parse_string(JSON.stringify(level))
 	_check(roundtrip is Dictionary and Catalog.known(roundtrip), "the definition is still known after a JSON round trip")
-	for stage: Dictionary in level.stages:
-		_check(Canonical.same(stage.native, LightCatalog.definition(stage.id)), "embedded %s equals the native catalog stage" % stage.id)
+	var plain := Witness._plain(level)
+	for index in level.stages.size():
+		var stage: Dictionary = level.stages[index]
+		_check(Canonical.same(plain.stages[index].native, LightCatalog.definition(stage.id)), "embedded %s equals the native catalog stage but for its solid hand controls" % stage.id)
+		for control: Dictionary in LightCatalog.controls_of(stage.native):
+			_check(Solid.of(control) == Solid.HAND, "%s %s is solid by the shared hand rule" % [stage.id, control.id])
 	var slots: Array = []
 	for stage: Dictionary in level.stages: slots.append(stage.first_player_slot)
 	_check(slots == ["p0", "p1", "p0", "p1", "p0", "p1"], "first player alternates host / friend per stage: %s" % [slots])
@@ -77,13 +92,12 @@ func _play_chain() -> void:
 	var checkpoint := Catalog.initial_checkpoint(level)
 	checkpoints.append(checkpoint)
 	for index in 6:
-		var pair: Dictionary = fixture.pairs[index]
 		var stage_id: String = level.stages[index].id
 		var a := Room.new()
 		var ok_a := a.reset(level, stage_id, checkpoint, {}, "a")
 		_check(ok_a, "stage %d %s: A resets on the room checkpoint (%s)" % [index + 1, stage_id, a.error])
 		if not ok_a: return
-		for input: Dictionary in Native.expand_recording_inputs(pair.a): a.step(input)
+		for input: Dictionary in turns[index].a: a.step(input)
 		var a_state := a.snapshot()
 		_check(a_state.can_commit, "stage %d: A can commit" % [index + 1])
 		var a_record := a.export_recording()
@@ -99,7 +113,7 @@ func _play_chain() -> void:
 		var ok_b := b.reset(level, stage_id, checkpoint, a_record, "b")
 		_check(ok_b, "stage %d: B resets on the A ghost (%s)" % [index + 1, b.error])
 		if not ok_b: return
-		for input: Dictionary in Native.expand_recording_inputs(pair.b):
+		for input: Dictionary in turns[index].b:
 			if b.finished: break
 			b.step(input)
 		_check(b.snapshot().complete, "stage %d: B completes" % [index + 1])
@@ -127,6 +141,13 @@ func _fixture_checks() -> void:
 		if file:
 			file.store_string(JSON.stringify(Canonical.normalized(data)))
 			file.close()
+		# The chapter manifest's definition and initial checkpoint (test_chapter_manifest).
+		for written: Array in [[DEFINITION_FIXTURE, level], [INITIAL_FIXTURE, checkpoints[0]]]:
+			var copy := FileAccess.open(written[0], FileAccess.WRITE)
+			_check(copy != null, "fixture export opens " + written[0])
+			if copy:
+				copy.store_string(JSON.stringify(written[1], "\t", true) + "\n")
+				copy.close()
 	var committed := _json(FIXTURE)
 	_check(Canonical.same(committed, data), "the committed v2 fixture equals the rebuilt chain")
 	_check(not committed.is_empty() and Canonical.digest(committed.get("definition", {})) == Canonical.digest(level), "the committed definition has the chapter hash")
@@ -135,9 +156,10 @@ func _final_checks() -> void:
 	var final: Dictionary = checkpoints[6]
 	_check(final.next_stage_id == "" and int(final.stage_index) == 6, "the final checkpoint has no next stage")
 	var native: Dictionary = fixture.checkpoints[6]
+	# The pips stand beside the controls now, so only near where the solo chain left them.
 	for slot: String in ["p0", "p1"]:
-		_check(int(final.players[slot].x) == int(native.players[slot].x) and int(final.players[slot].z) == int(native.players[slot].z) and final.players[slot].surface_id == native.players[slot].surface_id,
-			"final %s position equals the solo v3 chain" % slot)
+		var near := Vector2i(int(final.players[slot].x), int(final.players[slot].z)).distance_to(Vector2i(int(native.players[slot].x), int(native.players[slot].z))) <= 48.0
+		_check(near and final.players[slot].surface_id == native.players[slot].surface_id, "final %s ends near where the solo v3 chain did" % slot)
 	for key: String in ["latched_bridges", "mirrors", "props", "flags"]:
 		_check(Canonical.same(final.mechanisms[key], native.mechanisms[key]), "final mechanisms.%s equal the solo v3 chain" % key)
 	RoomProof.clear_memo()

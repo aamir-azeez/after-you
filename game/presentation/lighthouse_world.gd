@@ -52,6 +52,11 @@ var _selector_nodes: Dictionary = {}
 var _frame_points: Array[Vector3] = []
 var _hold_pad_nodes: Dictionary = {}
 var _beacon: Dictionary = {}
+## Every hand control of the stage (levers, switches, selectors, mirrors), by
+## the id its value goes by in the state, and the value it last showed, so the
+## pip that works one turns to face it (_face_hands).
+var _hand_controls: Dictionary = {}
+var _hand_values: Dictionary = {}
 
 func _beam_height() -> float:
 	return BEAM_HEIGHT
@@ -79,6 +84,8 @@ func load_level(definition: Dictionary) -> void:
 	terrain.name = "BorrowedLightShore"
 	add_child(terrain)
 	actors.clear()
+	_hand_controls.clear()
+	_hand_values.clear()
 	actor_targets.clear()
 	bridge_parts.clear()
 	flowers.clear()
@@ -276,14 +283,18 @@ static func _superseded(spots: Array, index: int, position_cm: Array) -> bool:
 
 func _shore(island: Dictionary, color: Color) -> void:
 	if _dressed_ground(island, terrain): return
-	var bounds: Array = island.rect_cm
+	var bounds := drawn_rect(island)
 	var width := float(bounds[2] - bounds[0]) / 100.0
 	var depth := float(bounds[3] - bounds[1]) / 100.0
 	var center := point([(bounds[0] + bounds[2]) / 2.0, (bounds[1] + bounds[3]) / 2.0])
-	# The visible top is exactly the authored walkable rectangle, at height 0.
+	# The visible top is the floor's drawn shape (drawn_pieces), at height 0.
 	# The tapered lower rock is decorative and remains below the floor.
-	box(Vector3(width, 0.20, depth), color, center + Vector3(0, -0.10, 0), terrain).name = str(island.id) + "Floor"
-	ContactShadows.ground(terrain, Rect2(center.x - width / 2.0, center.z - depth / 2.0, width, depth), center.y, false)
+	var shape := drawn_pieces(island)
+	for index in range(shape.size()):
+		var piece: Array = shape[index]
+		var top := box(Vector3(float(piece[2] - piece[0]) / 100.0, 0.20, float(piece[3] - piece[1]) / 100.0), color, point([(piece[0] + piece[2]) / 2.0, (piece[1] + piece[3]) / 2.0]) + Vector3(0, -0.10, 0), terrain)
+		if index == 0: top.name = str(island.id) + "Floor"
+	ContactShadows.ground_cm(terrain, shape, center.y, false)
 	var corners := [Vector2(-1, -1), Vector2(1, -1), Vector2(1, 1), Vector2(-1, 1)]
 	var top: Array[Vector3] = []
 	var bottom: Array[Vector3] = []
@@ -305,10 +316,13 @@ func _shore(island: Dictionary, color: Color) -> void:
 	rock_material.cull_mode = BaseMaterial3D.CULL_DISABLED
 	var rock := Primitives.mesh_node(surface.commit(), rock_material, Vector3.ZERO, terrain)
 	rock.name = str(island.id) + "LowerRock"
-	# Edge strips start at the walking surface, clear of the floor's sides.
-	for side in [-1, 1]:
-		box(Vector3(width, 0.0175, 0.035), color.lightened(0.12), center + Vector3(0, 0.00875, side * (depth / 2.0 - 0.018)), terrain)
-		box(Vector3(0.035, 0.0175, depth), color.lightened(0.12), center + Vector3(side * (width / 2.0 - 0.018), 0.00875, 0), terrain)
+	# Edge strips start at the walking surface, clear of the floor's sides,
+	# along the shape's outer edges.
+	for edge: Array in WalkReach.outline(shape):
+		var length := (float(edge[0][1]) - float(edge[0][0])) / 100.0
+		var middle := (float(edge[0][0]) + float(edge[0][1])) / 200.0
+		var line := float(edge[1]) / 100.0 - float(edge[2]) * 0.0275
+		box(Vector3(length, 0.0175, 0.035) if edge[3] else Vector3(0.035, 0.0175, length), color.lightened(0.12), Vector3(middle, 0.00875, line) if edge[3] else Vector3(line, 0.00875, middle), terrain)
 	# Only a few small stones at the outer corners; no invented obstacles or
 	# extra stepping-stones through the real gap.
 	for x_side in [-1, 1]:
@@ -316,7 +330,7 @@ func _shore(island: Dictionary, color: Color) -> void:
 		stone.scale = Vector3(1.4, 0.5, 0.9)
 
 func _build_bridge(definition: Dictionary) -> void:
-	var rect: Array = definition.rect_cm
+	var rect := drawn_rect(definition)
 	var width := float(rect[2] - rect[0]) / 100.0
 	var depth := float(rect[3] - rect[1]) / 100.0
 	_deck = Node3D.new()
@@ -325,7 +339,7 @@ func _build_bridge(definition: Dictionary) -> void:
 	terrain.add_child(_deck)
 	_decks[definition.id] = _deck
 	mark_sound("bridge:%s" % definition.id, _deck)
-	var across_x := width >= depth
+	var across_x := WalkReach.run_axis(definition, WalkReach.walkable(current_level)) == 0
 	# The deck spans only the open gap: where a route crosses a floor at its
 	# own height, that floor is already drawn there, and two tops at one
 	# height z-fight. `low`/`high` bound the gap along the crossing.
@@ -338,20 +352,32 @@ func _build_bridge(definition: Dictionary) -> void:
 	var memories := Node3D.new()
 	memories.name = "RememberedFootsteps"
 	_deck.add_child(memories)
+	# Clear of the span's ends, and of any floor drawn under the crossing,
+	# where a floor's trim runs.
 	for index in range(3):
-		var along := middle + ((float(index) + 0.5) / 3.0 - 0.5) * length
+		var along := middle + ((float(index) + 0.5) / 3.0 - 0.5) * maxf(length - 0.20, 0.0)
 		for side in [-1, 1]:
 			var at := Vector3(along + side * 0.05, 0.011, side * 0.11) if across_x else Vector3(side * 0.11, 0.011, along + side * 0.05)
+			if _over_floor(Vector2(_deck.position.x + at.x, _deck.position.z + at.z) * 100.0, 6.0): continue
 			var footprint := cylinder(0.038, 0.005, Color("a68c60"), at, memories)
 			footprint.scale = Vector3(1.6, 1, 1) if across_x else Vector3(1, 1, 1.6)
 	memories.visible = false
 	_memory_markers[definition.id] = memories
 	_deck.visible = false
 
+## Whether a floor of the shown plan is drawn within `margin` cm of `at` (cm).
+func _over_floor(at: Vector2, margin: float) -> bool:
+	for island: Dictionary in current_level.get("islands", []):
+		for piece: Array in drawn_pieces(island):
+			if Rect2(float(piece[0]), float(piece[1]), float(piece[2] - piece[0]), float(piece[3] - piece[1])).grow(margin).has_point(at): return true
+	return false
+
 ## Lays a crossing's deck under `deck` (a crossing width by depth metres
-## across x and z), before its remembered-footsteps marker: eight planks with seams and a lit
-## edge each side over the open span low..high (deck-local metres along the
-## crossing). A world that lays its own decks overrides it, so no planks are
+## across x and z), before its remembered-footsteps marker: planks about a
+## quarter metre wide (eight over two metres) with seams and a lit edge each
+## side over the open span low..high (deck-local metres along the crossing).
+## A short span gets few wide planks, so no plank's end lies just past a
+## floor's lip under the deck's end. A world that lays its own decks overrides it, so no planks are
 ## made only to be freed.
 func _lay_deck(_definition: Dictionary, deck: Node3D, width: float, depth: float, across_x: bool, low: float, high: float) -> void:
 	var length := high - low
@@ -360,13 +386,14 @@ func _lay_deck(_definition: Dictionary, deck: Node3D, width: float, depth: float
 	var timber := str(dressing.get("bridges", "")) == "timber"
 	var plank := Props.TIMBER_LIGHT if timber else Color("bdc9c1")
 	var seam := Props.TIMBER_DARK if timber else Color("637886")
-	for index in range(8):
-		var offset := low + (index + 0.5) * length / 8.0
-		var board := Vector3(length / 8.0, 0.10, depth) if across_x else Vector3(width, 0.10, length / 8.0)
+	var count := maxi(1, roundi(length / 0.25))
+	for index in range(count):
+		var offset := low + (index + 0.5) * length / float(count)
+		var board := Vector3(length / float(count), 0.10, depth) if across_x else Vector3(width, 0.10, length / float(count))
 		var at := Vector3(offset, -0.05, 0) if across_x else Vector3(0, -0.05, offset)
 		box(board, plank.darkened(0.05 * float(index % 2)) if timber else plank, at, deck)
 		var seam_size := Vector3(0.016, 0.005, depth - 0.06) if across_x else Vector3(width - 0.06, 0.005, 0.016)
-		var seam_at := Vector3(offset + length / 16.0 - 0.012, 0.003, 0) if across_x else Vector3(0, 0.003, offset + length / 16.0 - 0.012)
+		var seam_at := Vector3(offset + length / float(2 * count) - 0.012, 0.003, 0) if across_x else Vector3(0, 0.003, offset + length / float(2 * count) - 0.012)
 		box(seam_size, seam, seam_at, deck)
 	for side in [-1, 1]:
 		var trim_size := Vector3(length, 0.025, 0.035) if across_x else Vector3(0.035, 0.025, length)
@@ -374,19 +401,24 @@ func _lay_deck(_definition: Dictionary, deck: Node3D, width: float, depth: float
 		var trim := box(trim_size, LIGHT_COLOR, trim_at, deck)
 		_glow(trim, LIGHT_COLOR, 0.65)
 
-## The part of a route's crossing axis (deck-local metres, from its centre)
-## not already covered by a floor at the route's height.
+## The part of a route's crossing axis (deck-local metres, from its drawn
+## centre) not already covered by a floor at the route's height: where a floor
+## reaches over its end (open_span), and where a floor spanning its whole
+## width lies over it.
 func _open_span(definition: Dictionary, across_x: bool) -> Array:
-	var rect: Array = definition.rect_cm
+	var rect := drawn_rect(definition)
+	var authored: Array = definition.rect_cm
 	var axis := 0 if across_x else 1
-	var low := float(rect[axis])
-	var high := float(rect[axis + 2])
-	var centre := (low + high) * 0.5
+	var centre := (float(rect[axis]) + float(rect[axis + 2])) * 0.5
+	var span := open_span(definition)
+	var low := float(span[0])
+	var high := float(span[1])
 	for island: Dictionary in current_level.get("islands", []):
 		if int(island.get("height_cm", 0)) != int(definition.get("height_cm", 0)): continue
-		var r: Array = island.rect_cm
-		# Only a floor spanning the route's whole width covers the deck there.
-		if float(r[1 - axis]) > float(rect[1 - axis]) or float(r[3 - axis]) < float(rect[3 - axis]): continue
+		# As drawn (drawn_rect). Only a floor spanning the route's whole width
+		# covers the deck there.
+		var r := drawn_rect(island)
+		if float(r[1 - axis]) > float(authored[1 - axis]) or float(r[3 - axis]) < float(authored[3 - axis]): continue
 		if float(r[axis]) <= low and float(r[axis + 2]) > low: low = minf(float(r[axis + 2]), high)
 		if float(r[axis + 2]) >= high and float(r[axis]) < high: high = maxf(float(r[axis]), low)
 	if high - low < 8.0: return [(float(rect[axis]) - centre) / 100.0, (float(rect[axis + 2]) - centre) / 100.0]
@@ -411,6 +443,7 @@ func _build_mirror(control: Dictionary) -> void:
 	ring(float(control.radius_cm) / 100.0, Color("8caab9"), at + Vector3(0, base_height + 0.04, 0), terrain)
 	_mirror_pivot = _mirror_body(at, base_height, terrain, false)
 	_mirror_nodes[control.get("optical_id", control.id)] = _mirror_pivot
+	_hand_controls[control.get("optical_id", control.id)] = control
 	mark_sound("mirror:%s" % control.get("optical_id", control.id), _mirror_pivot)
 	_mirror_target = -PI / 4.0
 	_mirror_pivot.rotation.y = _mirror_target
@@ -477,6 +510,9 @@ func _build_selector(control: Dictionary) -> void:
 	# The mirror still follows the exact optical orientation. Three engraved
 	# positions distinguish this switch from an ordinary two-way mirror.
 	_build_mirror(control)
+	# A selector's value is its state, by its own id.
+	_hand_controls.erase(control.get("optical_id", control.id))
+	_hand_controls[control.id] = control
 	var at := point(control.position_cm) + Vector3(0, _control_base_height(control), 0)
 	var dial := Node3D.new()
 	dial.name = "PathSelector"
@@ -750,6 +786,31 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	_present_celebration(immediate)
 	if _goal_piece != null and is_instance_valid(_bell): _goal_piece.set_lit(_wake, immediate or reduced_motion)
 	_present_beams(state.optics.segments)
+	_face_hands(state, immediate)
+
+## The pip that works a hand control turns to face it, so it stands beside
+## it watching the pull (the engines have it work one from beside its solid
+## footprint, core/solid_footprint.gd). Read from the snapshot alone: a
+## control whose shown value changed (a lever, control, mirror or selector
+## value), and the pip within its reach (the live one first; a memory works
+## controls too). Presentation only.
+func _face_hands(state: Dictionary, immediate: bool) -> void:
+	var values: Dictionary = {}
+	for key: String in ["levers", "controls", "mirrors", "selectors"]: values.merge(state.get(key, {}))
+	var players: Dictionary = state.get("players", {})
+	var active := str(state.get("active_slot", "p0"))
+	for id: Variant in _hand_controls:
+		var now: Variant = values.get(id)
+		var was: Variant = _hand_values.get(id)
+		_hand_values[id] = now
+		if immediate or was == null or now == null or was == now: continue
+		var control: Dictionary = _hand_controls[id]
+		for slot: String in [active, "p1" if active == "p0" else "p0"]:
+			var player: Variant = players.get(slot)
+			if not actors.has(slot) or not RouteBarriers.at_control(control, player): continue
+			var toward := Vector2(float(control.position_cm[0]) - float(player.x), float(control.position_cm[1]) - float(player.z))
+			if not toward.is_zero_approx(): actors[slot].facing_target = atan2(toward.x, toward.y)
+			break
 
 ## A solved stage makes both spirits jump, sparkle and smile, as in the other
 ## chapters. The physical worlds celebrate a committed stage themselves.

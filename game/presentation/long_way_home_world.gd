@@ -30,7 +30,8 @@ func _shore(island: Dictionary, color: Color) -> void:
 func _surface_built(island: Dictionary, surface: Node3D) -> void:
 	surface.name = "Homeward_"+str(island.id)
 	if island.id != "home-room": return
-	var r: Array = island.rect_cm
+	# The room's walls stand at its floor's drawn edges (drawn_rect).
+	var r := drawn_rect(island)
 	var width := float(r[2]-r[0])/100.0
 	var depth := float(r[3]-r[1])/100.0
 	var middle := point([(r[0]+r[2])*0.5,(r[1]+r[3])*0.5])
@@ -42,10 +43,10 @@ func _surface_built(island: Dictionary, surface: Node3D) -> void:
 	# Low sides never imply blocking a porch or garden doorway. Only the
 	# back has a taller open frame, leaving both entrances and pads visible.
 	# Back wall and side sills reach just past the floor's edges, so none of
-	# their faces lies on the floor trim's.
-	box(Vector3(width+0.01,0.44,0.10),HOME_PLASTER,Vector3(middle.x,0.22,float(r[1])/100),surface)
+	# their faces lies on the floor trim's (kit/surfaces.gd, 1 to 5 cm in).
+	box(Vector3(width+0.01,0.44,0.09),HOME_PLASTER,Vector3(middle.x,0.22,float(r[1])/100),surface)
 	for side: int in [-1,1]:
-		box(Vector3(0.055,0.10,depth+0.01),HOME_FRAME,middle+Vector3(side*width/2,0.05,0),surface)
+		box(Vector3(0.045,0.10,depth+0.01),HOME_FRAME,middle+Vector3(side*width/2,0.05,0),surface)
 	var peak := Vector3(middle.x,2.05,float(r[1])/100)
 	_bar_between(Vector3(float(r[0])/100,1.32,float(r[1])/100),peak,0.065,HOME_FRAME,surface)
 	_bar_between(peak,Vector3(float(r[2])/100,1.32,float(r[1])/100),0.065,HOME_FRAME,surface)
