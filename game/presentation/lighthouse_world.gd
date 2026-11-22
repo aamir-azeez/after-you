@@ -143,6 +143,7 @@ func load_level(definition: Dictionary) -> void:
 		_build_beacon(definition.goal, definition.optics.receivers)
 	elif definition.has("goal"):
 		_build_bell(definition.goal)
+		_goal_piece.add_needs(definition, func(id: String) -> String: return _piece_style("carried_item", id))
 	for socket: Dictionary in definition.get("sockets", []):
 		_build_socket(socket)
 	for prop: Dictionary in definition.get("props", []):
@@ -538,6 +539,12 @@ func _build_bell(goal: Dictionary) -> void:
 	_bell_ring = _goal_piece.ring
 	_court_light = _goal_piece.light
 
+## The stage's pads and the goal's two (kit/pieces/goal.gd pad_spots).
+func pad_spots() -> Array:
+	var spots := super.pad_spots()
+	if _goal_piece != null and is_instance_valid(_bell): spots.append_array(_goal_piece.pad_spots())
+	return spots
+
 ## Whether an owned goal's cradle carries its owner's mark (kit/owner_mark.gd):
 ## its style says (kit/pieces/goal.gd MARKED).
 func _marks_goal(goal: Dictionary) -> bool:
@@ -784,7 +791,10 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	_wake = bool(state.objective_done)
 	_present_follow(state, immediate)
 	_present_celebration(immediate)
-	if _goal_piece != null and is_instance_valid(_bell): _goal_piece.set_lit(_wake, immediate or reduced_motion)
+	if _goal_piece != null and is_instance_valid(_bell):
+		_goal_piece.set_lit(GoalPiece.lit(state), immediate or reduced_motion)
+		_goal_piece.present_pips(state.get("players", {}), immediate or reduced_motion)
+		_goal_piece.needs.present(state)
 	_present_beams(state.optics.segments)
 	_face_hands(state, immediate)
 

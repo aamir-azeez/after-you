@@ -8,6 +8,8 @@ extends SceneTree
 ##   from one side to the other still can), so no way a level needs is cut;
 ## - every other spot a pip stands at (pads, ball pads, the goal, item spots,
 ##   starts) keeps floor a pip can stand on inside it;
+## - each bell goal's two pads, one per pip, lie inside the goal on floor
+##   that pip stands on;
 ## - nothing on its floor that blocks a pip (an obstacle, an owned zone) comes
 ##   within its reach, so it is never worked through a wall.
 ## A control on a floor too small for its footprint (fits()) keeps its plain
@@ -20,6 +22,7 @@ const Canonical = preload("res://core/v2/canonical.gd")
 const ChapterIndex = preload("res://content/chapters/index.gd")
 const Placement = preload("res://content/dressing/placement.gd")
 const LightCatalog = preload("res://core/lighthouse/stage_catalog.gd")
+const GoalPiece = preload("res://presentation/kit/pieces/goal.gd")
 const STEP := 8
 const BODY := Solid.BODY_CM
 ## How far the walk round one footprint may spread before it counts as cut.
@@ -40,6 +43,7 @@ func _check(value: bool, message: String) -> void:
 func _run() -> void:
 	_rule_checks()
 	var solid_count := 0
+	var goal_pads := 0
 	var plain: Array[String] = []
 	for key: String in ChapterIndex.keys():
 		var level := Placement.definition(key)
@@ -55,6 +59,7 @@ func _run() -> void:
 				continue
 			var hands: Array = stage.get("levers", []) + stage.get("controls", [])
 			var solids := Solid.solids(hands + level.get("item_spots", []))
+			goal_pads += _check_goal_pads(level, routes, cells, solids, stage, "%s, stage %s" % [key, stage.id])
 			for control: Dictionary in hands:
 				if Solid.of(control).is_empty(): plain.append("%s %s %s" % [key, stage.id, control.id])
 			if solids.is_empty(): continue
@@ -69,6 +74,7 @@ func _run() -> void:
 				for slot: String in ["p0", "p1"]:
 					_check_spot(level, routes, cells, solids, spot, slot, "%s, stage %s, %s" % [key, stage.id, str(spot.get("id", "start"))])
 	_check(solid_count > 0, "Some chapter has a solid hand control")
+	_check(goal_pads > 0, "Some chapter's goal stands its two pads")
 	print("HAND REACH: %d solid hand controls; plain on floors too small: %s" % [solid_count, ", ".join(plain)])
 	print("HAND REACH: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -249,6 +255,24 @@ func _check_spot(level: Dictionary, routes: Dictionary, cells: Dictionary, solid
 			var found := Navigation.at(level, routes, {}, {"height": height, "surface_id": surface}, point.x, point.y, slot, BODY, false, cells)
 			if not found.is_empty() and str(found.surface_id) == surface and not _blocked(solids, found): return
 	_check(false, "%s: a hand control's footprint leaves no floor to stand on inside it for %s" % [where, slot])
+
+## A bell goal's two pads (presentation/kit/pieces/goal.gd), one per pip: each
+## lies wholly inside the goal's radius, so a pip on it is at the goal, and its
+## centre is floor that pip stands on, on the goal's floor, clear of every
+## solid footprint. Returns how many pads it checked.
+func _check_goal_pads(level: Dictionary, routes: Dictionary, cells: Dictionary, solids: Array, stage: Dictionary, where: String) -> int:
+	var goal: Variant = stage.get("goal")
+	if not goal is Dictionary or not goal.has("surface_id") or str(stage.get("goal_policy", {}).get("kind", "")) != "ring": return 0
+	var radius := float(goal.radius_cm)
+	var surface := str(goal.surface_id)
+	var height := int(goal.get("height_cm", _floor_height(level, surface)))
+	for slot: String in GoalPiece.PAD_SLOTS:
+		var offset := GoalPiece.pad_offset(slot, radius)
+		_check(offset.length() + GoalPiece.pad_radius(radius) <= radius, "%s: %s's goal pad lies inside the goal" % [where, slot])
+		var centre := Vector2i(int(goal.position_cm[0]) + roundi(offset.x), int(goal.position_cm[1]) + roundi(offset.z))
+		var found := Navigation.at(level, routes, {}, {"height": height, "surface_id": surface}, centre.x, centre.y, slot, BODY, false, cells)
+		_check(not found.is_empty() and str(found.surface_id) == surface and not _blocked(solids, found), "%s: %s's goal pad stands on floor that pip stands on" % [where, slot])
+	return GoalPiece.PAD_SLOTS.size()
 
 func _stand_spots(level: Dictionary, stage: Dictionary) -> Array:
 	var spots: Array = []

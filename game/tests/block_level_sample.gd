@@ -16,7 +16,7 @@ static func source() -> Dictionary:
 			{"id": "back-gate", "rect_cm": [400, -176, 600, -112], "from_surface": "near", "to_surface": "far", "height_cm": 0, "owner_slot": ""}],
 		"stages": [{"id": "the-yard", "version": 1, "title": "The Yard", "first_player_slot": "p0", "kind": "route_endpoint", "ball_pads": [],
 			"blocks": [
-				{"block": "hold_door", "pad": {"id": "step", "at": [200, 0], "surface": "near", "owner": "p0", "style": "stand_spot"}, "routes": ["crossing"]},
+				{"block": "hold_door", "pad": {"id": "step", "at": [200, 0], "surface": "near", "owner": "p0", "style": "crank_board"}, "routes": ["crossing"]},
 				{"block": "selector_gate", "selector": {"id": "sluice", "at": [300, 150], "surface": "near", "owner": "p0", "values": ["low", "high"], "initial": "low", "style": "valve", "water": true}, "routes": {"ford": "high"}},
 				{"block": "relay_lever", "lever": {"id": "gate-chain", "at": [300, -150], "surface": "near", "owner": "p0", "style": "winch"}, "routes": ["back-gate"]},
 				{"block": "ring_bell", "id": "bell", "at": [800, 0], "surface": "far", "owner": "p1", "style": "crest"}],

@@ -112,7 +112,7 @@ const SLOTS := {
 	# same in every style; only its look changes.
 	"lever": {"plain": {}, "brass": {}, "winch": {}, "bolt": {}, "lantern": {}},
 	"selector": {"plain": {}, "brass": {}, "valve": {}, "lamp_post": {}, "gate_arch": {}, "shutter": {}, "rope_wheel": {}},
-	"pad": {"plain": {}, "stand_spot": {}, "pan": {}, "board": {}, "crank_board": {}},
+	"pad": {"board": {}, "crank_board": {}, "pan": {}},
 	"goal": {"bell": {}, "harbour_lantern": {}, "crest": {}, "window": {}, "walled_window": {}},
 	"lift": {"plain": {}, "rope_tower": {}},
 	# The new pieces' looks (rules 16): a crossing's deck, a rope raft, a stair
@@ -147,7 +147,7 @@ const DEFAULT_PICKS := {
 	"lamp": "lantern", "tree": "orchard", "shrub": "flowering", "trim": "flowers", "scatter": "tufts",
 	"bank": "meadow", "fence": "hedge", "railing": "picket", "bench": "bench", "path": "stones",
 	"clutter": "crates", "landmark": "cottage", "wall_hanging": "shelf", "tag": "painted_tile", "barrier": "rope",
-	"lever": "plain", "selector": "plain", "pad": "plain", "goal": "bell", "lift": "plain", "deck": "plank", "raft": "logs", "ladder": "rope", "fog": "mist", "spillway": "trickle", "carried_item": "parcel", "current": "ripples", "pulley": "lantern_hook", "seabed": "sand", "item_spot": "none",
+	"lever": "plain", "selector": "plain", "pad": "board", "goal": "bell", "lift": "plain", "deck": "plank", "raft": "logs", "ladder": "rope", "fog": "mist", "spillway": "trickle", "carried_item": "parcel", "current": "ripples", "pulley": "lantern_hook", "seabed": "sand", "item_spot": "none",
 }
 
 ## Kinds drawn along "from" to "to" by themselves; any other kind given a line

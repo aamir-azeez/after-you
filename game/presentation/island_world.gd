@@ -1654,15 +1654,11 @@ func _clear_stage_marks() -> void:
 ## stands: the barriers, then what the world adds beside them
 ## (_build_barrier_extras), then the marks and the tags, which keep clear of
 ## all of it. `tag_view` is the plan the marks and tags read where it differs.
-## A stand spot pad already wears its owner's mark (kit/stand_spot.gd); a pad
-## either pip holds (open controls) has no owner to mark.
+## A pad either pip holds (open controls) has no owner to mark.
 func _build_stage_marks(view: Dictionary, tag_view: Dictionary = {}) -> void:
 	route_barriers.build(view)
 	_build_barrier_extras()
 	var tagged := view if tag_view.is_empty() else tag_view
-	for pad: Dictionary in tagged.get("pressure_pads", []):
-		var piece: Variant = pad_pieces.get(str(pad.id))
-		if piece != null and piece.spot != null and pad.has("owner_slot"): owner_marks.record(str(pad.get("owner_slot", "")), &"spot", str(pad.id), piece.spot.mark.position, piece.spot)
 	owner_marks.build(tagged)
 	pair_tags.prepare(tagged)
 
@@ -1904,8 +1900,25 @@ func _build_pads(pads: Array) -> void:
 
 ## A pad in its style (piece_styles.gd "pad", kit/pieces/pad.gd) in its pip's colour.
 func _build_pad(pad: Dictionary, at: Vector3) -> Variant:
-	var style := PieceStyles.style("pad", str(pad.id), ChapterIndex.data(_chapter_key()), dressing)
-	return PadKit.build(style, at, float(pad.radius_cm) / 100.0, terrain, {"owner": str(pad.get("owner_slot", "")), "id": str(pad.id)})
+	return PadKit.build(_piece_style("pad", str(pad.id)), at, float(pad.radius_cm) / 100.0, terrain, {"owner": str(pad.get("owner_slot", "")), "id": str(pad.id)})
+
+## A piece's style here (content/dressing/piece_styles.gd); a world with its
+## own descriptor pins asks with them.
+func _piece_style(slot: String, id: String) -> String:
+	return PieceStyles.style(slot, id, ChapterIndex.data(_chapter_key()), dressing)
+
+## A piece's style, for what reads it beside the world (control_feels.gd).
+func piece_style(slot: String, id: String) -> String:
+	return _piece_style(slot, id)
+
+## Each pad: {id, at (its floor point, terrain space, m), radius (m), held
+## (as shown)}, for the control haptics (control_feels.gd).
+func pad_spots() -> Array:
+	var spots: Array = []
+	for id: Variant in pad_pieces:
+		var piece: RefCounted = pad_pieces[id]
+		spots.append({"id": str(id), "at": piece.at, "radius": piece.radius, "held": piece.held()})
+	return spots
 
 ## A placed thing's spot on its floor (its walking height), in metres.
 func _at(value: Dictionary) -> Vector3:

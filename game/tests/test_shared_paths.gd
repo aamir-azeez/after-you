@@ -354,10 +354,9 @@ const PAIR_TAGS_OWNER := "res://presentation/island_world.gd"
 ## scripts that override them, with why: a mark drawn by hand (mark, record,
 ## keep_clear) or a world hook (_mark_stair, _marks_goal).
 const OWNER_MARK_OVERRIDES := {
-	"res://presentation/island_world.gd": "builds every stage's marks (build), records a stand spot's own mark (record), and holds the default hooks (_mark_stair, _marks_goal)",
+	"res://presentation/island_world.gd": "builds every stage's marks (build) and holds the default hooks (_mark_stair, _marks_goal)",
 	"res://presentation/lighthouse_world.gd": "a goal whose style wears a mark carries its owner's (_marks_goal)",
 	"res://presentation/wishing_well_world.gd": "the bucket's mark rides the bucket (mark); folding stairs and the rope ladder have their own feet (_mark_stair); the ladder top's mark steps east of a bell frame that hides it (_mark_stair); marks keep off the notch (keep_clear)",
-	"res://presentation/kit/stand_spot.gd": "the mark on a stand spot's disc (OwnerMark.spot)",
 }
 const PAIR_TAG_OVERRIDES := {
 	"res://presentation/tide_world.gd": "the tide wheel shows on the gauges and the second spirit's stubs on their mouth marks (skip); the sea key's tile stands on its sign (tag); gate tiles start at a stub's mouth and keep clear of the gauges and mouth marks (hooks)",
@@ -464,6 +463,7 @@ const NO_CONTACT_SHADOW := {
 	"res://presentation/kit/pieces/bridge.gd": "a crossing is ground itself",
 	"res://presentation/kit/pieces/current.gd": "chevrons and ripples drawn on the water",
 	"res://presentation/kit/pieces/lift.gd": "its deck is a floor that rides up and down",
+	"res://presentation/kit/pieces/pad.gd": "a goal's two pads stand on the goal's own disc, which casts its shadow",
 	"res://presentation/kit/pieces/raft.gd": "rides the water (the water's rings show it)",
 	"res://presentation/kit/pieces/rope_ladder.gd": "a stair is ground itself",
 }

@@ -46,6 +46,7 @@ func _run() -> void:
 	_check_valve(holder)
 	_check_selector_props(holder)
 	_check_goal_light(holder)
+	_check_goal_pads(holder)
 	_check_arrivals(holder)
 	holder.free()
 	print("PIECE STYLES: %d checks, %d failures" % [checks, failures])
@@ -93,10 +94,13 @@ func _check_every_style(holder: Node3D) -> void:
 	for style: String in Styles.SLOTS.pad:
 		var piece: RefCounted = Pad.build(style, AT, 0.32, holder, {"owner": "p0", "id": "step"})
 		_check(piece.style == style and piece.rim is MeshInstance3D and piece.moving_parts().has(piece.rim), "Pad %s keeps the rim its world lights" % style)
-		_check((piece.spot != null) == (style == "stand_spot"), "Only a stand spot pad keeps a stand spot")
 		var ring := piece.rim.mesh as TorusMesh
-		_check(is_equal_approx(ring.outer_radius, 0.32) if style == "stand_spot" else is_equal_approx(ring.outer_radius, 0.32 + 0.025), "Pad %s's rim is drawn at its radius" % style)
-	_check(Pad.build("stand_spot", AT, 0.36, holder, {"heavy": true}).style == "plain", "A ball pad is always plain")
+		_check(is_equal_approx(ring.outer_radius, 0.32 + 0.025) and piece.at == AT and is_equal_approx(piece.radius, 0.32), "Pad %s's rim is drawn at its radius" % style)
+	_check(Styles.DEFAULT_PICKS.pad == Pad.DEFAULT_STYLE and Pad.DEFAULT_STYLE == "board", "Every pad is the board that presses down unless a block names a crank board or a pan")
+	_check(Pad.build("pan", AT, 0.36, holder, {"heavy": true}).style == "board", "A ball pad is always a board")
+	# The board's top never sinks to the floor, even at the bottom of a press's
+	# dip, so a pad never vanishes under a pip (owner, 2026-11-21).
+	_check(Pad.BOARD_TOP - Pad.BOARD_SINK - Pad.DIP * 1.05 > 0.0, "A pressed board's top stays above the floor")
 	for style: String in Styles.SLOTS.goal:
 		var piece: RefCounted = Goal.build(style, AT, 0.28, holder)
 		_check(piece.style == style and piece.bell is MeshInstance3D and piece.ring is MeshInstance3D and piece.light.get_parent() == holder and piece.root.is_ancestor_of(piece.bell), "Goal %s keeps its bell, ring and light" % style)
@@ -108,7 +112,7 @@ func _check_every_style(holder: Node3D) -> void:
 		piece.set_height(0.8)
 		_check(is_equal_approx(piece.root.position.y, 0.8), "Lift %s's deck stands at the shown height" % style)
 	_check(Lift.build("teapot", Rect2(0, 0, 1, 1), 0.0, 1.0, holder).style == "plain", "An unknown lift style builds plain")
-	_check(Lever.build("teapot", AT, holder).style == "plain" and Selector.build("teapot", AT, holder).style == "plain" and Pad.build("teapot", AT, 0.3, holder).style == "plain" and Goal.build("teapot", AT, 0.3, holder).style == "bell", "An unknown style builds the default")
+	_check(Lever.build("teapot", AT, holder).style == "plain" and Selector.build("teapot", AT, holder).style == "plain" and Pad.build("teapot", AT, 0.3, holder).style == "board" and Goal.build("teapot", AT, 0.3, holder).style == "bell", "An unknown style builds the default")
 	for style: String in Styles.SLOTS.pulley:
 		var post: RefCounted = Pulley.build(style, AT, holder)
 		_check(post.style == style and post.root.get_parent() == holder and post.root.position == AT and post.weight.get_parent() == post.root and is_equal_approx(post.weight.position.y, Pulley.REST_Y), "Pulley %s stands on its spot, its weight hung" % style)
@@ -308,14 +312,63 @@ func _check_arrivals(holder: Node3D) -> void:
 		still.set_held(true, true)
 		pad.set_held(true)
 		var dipped := 0.0
-		var rest: float = pad._dipping().position.y
+		var rest: float = pad._dish.position.y
 		while pad.moving():
 			pad.advance(1.0 / 60.0)
-			dipped = minf(dipped, pad._dipping().position.y - rest)
+			dipped = minf(dipped, pad._dish.position.y - rest)
 		_check(dipped < -0.5 * Pad.DIP and _pose(pad.root) == _pose(still.root), "A pressed %s pad dips (%.4f) and springs back to exactly its held place" % [style, dipped])
 		pad.set_held(false)
 		pad.set_held(true, true)
 		_check(not pad.moving(), "A %s pad held at once never dips" % style)
+
+## Every goal stands two pads, one per pip in its colour, wholly inside the
+## goal. One pip at the goal presses only its own pad and nothing rings; with
+## both there both press, and the goal lights and its bell rings once, as
+## the stage is done.
+func _check_goal_pads(holder: Node3D) -> void:
+	for style: String in Styles.SLOTS.goal:
+		var goal: RefCounted = Goal.build(style, Vector3.ZERO, 0.48, holder)
+		_check(goal.pads.size() == 2 and goal.moving_parts().has(goal.pads.p0.rim), "Goal %s stands two pads and keeps them moving" % style)
+		for slot: String in Goal.PAD_SLOTS:
+			var pad: RefCounted = goal.pads[slot]
+			_check(Vector2(pad.at.x, pad.at.z).length() + pad.radius <= 0.48 and (pad.rim.material_override as StandardMaterial3D).albedo_color == Parts.owner_color(slot), "Goal %s's %s pad lies inside the goal in its pip's colour" % [style, slot])
+			_check(pad.at.y + Pad.BOARD_TOP - Pad.BOARD_SINK - Pad.DIP * 1.05 > float(Goal.DISC_TOPS[style]), "Goal %s's %s pad, pressed, stays above the goal's disc" % [style, slot])
+	var goal: RefCounted = Goal.build("bell", Vector3.ZERO, 0.48, holder)
+	var on_pad := func(slot: String) -> Dictionary:
+		var at: Vector3 = goal.pads[slot].at * 100.0
+		return {"x": at.x, "z": at.z, "height": 0}
+	var away := {"x": 400, "z": 0, "height": 0}
+	var rang := 0
+	var one := {"players": {"p0": on_pad.call("p0"), "p1": away}, "objective_done": false, "complete": false}
+	var both := {"players": {"p0": on_pad.call("p0"), "p1": on_pad.call("p1")}, "objective_done": true, "complete": true}
+	for index in range(5):
+		var state: Dictionary = one if index < 2 else both
+		var was: bool = goal.chime.swing.get_meta("rung", false)
+		goal.set_lit(Goal.lit(state))
+		goal.present_pips(state.players)
+		if goal.chime.swing.get_meta("rung", false) and not was: rang += 1
+		if index < 2: _check(goal.pads.p0.held() and not goal.pads.p1.held() and not goal.chime.swing.get_meta("rung", false) and is_zero_approx(goal.light.light_energy), "One pip at the goal presses its own pad and nothing rings")
+	_check(goal.pads.p0.held() and goal.pads.p1.held() and rang == 1, "Both pips at the goal press both pads and the bell rings once (%d)" % rang)
+	_check(not Goal.lit({"objective_done": true, "complete": false}), "Both there before the stage is done: the goal waits to light")
+	# What else the goal waits for: a token per need, dim until it is met.
+	var needy: RefCounted = Goal.build("bell", Vector3.ZERO, 0.48, holder)
+	needy.add_needs({"goal_policy": {"kind": "ring", "when": {"all": [{"item_id": "pipsport", "carried": true}, {"lever_id": "lamp"}]}}}, func(_id: String) -> String: return "pipsport")
+	_check(needy.needs.needs.size() == 2 and Goal.GoalNeeds.icon({"item_id": "x"}) == "item" and Goal.GoalNeeds.icon({"lever_id": "x"}) == "lamp" and Goal.GoalNeeds.icon({"teapot": 1}) == Goal.GoalNeeds.DEFAULT_ICON, "A goal stands a token per need, each kind with its icon and a new kind with the default")
+	var waiting := {"players": {}, "mechanisms": {"items": {"pipsport": {"holder": "", "spot": "post"}}, "levers": {"lamp": false}, "controls": {}}}
+	needy.needs.present(waiting)
+	var dim: bool = needy.needs.needs.all(func(need: Dictionary) -> bool: return not (need.disc.material_override as StandardMaterial3D).emission_enabled)
+	_check(dim and not needy.needs.all_met(), "An unmet need's token stands dim")
+	var met := {"players": {}, "mechanisms": {"items": {"pipsport": {"holder": "p1", "spot": ""}}, "levers": {"lamp": true}, "controls": {}}}
+	needy.needs.present(met)
+	var bright: bool = needy.needs.needs.all(func(need: Dictionary) -> bool: return (need.disc.material_override as StandardMaterial3D).emission_enabled)
+	_check(bright and needy.needs.all_met() and needy.moving_parts().has(needy.needs.needs[0].disc), "Meeting a need lights its token")
+	var finished := {"players": {"p0": on_pad.call("p0"), "p1": on_pad.call("p1")}, "objective_done": true, "complete": true}
+	needy.present_pips(finished.players)
+	needy.set_lit(Goal.lit(finished))
+	_check(needy.pads.p0.held() and needy.pads.p1.held() and needy.needs.all_met() and needy.light.light_energy > 0.0, "Both pads pressed and every need lit: the goal lights as the stage is done")
+	var on_other := {"players": {"p0": on_pad.call("p1"), "p1": away}}
+	goal.present_pips(on_other.players, true)
+	_check(not goal.pads.p0.held() and not goal.pads.p1.held(), "A pip on its friend's pad presses neither")
 
 func _pose(node: Node3D) -> Array:
 	var pose: Array = []

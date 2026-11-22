@@ -108,9 +108,6 @@ func _check_pieces(holder: Node3D) -> void:
 	for style: String in ["parcel", "pipsport"]: built.append(["item " + style, CarriedItem.build(style, AT, holder, {"id": style})])
 	for entry: Array in built:
 		var piece: RefCounted = entry[1]
-		if entry[0] == "pad stand_spot":
-			_check(not piece.root.is_in_group(ContactShadows.GROUP), "A stand spot is a mark on the floor: no shadow")
-			continue
 		_check(piece.root.is_in_group(ContactShadows.GROUP), "The %s is marked for a contact shadow" % entry[0])
 		var kept := {}
 		for part: Node3D in piece.moving_parts():

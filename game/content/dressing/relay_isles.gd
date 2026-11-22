@@ -9,7 +9,6 @@ extends RefCounted
 const DATA := {
 	"theme": "garden",
 	"ground": {"west": "grass", "relay": "timber", "east": "grass"},
-	"pad": "stand_spot",
 	"edged": {"west": ["back", "left", "front"], "relay": ["back", "front"], "east": ["front", "right"]},
 	"props": {"*": [
 		# West shore: a bench, a lamp and two trees on the back bank, tufts
