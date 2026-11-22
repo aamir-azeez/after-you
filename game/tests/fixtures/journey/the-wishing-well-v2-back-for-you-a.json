@@ -1,0 +1,27 @@
+{
+	"catch_assistance": true,
+	"checkpoint_hash": "22ab5093ce6ba0de01ed324fb9c010afc1c86e491142c97eee1ad8bfed197517",
+	"completed": false,
+	"definition_hash": "f100cedde0f65539106040ebf52a2c498815c53a6828bb56a1ff57ace73063ac",
+	"duration_ticks": 43,
+	"final_state_hash": "fc99a1b6b15d3e6f570ab148bd7fb3829303fa487a30114c6cab6c781f087ea2",
+	"handoff_hash": "38a9b5de761b24a58a1d6b7990bb9e8ba0b6044260e33e32ae6c615cc71812e3",
+	"handoff_tick": 0,
+	"level_id": "the-wishing-well",
+	"level_version": 2,
+	"outcome": {
+		"objective_complete": false,
+		"source_ready": true
+	},
+	"packed": "AQ4GZAACMgAQAGQEZAAMAGQCADICAAADAAAGnAACzgAIAJwCAAADAAAUAADOmSCqMpp0NA==",
+	"player_slot": "p0",
+	"recording_hash": "b059f3ac0f81a823a2c1e54db9c04b8fe90d3112d985bc4296fb42230bc85946",
+	"role": "a",
+	"schema_version": 7,
+	"simulation_version": 20,
+	"source_recording_hash": "",
+	"stage_id": "back-for-you",
+	"stage_version": 1,
+	"start_hash": "38a9b5de761b24a58a1d6b7990bb9e8ba0b6044260e33e32ae6c615cc71812e3",
+	"tick_rate": 30
+}

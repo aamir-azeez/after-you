@@ -433,6 +433,7 @@ store_loading_feedback 2
 string_line_breaks 1
 subclass_statics 2
 subscription_access 3
+swing_piece 2
 tap_reliability 1
 tester_access 2
 tester_access_integration 1

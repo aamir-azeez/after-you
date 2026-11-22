@@ -798,6 +798,12 @@ func _controls_rule() -> void:
 	var landing: Dictionary = bodies.filter(func(body: Dictionary) -> bool: return body.id == "landing")[0]
 	_check(PropRules.bodies_touch(nest, landing) and not PropRules.bodies_touch(nest.merged({"radius": 0.3}, true), landing.merged({"radius": 0.2}, true)), "A nest inside a landing's ticks draws into it, though their reaches stand apart")
 	_check(bodies.size() == 3 and PropRules.drawn_radius(crowded, {"kind": "pressure_pads", "id": "c", "radius_cm": 32}, styles, {}) > 0.36, "Throw marks and item spots are pieces too, and a crank board is drawn wider than its reach")
+	# A throw mark wholly inside a pad is the pad's (LevelLayout.mark_pad):
+	# one piece, no ring of its own; one reaching past the pad's edge is drawn.
+	var on_pad := crowded.merged({"pressure_pads": [{"id": "pad", "surface_id": "f", "position_cm": [-290, 10], "radius_cm": 48}]}, true)
+	var past := on_pad.merged({"pressure_pads": [{"id": "pad", "surface_id": "f", "position_cm": [-280, 20], "radius_cm": 48}]}, true)
+	var marked := func(view: Dictionary) -> bool: return PropRules.control_bodies(view, Callable(), styles).any(func(body: Dictionary) -> bool: return body.at == Vector2(-3, 0))
+	_check(not marked.call(on_pad) and marked.call(past) and PropRules.control_bodies(on_pad, Callable(), styles).size() == 3, "A throw mark wholly inside a pad is drawn by the pad, one reaching past it by its own ring")
 
 ## The prop rule on small cases, so it can fail at all.
 func _share_rule() -> void:

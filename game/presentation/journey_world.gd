@@ -9,6 +9,7 @@ const CarriedItems = preload("res://core/physical/carried_items.gd")
 const CarriedItemKit = preload("res://presentation/kit/pieces/carried_item.gd")
 const CurrentKit = preload("res://presentation/kit/pieces/current.gd")
 const ItemParts = preload("res://presentation/kit/pieces/parts.gd")
+const Solid = preload("res://core/solid_footprint.gd")
 ## The soft honey dashes round a crossing a wait hint names.
 const HINT_DASH := Color("f2d39b")
 ## A selector's bubble body stands as if its tail ended here, just over the
@@ -533,7 +534,8 @@ func present_history(checkpoint: Dictionary) -> void:
 	for route: Dictionary in chapter_definition.bridges:
 		if route.id not in _latched_bridge_ids: continue
 		var r: Array = route.rect_cm
-		var at := point([r[0]+12,r[3]-12])+Vector3(0,0.02,0)
+		# On the crossing at its own height (a raised one's floor stands up there).
+		var at := point([r[0]+12,r[3]-12])+Vector3(0,float(route.get("height_cm",0))/100.0+0.02,0)
 		box(Vector3(0.20,0.035,0.14),CREAM,at,_remembered)
 		box(Vector3(0.04,0.035,0.20),GOLD,at+Vector3(0,0.02,0),_remembered)
 
@@ -792,11 +794,14 @@ func _build_items(stage: Dictionary) -> void:
 		if hands.has(str(route.id)) and not rope:
 			_ladder_rungs(route)
 			await _build_step()
-	# A throw's mark is a cream ring where the thrower stands; its landing the
-	# seed landing's ring of ticks the landing spot's size (kit/pieces/socket.gd).
+	# A throw's mark is a cream ring where the thrower stands, unless it lies
+	# wholly inside a pad, which is then the throw spot and draws it
+	# (LevelLayout.mark_pad); its landing the seed landing's ring of ticks the
+	# landing spot's size (kit/pieces/socket.gd).
 	for thrown: Dictionary in view.get("throws", []):
-		var mark := ring(float(thrown.mark.get("radius_cm", CarriedItems.SPOT_RADIUS_CM)) / 100.0, CREAM, _at(thrown.mark) + Vector3(0, 0.03, 0), terrain)
-		mark.name = "ThrowMark_" + str(thrown.id)
+		if LevelLayout.mark_pad(view, thrown.mark).is_empty():
+			var mark := ring(float(thrown.mark.get("radius_cm", CarriedItems.SPOT_RADIUS_CM)) / 100.0, CREAM, _at(thrown.mark) + Vector3(0, 0.03, 0), terrain)
+			mark.name = "ThrowMark_" + str(thrown.id)
 		var landing := Node3D.new()
 		landing.name = "ThrowLanding_" + str(thrown.id)
 		var target: Dictionary = CarriedItems.spot(view, str(thrown.to))
@@ -900,6 +905,8 @@ func _present_items(state: Dictionary, immediate: bool = false) -> void:
 				else: piece.holder.play_carry_release()
 			piece.rest(_item_point(item_state), terrain, str(item_state.surface_id).is_empty() and not flying, flying, immediate)
 			if new_pieces != null and not new_pieces.ride(str(item_state.surface_id)).is_empty(): _item_decks[id] = [_item_point(item_state), str(item_state.surface_id)]
+		# Resting in a solid spot (a winch, a nest) it sits fitted; anywhere else as it lies.
+		piece.fit(holder.is_empty() and Solid.solids(chapter_definition.get("item_spots", [])).any(func(spot: Dictionary) -> bool: return str(spot.id) == str(item_state.spot)))
 	_ride_items()
 	if _current_piece != null: _current_piece.set_controls(state.get("controls", {}))
 

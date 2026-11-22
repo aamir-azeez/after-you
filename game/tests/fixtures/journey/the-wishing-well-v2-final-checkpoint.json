@@ -1,0 +1,336 @@
+{
+	"checkpoint_hash": "c9dc8b3a7f2b47878783ad491e965ba96b8d0a2a51873e88b7e24f0cc7dba936",
+	"completed_stage_id": "back-for-you",
+	"definition_hash": "f100cedde0f65539106040ebf52a2c498815c53a6828bb56a1ff57ace73063ac",
+	"level_id": "the-wishing-well",
+	"level_version": 2,
+	"mechanisms": {
+		"controls": {},
+		"items": {
+			"handle": {
+				"height": 160,
+				"holder": "",
+				"spot": "winch",
+				"surface_id": "tower",
+				"x": 2140,
+				"z": -144
+			}
+		},
+		"latched_bridges": [],
+		"levers": {},
+		"props": {}
+	},
+	"next_first_slot": "p1",
+	"next_stage_id": "",
+	"players": {
+		"p0": {
+			"height": 160,
+			"surface_id": "tower",
+			"x": 1600,
+			"z": 16
+		},
+		"p1": {
+			"height": 160,
+			"surface_id": "tower",
+			"x": 1616,
+			"z": -6
+		}
+	},
+	"previous_checkpoint_hash": "22ab5093ce6ba0de01ed324fb9c010afc1c86e491142c97eee1ad8bfed197517",
+	"proof": {
+		"checkpoint": {
+			"checkpoint_hash": "22ab5093ce6ba0de01ed324fb9c010afc1c86e491142c97eee1ad8bfed197517",
+			"completed_stage_id": "go-on-ahead",
+			"definition_hash": "f100cedde0f65539106040ebf52a2c498815c53a6828bb56a1ff57ace73063ac",
+			"level_id": "the-wishing-well",
+			"level_version": 2.0,
+			"mechanisms": {
+				"controls": {},
+				"items": {
+					"handle": {
+						"height": 0.0,
+						"holder": "",
+						"spot": "well-bottom",
+						"surface_id": "well-floor",
+						"x": 1180.0,
+						"z": 28.0
+					}
+				},
+				"latched_bridges": [],
+				"levers": {},
+				"props": {}
+			},
+			"next_first_slot": "p0",
+			"next_stage_id": "back-for-you",
+			"players": {
+				"p0": {
+					"height": 160.0,
+					"surface_id": "cliff",
+					"x": 1132.0,
+					"z": -96.0
+				},
+				"p1": {
+					"height": 160.0,
+					"surface_id": "cliff",
+					"x": 1144.0,
+					"z": -96.0
+				}
+			},
+			"previous_checkpoint_hash": "38f1bf7f39895dd638f00cf7e2ff0efabe1875dbfb93da8984c314882f16bd4f",
+			"proof": {
+				"checkpoint": {
+					"a_recording_hash": "",
+					"b_recording_hash": "",
+					"checkpoint_hash": "38f1bf7f39895dd638f00cf7e2ff0efabe1875dbfb93da8984c314882f16bd4f",
+					"completed_stage_id": "",
+					"definition_hash": "f100cedde0f65539106040ebf52a2c498815c53a6828bb56a1ff57ace73063ac",
+					"level_id": "the-wishing-well",
+					"level_version": 2.0,
+					"mechanisms": {
+						"controls": {},
+						"items": {
+							"handle": {
+								"height": 0.0,
+								"holder": "",
+								"spot": "well-bottom",
+								"surface_id": "well-floor",
+								"x": 1180.0,
+								"z": 28.0
+							}
+						},
+						"latched_bridges": [],
+						"levers": {},
+						"props": {}
+					},
+					"next_stage_id": "go-on-ahead",
+					"players": {
+						"p0": {
+							"height": 0.0,
+							"surface_id": "garden",
+							"x": -496.0,
+							"z": 200.0
+						},
+						"p1": {
+							"height": 0.0,
+							"surface_id": "garden",
+							"x": -448.0,
+							"z": 232.0
+						}
+					},
+					"previous_checkpoint_hash": "",
+					"proof": {},
+					"schema_version": 7.0,
+					"stage_index": 0.0
+				},
+				"turns": [
+					{
+						"catch_assistance": true,
+						"checkpoint_hash": "38f1bf7f39895dd638f00cf7e2ff0efabe1875dbfb93da8984c314882f16bd4f",
+						"completed": false,
+						"definition_hash": "f100cedde0f65539106040ebf52a2c498815c53a6828bb56a1ff57ace73063ac",
+						"duration_ticks": 35.0,
+						"final_state_hash": "7c92c0c95e192629d9917ce55baa6b4a04e650062df41d464eb5d1078f3a7afd",
+						"handoff_hash": "81a16ab1c06d3c4320dd264511cc2fa77990857ecbaad653e04fa4aa47b0c981",
+						"handoff_tick": 0.0,
+						"level_id": "the-wishing-well",
+						"level_version": 2.0,
+						"outcome": {
+							"objective_complete": false,
+							"source_ready": true
+						},
+						"packed": "AQMcZAACAJwoAABumTXtNp2v8w==",
+						"player_slot": "p0",
+						"recording_hash": "00512712ea14c65a545d317c7fa6745b857bb976ba076507842ab0701ea94af9",
+						"role": "a",
+						"schema_version": 7.0,
+						"simulation_version": 20.0,
+						"source_recording_hash": "",
+						"stage_id": "go-on-ahead",
+						"stage_version": 1.0,
+						"start_hash": "81a16ab1c06d3c4320dd264511cc2fa77990857ecbaad653e04fa4aa47b0c981",
+						"tick_rate": 30.0
+					},
+					{
+						"catch_assistance": true,
+						"checkpoint_hash": "38f1bf7f39895dd638f00cf7e2ff0efabe1875dbfb93da8984c314882f16bd4f",
+						"completed": false,
+						"definition_hash": "f100cedde0f65539106040ebf52a2c498815c53a6828bb56a1ff57ace73063ac",
+						"duration_ticks": 494.0,
+						"final_state_hash": "ed2a053119b3f03f5fa4cca7b5419a4b0b0650c28886a400996abcf893f4634b",
+						"handoff_hash": "1d9794ec9a957a37fb3e6616262545713f4bd1da7b580a8c2cf244471e123cd0",
+						"handoff_tick": 0.0,
+						"level_id": "the-wishing-well",
+						"level_version": 2.0,
+						"outcome": {
+							"objective_complete": false,
+							"source_ready": true
+						},
+						"packed": "AQsMnAAUAABEAJyuAWQABACcAgDOuAMAAPABZAAGAGQCADIUAADNGUCu1GykYTDT4iXDs+SF2XTFQt5hUw0fS8QTRM6oj/9Yp3o5G/hr0KbrwsiVHN4UGBznU7N3WbJwisNXjuosQcSEvhfRw3Z3hZchsHnIrihfZRk9JMlCWSqo63h4D6BXXXP4qUS5q0n/8/nAi8boXBSt+uYdAAZvweIxTUrjsJiSKpZw+s6VXVSTU0Psa7snVjji0hBPQaP9VYQS2IP4DJxaRMOUX4XuxOyGKa/P2bQSNbwpeKstOXxTXqRjIu1rJ2abYHgLqw==",
+						"player_slot": "p1",
+						"recording_hash": "1a76eae2af56d02465221922f555eaf4dfa321c933b2abcf57153ffa26359bc3",
+						"role": "b",
+						"schema_version": 7.0,
+						"simulation_version": 20.0,
+						"source_recording_hash": "00512712ea14c65a545d317c7fa6745b857bb976ba076507842ab0701ea94af9",
+						"stage_id": "go-on-ahead",
+						"stage_version": 1.0,
+						"start_hash": "81a16ab1c06d3c4320dd264511cc2fa77990857ecbaad653e04fa4aa47b0c981",
+						"tick_rate": 30.0
+					},
+					{
+						"catch_assistance": true,
+						"checkpoint_hash": "38f1bf7f39895dd638f00cf7e2ff0efabe1875dbfb93da8984c314882f16bd4f",
+						"completed": false,
+						"definition_hash": "f100cedde0f65539106040ebf52a2c498815c53a6828bb56a1ff57ace73063ac",
+						"duration_ticks": 634.0,
+						"final_state_hash": "ba98811ba0d8f73d7e4f01e1ef84cca7ab2d58776852b948a036f135e0ac486f",
+						"handoff_hash": "d5d6bbd89a45aa7c061c3ded0821b0c5a059feac1bdf1766788c31df82346f9f",
+						"handoff_tick": 35.0,
+						"level_id": "the-wishing-well",
+						"level_version": 2.0,
+						"outcome": {
+							"objective_complete": false,
+							"source_ready": true
+						},
+						"packed": "ARJ4ZAACMgAGAGQCADLcAQAAZGQADACcAgDndmQAAjIA7gIAnBRkAAIyAAgAnAIAzoQCAAAYZAACMgBlK6Ac07vWOSqo5mM06i/OTv49yrY7dHVANmyQmzBaK5bLHdL1U45g7vRfpgaZBpUxl/2UOSOXWRkXgnBlVQSEOwdWYXYee4hNETSh8wSyCRryvWWEGLNXcvdlXxa+7FCpXx7dKcTAhTzmRgd1B2/2lOh5Tik1wlqgF6awYX5Datbcr8HhfcEGljeKlOayj3HsZ8k98vSZmwaY7LSXTeiS1e+l9bagAwa5Xr8urcZegEe9+PhwWHxODSXb2qx4QX2k9OfMQQrBeFKk61rLibFq+y1F+K1eVuQft3rba4jDi3GsX8R20BIzs+PbB3Pr5nD1LZ1GuGwDp/xbJnDnA+kGzY7388DMQGU=",
+						"player_slot": "p0",
+						"recording_hash": "844918f166bd4a7e220afbb4e6a09df8275aacc0fd2387c244a2a12d76a52b29",
+						"role": "b",
+						"schema_version": 7.0,
+						"simulation_version": 20.0,
+						"source_recording_hash": "1a76eae2af56d02465221922f555eaf4dfa321c933b2abcf57153ffa26359bc3",
+						"stage_id": "go-on-ahead",
+						"stage_version": 1.0,
+						"start_hash": "1d9794ec9a957a37fb3e6616262545713f4bd1da7b580a8c2cf244471e123cd0",
+						"tick_rate": 30.0
+					},
+					{
+						"catch_assistance": true,
+						"checkpoint_hash": "38f1bf7f39895dd638f00cf7e2ff0efabe1875dbfb93da8984c314882f16bd4f",
+						"completed": true,
+						"definition_hash": "f100cedde0f65539106040ebf52a2c498815c53a6828bb56a1ff57ace73063ac",
+						"duration_ticks": 171.0,
+						"final_state_hash": "775b4c6785ccc65bb67322e6cea9a17d7be4a5762121575ab07c01d08e74c344",
+						"handoff_hash": "",
+						"handoff_tick": 459.0,
+						"level_id": "the-wishing-well",
+						"level_version": 2.0,
+						"outcome": {
+							"objective_complete": true,
+							"source_ready": true
+						},
+						"packed": "AQkEZAACMgAMAGSMAWQAAjIAKACccpwADABkEAAAbOIDpQd6V+7CqtQbv7EJXjBvrkM0VC9BOCpDaNTtFnxkJTi7jTD08tJYwQIDr1qjo1Dfe1Q5KzS3gM4LeKkbOQ==",
+						"player_slot": "p1",
+						"recording_hash": "00ed11012eed60edf301651868bfd00d8ad723a2505363a80132e5c047e7465d",
+						"role": "b",
+						"schema_version": 7.0,
+						"simulation_version": 20.0,
+						"source_recording_hash": "844918f166bd4a7e220afbb4e6a09df8275aacc0fd2387c244a2a12d76a52b29",
+						"stage_id": "go-on-ahead",
+						"stage_version": 1.0,
+						"start_hash": "d5d6bbd89a45aa7c061c3ded0821b0c5a059feac1bdf1766788c31df82346f9f",
+						"tick_rate": 30.0
+					}
+				]
+			},
+			"schema_version": 9.0,
+			"stage_index": 1.0,
+			"turn_hashes": [
+				"00512712ea14c65a545d317c7fa6745b857bb976ba076507842ab0701ea94af9",
+				"1a76eae2af56d02465221922f555eaf4dfa321c933b2abcf57153ffa26359bc3",
+				"844918f166bd4a7e220afbb4e6a09df8275aacc0fd2387c244a2a12d76a52b29",
+				"00ed11012eed60edf301651868bfd00d8ad723a2505363a80132e5c047e7465d"
+			]
+		},
+		"turns": [
+			{
+				"catch_assistance": true,
+				"checkpoint_hash": "22ab5093ce6ba0de01ed324fb9c010afc1c86e491142c97eee1ad8bfed197517",
+				"completed": false,
+				"definition_hash": "f100cedde0f65539106040ebf52a2c498815c53a6828bb56a1ff57ace73063ac",
+				"duration_ticks": 43.0,
+				"final_state_hash": "fc99a1b6b15d3e6f570ab148bd7fb3829303fa487a30114c6cab6c781f087ea2",
+				"handoff_hash": "38a9b5de761b24a58a1d6b7990bb9e8ba0b6044260e33e32ae6c615cc71812e3",
+				"handoff_tick": 0.0,
+				"level_id": "the-wishing-well",
+				"level_version": 2.0,
+				"outcome": {
+					"objective_complete": false,
+					"source_ready": true
+				},
+				"packed": "AQ4GZAACMgAQAGQEZAAMAGQCADICAAADAAAGnAACzgAIAJwCAAADAAAUAADOmSCqMpp0NA==",
+				"player_slot": "p0",
+				"recording_hash": "b059f3ac0f81a823a2c1e54db9c04b8fe90d3112d985bc4296fb42230bc85946",
+				"role": "a",
+				"schema_version": 7.0,
+				"simulation_version": 20.0,
+				"source_recording_hash": "",
+				"stage_id": "back-for-you",
+				"stage_version": 1.0,
+				"start_hash": "38a9b5de761b24a58a1d6b7990bb9e8ba0b6044260e33e32ae6c615cc71812e3",
+				"tick_rate": 30.0
+			},
+			{
+				"catch_assistance": true,
+				"checkpoint_hash": "22ab5093ce6ba0de01ed324fb9c010afc1c86e491142c97eee1ad8bfed197517",
+				"completed": false,
+				"definition_hash": "f100cedde0f65539106040ebf52a2c498815c53a6828bb56a1ff57ace73063ac",
+				"duration_ticks": 283.0,
+				"final_state_hash": "28dceab1189a1dae2e924a4a718cc92cde1eee1ae587b748ad4535edaba60ede",
+				"handoff_hash": "108bfea809a4485a93f8dd7252a3612666afd9ff60faa3395320cb6e9bd3f609",
+				"handoff_tick": 0.0,
+				"level_id": "the-wishing-well",
+				"level_version": 2.0,
+				"outcome": {
+					"objective_complete": false,
+					"source_ready": true
+				},
+				"packed": "ARIMAJxyZAAcAGQCABluZABaAAAYZAACMgAQAJwCALUCAAADAAAQAGQCAEuCAZwAAs4ACgBkAgBLpS8yJHoTd7Y1gORAizpuZ1ulKKxjTqeGfOp6SOlYQLi41OPrH4FCwkhhPNYX0AsNOxGo5md99lz2QGT+836xGZLa2HrWuucYB29UqHuli51mjQNvZAs18ybDW4eT8Zq6",
+				"player_slot": "p1",
+				"recording_hash": "7a5129f1fa47666c95231e7f03857e4c4faabf1bebda6eba693b59fb38e1e73a",
+				"role": "b",
+				"schema_version": 7.0,
+				"simulation_version": 20.0,
+				"source_recording_hash": "b059f3ac0f81a823a2c1e54db9c04b8fe90d3112d985bc4296fb42230bc85946",
+				"stage_id": "back-for-you",
+				"stage_version": 1.0,
+				"start_hash": "38a9b5de761b24a58a1d6b7990bb9e8ba0b6044260e33e32ae6c615cc71812e3",
+				"tick_rate": 30.0
+			},
+			{
+				"catch_assistance": true,
+				"checkpoint_hash": "22ab5093ce6ba0de01ed324fb9c010afc1c86e491142c97eee1ad8bfed197517",
+				"completed": true,
+				"definition_hash": "f100cedde0f65539106040ebf52a2c498815c53a6828bb56a1ff57ace73063ac",
+				"duration_ticks": 237.0,
+				"final_state_hash": "66b5e9532aa47806d9475ec7890dcd048d20c4c8f2d2750ef85488785083fca2",
+				"handoff_hash": "",
+				"handoff_tick": 43.0,
+				"level_id": "the-wishing-well",
+				"level_version": 2.0,
+				"outcome": {
+					"objective_complete": true,
+					"source_ready": true
+				},
+				"packed": "AQYIZAAGAGQCADKUA2QAAjIANAAA3N+9ARKB0tTegE0WQ8nFpS9QbnbAS26uHQLa8ynH4JqaVoUNw3p30BHyP/ELQQPfCMmvElxmid+8iz9HjN7Bk74bKmkhoxCjcBQY5VXZtmE=",
+				"player_slot": "p0",
+				"recording_hash": "2c4b68c0218342ef8a64d91e2f29c16f4570c8ca73615c425db8d6b435bb2fe8",
+				"role": "b",
+				"schema_version": 7.0,
+				"simulation_version": 20.0,
+				"source_recording_hash": "7a5129f1fa47666c95231e7f03857e4c4faabf1bebda6eba693b59fb38e1e73a",
+				"stage_id": "back-for-you",
+				"stage_version": 1.0,
+				"start_hash": "108bfea809a4485a93f8dd7252a3612666afd9ff60faa3395320cb6e9bd3f609",
+				"tick_rate": 30.0
+			}
+		]
+	},
+	"schema_version": 9,
+	"stage_index": 2,
+	"turn_hashes": [
+		"b059f3ac0f81a823a2c1e54db9c04b8fe90d3112d985bc4296fb42230bc85946",
+		"7a5129f1fa47666c95231e7f03857e4c4faabf1bebda6eba693b59fb38e1e73a",
+		"2c4b68c0218342ef8a64d91e2f29c16f4570c8ca73615c425db8d6b435bb2fe8"
+	]
+}

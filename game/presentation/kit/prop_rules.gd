@@ -296,7 +296,8 @@ static func _area(item: Dictionary) -> float:
 ## Controls and pieces drawn into each other (the level checker): every lever
 ## and selector stands CONTROL_TOP tall over its spot (kit/pieces/lever.gd's
 ## knob over its housing), every pad, plate, socket, goal, item spot, throw
-## mark and throw landing lies flat, each as wide as it is drawn on its floor:
+## mark and throw landing lies flat, each as wide as it is drawn on its floor
+## (a throw mark wholly inside a pad is the pad's, LevelLayout.mark_pad):
 ## its reach (radius_cm), or wider where its look is (a board's corners, a
 ## crank board's windlass, a bell's frame, a pedestal's cap, a landing's
 ## ticks: the kits' drawn_radius). A world adds what it builds beside a control
@@ -308,7 +309,7 @@ static func _area(item: Dictionary) -> float:
 const CONTROL_TOP := 0.6
 const TALL_CONTROLS := ["levers", "controls"]
 const FLAT_CONTROLS := ["pressure_pads", "ball_pads", "hold_pads", "plates", "plate", "sockets", "goal", "goals"]
-const PAD_KINDS := ["pressure_pads", "hold_pads", "plates", "plate"]
+const PAD_KINDS := LevelLayout.PAD_KINDS
 const PadKit = preload("res://presentation/kit/pieces/pad.gd")
 const GoalKit = preload("res://presentation/kit/pieces/goal.gd")
 const SocketKit = preload("res://presentation/kit/pieces/socket.gd")
@@ -343,7 +344,7 @@ static func drawn_radius(view: Dictionary, spot: Dictionary, styles: Callable, l
 	var id := str(spot.id)
 	var radius := float(spot.radius_cm) / 100.0
 	if kind in TALL_CONTROLS: return radius
-	if kind == "mark": return radius + SocketKit.RING_TUBE
+	if kind == "mark": return 0.0 if not LevelLayout.mark_pad(view, spot).is_empty() else radius + SocketKit.RING_TUBE
 	if kind == "item_spots":
 		var drawn := SocketKit.landing_radius(radius) if landings.has(id) else 0.0
 		if not styles.is_valid(): return drawn

@@ -13,8 +13,6 @@ import wellDefinition from "./the-wishing-well.json";
 import wellInitial from "./the-wishing-well-initial.json";
 import highV2Definition from "./high-and-low-v2.json";
 import highV2Initial from "./high-and-low-v2-initial.json";
-import wellV2Definition from "./the-wishing-well-v2.json";
-import wellV2Initial from "./the-wishing-well-v2-initial.json";
 import rollingV2Definition from "./rolling-home-v2.json";
 import rollingV2Initial from "./rolling-home-v2-initial.json";
 import houseV2Definition from "./a-house-for-two-v2.json";
@@ -25,7 +23,6 @@ export const ROLLING_HOME_HASH = "3362e8afd9fb3504868ab4b8b436050f62fe601e5c7ff8
 export const HOUSE_HASH = "f14fb0abf330fa46afdb61078a8e8e99cee4cc2ade845304508cc90b05d27995";
 export const WISHING_WELL_HASH = "14cfffbdd9b23cee06056548f29bbae7f1e95c348315ff3ff0098b7190ee5f3e";
 export const HIGH_AND_LOW_V2_HASH = "79593b0e7e0b2a8fb055643dafb74734e332d26c8814e33415e233d186e80a58";
-export const WISHING_WELL_V2_HASH = "f99b1dbf05ec73274773822eee85e2a7eb7f56b674a18201221f6396ff319dda";
 export const ROLLING_HOME_V2_HASH = "6d8c6e7f2cdf75cabc49b48d9e72451f7f7b12c1c3cb13f6d00e489ff34f51b8";
 export const HOUSE_V2_HASH = "f3df2ecdb01a9b02ce3a3dfd4f3ba649d061ff7cfbf1f184ee312d4ea4202270";
 
@@ -164,8 +161,6 @@ export const houseForTwo = adapter(houseDefinition, houseInitial, HOUSE_HASH);
 export const wishingWell = adapter(wellDefinition, wellInitial, WISHING_WELL_HASH);
 /** Open turns (18): High and Low@1 with a lever atop the stair and one in the garden, so both players end at each bell. Unreleased. */
 export const highAndLowV2 = adapter(highV2Definition, highV2Initial, HIGH_AND_LOW_V2_HASH);
-/** Open turns (18): the Wishing Well with both players at each bell, no owned crossing, and held steps at the garden gate and the rope ladder. Unreleased. */
-export const wishingWellV2 = adapter(wellV2Definition, wellV2Initial, WISHING_WELL_V2_HASH);
 /** Open turns with the shared ball (21): both players push the ball, a player holds each bridge for the other, and the last stage
  * ends with the ball in its cradle and both players home. Unreleased. */
 export const rollingHomeV2 = adapter(rollingV2Definition, rollingV2Initial, ROLLING_HOME_V2_HASH);

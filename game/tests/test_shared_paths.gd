@@ -372,7 +372,9 @@ const PAIR_TAGS_OWNER := "res://presentation/island_world.gd"
 const OWNER_MARK_OVERRIDES := {
 	"res://presentation/island_world.gd": "builds every stage's marks (build) and holds the default hooks (_mark_stair, _marks_goal)",
 	"res://presentation/lighthouse_world.gd": "a goal whose style wears a mark carries its owner's (_marks_goal)",
-	"res://presentation/wishing_well_world.gd": "the bucket's mark rides the bucket (mark); folding stairs and the rope ladder have their own feet (_mark_stair); the ladder top's mark steps east of a bell frame that hides it (_mark_stair); marks keep off the notch (keep_clear)",
+	"res://presentation/wishing_well_world.gd": "folding stairs and the rope ladder have their own feet, from the well's scenery (_mark_stair)",
+	"res://presentation/wishing_well_v2_world.gd": "folding stairs and the rope ladder have their own feet, from the well's scenery (_mark_stair)",
+	"res://presentation/wishing_well_scenery.gd": "the bucket's mark rides the bucket (mark); the ladder top's mark steps east of a bell frame that hides it (_mark_stair's feet); marks keep off the notch (keep_clear)",
 }
 const PAIR_TAG_OVERRIDES := {
 	"res://presentation/tide_world.gd": "the tide wheel shows on the gauges and the second spirit's stubs on their mouth marks (skip); the sea key's tile stands on its sign (tag); gate tiles start at a stub's mouth and keep clear of the gauges and mouth marks (hooks)",
@@ -426,7 +428,7 @@ const PIECE_BUILDERS := {
 	"res://presentation/cooperative_world.gd": "builds every pad, lever, selector and pulley post in the style its piece resolves to",
 	"res://presentation/island_world.gd": "builds every island world's pads from its family's layout in the style each resolves to (_build_pad), every goal in the style it resolves to (_build_goal), and its crossings as the bridge kit draws them (_build_crossings)",
 	"res://presentation/first_steps_world.gd": "builds its lift in the style it resolves to (lift)",
-	"res://presentation/kit/new_pieces.gd": "builds the new pieces' decks, moving platforms and rope ladders (rules 20) in the styles they resolve to, for cooperative_world",
+	"res://presentation/kit/new_pieces.gd": "builds the new pieces' decks, moving platforms, rope ladders and swings (rules 20) in the styles they resolve to, for cooperative_world",
 	"res://presentation/kit/prop_rules.gd": "builds nothing: reads how wide each pad and goal style is drawn (drawn_radius), so the level checker keeps pieces apart as drawn",
 }
 ## Scripts that read a descriptor's pins themselves, with why.
@@ -436,7 +438,8 @@ const PIN_READERS := {
 ## Worlds that extend a piece builder, with what they add, or why they still
 ## draw one piece themselves.
 const PIECE_OVERRIDES := {
-	"res://presentation/wishing_well_world.gd": "the well floor's pad is the bucket the well's winch lowers and raises on its rope (_build_physical_pad): it moves with the well's rig, so it stays with it; every other pad comes from the kit",
+	"res://presentation/wishing_well_world.gd": "the well floor's pad is the bucket the well's winch lowers and raises on its rope (_build_physical_pad, wishing_well_scenery.gd): it moves with the well's rig, so it stays with it; every other pad comes from the kit",
+	"res://presentation/wishing_well_v2_world.gd": "the well floor's pad is the bucket the well's winch lowers and raises on its rope (_build_physical_pad, wishing_well_scenery.gd), as @1's; every other pad comes from the kit",
 	"res://presentation/journey_world.gd": "a selector's value bubble over its lever (_build_selector)",
 	"res://presentation/tide_world.gd": "a valve's water sign (_build_selector) and every lever's on lamp (_build_lever)",
 	"res://presentation/long_way_home_world.gd": "the porch and garden pads' word labels and the cables to the greeting window (_build_physical_pad)",
@@ -470,7 +473,7 @@ const FLOOR_GROUNDS := {
 	"res://presentation/island_world.gd": "the floating grass shell (plain floors, Home's isles)",
 	"res://presentation/lighthouse_world.gd": "the Lighthouse family's plain stone floors",
 	"res://presentation/house_world.gd": "A House for Two's timber rooms",
-	"res://presentation/wishing_well_world.gd": "the Wishing Well's stone tiers",
+	"res://presentation/wishing_well_scenery.gd": "the Wishing Well's stone tiers",
 	"res://presentation/kit/props.gd": "a bank, which is ground itself",
 }
 const CONTACT_SHADOW_LAYER := "res://presentation/island_world.gd"

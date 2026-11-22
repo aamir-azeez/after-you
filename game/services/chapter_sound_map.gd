@@ -121,6 +121,10 @@ static func cues(chapter_key: String, state: Dictionary, seen: Dictionary = {}) 
 		elif event.begins_with("closing:"): cue = "crossing_closing"
 		elif event.begins_with("drowned:"): cue = "spirit_drowned"
 		elif event.begins_with("fell:"): cue = "well_plunk" if not str(chapter.get("water", "")).is_empty() else "spirit_fell_away"
+		# A swing (core/physical/swings.gd) creaks on its rope as it draws back
+		# (the winch's pawl, low) and swishes across its lane (a throw's swish).
+		elif event.begins_with("swing_creak:"): cue = "winch_unwound"
+		elif event.begins_with("swing:"): cue = "seed_thrown"
 		elif event == "relay_filled": cue = "garden_opened"
 		elif event == "garden_bloomed": cue = "island_bloomed"
 		elif journey and ITEM_THROWS.has(event.get_slice(":", 0)):
