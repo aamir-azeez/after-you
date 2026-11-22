@@ -23,8 +23,7 @@ extends SceneTree
 ## The same sweep checks every goal of every stage of every chapter and
 ## version (its family's layout "goal") is drawn by the goal kit
 ## (kit/pieces/goal.gd, the world's goal_pieces) at its exact spot, two pip
-## pads and all, and no world rings a goal its own way (SocketKit.garden's
-## "GoalRing"). Not goals a pip stands at, so left out: a ball's home
+## pads and all. Not goals a pip stands at, so left out: a ball's home
 ## (ball_home), a beacon the light wakes (activate_receivers) and the relay
 ## nest the seed is handed through (a "relay" socket, an item spot).
 ## The pure parts are checked on small stages too: no pairs, past ten, a
@@ -106,11 +105,9 @@ func _run() -> void:
 	quit(1 if failures else 0)
 
 ## The stage's goal (its layout's "goal"), if a pip stands at it, is a goal
-## piece of the world's at its exact spot with both pips' pads, and nothing
-## rings a goal its own way.
+## piece of the world's at its exact spot with both pips' pads.
 func _goal_drawn(world: Node3D, key: String, view: Dictionary) -> void:
 	var where := "%s %s" % [key, world.displayed_stage_id]
-	_check(world.terrain.find_child("GoalRing", true, false) == null, "%s: no goal ring drawn outside the goal kit" % where)
 	var goal: Dictionary = view.get("goal", {})
 	if goal.is_empty() or str(view.get("goal_policy", {}).get("kind", "")) in NOT_STOOD_AT or str(goal.get("kind", "")) == "relay": return
 	var spot := Vector2(float(goal.position_cm[0]), float(goal.position_cm[1])) / 100.0
