@@ -1,5 +1,5 @@
 extends RefCounted
-## A small witness level for rules 16's items riding platforms
+## A small witness level for rules 20's items riding platforms
 ## (core/physical/carried_items.gd lay, core/journey/simulation.gd
 ## _move_platforms). Never registered: tests/test_carried_items.gd plays it
 ## through the journey engine and its proof with this script as its catalog,

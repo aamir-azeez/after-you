@@ -1,5 +1,5 @@
 extends RefCounted
-## World kit: the marsh fog round fog lanterns (rules 16's fog_lantern block,
+## World kit: the marsh fog round fog lanterns (rules 20's fog_lantern block,
 ## a lever in the "lantern" style), in one of its styles (content/dressing/
 ## prop_styles.gd "fog", the dressing's pick; "none" builds nothing).
 ##

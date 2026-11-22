@@ -4,7 +4,7 @@ extends RefCounted
 ## with their heights, the crossings and whether this stage can open them,
 ## every control, which control works which gate (the pair tags' own letters
 ## and colours, kit/pair_tags.gd), who owns what, the goal and where the pips
-## start, and rules 16's item spots, items, current legs and both-hands
+## start, and rules 20's item spots, items, current legs and both-hands
 ## crossings (core/physical/carried_items.gd). map_plan_view.gd draws it;
 ## tests/test_level_tools.gd checks it.
 ## Coordinates stay the definition's centimetres (x across, z down the page).
@@ -47,7 +47,7 @@ static func build(level: Dictionary, view: Dictionary, checkpoint: Dictionary, j
 			if id in kept: state = "kept"
 			elif gated.has(id): state = "gated" if not PairTags.references(gated[id]).is_empty() else "open"
 			var item := {"id": id, "kind": kind.trim_suffix("s"), "rect": _rect(route.rect_cm), "state": state, "owner": str(route.get("owner_slot", "")), "reached": reach.is_empty() or reach.has(id), "hands": bool(route.get("hands", false))}
-			# Rules 16: a gate an item opens (a raft at its berth) is named at it.
+			# Rules 20: a gate an item opens (a raft at its berth) is named at it.
 			var terms := _item_terms(gated.get(id, {}).get("when", {}))
 			if not terms.is_empty():
 				if state == "open": item.state = "gated"
@@ -85,7 +85,7 @@ static func build(level: Dictionary, view: Dictionary, checkpoint: Dictionary, j
 		for route: Dictionary in pair.gates:
 			var asked: Array = pair.values.get(str(route.id), [])
 			routes[str(route.id)].get_or_add("unlettered", []).append(str(pair.control) + ("" if asked.is_empty() else " " + "/".join(asked)))
-	# The new pieces (rules 16), named by their crossings: a platform's stops,
+	# The new pieces (rules 20), named by their crossings: a platform's stops,
 	# the sinking stones, a pull-up ladder, and a crossing a control floods.
 	for platform: Dictionary in view.get("platforms", []):
 		for stop: Variant in platform.get("stops", []):
@@ -109,7 +109,7 @@ static func build(level: Dictionary, view: Dictionary, checkpoint: Dictionary, j
 	plan["bounds"] = bounds
 	return plan
 
-## Rules 16: the item spots (on the water when they have no floor), where
+## Rules 20: the item spots (on the water when they have no floor), where
 ## each item is as the stage starts, and each current leg with its wheel's value.
 static func _items(view: Dictionary, checkpoint: Dictionary, plan: Dictionary) -> void:
 	for spot: Dictionary in view.get("item_spots", []):

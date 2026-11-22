@@ -96,7 +96,7 @@ var _stage_built := false
 ## last snapshot position, so it sits only while still.
 var _seats: Array = []
 var _seat_last: Dictionary = {}
-## Rules 16's carried items and floats by id, and the stage's current
+## Rules 20's carried items and floats by id, and the stage's current
 ## (kit/pieces/carried_item.gd, current.gd); none on other rules.
 var _item_pieces: Dictionary = {}
 ## Item id -> [where it rests, the platform stop it rests on]: it rides that
@@ -835,7 +835,7 @@ func _present_light(state: Dictionary) -> void:
 	for id: String in _lamp_cables:
 		for cable: MeshInstance3D in _lamp_cables[id]: _glow(cable, LIGHT_COLOR if shining.has(id) else LIGHT_LINK, 0.7 if shining.has(id) else 0.0)
 
-# --- Rules 16: carried items, floats, currents and both-hands crossings ---
+# --- Rules 20: carried items, floats, currents and both-hands crossings ---
 
 ## Every item of the level in its style (a pin by id, else the dressing's
 ## "carried_item" pick; a float nobody carries is a raft unless pinned), every

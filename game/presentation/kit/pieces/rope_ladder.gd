@@ -1,5 +1,5 @@
 extends "res://presentation/kit/pieces/piece.gd"
-## World kit: a pull-up rope ladder (rules 16's rope_ladder block: a stair
+## World kit: a pull-up rope ladder (rules 20's rope_ladder block: a stair
 ## with "one_way": "up"), in one of its styles (content/dressing/
 ## prop_styles.gd "ladder"; piece_styles.gd picks which, by the stair's id).
 ##
@@ -7,7 +7,7 @@ extends "res://presentation/kit/pieces/piece.gd"
 ##       its foot up to two iron hooks on its head. While no pip is near its
 ##       foot it is pulled up: rolled into a bundle on the hooks at the head,
 ##       so a pip at the top sees it cannot come down that way.
-##   "wheel": the wheel ride (rules 16's wheel_ride): a big mill wheel beside
+##   "wheel": the wheel ride (rules 20's wheel_ride): a big mill wheel beside
 ##       the stair, its paddles the holds a pip rides up on. It turns while the
 ##       stair is open (set_turning) and stands still otherwise; it only ever
 ##       turns upward, so nobody rides it down.

@@ -29,7 +29,7 @@ extends RefCounted
 ##   "starts":   {slot: [x, z] or {position_cm, surface_id, height_cm}}
 ## A family keeps its other fields (drops, obstacles, access_zones, sockets,
 ## props, optics, a seed landing); spots() finds every placed thing in them.
-## A journey plan on rules 16 also carries the level's "items" and
+## A journey plan on rules 20 also carries the level's "items" and
 ## "item_spots" (kind "item_spots" in spots()), the stage's "item_starts" and
 ## "current_legs", and "hands" on a crossing that needs both hands
 ## (core/physical/carried_items.gd); the level graph and the map read them.

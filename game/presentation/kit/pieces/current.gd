@@ -1,5 +1,5 @@
 extends "res://presentation/kit/pieces/piece.gd"
-## World kit: a current's legs (rules 16, core/physical/carried_items.gd) in one
+## World kit: a current's legs (rules 20, core/physical/carried_items.gd) in one
 ## of its styles (content/dressing/prop_styles.gd "current"; piece_styles.gd
 ## picks which, a pin by the stage's first leg's control id first).
 ##

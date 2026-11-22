@@ -1,5 +1,5 @@
 extends SceneTree
-## Rules 16's looks in the journey world (presentation/journey_world.gd
+## Rules 20's looks in the journey world (presentation/journey_world.gd
 ## _build_items, _present_items) on the witness level (tests/carried_items_level.gd),
 ## from the real engine's snapshots:
 ## - each item in its style (a pin by id, the slot's default, a float as a raft),

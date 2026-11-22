@@ -58,7 +58,7 @@ func _prove(name: String, published: Dictionary, source: Dictionary, folder: Str
 	_check(Canonical.same(Blocks.expand(source), built) and Canonical.same(source, _copy(source)), "%s expands the same every time and leaves its source alone" % name)
 
 ## Every block is used by some rewrite in every family that plays it. The new
-## pieces' blocks (rules 16) have no published chapter yet: their witness
+## pieces' blocks (rules 20) have no published chapter yet: their witness
 ## levels (tests/pieces_witness.gd, tests/light_witness.gd) use each, and
 ## test_pieces and test_light_pieces play them; the swinging bucket is
 ## the-wishing-well@2's (tests/test_swing_piece.gd).

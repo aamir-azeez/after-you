@@ -114,7 +114,7 @@ func _small_plans() -> void:
 	spill.present({"west": 0.3, "east": 0.3}, true)
 	_check(sheet != null and not sheet.visible, "No water falls while both sides stand under the lip")
 	holder.free()
-	# The same spillway in the "falls" look (rules 16's waterfall): water
+	# The same spillway in the "falls" look (rules 20's waterfall): water
 	# pouring over the lip and landing in foam, and mist on the pool below,
 	# only while water falls.
 	var falls: WaterLocks = WaterLocks.new()

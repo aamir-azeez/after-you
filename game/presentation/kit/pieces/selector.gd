@@ -15,7 +15,7 @@ extends "res://presentation/kit/pieces/piece.gd"
 ##       of it, a lantern under its beam showing the value's colour.
 ##   "shutter": the plain lever with a shutter board in a frame beside it,
 ##       slid down for the value "down" and up for any other.
-##   "rope_wheel": a raft's rope wheel (rules 16's rope_raft block), the
+##   "rope_wheel": a raft's rope wheel (rules 20's rope_raft block), the
 ##       control itself: a spoked wheel on a timber post, facing the camera,
 ##       rope wound on its drum and a handle knob in the owner's colour on its
 ##       rim; it turns a half turn to each next value.

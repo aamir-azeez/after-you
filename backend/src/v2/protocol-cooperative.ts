@@ -2,7 +2,7 @@ import { checkRoutesAndLevers, openPhysicalRecording, physicalRecording, physica
 import { ApiError, HASH_PATTERN, canonicalJson, digest, integer, object } from "../protocol";
 import { boundedValue, exact, MAX_CHECKPOINT_BYTES } from "./protocol-relay";
 import { comfortRules, openControls, openTurns, sharedBall, type ChapterAdapter, type ChapterCheckpoint, type ChapterRecording } from "./chapter-types";
-import { openAccepted, openBallProblem, openCheckpointShape, openStageEnds, openTurnsProblem } from "./open-turns";
+import { OPEN_CHECKPOINT_KEYS, OPEN_CHECKPOINT_SCHEMA, openAccepted, openBallProblem, openStageEnds, openTurnsProblem } from "./open-turns";
 import highDefinition from "./high-and-low.json";
 import highInitial from "./high-and-low-initial.json";
 import rollingDefinition from "./rolling-home.json";
@@ -50,7 +50,7 @@ export function adapter(definition: Definition, initial: ChapterCheckpoint, defi
   // A definition declaring rules 9+ plays only those rules; published chapters keep 6/8.
   const pinned = definition.simulation_version >= 9 ? definition.simulation_version : 0;
   const supported: readonly number[] = pinned ? [pinned] : [6, 8];
-  // Open turns (14, open-turns.ts): a stage takes turns until both players stand at its goal; bounds and parser as every family's.
+  // Open turns (18 and 21, open-turns.ts): a stage takes turns until both players stand at its goal; bounds and parser as every family's.
   const opened = openTurns(definition.simulation_version) ? openPhysicalRecording(definition, key, 6, supported) : undefined;
   const recording = opened ? opened.recording : physicalRecording(definition, key, 6, supported);
   async function checkpoint(value: unknown, previous: ChapterCheckpoint, a: ChapterRecording, b: ChapterRecording, passes: readonly ChapterRecording[] = []): Promise<ChapterCheckpoint> {
@@ -120,14 +120,13 @@ export function adapter(definition: Definition, initial: ChapterCheckpoint, defi
   /** Open turns (open-turns.ts): the stage's turns by hash and a flat checkpoint, as the journey's. Both players end at the bell, and the
    * first turn's own part is not asked again. A route latches only where it was open at the end, so the routes are the earlier ones plus
    * any of this stage's gates; levers keep their values but this stage's. The turns are stored rows, so only header fields are read.
-   * The shared ball (17, openBallProblem): a ball home stage ends with its ball in the cradle and both players on the cradle's floor. */
+   * The shared ball (21, openBallProblem): a ball home stage ends with its ball in the cradle and both players on the cradle's floor. */
   async function openCheckpoint(value: unknown, previous: ChapterCheckpoint, all: readonly ChapterRecording[]): Promise<ChapterCheckpoint> {
     const { open, limits } = opened!;
     boundedValue(value, limits.checkpoint_bytes, limits.checkpoint_values);
-    const shape = openCheckpointShape(open);
-    const c = object(value); exact(c, shape.keys); catalog(c);
+    const c = object(value); exact(c, OPEN_CHECKPOINT_KEYS); catalog(c);
     const index = previous.stage_index + 1, stage = definition.stages[index - 1];
-    need(c.schema_version === shape.schema && c.stage_index === index && stage && c.completed_stage_id === stage.id && c.next_stage_id === (definition.stages[index]?.id ?? ""), "checkpoint_stage_mismatch");
+    need(c.schema_version === OPEN_CHECKPOINT_SCHEMA && c.stage_index === index && stage && c.completed_stage_id === stage.id && c.next_stage_id === (definition.stages[index]?.id ?? ""), "checkpoint_stage_mismatch");
     need(all.every(turn => turn.simulation_version === pinned) && all[0].role === "a" && all.slice(1).every(turn => turn.role === "b") &&
       all.every((turn, i) => openAccepted(turn) && (i === 0 || turn.completed === (i === all.length - 1))), "checkpoint_recording_mismatch");
     need(c.previous_checkpoint_hash === previous.checkpoint_hash && all.every((turn, i) => turn.checkpoint_hash === previous.checkpoint_hash && turn.stage_id === stage.id &&
@@ -160,10 +159,10 @@ export const rollingHome = adapter(rollingDefinition, rollingInitial, ROLLING_HO
 export const houseForTwo = adapter(houseDefinition, houseInitial, HOUSE_HASH);
 /** Free; pinned to rules 9 by its definition, so 0.5.x guests are refused on join. */
 export const wishingWell = adapter(wellDefinition, wellInitial, WISHING_WELL_HASH);
-/** Open turns (14): High and Low@1 with a lever atop the stair and one in the garden, so both players end at each bell. Unreleased. */
+/** Open turns (18): High and Low@1 with a lever atop the stair and one in the garden, so both players end at each bell. Unreleased. */
 export const highAndLowV2 = adapter(highV2Definition, highV2Initial, HIGH_AND_LOW_V2_HASH);
-/** Open turns with the shared ball (17): both players push the ball, a player holds each bridge for the other, and the last stage
+/** Open turns with the shared ball (21): both players push the ball, a player holds each bridge for the other, and the last stage
  * ends with the ball in its cradle and both players home. Unreleased. */
 export const rollingHomeV2 = adapter(rollingV2Definition, rollingV2Initial, ROLLING_HOME_V2_HASH);
-/** Open turns with the shared ball (17): both players at each bell, a held step at the loft stairs and at the lower hall's passage. Unreleased. */
+/** Open turns with the shared ball (21): both players at each bell, a held step at the loft stairs and at the lower hall's passage. Unreleased. */
 export const houseForTwoV2 = adapter(houseV2Definition, houseV2Initial, HOUSE_V2_HASH);

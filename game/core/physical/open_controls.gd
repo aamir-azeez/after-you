@@ -19,8 +19,7 @@ extends RefCounted
 ## (core/physical/pieces_rules.gd): tide, open controls and open turns all hold
 ## for it. 21 is 18 with one shared ball (runtime.gd _shared_ball): both pips
 ## push it, and a ball home stage ends with it in its cradle; OpenTurns.pin
-## gives it to a level with a ball. They took over 14 to 17, the open turns
-## whose later turns replayed over nested memories, which are gone.
+## gives it to a level with a ball.
 const OPEN_RULES_VERSION := 12
 const OPEN_TIDE_RULES_VERSION := 13
 const OPEN_TURNS_RULES_VERSION := 18

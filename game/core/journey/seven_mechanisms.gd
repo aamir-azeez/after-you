@@ -5,7 +5,7 @@ const Solid = preload("res://core/solid_footprint.gd")
 ## No shared mutable state: all dictionaries belong to a single simulation.
 ## `open`: open controls (runtime.gd OPEN_RULES_VERSION), where a pad holds for
 ## either pip; otherwise only for its owner_slot.
-## `{"not": child}` holds while its child does not (rules 16,
+## `{"not": child}` holds while its child does not (rules 20,
 ## core/physical/pieces_rules.gd; no published definition has one).
 
 static func predicate(value: Dictionary, stage: Dictionary, players: Dictionary, mechanisms: Dictionary, signals: Dictionary = {}, open: bool = false) -> bool:
@@ -25,7 +25,7 @@ static func predicate(value: Dictionary, stage: Dictionary, players: Dictionary,
 		for pad: Dictionary in stage.get("pressure_pads", []):
 			if pad.id == value.pad_id: return held(players, pad, open)
 		return false
-	# Rules 16's carried items and floats (core/physical/carried_items.gd).
+	# Rules 20's carried items and floats (core/physical/carried_items.gd).
 	if CarriedItems.is_term(value): return CarriedItems.holds(value, mechanisms)
 	return value.is_empty()
 

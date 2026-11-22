@@ -3,7 +3,7 @@ import { exact } from "./protocol-relay";
 import { piecesRules } from "./chapter-types";
 
 /**
- * Carried items and currents (rules 16, chapter-types.ts PIECES_RULES; the phone's
+ * Carried items and currents (rules 20, chapter-types.ts PIECES_RULES; the phone's
  * rules are game/core/physical/carried_items.gd). A definition may list "items"
  * ({id, at, carry?}) and "item_spots" ({id, surface_id, position_cm, height_cm});
  * its checkpoints then hold mechanisms.items {id: {holder, spot, x, z, height, surface_id}}. An item "at" (or a
@@ -38,10 +38,10 @@ export function declaresItems(definition: object): boolean {
   return Array.isArray(items) && items.length > 0;
 }
 
-/** Throws at load unless a definition with items pins rules 16 and names its items and spots once each. */
+/** Throws at load unless a definition with items pins rules 20 and names its items and spots once each. */
 export function checkItemDefinition(definition: ItemDefinition): void {
   if (!declaresItems(definition)) return;
-  if (!piecesRules(definition.simulation_version)) throw new Error("A definition with items must pin rules 16");
+  if (!piecesRules(definition.simulation_version)) throw new Error("A definition with items must pin rules 20");
   const spots = new Set((definition.item_spots ?? []).map(spot => spot.id)), ids = new Set(definition.items!.map(item => item.id));
   if (spots.size !== (definition.item_spots ?? []).length || ids.size !== definition.items!.length) throw new Error("Item and item spot ids must be distinct");
   if (["p0", "p1", AWAY].some(name => spots.has(name))) throw new Error(`No item spot may be named p0, p1 or ${AWAY}`);

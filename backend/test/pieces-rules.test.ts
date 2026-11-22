@@ -14,12 +14,11 @@ function state(levers: Record<string, boolean>, p0 = away, p1 = away) {
   return { controls: { marsh: "LOW" }, levers, light: {}, players: { p0, p1 }, stage: { pressure_pads: [pan] }, open: true };
 }
 
-describe("new pieces (rules 16)", () => {
+describe("new pieces (rules 20)", () => {
   it("numbers the pieces as tide, open controls and open turns too", () => {
-    // 20 is 16 on carry-over turns.
-    expect(PIECES_RULES).toEqual([16, 20]);
-    expect([15, 16, 19, 20].map(piecesRules)).toEqual([false, true, false, true]);
-    expect([openControls(16), openTurns(16), tideRules(16), COMFORT_RULES.includes(16), OPEN_TURNS_RULES.includes(16)]).toEqual([true, true, true, true, true]);
+    expect(PIECES_RULES).toEqual([20]);
+    expect([19, 20, 21].map(piecesRules)).toEqual([false, true, false]);
+    expect([openControls(20), openTurns(20), tideRules(20), COMFORT_RULES.includes(20), OPEN_TURNS_RULES.includes(20)]).toEqual([true, true, true, true, true]);
   });
 
   it("reads not in a gate as the client does", () => {

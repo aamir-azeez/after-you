@@ -26,7 +26,7 @@ extends RefCounted
 ##
 ## A frozen pip (reach's `frozen`): the memory doing nothing. It stays where
 ## it starts, works no control or lever, and holds only a pad it starts on,
-## except that a platform it starts on may carry it (rules 16: a memory rides
+## except that a platform it starts on may carry it (rules 20: a memory rides
 ## too): then it may stand at the same spot on any open stop of that platform.
 ## The probe also lights beams exactly: each signal becomes the settings of
 ## the mirrors, selectors and lamps that light it (LightPieces.signal_whens,
@@ -34,7 +34,7 @@ extends RefCounted
 ## values and a lamp's light pad held only where a pip may stand on it, where
 ## reach otherwise counts a beam signal as always lit.
 ##
-## The new pieces (rules 16, core/physical/pieces_rules.gd): a gate may hold
+## The new pieces (rules 20, core/physical/pieces_rules.gd): a gate may hold
 ## while a lever is off ("not"), so a settable lever a gate reads is tried
 ## both ways, and a pad both held and not (as before). A moving platform's
 ## stops are joined by ride edges, each needing both stops: a pip on one stop,
@@ -46,7 +46,7 @@ extends RefCounted
 ## a gate counts only the pads within a step of that crossing (where standing
 ## on the pad could already put it on the crossing); for the walker every pad
 ## the presser reaches counts. Beams are lit exactly, as for a frozen pip.
-## The shared ball (rules 17, core/physical/runtime.gd _shared_ball): a ball
+## The shared ball (rules 21, core/physical/runtime.gd _shared_ball): a ball
 ## pad holds only where the ball could be pushed (_reach_balls), not always.
 ## Pushing is work, like a press: the frozen pip and the walker push nothing,
 ## and the presser pushes it only along the crossings open for its own walking.
@@ -73,7 +73,7 @@ var open_controls := false        # the definition pins open controls
 var _frozen: Dictionary = {}      # reach's frozen pip: {"slot", "at": player} or {}
 var _walker := ""                 # reach's walking pip, or ""
 var _beside := ""                 # while judging a gate for the presser's own walking: its route
-var shared_ball := false          # the definition pins the shared ball (rules 17)
+var shared_ball := false          # the definition pins the shared ball (rules 21)
 var _signal_whens: Dictionary = {}  # a stage's light (its hash) -> LightPieces.signal_whens
 
 func _init(definition: Dictionary) -> void:
@@ -137,7 +137,7 @@ func build(slot: String, open_all: bool = false) -> Dictionary:
 		var to := int(index[drop.destination_surface])
 		if _probe_drop(drop, from, to, slot, all_routes, levers):
 			found["%s>%s" % [drop.surface_id, drop.destination_surface]] = [bits_of([drop.surface_id, drop.destination_surface]), lever]
-	# Rules 16: riding a moving platform from any of its stops to any other.
+	# Rules 20: riding a moving platform from any of its stops to any other.
 	for stage: Dictionary in level.get("stages", []):
 		for platform: Dictionary in stage.get("platforms", []):
 			for from: Variant in platform.get("stops", []):
@@ -274,7 +274,7 @@ func _carried(start: String, open: Dictionary) -> Dictionary:
 		if open.has(str(spot.get("surface_id", ""))): seen[str(spot.surface_id)] = true
 	return seen
 
-## Rules 16: where a pip standing at `player` on `stage` could be without a
+## Rules 20: where a pip standing at `player` on `stage` could be without a
 ## step: there, and the same spot on each other stop of a platform it stands
 ## on (whoever stands on a stop rides when the platform moves).
 func ridden(stage: Dictionary, player: Dictionary) -> Array:
@@ -369,7 +369,7 @@ func gate_can_hold(gate: Dictionary, stage: Dictionary, settable: Dictionary, me
 	var references: Dictionary = {"controls": {}, "pads": {}, "signals": {}, "levers": {}}
 	_references(when, references)
 	# A settable lever is simply on, unless a gate holds only while one is off
-	# (rules 16's "not"): then each settable lever it reads is tried both ways.
+	# (rules 20's "not"): then each settable lever it reads is tried both ways.
 	var levers: Dictionary = mechanisms.get("levers", {}).duplicate()
 	var negated := _negates(when)
 	for lever: Dictionary in stage.get("levers", []):
@@ -443,7 +443,7 @@ func _pad_placings(stage: Dictionary, pads: Array, floors: Dictionary = {}) -> A
 		for p1: Dictionary in by_slot.p1: result.append({"p0": p0, "p1": p1})
 	return result
 
-## Whether a gate tree holds anywhere only while something is off (rules 16).
+## Whether a gate tree holds anywhere only while something is off (rules 20).
 static func _negates(when: Dictionary) -> bool:
 	if when.has("not"): return true
 	for key: String in ["all", "any"]:
@@ -497,7 +497,7 @@ func can_stand_at(entity: Dictionary, slot: String, open: Dictionary, journey: b
 
 # ---------------------------------------------------------------- balls
 
-## The shared ball (rules 17), as part of reach: for each ball of `stage` the
+## The shared ball (rules 21), as part of reach: for each ball of `stage` the
 ## floors it could be pushed onto, written into `settable` as "ball:<id>":
 ## [floor ids]. A ball moves only with a pip that works (not the frozen pip,
 ## not the walker) and reaches the ball's floor, across crossings open in
@@ -556,7 +556,7 @@ func ball_reaches_goal(stage: Dictionary, settable: Dictionary) -> bool:
 
 # ---------------------------------------------------------------- items
 
-## Rules 16's carried items and currents (core/physical/carried_items.gd), as
+## Rules 20's carried items and currents (core/physical/carried_items.gd), as
 ## part of reach: for each item of `stage` (a plan, which carries the level's
 ## items and item spots and the stage's current legs), the floors a pip could
 ## hold it on and the item spots it could rest at, written into `settable` as
@@ -671,7 +671,7 @@ func _has_item_term(value: Dictionary) -> bool:
 		if child is Array and child.any(func(entry: Variant) -> bool: return entry is Dictionary and _has_item_term(entry)): return true
 	return false
 
-## Under a "not" (rules 16, train/new-pieces-b) an item term may always be
+## Under a "not" (rules 20, train/new-pieces-b) an item term may always be
 ## false (the item is elsewhere), so it becomes never there and the "not" holds.
 func _judge_items(value: Dictionary, settable: Dictionary, at: String, negated: bool = false) -> Dictionary:
 	if CarriedItems.is_term(value):
