@@ -283,11 +283,12 @@ func _lay_deck(route: Dictionary, deck: Node3D, full_width: float, full_depth: f
 			# Neighbouring stones, and the end ones and the terraces, never
 			# overlap: their tops share one height.
 			var radius := minf(0.26, minf(lane * 0.5 - 0.02, length / float(count) * 0.5 - 0.01))
-			# Each stone is one column from its top down into the seabed, long
-			# enough that its foot stays on the bed while it stands STONE_TALL over
-			# its open height (left high, water_world.gd), so it stands in the
-			# channel's water at any level and never changes size.
-			var column := float(WaterBodies.low_cm(route)) / 100.0 - waters.seabed() - 0.01 + STONE_TALL
+			# Each stone is one column from its top down under the channel's bed,
+			# built once at the length that holds for every level and every height
+			# it stands at (water_world.stone_drop: its open height, STONE_TALL
+			# over it left high, its foot always STONE_FOOT under the bed): the
+			# water only covers more or less of it, and it only moves whole.
+			var column := stone_drop(route)
 			for index in range(count):
 				var along := (float(index) + 0.5) / float(count) * length - length * 0.5
 				var at := Vector3(along, -column * 0.5, 0) if across_x else Vector3(0, -column * 0.5, along)

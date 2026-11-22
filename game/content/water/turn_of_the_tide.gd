@@ -8,7 +8,7 @@ extends RefCounted
 ## gate is shut. Plan positions in cm, heights in metres.
 
 const DATA := {
-	"seabed": -0.70,
+	"seabed": -1.20,
 	# Water moves this many metres a second: one tide step in about half a second.
 	"rate": 1.1,
 	# Water never stands higher than high; walls that hold it back stand to here.

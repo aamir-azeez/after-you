@@ -46,7 +46,11 @@ extends SceneTree
 ##    middle and highest level, every mesh but the water's own (WATER_SIZES)
 ##    keeps its scale and its mesh's size, so whatever must reach the water or
 ##    stand over it is built once at a size that holds for every level and only
-##    moves or shows (water: fixed-size pieces, never stretched).
+##    moves or shows (water: fixed-size pieces, never stretched);
+##  - a stone whose foot shows: every stepping stone is built once from its
+##    top down to STONE_FOOT under its water's bed, even at the highest it
+##    stands (STONE_TALL over its open height), so the bed always hides its
+##    foot and the water only covers more or less of it.
 ## KNOWN lists what fails on purpose, by the start of its message, with why;
 ## an entry that stops failing fails the suite. The definitions-only half is
 ## tests/test_level_checker.gd.
@@ -60,6 +64,7 @@ const FoldPresent = preload("res://tests/test_fold_present.gd")
 const Navigation = preload("res://core/cooperative/navigation.gd")
 const WaterBodies = preload("res://presentation/kit/water_bodies.gd")
 const WaterLook = preload("res://presentation/kit/water_look.gd")
+const WaterWorld = preload("res://presentation/water_world.gd")
 const JourneyCatalog = preload("res://core/journey/stage_catalog.gd")
 const Runtime = preload("res://core/physical/runtime.gd")
 const WalkReach = preload("res://presentation/kit/walk_reach.gd")
@@ -212,6 +217,7 @@ var _stones_seen := 0
 var _rolls_seen := 0
 ## Meshes on the water worlds held to one size across the water's levels.
 var _sized_seen := 0
+var _stones_feet_seen := 0
 ## Water edge spots read against what holds them.
 var _water_edges := 0
 ## The rowboat model's floorboards (its "inside" slot), read once.
@@ -239,6 +245,7 @@ func _run() -> void:
 	_check(_boats_seen >= least.boats and _stones_seen >= least.stones, "Every water world's boats float by the float rule (%d boats on stages) and its stepping stones go under, never away (%d)" % [_boats_seen, _stones_seen])
 	_check(_sized_seen >= int(least.get("sized", 0)), "Every water world's pieces keep one size at every water level (%d meshes)" % _sized_seen)
 	print("LEVEL VIEW: %d meshes held to one size across the water's levels" % _sized_seen)
+	_check(_stones_feet_seen >= int(least.get("feet", 0)), "Every stepping stone stands built once, its foot under the bed (%d stones)" % _stones_feet_seen)
 	_check(_cover_spots > least.cover, "The ground check stands pips at the edges of every world's floors (%d spots, %d over an edge)" % [_cover_spots, _cover_short])
 	_check(_wall_spots >= least.wall_spots and _walls_by_floors >= least.walls, "The wall checks stand pips by the water worlds' walls (%d spots) and read the walls beside floors (%d)" % [_wall_spots, _walls_by_floors])
 	_check(_water_edges >= int(least.get("water_edges", 0)), "The water edge check reads the water worlds' edges at every level (%d spots)" % _water_edges)
@@ -864,6 +871,25 @@ func _fixed_sizes(world: Node3D, where: String, base: Dictionary) -> void:
 				reported += 1
 				_check(false, "%s: %s changes size with the water (scale %s to %s, mesh %s to %s): build it once tall enough for every level, and only move or show it" % [where, world.get_path_to(mesh), first[key][0], size[0], first[key][1], size[1]])
 	world.present(base, true)
+	_stone_feet(world, where)
+
+## Every stepping stone reaches STONE_FOOT under its water's bed from the
+## highest it stands, so its foot never shows over the bed.
+func _stone_feet(world: Node3D, where: String) -> void:
+	var stones: Variant = world.get("_stones")
+	if not stones is Dictionary: return
+	for id: String in stones:
+		var stone: Dictionary = stones[id]
+		var deck := stone.deck as Node3D
+		if not is_instance_valid(deck): continue
+		var foot := INF
+		for node: Node in deck.find_children("*", "MeshInstance3D", true, false):
+			var mesh := node as MeshInstance3D
+			foot = minf(foot, (deck.global_transform.affine_inverse() * mesh.global_transform * mesh.get_aabb()).position.y)
+		var bed: float = world.waters.bed(str(stone.water))
+		var lowest := float(stone.rest) + WaterWorld.STONE_TALL + foot
+		_stones_feet_seen += 1
+		_check(lowest <= bed - WaterWorld.STONE_FOOT + 0.001, "%s: stone %s's foot reaches %.2f m over its highest, the bed is at %.2f: build it once down to %.2f m under the bed, so no foot shows and the water only covers more or less of it" % [where, id, lowest, bed, WaterWorld.STONE_FOOT])
 
 ## Whether `node` is the water's own, or under it (WATER_SIZES).
 static func _water_sized(node: Node, world: Node) -> bool:

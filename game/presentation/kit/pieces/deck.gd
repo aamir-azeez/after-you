@@ -39,10 +39,14 @@ const STONE_WET := Color("6f746f")
 ## A stone every this far (m): a hop from stone to stone, with water showing
 ## between them, so a row of stones reads as stones, not a strip.
 const STONE_STEP := 1.6
+## How far a stone reaches down from its top (m) when its world gives no
+## other (a water world builds each to its bed, water_world.gd stone_drop).
+const STONE_DROP := 0.53
 
 ## Lays `style` into `deck` (a crossing `width` by `depth` m, along x when
-## `across_x`), over its open span `low`..`high` (deck-local m along it).
-static func lay(style: String, deck: Node3D, width: float, depth: float, across_x: bool, low: float, high: float) -> void:
+## `across_x`), over its open span `low`..`high` (deck-local m along it); a
+## "stones" stone reaches `drop` down from its top.
+static func lay(style: String, deck: Node3D, width: float, depth: float, across_x: bool, low: float, high: float, drop: float = STONE_DROP) -> void:
 	var length := high - low
 	var middle := (low + high) * 0.5
 	var span := depth if across_x else width
@@ -75,7 +79,7 @@ static func lay(style: String, deck: Node3D, width: float, depth: float, across_
 			var radius := minf(span * 0.45, length / float(count) * 0.3)
 			for index in range(count):
 				var along := low + (float(index) + 0.5) * length / float(count)
-				Parts.disc(radius, 0.5, STONE_WET, _on(across_x, along, -0.28, 0.0), deck, radius * 0.9)
+				Parts.disc(radius, drop - 0.03, STONE_WET, _on(across_x, along, -0.03 - (drop - 0.03) * 0.5, 0.0), deck, radius * 0.9)
 				Parts.disc(radius * 0.92, 0.06, STONE, _on(across_x, along, -0.03, 0.0), deck, radius * 0.8)
 
 ## A "rope" crossing's end posts, standing open or shut, under `parent` at

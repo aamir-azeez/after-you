@@ -9,5 +9,5 @@ func _answers(prefix: String) -> bool:
 
 func _least() -> Dictionary:
 	var least: Dictionary = super()
-	least.merge({"spots": 20, "bubbles": 55, "sized": 3000, "water_edges": 17000}, true)
+	least.merge({"spots": 20, "bubbles": 55, "feet": 3, "sized": 3000, "water_edges": 17000}, true)
 	return least

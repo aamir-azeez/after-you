@@ -7,7 +7,7 @@ extends RefCounted
 ## floors beside it. Visual only. Plan positions in cm, heights in metres.
 
 const DATA := {
-	"seabed": -0.70,
+	"seabed": -1.20,
 	"rate": 0.9,
 	"wall_top": 0.86,
 	# 4 cm, so no water face ends on a sea wall's water mark where two reaches meet.
@@ -20,7 +20,7 @@ const DATA := {
 	"bounds": [-1300, -800, 14790, 800],
 	"bodies": [
 		{"id": "pool", "node": "MillPool", "selector": "pool", "rest": "HIGH",
-			"rects": [[-1300, -800, 2820, 800]], "bed": -0.70,
+			"rects": [[-1300, -800, 2820, 800]], "bed": -1.20,
 			"levels": {"LOW": -0.36, "HIGH": -0.06}, "color": Color(0.27, 0.47, 0.50, 0.84)},
 		{"id": "race", "node": "MillRace", "selector": "", "rest": "still",
 			"rects": [[2820, -800, 5970, 800]], "bed": 0.85,

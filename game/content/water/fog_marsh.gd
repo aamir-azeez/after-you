@@ -6,7 +6,7 @@ extends RefCounted
 ## Visual only. Plan positions in cm, heights in metres.
 
 const DATA := {
-	"seabed": -0.60,
+	"seabed": -1.10,
 	"rate": 0.9,
 	"wall_top": 0.0,
 	"inset": 3,

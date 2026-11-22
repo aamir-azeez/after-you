@@ -20,4 +20,4 @@ func _runs_shared() -> bool:
 	return false
 
 func _least() -> Dictionary:
-	return {"spots": 40, "bubbles": 110, "cut": 1, "boats": 5, "stones": 0, "cover": 3000, "wall_spots": 1000, "walls": 10, "sized": 5000, "water_edges": 35000}
+	return {"spots": 40, "bubbles": 110, "cut": 1, "boats": 5, "stones": 0, "cover": 3000, "wall_spots": 1000, "walls": 10, "feet": 3, "sized": 5000, "water_edges": 35000}
