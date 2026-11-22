@@ -133,7 +133,7 @@ const SLOTS := {
 	# The post by a missing crossing (kit/pieces/pulley.gd): each style names the
 	# weight that hangs from it, down while the crossing is laid.
 	"pulley": {"lantern_hook": {"weight": "lantern"}, "theme_hanger": {"weight": "anchor"}, "little_roof": {"weight": "sack"}},
-	# The floor under the water (content/water/looks.gd SEABEDS): tiled sand,
+	# The floor under the water (content/water/looks.gd SEABEDS): rippled sand,
 	# a pebbly stream bed or dark mud.
 	"seabed": {"sand": {}, "pebbles": {}, "mud": {}},
 }

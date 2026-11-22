@@ -10,8 +10,9 @@ extends RefCounted
 ## How the water looks (ripples, foam, the seabed, rings, glints) is its
 ## `look` (kit/water_look.gd), driven from these same steps.
 ##
-## Each body is one mesh of its surface and the outer faces of its sides,
-## under a root that moves and stretches with the level, so the water always
+## Each body is one mesh of its surface and the outer faces of its sides
+## (none where it ends inside a floor, a wall or a pit standing in it), under a
+## root that moves and stretches with the level, so the water always
 ## reaches down to the seabed. No face stands inside the water, where it would
 ## show through the surface as a band. Meshes and wall layouts depend only on
 ## the definition and the block, so they are worked out once per definition and
@@ -40,12 +41,31 @@ const WaterLocks = preload("res://presentation/kit/water_locks.gd")
 const WallFade = preload("res://presentation/kit/wall_fade.gd")
 const WaterLook = preload("res://presentation/kit/water_look.gd")
 const WalkReach = preload("res://presentation/kit/walk_reach.gd")
+const Surfaces = preload("res://presentation/kit/surfaces.gd")
 ## Water grid lines worked out between two build steps.
 const LINES_PER_STEP := 8
 ## Wall layout samples (4 cm apart) worked out between two build steps.
 const WALL_SAMPLES_PER_STEP := 48
 ## The shortest parapet run built (cm): anything shorter is a sliver past a corner.
 const MIN_RUN_CM := 6.0
+## How far (cm) the water runs in under a floor's edge where it never rises
+## over that floor: past the wall a world stands a centimetre in under it, so
+## it meets the floor's slab and wall at every level with no strip between.
+## Where it can rise over the floor the water stops at the edge as at any hole
+## (the inset short on the west and north): a parapet holds it there
+## (_parapet_strips), or a crossing lands there, its deck over the edge and
+## the locks' doors on the floor's side of it.
+const UNDER_FLOOR_CM := 3
+## How far (cm) the water stops short of a basin's west and north sides: inside
+## the walls a world stands centred on its edge (at least 6 cm thick).
+const BASIN_INSET_CM := 2
+## How far (cm) the water runs out under a sea wall (which stands 1.5 cm past
+## the water's end, 12 cm thick), less the block's inset on the sides toward
+## the camera: it ends inside the wall on every side.
+const UNDER_SEA_WALL_CM := 7
+## How far (cm) a sea wall runs on past a corner of its water, to meet the wall
+## along the next side (it stands 1.5 cm out, 12 cm thick).
+const SEA_WALL_CORNER_CM := 13.5
 
 ## The world that holds the kit: its terrain, chapter_definition,
 ## reduced_motion and _build_step.
@@ -319,13 +339,25 @@ func _keepable_routes(stage: Dictionary, already: Array[String]) -> Array[String
 ## body that is not a basin leaves out every island, every basin and every
 ## walled crossing; a basin leaves out only the islands. Await it.
 func build_bodies() -> void:
-	var islands: Array = []
-	for island: Dictionary in host.chapter_definition.get("islands", []): islands.append_array(host.drawn_pieces(island))
-	var cut: Array = basin_rects()
+	var floors: Array = []
+	var piers: Array = []
+	var cut: Array = []
 	for id: String in walled: cut.append(crossing_rect(_route(id)))
+	# What stands beside a floor that is not water: the pits, basins and floors.
+	var dry: Array = cut + basin_rects()
+	for island: Dictionary in host.chapter_definition.get("islands", []): dry.append_array(host.drawn_pieces(island))
+	for island: Dictionary in host.chapter_definition.get("islands", []):
+		if str(island.id) in water.get("piers", []): piers.append_array(host.drawn_pieces(island))
+		else: floors.append_array(_floor_holes(island, dry))
+	var layout: Dictionary = await _wall_layout()
+	floors.append_array(_parapet_strips(layout.parapets))
+	var basins: Array = basin_rects().map(func(r: Array) -> Array: return [int(r[0]) - BASIN_INSET_CM, int(r[1]) - BASIN_INSET_CM, r[2], r[3]])
 	for body: Dictionary in water.get("bodies", []):
-		var holes: Array = ([] if bool(body.get("basin", false)) else cut) + islands
-		var root := await build_body(str(body.node), body.rects, holes, body.color)
+		var basin := bool(body.get("basin", false))
+		# A basin runs on past its east and south ends as far as the block's inset
+		# less BASIN_INSET_CM, so it too ends inside the walls round it.
+		var regions: Array = body.rects.map(func(r: Array) -> Array: return [r[0], r[1], int(r[2]) + int(water.get("inset", 0)) - BASIN_INSET_CM, int(r[3]) + int(water.get("inset", 0)) - BASIN_INSET_CM]) if basin else body.rects + _under_sea_walls(body.rects, layout.sea_walls)
+		var root := await build_body(str(body.node), regions, ([] if basin else cut) + piers, body.color, floors + ([] if basin else basins), piers)
 		var sheet := root.get_node_or_null("Water") as MeshInstance3D
 		if sheet != null: look.dress(str(body.id), body, sheet, [] if bool(body.get("basin", false)) else basin_rects())
 		# Shown before it is listed: nothing rides a body while it is built.
@@ -339,18 +371,27 @@ func build_bodies() -> void:
 		await host._build_step()
 
 ## One body of water named `name` over `regions` ([x0, z0, x1, z1] cm), minus
-## every rectangle of `holes`, coloured `color`, under the world's terrain. The
-## sides that face the camera (east and south) stop the block's "inset" short
-## of each hole and of the end of the body: inside the wall that holds the
-## water back, or behind the sea wall past it, and never on a wall's inner
-## face, where the two would fight over the same pixels. Returns its root.
-## Await it.
-func build_body(name: String, regions: Array, holes: Array, color: Color) -> Node3D:
+## every rectangle of `holes` and of `floors`, coloured `color`, under the
+## world's terrain. The sides that face the camera (east and south) stop the
+## block's "inset" short of each hole and of the end of the body: inside the
+## wall that holds the water back, or behind the sea wall past it, and never
+## on a wall's inner face, where the two would fight over the same pixels.
+## `floors` are already placed where the water meets them (_floor_holes), so
+## they are cut as they are. Where the water meets what stands in a hole it
+## ends inside it, so it shows no side there, except at the `open` holes (a
+## floor on piers, which the water is seen under). Returns its root. Await it.
+func build_body(name: String, regions: Array, holes: Array, color: Color, floors: Array = [], open: Array = []) -> Node3D:
 	var inset := int(water.get("inset", 0))
 	var cut: Array = []
-	for rect: Array in holes: cut.append([int(rect[0]) - inset, int(rect[1]) - inset, rect[2], rect[3]])
-	var key := [&"water_surface", regions, cut, inset]
-	if not DefinitionGeometry.has(key): DefinitionGeometry.keep(key, await _surface(regions, cut, inset))
+	var held: Array = []
+	for rect: Array in holes:
+		var moved := [int(rect[0]) - inset, int(rect[1]) - inset, rect[2], rect[3]]
+		cut.append(moved)
+		if rect not in open: held.append(moved)
+	cut.append_array(floors)
+	held.append_array(floors)
+	var key := [&"water_surface", regions, cut, held, inset]
+	if not DefinitionGeometry.has(key): DefinitionGeometry.keep(key, await _surface(regions, cut, inset, held))
 	var mesh: Mesh = DefinitionGeometry.kept(key)
 	var root := Node3D.new()
 	root.name = name
@@ -366,7 +407,7 @@ func build_body(name: String, regions: Array, holes: Array, color: Color) -> Nod
 
 ## The mesh of a body's surface and outer sides (see build_body), or null when
 ## it has no face. A staged build gets the frame back between grid lines. Await it.
-func _surface(regions: Array, holes: Array, inset: int) -> Mesh:
+func _surface(regions: Array, holes: Array, inset: int, held: Array = []) -> Mesh:
 	var xs: Array = []
 	var zs: Array = []
 	for rect: Array in regions + holes:
@@ -382,16 +423,21 @@ func _surface(regions: Array, holes: Array, inset: int) -> Mesh:
 	# wet[zi][xi]: whether the cell between those grid lines holds water. A cell
 	# within `inset` of where the body ends to its east or south stays dry.
 	var wet: Array = []
+	# shut[zi][xi]: a dry cell where something stands that the water ends in.
+	var shut: Array = []
 	for zi in range(zs.size() - 1):
 		if zi % LINES_PER_STEP == 0: await host._build_step()
 		var row: Array[bool] = []
+		var closed: Array[bool] = []
 		for xi in range(xs.size() - 1):
 			var east := float(xs[xi + 1] + inset)
 			var south := float(zs[zi + 1] + inset)
 			var x := float(xs[xi] + xs[xi + 1]) * 0.5
 			var z := float(zs[zi] + zs[zi + 1]) * 0.5
 			row.append(_wet(x, z, regions, holes) and covered(east, z, regions) and covered(x, south, regions) and covered(east, south, regions))
+			closed.append(covered(x, z, held))
 		wet.append(row)
+		shut.append(closed)
 	var shape := SurfaceTool.new()
 	shape.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var faces := 0
@@ -434,7 +480,9 @@ func _surface(regions: Array, holes: Array, inset: int) -> Mesh:
 				if cell < cells.size() - 1:
 					var before: bool = line > 0 and (wet[line - 1][cell] if along_x else wet[cell][line - 1])
 					var after: bool = line < lines.size() - 1 and (wet[line][cell] if along_x else wet[cell][line])
-					side = 1 if before and not after else -1 if after and not before else 0
+					var shut_before: bool = line > 0 and (shut[line - 1][cell] if along_x else shut[cell][line - 1])
+					var shut_after: bool = line < lines.size() - 1 and (shut[line][cell] if along_x else shut[cell][line])
+					side = 1 if before and not after and not shut_after else -1 if after and not before and not shut_before else 0
 				if side == facing: continue
 				if facing != 0:
 					var at := float(lines[line]) / 100.0
@@ -466,6 +514,97 @@ static func _wet(x: float, z: float, regions: Array, holes: Array) -> bool:
 	for hole: Array in holes:
 		if x > hole[0] and x < hole[2] and z > hole[1] and z < hole[3]: return false
 	return true
+
+## A floor's drawn pieces as the water cuts round them: each outer side that
+## water stands beside (not only `dry` rectangles: a pit, a basin, a floor)
+## and never rises over moved in to where the water meets that floor at
+## every level (UNDER_FLOOR_CM). Where a parapet stands, _parapet_strips cut
+## the water back out to inside it.
+func _floor_holes(island: Dictionary, dry: Array) -> Array:
+	var shape: Array = host.drawn_pieces(island)
+	var height := float(island.get("height_cm", 0)) / 100.0
+	var inset := int(water.get("inset", 0))
+	var found: Array = []
+	for piece: Array in shape:
+		var outer := Surfaces.outer_sides(piece, shape)
+		var moved: Array = piece.duplicate()
+		for side in range(4):
+			if not outer[side] or not _water_beside(piece, side, dry): continue
+			var inward := 1 if side < 2 else -1
+			# Where it can rise over the floor, as every hole: the inset short on
+			# the sides toward the camera (build_body).
+			moved[side] = int(piece[side]) + inward * (-inset if inward > 0 else 0) if _rises_over(piece, side, height) else int(piece[side]) + inward * UNDER_FLOOR_CM
+		found.append(moved)
+	return found
+
+## Whether water stands just outside side `side` of floor piece `piece`
+## (cm) anywhere along it, past the `dry` rectangles.
+func _water_beside(piece: Array, side: int, dry: Array) -> bool:
+	var line := float(piece[side]) + (-2.0 if side < 2 else 2.0)
+	var along_x := side % 2 == 1
+	var wet: Array = []
+	for body: Dictionary in water.get("bodies", []): wet.append_array(_spans_on_line(body.rects, along_x, line))
+	var blocked := _spans_on_line(dry, along_x, line)
+	var t := float(piece[0 if along_x else 1]) + 2.0
+	while t < float(piece[2 if along_x else 3]):
+		if _in_spans(t, wet) and not _in_spans(t, blocked): return true
+		t += 4.0
+	return false
+
+## Whether the water beside side `side` (0 west, 1 north, 2 east, 3 south)
+## of floor piece `piece` (cm) ever stands over the floor's `height`, read just
+## outside that side: a basin's water where a basin holds it, else the open
+## water's.
+func _rises_over(piece: Array, side: int, height: float) -> bool:
+	var line := float(piece[side]) + (-6.0 if side < 2 else 6.0)
+	var along_x := side % 2 == 1
+	var tops := {false: -INF, true: -INF}
+	for body: Dictionary in water.get("bodies", []):
+		for span: Array in _spans_on_line(body.rects, along_x, line):
+			if float(span[0]) < float(piece[2 if along_x else 3]) and float(span[1]) > float(piece[0 if along_x else 1]):
+				var basin := bool(body.get("basin", false))
+				for level: float in body.levels.values(): tops[basin] = maxf(tops[basin], level)
+	return height < (tops[true] if tops[true] > -INF else tops[false])
+
+## Where a parapet stands (_build_parapets' rule), the water ends inside it:
+## a strip from the floor's edge out to the block's inset past it.
+func _parapet_strips(parapets: Array) -> Array:
+	var found: Array = []
+	var inset := float(water.get("inset", 0))
+	for wall: Array in parapets:
+		var height: float = wall[4]
+		if height >= float(wall[5]) or height - 0.20 >= wall_top(): continue
+		var run: Array = wall[0]
+		var edge: float = wall[1]
+		var outward: float = wall[2]
+		var b := edge + outward * inset
+		var near := int(minf(edge, b))
+		var far := int(maxf(edge, b))
+		found.append([int(run[0]), near, int(run[1]), far] if wall[3] else [near, int(run[0]), far, int(run[1])])
+	return found
+
+## The strips a body's water runs out under the sea walls along its own
+## `rects` (_wall_layout's sea_walls), so it ends inside each wall.
+func _under_sea_walls(rects: Array, sea_walls: Array) -> Array:
+	var found: Array = []
+	for wall: Array in sea_walls:
+		var run: Array = wall[0]
+		var edge: float = wall[1]
+		var outward: float = wall[2]
+		var along_x: bool = wall[3]
+		var inside := edge - outward * 2.0
+		var middle := (float(run[0]) + float(run[1])) * 0.5
+		if not covered(middle if along_x else inside, inside if along_x else middle, rects): continue
+		var out := edge + outward * UNDER_SEA_WALL_CM
+		var near := int(minf(edge, out))
+		var far := int(maxf(edge, out))
+		# On past each end as far (the wall itself runs on round a corner), so
+		# the water's last cells by an end stay wet, under the walls.
+		var reach: Array = (wall[4] as Array).map(func(corner: bool) -> float: return UNDER_SEA_WALL_CM - SEA_WALL_CORNER_CM if corner else float(UNDER_SEA_WALL_CM))
+		var from := int(float(run[0]) - reach[0])
+		var to := int(float(run[1]) + reach[1])
+		found.append([from, near, to, far] if along_x else [near, from, far, to])
+	return found
 
 # --- Levels ---
 
@@ -637,7 +776,8 @@ func _capped_wall(run: Array, edge: float, outward: float, along_x: bool, thickn
 	return [wall, coping]
 
 ## Every beach and terrace edge that faces water that can rise over it gets a
-## parapet to just above the highest water, with a coping stone; crossing
+## parapet to just above the highest water, on a foot down to the bed, with a
+## coping stone; crossing
 ## mouths stay open, so a flooded crossing shows as water in the gap. A floor
 ## edge whose water never reaches its floor (the pool it faces tops out under
 ## it) gets a timber fender instead: a wall there would hold nothing and stand
@@ -659,6 +799,18 @@ func _build_parapets() -> void:
 			var pieces := _capped_wall(run, edge, outward, along_x, 0.09, height - 0.20, root, 0.6, "Parapet", "ParapetCoping")
 			var size := (pieces[0].mesh as BoxMesh).size
 			mark_bands(pieces[0].position, Vector2(size.x, size.z), height - 0.20, wall_top(), root, 0.0, 0 if along_x else 1)
+			# Its foot, down to the bed of the water it holds, so the water
+			# meets its face at every level (the water ends inside it:
+			# _parapet_strips). Its inner face 1.1 cm out from the floor's edge,
+			# clear of the floor's lips and course standing out of it there.
+			var middle := (float(run[0]) + float(run[1])) * 0.5
+			var outside := edge + outward * 6.0
+			var bottom := bed_at(Vector2(middle, outside) if along_x else Vector2(outside, middle))
+			if bottom < height - 0.20:
+				var foot := _edge_box(run, edge, outward, along_x, 0.079, bottom, height - 0.20, water.stone, root, 1.0)
+				foot.position += Vector3(0, 0, outward * 0.011) if along_x else Vector3(outward * 0.011, 0, 0)
+				foot.name = "WallFoot"
+				holds_water(foot)
 		await host._build_step()
 
 ## Where a body of water ends in view against open air or another water, a
@@ -694,7 +846,8 @@ func crossing_rect(route: Dictionary) -> Array:
 
 ## Every parapet and sea-wall run, in build order: {"parapets": [[run, edge,
 ## outward, along_x, height, top (the highest the water it faces stands)]],
-## "sea_walls": [[run, edge, outward, along_x]]}.
+## "sea_walls": [[run, edge, outward, along_x, [corner at its start, at its
+## end]]]}.
 ## Worked out once per definition and block, an island at a time (a staged
 ## build gives the frame back between islands). Await it.
 func _wall_layout() -> Dictionary:
@@ -757,6 +910,12 @@ func _island_parapet_runs(island: Dictionary, shape: Array, holes: Array, route_
 			var kind := "dry"
 			# The highest any water beside this stretch stands.
 			var top := -INF
+			# A sample on the seam between two rects of the water carries on the
+			# wall it is in, rather than leaving a gap in it.
+			if not runs.is_empty() and runs[-1][2] == "wall" and not _in_spans(t, wet) and _in_spans(t - 1.0, wet) and _in_spans(t + 1.0, wet) and not _in_spans(t, mouths) and not _in_spans(t, dry):
+				runs[-1][1] = t + 2.0
+				t += 4.0
+				continue
 			if _in_spans(t, mouths): kind = "mouth"
 			elif _in_spans(t, wet) and not _in_spans(t, dry):
 				kind = "wall"
@@ -818,7 +977,16 @@ func _sea_wall_runs(holes: Array) -> Array:
 					t += 4.0
 					sampled += 1
 					if sampled % WALL_SAMPLES_PER_STEP == 0: await host._build_step()
-				for run: Array in runs: found.append([run, edge, outward, along_x])
+				for run: Array in runs:
+					# Round a corner of the water, past the end to meet the wall
+					# along the next side, so the corner stands closed.
+					var corners: Array[bool] = [false, false]
+					for end in range(2):
+						var past := float(run[end]) + (-2.0 if end == 0 else 2.0)
+						var beyond := edge - outward * 2.0
+						corners[end] = not covered(past if along_x else beyond, beyond if along_x else past, body)
+						if corners[end]: run[end] = float(run[end]) + (-SEA_WALL_CORNER_CM if end == 0 else SEA_WALL_CORNER_CM)
+					found.append([run, edge, outward, along_x, corners])
 		earlier.append_array(body)
 	return found
 
