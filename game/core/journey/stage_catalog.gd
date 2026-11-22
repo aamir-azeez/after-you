@@ -13,7 +13,8 @@ const FirstStepsV2Catalog = preload("res://core/journey/first_steps_v2_catalog.g
 const RelayIslesV3Catalog = preload("res://core/journey/relay_isles_v3_catalog.gd")
 const TheFallsCatalog = preload("res://core/journey/the_falls_catalog.gd")
 const FogMarshCatalog = preload("res://core/journey/fog_marsh_catalog.gd")
-const KEYS := ["conservatory@1","long-way-home@1","long-way-home@2","turn-of-the-tide@1","turn-of-the-tide@2","long-way-home@3","turn-of-the-tide@3","conservatory@2","first-steps@2","the-falls@1","fog-marsh@1","relay-isles@3"]
+const TheWishingWellV2Catalog = preload("res://core/journey/the_wishing_well_v2_catalog.gd")
+const KEYS := ["conservatory@1","long-way-home@1","long-way-home@2","turn-of-the-tide@1","turn-of-the-tide@2","long-way-home@3","turn-of-the-tide@3","conservatory@2","first-steps@2","the-falls@1","fog-marsh@1","relay-isles@3","the-wishing-well@2"]
 
 static func definition(key: String = "long-way-home") -> Dictionary:
 	if key in ["long-way-home", "long-way-home@1"]: return Home.definition()
@@ -28,6 +29,7 @@ static func definition(key: String = "long-way-home") -> Dictionary:
 	if key == "relay-isles@3": return RelayIslesV3Catalog.definition()
 	if key in ["the-falls", "the-falls@1"]: return TheFallsCatalog.definition()
 	if key in ["fog-marsh", "fog-marsh@1"]: return FogMarshCatalog.definition()
+	if key == "the-wishing-well@2": return TheWishingWellV2Catalog.definition()
 	return {}
 
 ## Bare ids keep naming the first version; a definition is checked against its own id@version.

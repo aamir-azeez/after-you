@@ -89,8 +89,10 @@ extends SceneTree
 ##     builds presentation/kit/goal_beacon.gd, the late guide every open turns chapter
 ##     gets with no code of its own. test_open_hints.gd, which must stay in CI, checks
 ##     them on every open turns chapter.
-## (y) water worlds: presentation/water_world.gd alone shows a drowning (it holds
-##     presentation/kit/drowning.gd, the one drown), floats boats by the float rule
+## (y) water worlds: presentation/water_world.gd alone shows a drowning
+##     (presentation/kit/drowning.gd, the one drown, which journey_world.gd holds
+##     and shows itself only for a pip a swing knocked off on a world without
+##     water), floats boats by the float rule
 ##     (kit/floats.gd keel, the dressing's "moored_boats" and every "boat" prop over
 ##     water) and sinks stepping stones under the water; no other world reads the
 ##     snapshot's "drowned", builds a drowning, floats a boat or reads "moored_boats".
@@ -356,7 +358,9 @@ const PAIR_TAGS_OWNER := "res://presentation/island_world.gd"
 const OWNER_MARK_OVERRIDES := {
 	"res://presentation/island_world.gd": "builds every stage's marks (build), records a stand spot's own mark (record), and holds the default hooks (_mark_stair, _marks_goal)",
 	"res://presentation/lighthouse_world.gd": "a goal whose style wears a mark carries its owner's (_marks_goal)",
-	"res://presentation/wishing_well_world.gd": "the bucket's mark rides the bucket (mark); folding stairs and the rope ladder have their own feet (_mark_stair); the ladder top's mark steps east of a bell frame that hides it (_mark_stair); marks keep off the notch (keep_clear)",
+	"res://presentation/wishing_well_world.gd": "folding stairs and the rope ladder have their own feet, from the well's scenery (_mark_stair)",
+	"res://presentation/wishing_well_v2_world.gd": "folding stairs and the rope ladder have their own feet, from the well's scenery (_mark_stair)",
+	"res://presentation/wishing_well_scenery.gd": "the bucket's mark rides the bucket (mark); the ladder top's mark steps east of a bell frame that hides it (_mark_stair's feet); marks keep off the notch (keep_clear)",
 	"res://presentation/kit/stand_spot.gd": "the mark on a stand spot's disc (OwnerMark.spot)",
 }
 const PAIR_TAG_OVERRIDES := {
@@ -412,7 +416,7 @@ const PIECE_BUILDERS := {
 	"res://presentation/lighthouse_world.gd": "builds every goal in the style it resolves to",
 	"res://presentation/island_world.gd": "builds every island world's pads from its family's layout in the style each resolves to (_build_pad), and its crossings as the bridge kit draws them (_build_crossings)",
 	"res://presentation/first_steps_world.gd": "builds its lift in the style it resolves to (lift); its loft bell is the kit bell on its own post and arm",
-	"res://presentation/kit/new_pieces.gd": "builds the new pieces' decks, moving platforms and rope ladders (rules 16) in the styles they resolve to, for cooperative_world",
+	"res://presentation/kit/new_pieces.gd": "builds the new pieces' decks, moving platforms, rope ladders and swings (rules 16) in the styles they resolve to, for cooperative_world",
 }
 ## Scripts that read a descriptor's pins themselves, with why.
 const PIN_READERS := {
@@ -421,7 +425,8 @@ const PIN_READERS := {
 ## Worlds that extend a piece builder, with what they add, or why they still
 ## draw one piece themselves.
 const PIECE_OVERRIDES := {
-	"res://presentation/wishing_well_world.gd": "the well floor's pad is the bucket the well's winch lowers and raises on its rope (_build_physical_pad): it moves with the well's rig, so it stays with it; every other pad comes from the kit",
+	"res://presentation/wishing_well_world.gd": "the well floor's pad is the bucket the well's winch lowers and raises on its rope (_build_physical_pad, wishing_well_scenery.gd): it moves with the well's rig, so it stays with it; every other pad comes from the kit",
+	"res://presentation/wishing_well_v2_world.gd": "the well floor's pad is the bucket the well's winch lowers and raises on its rope (_build_physical_pad, wishing_well_scenery.gd), as @1's; every other pad comes from the kit",
 	"res://presentation/journey_world.gd": "a selector's value bubble over its lever (_build_selector)",
 	"res://presentation/tide_world.gd": "a valve's water sign (_build_selector) and every lever's on lamp (_build_lever)",
 	"res://presentation/long_way_home_world.gd": "the porch and garden pads' word labels and the cables to the greeting window (_build_physical_pad)",
@@ -453,7 +458,7 @@ const FLOOR_GROUNDS := {
 	"res://presentation/island_world.gd": "the floating grass shell (plain floors, Home's isles)",
 	"res://presentation/lighthouse_world.gd": "the Lighthouse family's plain stone floors",
 	"res://presentation/house_world.gd": "A House for Two's timber rooms",
-	"res://presentation/wishing_well_world.gd": "the Wishing Well's stone tiers",
+	"res://presentation/wishing_well_scenery.gd": "the Wishing Well's stone tiers",
 	"res://presentation/kit/props.gd": "a bank, which is ground itself",
 }
 const CONTACT_SHADOW_LAYER := "res://presentation/island_world.gd"
@@ -1152,6 +1157,7 @@ func _contact_shadows() -> void:
 # (y) Water worlds -------------------------------------------------------------
 
 const WATER_WORLD := "res://presentation/water_world.gd"
+const JOURNEY_WORLD := "res://presentation/journey_world.gd"
 const DROWNING := "res://presentation/kit/drowning.gd"
 
 ## (y) One drowning, one float rule and one way stones go under, in the water world.
@@ -1159,14 +1165,14 @@ func _water_worlds() -> void:
 	var worlds := 0
 	for path: String in _sources:
 		var source: String = _sources[path]
-		if path != WATER_WORLD and path != DROWNING:
+		if path != JOURNEY_WORLD and path != DROWNING:
 			var alias := _alias(source, DROWNING)
 			_check(_found("\\b(?:Drowning" + ("|" + alias if not alias.is_empty() else "") + ")\\.new\\(", source) == 0, "%s builds a drowning of its own: the water world holds the one (presentation/kit/drowning.gd)" % path)
-		if not path.begins_with("res://presentation/") or not path.ends_with("_world.gd") or path == WATER_WORLD: continue
+		if not path.begins_with("res://presentation/") or not path.ends_with("_world.gd") or path == WATER_WORLD or path == JOURNEY_WORLD: continue
 		worlds += 1
 		_check(_found("\"drowned\"|DrownRing|DROWN_", source) == 0, "%s shows a drowning of its own: presentation/water_world.gd shows every one through kit/drowning.gd" % path)
 		_check(_found("\\bFloats\\.keel\\(|\"moored_boats\"", source) == 0, "%s floats boats of its own: presentation/water_world.gd floats every boat by the float rule" % path)
-	_check(worlds > 10 and _found("Drowning\\.new\\(", _sources.get(WATER_WORLD, "")) == 1 and _found("\"drowned\"", _sources.get(WATER_WORLD, "")) > 0, "The water world holds the one drowning and every chapter world is scanned (%d)" % worlds)
+	_check(worlds > 10 and _found("Drowning\\.new\\(", _sources.get(JOURNEY_WORLD, "")) == 1 and _found("\"drowned\"", _sources.get(WATER_WORLD, "")) > 0, "The journey world holds the one drowning, the water world shows it, and every chapter world is scanned (%d)" % worlds)
 
 func _suites() -> void:
 	var shards := {}

@@ -1,6 +1,8 @@
 extends RefCounted
 ## World kit: a drowning on any water world (presentation/water_world.gd
-## hosts one; every water level uses it, never a copy). The snapshot's
+## hosts one; every water level uses it, never a copy), and on a journey world
+## without water of its own a pip a swing knocked off (journey_world.gd hosts
+## one for a stage with swings), sinking under the lane's floor. The snapshot's
 ## "drowned": {slot, route} (the journey rules: a crossing shut under a pip,
 ## or a sinking stone pushed under) sends that spirit under the water of the
 ## body its crossing stands in, with the knocked-out face; a ring spreads and
@@ -112,8 +114,13 @@ func _rise() -> void:
 
 ## The shown level of the water over the crossing it drowned on (the body its
 ## rectangle stands in, else the first body), else the spirit's own height.
+## A world without water: the floor or crossing it went off.
 func _surface_of(route_id: String, drowning: String) -> float:
-	var waters: RefCounted = _world.waters
+	var waters: Variant = _world.get("waters")
+	if waters == null:
+		for surface: Dictionary in _world.chapter_definition.get("islands", []) + _world.chapter_definition.get("bridges", []):
+			if str(surface.id) == route_id: return float(surface.get("height_cm", 0)) / 100.0
+		return float(_world.actor_targets[drowning].y)
 	var rect: Array = [0, 0, 0, 0]
 	for route: Dictionary in _world.chapter_definition.get("bridges", []) + _world.chapter_definition.get("stairs", []):
 		if str(route.id) == route_id: rect = route.rect_cm

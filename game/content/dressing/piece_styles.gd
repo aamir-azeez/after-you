@@ -24,7 +24,7 @@ const Styles = preload("res://content/dressing/prop_styles.gd")
 ## The descriptor field holding the pins.
 const PINS := "piece_styles"
 ## The piece slots, each a LOOK_SLOTS entry of prop_styles.gd.
-const SLOTS := ["lever", "selector", "pad", "goal", "lift", "deck", "raft", "ladder", "carried_item", "current", "pulley", "item_spot"]
+const SLOTS := ["lever", "selector", "pad", "goal", "lift", "deck", "raft", "ladder", "carried_item", "current", "pulley", "item_spot", "swing"]
 
 ## The style of piece `id` in slot `slot` for a chapter `descriptor` (or {})
 ## and its resolved `dressing` (DressingCatalog.for_key, or {}).

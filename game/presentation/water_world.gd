@@ -30,7 +30,6 @@ const Gorge = preload("res://presentation/kit/gorge.gd")
 const PropRules = preload("res://presentation/kit/prop_rules.gd")
 ## How strongly a prop standing in the water rings it (a float rings at 1).
 const WATERLINE_RINGS := 0.6
-const Drowning = preload("res://presentation/kit/drowning.gd")
 const Floats = preload("res://presentation/kit/floats.gd")
 const Models = preload("res://presentation/kit/models.gd")
 ## Every boat that floats is the rowboat model at this size, so one set of
@@ -60,8 +59,6 @@ var _flow_look: ShaderMaterial
 var _flows_gathered := false
 ## The water world's own clock (seconds), for every bob.
 var _clock := 0.0
-## A drowning, shown from the snapshot (kit/drowning.gd).
-var drowning := Drowning.new(self)
 ## Boats riding the water (each a node, its keel at its origin).
 var _boats: Array[Node3D] = []
 ## Dressing "boat" props standing over water, built as floating boats once

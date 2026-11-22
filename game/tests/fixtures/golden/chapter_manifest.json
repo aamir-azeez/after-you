@@ -427,24 +427,24 @@
 			"unlock_fruits": 0
 		},
 		"the-wishing-well@2": {
-			"definition_fixture": "cooperative/the-wishing-well-v2-definition.json",
-			"definition_hash": "b4e645ae4c046f0f8895e6cb03acf08d496bdd0d38f48e348e5d6474e0e7b282",
-			"family": "cooperative",
+			"definition_fixture": "journey/the-wishing-well-v2-definition.json",
+			"definition_hash": "7d26d0caf6ddd8d8679db44701efa8594acc61fa8e785bc6db5679cfea28ca3d",
+			"family": "journey",
 			"flag": "THE_WISHING_WELL_V2_CHAPTER_ENABLED",
 			"full_journey": false,
 			"hard": false,
-			"initial_checkpoint_hash": "8b802cadd14a726f3dcd72b8f0f1ecf001432e4964b198aab7c1c7e5b1cfe7fe",
-			"initial_fixture": "cooperative/the-wishing-well-v2-initial-checkpoint.json",
+			"initial_checkpoint_hash": "7b5223d9e46450b8d09eec6edbb3014198986b4f74632d2b74657ac1cfe8d50f",
+			"initial_fixture": "journey/the-wishing-well-v2-initial-checkpoint.json",
 			"key": "the-wishing-well@2",
 			"level_id": "the-wishing-well",
 			"level_version": 2,
 			"max_branches": 7,
 			"premium": false,
-			"recording_version": 6,
-			"simulation_version": 18,
+			"recording_version": 7,
+			"simulation_version": 20,
 			"stage_count": 2,
 			"supported_simulation_versions": [
-				18
+				20
 			],
 			"unlock_fruits": 0
 		},

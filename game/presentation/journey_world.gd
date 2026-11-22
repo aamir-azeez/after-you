@@ -9,6 +9,8 @@ const CarriedItems = preload("res://core/physical/carried_items.gd")
 const CarriedItemKit = preload("res://presentation/kit/pieces/carried_item.gd")
 const CurrentKit = preload("res://presentation/kit/pieces/current.gd")
 const ItemParts = preload("res://presentation/kit/pieces/parts.gd")
+const Drowning = preload("res://presentation/kit/drowning.gd")
+const Solid = preload("res://core/solid_footprint.gd")
 ## The soft honey dashes round a crossing a wait hint names.
 const HINT_DASH := Color("f2d39b")
 ## A selector's bubble body stands as if its tail ended here, just over the
@@ -101,6 +103,12 @@ var _item_pieces: Dictionary = {}
 ## stop's deck (kit/new_pieces.gd ride).
 var _item_decks: Dictionary = {}
 var _current_piece: RefCounted
+## The one drowning a journey world holds (kit/drowning.gd). A water world
+## shows every drowning after its water (water_world.gd); a world without
+## water shows here only a pip a swing knocked off (core/physical/swings.gd),
+## on a stage with swings (_knocks).
+var drowning := Drowning.new(self)
+var _knocks := false
 
 func show_stage(stage: Dictionary) -> void:
 	if str(stage.get("id", "")) == displayed_stage_id: return
@@ -115,6 +123,8 @@ func show_stage(stage: Dictionary) -> void:
 	_item_pieces.clear()
 	_item_decks.clear()
 	_current_piece = null
+	if _knocks: drowning.forget()
+	_knocks = not stage.get("swings", []).is_empty() and get("waters") == null
 	_shown_stage = stage
 	_stage_built = false
 	# Before the build awaits: a present meanwhile reads this stage's crossings.
@@ -236,6 +246,7 @@ func _process(delta: float) -> void:
 	super._process(delta)
 	_advance_bubbles(delta)
 	_advance_items(delta)
+	if _knocks and not reduced_motion: drowning.advance(delta)
 
 ## A card holds the bob, but Reduce motion turned on still settles it.
 func _idle_card_frame() -> void:
@@ -553,6 +564,7 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	if is_instance_valid(_waiting_ring): _glow(_waiting_ring,CREAM,0.6 if state.get("can_commit",false) and not OpenTurns.pinned(chapter_definition) else 0.0)
 	_present_seats(state, immediate)
 	_present_items(state, immediate)
+	if _knocks: drowning.show(state.get("drowned", {}))
 	if _wait_hints_on and _wait_hints.update(state): _show_wait_marks()
 	# What a world sets after this (its own levers and wheels) is read by the
 	# next pass, not by the one an immediate present already ran.
@@ -658,6 +670,7 @@ func _static_keep() -> Array:
 	for mark: Dictionary in _wait_marks.values(): keep.append(mark.dashes)
 	for piece: RefCounted in _item_pieces.values(): keep.append_array(piece.moving_parts())
 	if _current_piece != null: keep.append_array(_current_piece.moving_parts())
+	if _knocks: keep.append_array(drowning.moving_nodes())
 	return keep
 
 ## Soft dashes along a crossing's edges at its deck height: one mesh, shown or
@@ -876,6 +889,8 @@ func _present_items(state: Dictionary, immediate: bool = false) -> void:
 				else: piece.holder.play_carry_release()
 			piece.rest(_item_point(item_state), terrain, str(item_state.surface_id).is_empty() and not flying, flying, immediate)
 			if new_pieces != null and not new_pieces.ride(str(item_state.surface_id)).is_empty(): _item_decks[id] = [_item_point(item_state), str(item_state.surface_id)]
+		# Resting in a solid spot (a winch, a nest) it sits fitted; anywhere else as it lies.
+		piece.fit(holder.is_empty() and Solid.solids(chapter_definition.get("item_spots", [])).any(func(spot: Dictionary) -> bool: return str(spot.id) == str(item_state.spot)))
 	_ride_items()
 	if _current_piece != null: _current_piece.set_controls(state.get("controls", {}))
 

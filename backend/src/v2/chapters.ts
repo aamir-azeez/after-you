@@ -2,8 +2,8 @@ import { ApiError, object } from "../protocol";
 import { flagOn, type FlagVar } from "../flags";
 import * as Relay from "./protocol-relay";
 import * as FirstSteps from "./protocol-first-steps";
-import { highAndLow, highAndLowV2, rollingHome, rollingHomeV2, houseForTwo, houseForTwoV2, wishingWell, wishingWellV2 } from "./protocol-cooperative";
-import { conservatory, conservatoryV2, firstStepsV2, fogMarsh, longWayHome, longWayHomeV2, longWayHomeV3, relayIslesV3, theFalls, turnOfTheTide, turnOfTheTideV2, turnOfTheTideV3 } from "./protocol-journey";
+import { highAndLow, highAndLowV2, rollingHome, rollingHomeV2, houseForTwo, houseForTwoV2, wishingWell } from "./protocol-cooperative";
+import { conservatory, conservatoryV2, firstStepsV2, fogMarsh, longWayHome, longWayHomeV2, longWayHomeV3, relayIslesV3, theFalls, turnOfTheTide, turnOfTheTideV2, turnOfTheTideV3, wishingWellV2 } from "./protocol-journey";
 import { sleepingLighthouseV2 } from "./protocol-lighthouse";
 import { LEGACY_STAGE_COUNT, type ChapterAdapter, type ChapterKey } from "./chapter-types";
 
