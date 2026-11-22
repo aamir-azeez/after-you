@@ -15,9 +15,8 @@ const PUNT := "res://assets/models/punt.glb"
 ## How far a raised ramp stands up (radians), and how fast it swings (radians a second).
 const RAMP_RAISED := 0.95
 const RAMP_RATE := 1.6
-## Tide rules (journey simulation.gd): a closing crossing's edges flash this
-## colour. A drowning is the water world's (kit/drowning.gd).
-const CLOSING_COLOR := Color("f08a5d")
+## A closing crossing's warning and a drowning are every world's
+## (kit/closing_warning.gd, kit/drowning.gd).
 ## The sea gates' leaves stand across both ends of the harbour mouth.
 const MOUTH_X := [-704, -512]
 const SEA_GATE_Z := 5.20
@@ -303,7 +302,6 @@ func _lay_deck(route: Dictionary, deck: Node3D, width: float, depth: float, acro
 		var trim := box(Vector3(width, 0.025, 0.035) if across_x else Vector3(0.035, 0.025, depth), GOLD if tide else LIGHT_COLOR, Vector3(0, 0.015, side * (depth / 2.0 - 0.025)) if across_x else Vector3(side * (width / 2.0 - 0.025), 0.015, 0), deck)
 		trim.name = "OpenEdge"
 		_glow(trim, GOLD if tide else LIGHT_COLOR, 0.9 if tide else 0.65)
-		trim.set_meta("edge", [GOLD if tide else LIGHT_COLOR, 0.9 if tide else 0.65])
 
 ## A shut crossing stays in view as a faint outline at its own height (sunk
 ## under the water when the tide covers it), so the other ways can be read.
@@ -885,33 +883,6 @@ func _swing_ramps(delta: float) -> void:
 		var target := float(hinge.get_meta("target"))
 		if not is_equal_approx(hinge.rotation.z, target): hinge.rotation.z = move_toward(hinge.rotation.z, target, RAMP_RATE * maxf(delta, 0.0))
 
-## Tide rules: while a crossing closes (route id -> ticks left before it
-## shuts, from the snapshot), its edges flash and the water still moving
-## slows to reach its new level as the crossing shuts, so the warning is the
-## water rising over it. Nothing here in rules without closing crossings.
-func _show_closing(closing: Dictionary) -> void:
-	for id: String in _decks:
-		var deck: Node3D = _decks[id]
-		if not is_instance_valid(deck): continue
-		for child: Node in deck.get_children():
-			var trim := child as MeshInstance3D
-			if trim == null or not trim.has_meta("edge"): continue
-			if closing.has(id):
-				if not trim.has_meta("warned"):
-					var warned_material := trim.material_override.duplicate()
-					# A copy is never a kit look, whatever it was copied from.
-					warned_material.remove_meta(Primitives.SHARED_META)
-					trim.material_override = warned_material
-					trim.set_meta("warned", true)
-				# Reduce motion: a steady glow instead of a flash.
-				_glow(trim, CLOSING_COLOR, 1.1 if reduced_motion else (1.6 if int(closing[id]) % 10 < 5 else 0.5))
-			elif trim.has_meta("warned"):
-				var edge: Array = trim.get_meta("edge")
-				_glow(trim, edge[0], float(edge[1]))
-	# Water rising past a closing crossing's deck reaches it as the crossing
-	# shuts, then goes on at its usual rate.
-	waters.pace_closing(closing)
-
 ## Warm pools of light under the bank lamps that name "bunting" in the
 ## dressing, and bunting strung from each to that point along its bank.
 func _build_lamplight() -> void:
@@ -1013,7 +984,9 @@ func _present_water(state: Dictionary, immediate: bool) -> void:
 	for id: String in _ghosts:
 		if is_instance_valid(_ghosts[id]) and _decks.has(id): _ghosts[id].visible = not _decks[id].visible
 	waters.show_floods(_decks)
-	_show_closing(state.get("route_progress", {}).get("closing", {}))
+	# Water rising past a closing crossing's deck reaches it as the crossing
+	# shuts, then goes on at its usual rate (its rim flashes: kit/closing_warning.gd).
+	waters.pace_closing(state.get("route_progress", {}).get("closing", {}))
 	_occupy_water(state, immediate)
 	if is_instance_valid(_bell) and bool(state.get("complete", false)): _glow(_bell, LIGHT_COLOR, 1.6)
 

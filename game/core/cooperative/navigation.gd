@@ -25,6 +25,9 @@ const INDEX_FROM_SURFACES := 10
 const MAX_INDEXES := 16
 static var _indexes: Dictionary = {}
 static var _indexes_lock := Mutex.new()
+## offsets_by_distance's lists by reach, shared by every engine and thread.
+static var _offsets: Dictionary = {}
+static var _offsets_lock := Mutex.new()
 
 ## cells: the level's index_for(); {} tests every surface.
 static func at(level: Dictionary, routes: Dictionary, levers: Dictionary, previous: Dictionary, x: int, z: int, slot: String, radius: int, allow_drop: bool = true, cells: Dictionary = {}) -> Dictionary:
@@ -111,6 +114,36 @@ static func _cell(point: Vector2i) -> int:
 
 static func _low16(cell: int) -> int:
 	return cell & 0xFFFF
+
+## Whether a walker at `player` still touches floor at its own height: its
+## centre or one of at()'s eight rim samples over a floor within radius + 1 of
+## it (an island, or an open crossing it may use). A walker whose floor went
+## from under it steps back onto floor it touches (runtime.gd _keep_footing).
+static func touches(level: Dictionary, routes: Dictionary, player: Dictionary, slot: String, radius: int, cells: Dictionary = {}) -> bool:
+	var point := Vector2i(int(player.x), int(player.z))
+	var diagonal := int(ceil(float(radius) * 0.707107))
+	for offset: Vector2i in [Vector2i.ZERO, Vector2i(-radius,0), Vector2i(radius,0), Vector2i(0,-radius), Vector2i(0,radius), Vector2i(-diagonal,-diagonal), Vector2i(diagonal,-diagonal), Vector2i(-diagonal,diagonal), Vector2i(diagonal,diagonal)]:
+		if not _support(level, routes, point + offset, slot, player, radius + 1, cells).is_empty(): return true
+	return false
+
+## Every whole-cm offset within `reach` of a point, nearest first (ties by z,
+## then x), so a search over them is the same on every device. Built once per reach.
+static func offsets_by_distance(reach: int) -> Array:
+	_offsets_lock.lock()
+	var found: Variant = _offsets.get(reach)
+	if found == null:
+		var all: Array[Vector2i] = []
+		for dz in range(-reach, reach + 1):
+			for dx in range(-reach, reach + 1):
+				if dx * dx + dz * dz <= reach * reach: all.append(Vector2i(dx, dz))
+		all.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+			var da := a.length_squared()
+			var db := b.length_squared()
+			return da < db or (da == db and (a.y < b.y or (a.y == b.y and a.x < b.x))))
+		found = all
+		_offsets[reach] = found
+	_offsets_lock.unlock()
+	return found
 
 static func stair_height(stair: Dictionary, point: Vector2i) -> int:
 	var axis := 0 if stair.axis == "x" else 1

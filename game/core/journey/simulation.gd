@@ -26,18 +26,12 @@ const TIDE_RULES_VERSION := 10
 const OPEN_TIDE_RULES_VERSION := OpenControls.OPEN_TIDE_RULES_VERSION
 const TIDE_RULES := OpenControls.TIDE_RULES
 const OPEN_RULES := OpenControls.OPEN_RULES
-## What a drowned turn says (snapshot text; PlayerCopy shows the editable
-## lines): the player's own spirit, or the friend's (the memory, or under
-## open turns the friend's replay, which fails the turn the same way).
-const DROWNED_YOU := "Oh no, you drowned! Try again?"
-const DROWNED_FRIEND := "Oh no, your friend drowned! Try again?"
+## What a drowned turn says is runtime.gd's DROWNED_YOU and DROWNED_FRIEND.
 ## A turn that would end with a spirit on a closing crossing.
 const ON_CLOSING := "Step off the crossing before it shuts."
 var _entry_latches: Dictionary = {}
 ## Tide rules: route id -> the tick its crossing shuts, while it closes.
 var _closing: Dictionary = {}
-## Tide rules: {"slot", "route", "tick"} once a spirit has drowned.
-var _drowned: Dictionary = {}
 var _ready_branch := ""
 ## The pieces rules' carried items and currents (core/physical/carried_items.gd),
 ## set at reset: whether they play, the items in order, the crossings that
@@ -167,14 +161,14 @@ func _advance_source() -> void:
 
 func _refresh_routes() -> void:
 	_refresh_optics()
-	var was: Dictionary = _routes.duplicate() if _tide_rules() else {}
+	var was: Dictionary = _routes.duplicate() if _closes_slowly() else {}
 	for route: Dictionary in _route_defs:
 		_routes[route.id] = route.id in _mechanisms.latched_bridges or bool(_entry_latches.get(route.id, false))
 	var open := _open_controls()
 	for gate: Array in _gate_plan:
 		_routes[gate[0]] = bool(_routes.get(gate[0], false)) or gate[1] == null or Seven.predicate(gate[1], stage, _players, _mechanisms, _optics.signals, open)
 	if not _platforms.is_empty(): _move_platforms(was)
-	if _tide_rules(): _close_slowly(was)
+	if _closes_slowly(): _close_slowly(was)
 
 ## The pieces rules: each platform stands at the one stop whose gate holds,
 ## or where it stood when none or several do (its first stop at the start).
@@ -221,9 +215,21 @@ func _open_controls() -> bool:
 func _pieces_rules() -> bool:
 	return PiecesRules.on(simulation_version)
 
-## Tide rules: a crossing that was open and whose gate no longer holds keeps
-## its floor until `closing_ticks` after the tick it started closing, then
-## shuts. Holding again in the meantime, it simply stays open.
+## Whether a crossing whose gate lets go keeps its floor a while first: the
+## tide rules, and every open turns level (runtime.gd CLOSING_GRACE_TICKS).
+func _closes_slowly() -> bool:
+	return _tide_rules() or _open_turns()
+
+## How long a closing crossing keeps its floor: under open turns the one
+## shared grace, else the definition's "closing_ticks".
+func _grace_ticks() -> int:
+	return CLOSING_GRACE_TICKS if _open_turns() else int(level.get("closing_ticks", 0))
+
+## A crossing that was open and whose gate no longer holds keeps its floor
+## until _grace_ticks() after the tick it started closing, then shuts; the
+## worlds flash its edges meanwhile (kit/closing_warning.gd, from the
+## snapshot's route_progress.closing). Holding again in the meantime, it
+## simply stays open.
 func _close_slowly(was: Dictionary) -> void:
 	for id: String in _routes:
 		# The pieces rules: a platform's stop is wherever the platform stands, at once.
@@ -233,8 +239,8 @@ func _close_slowly(was: Dictionary) -> void:
 		elif _closing.has(id):
 			if tick < int(_closing[id]): _routes[id] = true
 			else: _closing.erase(id)
-		elif bool(was.get(id, false)) and int(level.get("closing_ticks", 0)) > 0:
-			_closing[id] = tick + int(level.closing_ticks)
+		elif bool(was.get(id, false)) and _grace_ticks() > 0:
+			_closing[id] = tick + _grace_ticks()
 			_routes[id] = true
 			_events.append("closing:" + id)
 
@@ -268,7 +274,7 @@ func _keeps_routes_at_completion() -> bool:
 ## the crossing shuts (and the spirit drowns) or holds again, so every saved
 ## end has both spirits on open floor.
 func _on_closing() -> bool:
-	return _tide_rules() and (_closing.has(str(_players.p0.surface_id)) or _closing.has(str(_players.p1.surface_id)))
+	return _closes_slowly() and (_closing.has(str(_players.p0.surface_id)) or _closing.has(str(_players.p1.surface_id)))
 
 func _may_complete() -> bool:
 	# The pieces rules: never while an item flies, so a checkpoint never holds one.
@@ -294,12 +300,6 @@ func _source_holds() -> bool:
 	if policy.kind in ["route_endpoint", "signal_route"]:
 		return Seven.predicate(policy.get("when", {}), stage, _players, _mechanisms, _optics.signals, true) and (not policy.has("endpoint") or Seven.near(_players[first_player_slot], policy.endpoint))
 	return true
-
-## Whether this turn may be kept anywhere: a draft, a replay or an upload. A
-## drowned turn is not (tide rules), whoever drowned; the screen still holds
-## it for Preview.
-func keeps_draft() -> bool:
-	return _drowned.is_empty()
 
 func _refresh_optics() -> void:
 	if not stage.has("optical_field"):
@@ -356,7 +356,8 @@ func _objective_display() -> Dictionary:
 ## Snapshot text only. A harbour hold that began too late to leave the partner
 ## their budget says so, instead of the generic "keep the crossing ready".
 func commit_reason() -> String:
-	if not _drowned.is_empty(): return DROWNED_YOU if _drowned.slot == active_slot else DROWNED_FRIEND
+	var lost := _lost_reason()
+	if not lost.is_empty(): return lost
 	if _on_closing(): return ON_CLOSING
 	if level.get("id", "") == "turn-of-the-tide" and error.is_empty() and role == "a" and not can_commit() and not _ready_branch.is_empty() and _hold_start >= 0 and _hold_start + source_budget_ticks() >= receiver_deadline():
 		return "Try again with more time left for your partner."
@@ -427,7 +428,7 @@ func snapshot() -> Dictionary:
 		value.route_progress["entered_routes"]=_sorted_latches()
 		value["source_branch"]=_ready_branch
 		value["optics"]=_optics.duplicate(true)
-		if _tide_rules():
+		if _closes_slowly():
 			# Ticks left before each closing crossing shuts, and who drowned.
 			var closing: Dictionary = {}
 			for id: String in _closing: closing[id] = int(_closing[id]) - tick
@@ -445,6 +446,8 @@ func _state_body() -> Dictionary:
 	if _tide_rules():
 		value["closing"]=_closing.duplicate()
 		value["drowned"]=_drowned.duplicate()
+	# Open turns off the tide: only while something closes, so other hashes stay.
+	elif not _closing.is_empty(): value["closing"]=_closing.duplicate()
 	# The pieces rules: a stage with throws hashes what is in flight.
 	if not _throws.is_empty(): value["flights"]=_flights.duplicate(true)
 	return value

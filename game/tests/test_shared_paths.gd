@@ -89,11 +89,15 @@ extends SceneTree
 ##     builds presentation/kit/goal_beacon.gd, the late guide every open turns chapter
 ##     gets with no code of its own. test_open_hints.gd, which must stay in CI, checks
 ##     them on every open turns chapter.
-## (y) water worlds: presentation/water_world.gd alone shows a drowning (it holds
-##     presentation/kit/drowning.gd, the one drown), floats boats by the float rule
-##     (kit/floats.gd keel, the dressing's "moored_boats" and every "boat" prop over
-##     water) and sinks stepping stones under the water; no other world reads the
-##     snapshot's "drowned", builds a drowning, floats a boat or reads "moored_boats".
+## (y) water worlds and losses: presentation/cooperative_world.gd alone holds
+##     presentation/kit/drowning.gd (the one drown and fall, a fall away into the
+##     sky included) and presentation/kit/closing_warning.gd (the one flashing rim
+##     of a closing crossing); presentation/water_world.gd alone floats boats by the
+##     float rule (kit/floats.gd keel, the dressing's "moored_boats" and every
+##     "boat" prop over water) and sinks stepping stones under the water. No other
+##     world reads the snapshot's "drowned" (the water world's stones aside),
+##     builds a drowning or a closing warning, flashes a closing crossing of its
+##     own, floats a boat or reads "moored_boats".
 ## (z) contact shadows: presentation/kit/contact_shadows.gd alone draws the soft
 ##     shadow where things meet the ground (its shader is preloaded nowhere
 ##     else; the pip's shadow takes its look from it), island_world alone makes
@@ -1152,21 +1156,29 @@ func _contact_shadows() -> void:
 # (y) Water worlds -------------------------------------------------------------
 
 const WATER_WORLD := "res://presentation/water_world.gd"
+const LOSS_HOST := "res://presentation/cooperative_world.gd"
 const DROWNING := "res://presentation/kit/drowning.gd"
+const CLOSING_WARNING := "res://presentation/kit/closing_warning.gd"
 
-## (y) One drowning, one float rule and one way stones go under, in the water world.
+## (y) One drowning and one closing warning, shown in every world through
+## cooperative_world; one float rule and one way stones go under, in the water world.
 func _water_worlds() -> void:
 	var worlds := 0
 	for path: String in _sources:
 		var source: String = _sources[path]
-		if path != WATER_WORLD and path != DROWNING:
-			var alias := _alias(source, DROWNING)
-			_check(_found("\\b(?:Drowning" + ("|" + alias if not alias.is_empty() else "") + ")\\.new\\(", source) == 0, "%s builds a drowning of its own: the water world holds the one (presentation/kit/drowning.gd)" % path)
-		if not path.begins_with("res://presentation/") or not path.ends_with("_world.gd") or path == WATER_WORLD: continue
+		if path != LOSS_HOST:
+			for kit: Array in [[DROWNING, "Drowning"], [CLOSING_WARNING, "ClosingWarning"]]:
+				if path == kit[0]: continue
+				var alias := _alias(source, kit[0])
+				_check(_found("\\b(?:" + str(kit[1]) + ("|" + alias if not alias.is_empty() else "") + ")\\.new\\(", source) == 0, "%s builds a %s of its own: cooperative_world holds the one (%s)" % [path, kit[1], kit[0]])
+		if not path.begins_with("res://presentation/") or not path.ends_with("_world.gd") or path == LOSS_HOST: continue
 		worlds += 1
-		_check(_found("\"drowned\"|DrownRing|DROWN_", source) == 0, "%s shows a drowning of its own: presentation/water_world.gd shows every one through kit/drowning.gd" % path)
+		_check(_found("CLOSING_COLOR|\"warned\"|ClosingWarning_", source) == 0, "%s flashes a closing crossing of its own: kit/closing_warning.gd flashes every one" % path)
+		if path == WATER_WORLD: continue
+		_check(_found("\"drowned\"|DrownRing|DROWN_", source) == 0, "%s shows a drowning of its own: kit/drowning.gd shows every one, through cooperative_world" % path)
 		_check(_found("\\bFloats\\.keel\\(|\"moored_boats\"", source) == 0, "%s floats boats of its own: presentation/water_world.gd floats every boat by the float rule" % path)
-	_check(worlds > 10 and _found("Drowning\\.new\\(", _sources.get(WATER_WORLD, "")) == 1 and _found("\"drowned\"", _sources.get(WATER_WORLD, "")) > 0, "The water world holds the one drowning and every chapter world is scanned (%d)" % worlds)
+	var host: String = _sources.get(LOSS_HOST, "")
+	_check(worlds > 10 and _found("Drowning\\.new\\(", host) == 1 and _found("ClosingWarning\\.new\\(", host) == 1 and _found("\"drowned\"", host) > 0 and _found("\"closing\"", host) > 0, "cooperative_world holds the one drowning and closing warning, and every chapter world is scanned (%d)" % worlds)
 
 func _suites() -> void:
 	var shards := {}

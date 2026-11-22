@@ -72,8 +72,9 @@ func _run() -> void:
 		screen.advance_input(frame)
 		if not warned and not screen.sim.snapshot().route_progress.closing.is_empty():
 			warned = true
-			var edges: Array = screen.world._decks["sand-1"].get_children().filter(func(edge: Node) -> bool: return edge.has_meta("edge"))
-			_check(edges.size() == 2 and edges.all(func(edge: Node) -> bool: return edge.has_meta("warned")), "A closing crossing's edges flash")
+			var closing: Dictionary = screen.sim.snapshot().route_progress.closing
+			var rims: Array = screen.world.closing_warning.moving_nodes().filter(func(rim: Node3D) -> bool: return rim.visible)
+			_check(closing.has("sand-1") and rims.size() == closing.size() and rims.any(func(rim: Node3D) -> bool: return rim.name == "ClosingWarning_sand-1"), "A closing crossing's rim flashes (kit/closing_warning.gd)")
 			# The rising harbour is slowed to reach the sand bar's deck as it shuts.
 			var water: Node3D = screen.world.waters.bodies.harbour
 			_check(water.has_meta("rate") and float(water.get_meta("rate")) < float(screen.world.waters.water.rate), "The water rising over the closing bar slows to meet its deck as it shuts")
