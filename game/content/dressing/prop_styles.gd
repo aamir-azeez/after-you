@@ -129,7 +129,9 @@ const SLOTS := {
 	# Where an item rests (kit/pieces/socket.gd item_spot): nothing drawn, a
 	# stone pedestal, a garden planter, the relay nest or a winch a handle fits.
 	"item_spot": {"none": {}, "pedestal": {}, "planter": {}, "nest": {}, "winch": {}},
-	"current": {"ripples": {}, "chevrons": {}},
+	# A current's legs: marks on the water, or a hoist's bucket on a rope line
+	# that winds an item up to another floor.
+	"current": {"ripples": {}, "chevrons": {}, "bucket": {}},
 	# A swing (core/physical/swings.gd, kit/pieces/swing.gd): what hangs and
 	# swings across its lane, and what it hangs from.
 	"swing": {"crane_bucket": {}},
