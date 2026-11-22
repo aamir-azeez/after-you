@@ -32,6 +32,7 @@ extends Node3D
 ## changed since the last call. Hidden, it does nothing.
 const SHADER := preload("res://presentation/kit/goal_beacon.gdshader")
 const Primitives = preload("res://presentation/kit/primitives.gd")
+const Squircle = preload("res://presentation/kit/squircle.gd")
 const CREAM := Color("f6f1dc")
 const MAST := Color("e9e1c6")
 ## A shut spot's pieces, mixed this far toward DIM: greyed, never dark, so a
@@ -51,8 +52,12 @@ const BREATH := 0.12
 ## On a pad the ring keeps this clear of the inner edge of the pad's outline
 ## at its widest.
 const INSIDE_CLEAR := 0.05
-## Round a goal the ring's middle lies this far past its disc (m), on the floor.
+## Round a goal the ring lies this far past its base (m), on the floor; a
+## squircle base (kit/pieces/goal.gd base_extent, "around_half") gets a
+## squircle ring.
 const AROUND_CLEAR := 0.03
+## A ring round a squircle base: half its bar's width (m).
+const AROUND_BAR := 0.015
 ## A beacon's pieces, in build order.
 enum {RING, MAST_PIECE, LAMP, PENNANT}
 ## The pointer keeps inside this share of the screen: clear of the title (top
@@ -149,7 +154,7 @@ func _beacon(spot: Dictionary, color: Color) -> Dictionary:
 	var materials: Array[ShaderMaterial] = []
 	var tints: Array[Color] = []
 	# RING, MAST_PIECE, LAMP, PENNANT: [shader part, mesh, position, tint].
-	for piece: Array in [[1, ring_mesh(float(spot.get("inside", 0.0)), float(spot.get("around", 0.0))), Vector3(0, ring_lift(float(spot.get("inside", 0.0))), 0), color],
+	for piece: Array in [[1, ring_mesh(float(spot.get("inside", 0.0)), float(spot.get("around", 0.0)), spot.get("around_half", Vector2.ZERO)), Vector3(0, ring_lift(float(spot.get("inside", 0.0))), 0), color],
 			[0, Primitives.cylinder_mesh(0.022, MAST_HEIGHT), Vector3(0, MAST_HEIGHT * 0.5, 0), MAST],
 			[3, Primitives.sphere_mesh(0.085), Vector3(0, MAST_HEIGHT + 0.06, 0), LAMP_LIT],
 			[2, Primitives.box_mesh(Vector3(0.34, 0.20, 0.012)), Vector3(0.19, MAST_HEIGHT - 0.16, 0), color]]:
@@ -172,7 +177,9 @@ func _beacon(spot: Dictionary, color: Color) -> Dictionary:
 ## AROUND_CLEAR past its edge, or on a pad with `inside` clear room inside
 ## its outline (kit/pieces/pad.gd rim_inside) one whose outer edge stays
 ## INSIDE_CLEAR inside that at its widest breath.
-static func ring_mesh(inside: float, around: float = 0.0) -> TorusMesh:
+static func ring_mesh(inside: float, around: float = 0.0, around_half: Vector2 = Vector2.ZERO) -> Mesh:
+	# Round a squircle base (a goal's, kit/squircle.gd) the ring follows its shape.
+	if inside <= 0.0 and around_half != Vector2.ZERO: return Squircle.frame(around_half + Vector2.ONE * (AROUND_CLEAR + AROUND_BAR), AROUND_BAR * 2.0, 0.004)
 	if inside <= 0.0: return Primitives.ring_mesh(maxf(RING_RADIUS, around + AROUND_CLEAR))
 	var shape := TorusMesh.new()
 	shape.outer_radius = (inside - INSIDE_CLEAR) / (1.0 + BREATH)

@@ -15,6 +15,8 @@ const Selector = preload("res://presentation/kit/pieces/selector.gd")
 const Pad = preload("res://presentation/kit/pieces/pad.gd")
 const PadChecks = preload("res://tests/pad_checks.gd")
 const Goal = preload("res://presentation/kit/pieces/goal.gd")
+const Squircle = preload("res://presentation/kit/squircle.gd")
+const PropRules = preload("res://presentation/kit/prop_rules.gd")
 const Lift = preload("res://presentation/kit/pieces/lift.gd")
 const Pulley = preload("res://presentation/kit/pieces/pulley.gd")
 const BridgeKit = preload("res://presentation/kit/pieces/bridge.gd")
@@ -52,6 +54,7 @@ func _run() -> void:
 	_check_selector_props(holder)
 	_check_goal_light(holder)
 	_check_goal_pads(holder)
+	_check_squircle(holder)
 	_check_arrivals(holder)
 	_check_swings(holder)
 	_check_roll(holder)
@@ -110,7 +113,7 @@ func _check_every_style(holder: Node3D) -> void:
 	for style: String in Styles.SLOTS.goal:
 		var piece: RefCounted = Goal.build(style, AT, 0.28, holder)
 		_check(piece.style == style and piece.bell is MeshInstance3D and piece.ring is MeshInstance3D and piece.light.get_parent() == holder and piece.root.is_ancestor_of(piece.bell), "Goal %s keeps its bell, ring and light" % style)
-		_check(is_equal_approx((piece.ring.mesh as TorusMesh).outer_radius, 0.28 + 0.025) and piece.root.position == AT, "Goal %s rings the goal's exact spot" % style)
+		_check((is_equal_approx((piece.ring.mesh as TorusMesh).outer_radius, 0.28 + 0.025) if style == "planter" else (piece.ring.mesh.get_aabb().end.x > Goal.plate_extent(0.28, style).x and piece.ring.mesh.get_aabb().end.x <= Goal.base_extent(0.28, style).x)) and piece.root.position == AT, "Goal %s rings the goal's exact spot, a squircle round its plate" % style)
 		_check(is_zero_approx(piece.light.light_energy), "Goal %s is built unlit" % style)
 	for style: String in Styles.SLOTS.lift:
 		var piece: RefCounted = Lift.build(style, Rect2(-1.0, -0.9, 2.0, 1.8), 0.0, 1.6, holder, {"drive": Vector3(-3.0, 0, -1.3)})
@@ -381,13 +384,15 @@ func _check_goal_pads(holder: Node3D) -> void:
 		_check(goal.pads.size() == 2 and goal.moving_parts().has(goal.pads.p0.rim), "Goal %s stands two pads and keeps them moving" % style)
 		for slot: String in Goal.PAD_SLOTS:
 			var pad: RefCounted = goal.pads[slot]
-			# The two halves tile one plate a pad board the goal's size, west then east.
+			# The two halves tile one squircle plate, west then east.
 			var west := -1.0 if slot == "p0" else 1.0
-			var tiles: bool = pad.half_size.is_equal_approx(Goal.pad_half(0.48, style)) and (style == "planter" or is_equal_approx(pad.half_size.y, Pad.board_half(0.48))) and is_equal_approx(pad.at.x, west * pad.half_size.x) and is_zero_approx(pad.at.z)
+			var tiles: bool = pad.half_size.is_equal_approx(Goal.pad_half(0.48, style)) and is_equal_approx(pad.half_size.y, Goal.plate_half(0.48, style)) and is_equal_approx(pad.at.x, west * pad.half_size.x) and is_zero_approx(pad.at.z) and not pad.shape.is_empty()
 			_check(tiles and (pad.rim.material_override as StandardMaterial3D).albedo_color == Parts.owner_color(slot), "Goal %s's %s half is its own half of the plate in its pip's colour" % [style, slot])
-			_check(Vector2(pad.half_size.x * 2.0, pad.half_size.y).length() <= Goal.base_radius(0.48, style) and Goal.drawn_radius(style, 0.48) >= Goal.outer_radius(style, 0.48), "Goal %s's plate lies on its disc (a planter's soil), inside what it draws" % style)
+			var lies := true
+			for point: Vector2 in Squircle.outline(Goal.plate_extent(0.48, style)): lies = lies and point.length() <= Goal.base_radius(0.48, style) + 0.0001
+			_check(lies and Goal.drawn_radius(style, 0.48) >= Goal.outer_radius(style, 0.48), "Goal %s's plate lies on its base (a planter's soil), inside what it draws" % style)
 			_check(pad.at.y + Pad.BOARD_TOP - Pad.BOARD_SINK - Pad.DIP * 1.05 > float(Goal.DISC_TOPS[style]), "Goal %s's %s pad, pressed, stays above the goal's disc" % [style, slot])
-			_check(PadChecks.outline_fits(pad), "Goal %s's %s half draws its own square-cornered outline" % [style, slot])
+			_check(PadChecks.outline_fits(pad), "Goal %s's %s half draws its own outline" % [style, slot])
 	_check(PadChecks.outline_fits(Pad.build("board", AT, 0.06, holder)) and PadChecks.outline_fits(Pad.build("board", AT, 0.4, holder, {"size": Vector2(0.3, 0.6)})), "A small board and a long one draw their outlines inside their edges")
 	var goal: RefCounted = Goal.build("bell", Vector3.ZERO, 0.48, holder)
 	var on_pad := func(slot: String) -> Dictionary:
@@ -417,7 +422,8 @@ func _check_goal_pads(holder: Node3D) -> void:
 	var met := {"players": {}, "mechanisms": {"items": {"pipsport": {"holder": "p1", "spot": ""}}, "levers": {"lamp": true}, "controls": {}}}
 	needy.needs.present(met)
 	var bright: bool = needy.needs.needs.all(func(need: Dictionary) -> bool: return (need.disc.material_override as StandardMaterial3D).emission_enabled)
-	_check(bright and needy.needs.all_met() and needy.moving_parts().has(needy.needs.needs[0].disc), "Meeting a need lights its token")
+	var done: bool = needy.needs.needs.all(func(need: Dictionary) -> bool: return need.tick.visible and not need.icon.visible)
+	_check(bright and done and needy.needs.all_met() and needy.moving_parts().has(needy.needs.needs[0].disc), "Meeting a need lights its token and shows a tick in place of its icon")
 	var finished := {"players": {"p0": on_pad.call("p0"), "p1": on_pad.call("p1")}, "objective_done": true, "complete": true}
 	needy.present_pips(finished.players)
 	needy.set_lit(Goal.lit(finished))
@@ -463,11 +469,43 @@ func _check_goal_missing(holder: Node3D) -> void:
 	goal.set_lit(false)
 	goal.present({"tick": 0, "players": {"p0": away, "p1": away}, "mechanisms": waiting}, false, false)
 	_check(not goal.missing() and red.call(goal.pads.p1.rim) == 0.0 and red.call(token) == 0.0, "Nobody on the plate: no red")
-	# The token stands big on the plate's middle line at its front edge, clear of
-	# where a pip stands in the middle of its half.
-	var spot: Vector3 = token.position
-	var clear := Vector2(spot.x - goal.pads.p0.at.x, spot.z).length() >= Goal.GoalNeeds.TOKEN + 0.12
-	_check(Goal.GoalNeeds.TOKEN >= 0.1 and is_zero_approx(spot.x) and is_equal_approx(spot.z, Goal.plate_half(0.28)) and clear and Goal.drawn_radius("crest", 0.28, 2) >= Goal.GoalNeeds.reach(Goal.plate_half(0.28), 2), "The need token stands big at the plate's front edge, clear of the pips' spots")
+	# The token stands big on a sign over the goal's stand (a crest's own post),
+	# above a pip's head, and the sign leans toward the camera.
+	var sign := goal.root.find_child("GoalNeedSign", true, false) as Node3D
+	var face: Vector3 = (token.global_transform.basis.y).normalized()
+	var toward: Vector3 = Goal.GoalNeeds.ViewFit.CAMERA_FROM.normalized()
+	_check(Goal.GoalNeeds.TOKEN >= 0.175 and sign != null and sign.position.y - Goal.GoalNeeds.TOKEN * 2.0 > PropRules.STEP_HEAD and face.dot(toward) > 0.99 and sign.position.y == Goal.NEED_SIGNS.crest.at.y, "The need token stands big on a sign over the goal, above a pip's head, facing the camera")
+	_check(not goal.needs.needs[0].tick.visible and goal.needs.needs[0].icon.visible, "An unmet need shows its icon, no tick")
+	_check(Goal.drawn_radius("crest", 0.28) == Goal.outer_radius("crest", 0.28), "The overhead sign adds nothing to the goal's drawn footprint")
+	for style: String in Goal.STYLES:
+		var other: RefCounted = Goal.build(style, Vector3.ZERO, 0.48, holder)
+		other.add_needs({"goal_policy": {"kind": "ring", "when": {"all": [{"lever_id": "a"}, {"lever_id": "b"}, {"lever_id": "c"}]}}}, func(_id: String) -> String: return "")
+		var row: Node3D = other.root.find_child("GoalNeedSign", true, false)
+		_check(row != null and other.needs.needs.size() == 3 and row.position.y - Goal.GoalNeeds.TOKEN * 2.0 > PropRules.STEP_HEAD and row.position.z <= 0.0, "Goal %s hangs its three need tokens on a sign above a pip's head, behind the plate" % style)
+
+## The squircle (kit/squircle.gd): one outline for the base, plate, ring and
+## hit test; a half's hit test is its drawn half; meshes are built once per
+## size; a goal from GROWN_FROM up has two regular pad boards side by side.
+func _check_squircle(holder: Node3D) -> void:
+	var half := Vector2(0.58, 0.29)
+	_check(Squircle.inside(Vector2(0.57, 0.0), half) and Squircle.inside(Vector2(0.0, -0.28), half) and not Squircle.inside(Vector2(0.58, 0.29), half) and not Squircle.inside(Vector2(0.59, 0.0), half), "The squircle holds its axes' ends and cuts its corners")
+	_check(Squircle.inside_half(Vector2(0.3, 0.1), half, 1) and not Squircle.inside_half(Vector2(-0.1, 0.0), half, 1) and Squircle.inside_half(Vector2(-0.1, 0.0), half, -1), "A half holds only its own side of the centre line")
+	var outline := Squircle.outline(half)
+	var wide := 0.0
+	for point: Vector2 in outline: wide = maxf(wide, absf(point.x))
+	_check(outline.size() == Squircle.SEGMENTS and is_equal_approx(wide, half.x), "The outline spans the squircle's width")
+	_check(Squircle.slab(half, 0.05) == Squircle.slab(half, 0.05) and Squircle.half_slab(half, 0.05, 1) != Squircle.half_slab(half, 0.05, -1) and Squircle.frame(half, 0.025, 0.01) == Squircle.frame(half, 0.025, 0.01), "Each squircle mesh is built once per size and shared")
+	var slab := Squircle.half_slab(half, 0.05, 1).get_aabb()
+	_check(is_zero_approx(slab.position.x) and is_equal_approx(slab.end.x, half.x) and is_equal_approx(slab.size.y, 0.05), "A half slab runs from the centre line out to the curve")
+	var big: Vector2 = Goal.plate_extent(0.65, "bell")
+	var reach := 0.0
+	for point: Vector2 in Squircle.outline(big): reach = maxf(reach, point.length())
+	_check(Goal.plate_extent(0.28, "bell") == Vector2.ONE * Pad.board_half(0.28) and big.x > big.y * 1.99 and big.y >= Pad.board_half(0.36) - 0.0001 and reach <= 0.65 + 0.0001, "A grown goal's halves are each a regular pad board, the whole inside its radius; an older one keeps its square plate")
+	var goal: RefCounted = Goal.build("bell", Vector3.ZERO, 0.65, holder)
+	var east: RefCounted = goal.pads.p1
+	var spot: Vector3 = east.at
+	var corner := spot + Vector3(east.half_size.x - 0.005, 0, east.half_size.y - 0.005)
+	_check(Pad.covers(spot, east.radius, east.half_size, corner, 0.0, 1.0) and not Pad.covers(spot, east.radius, east.half_size, corner, 0.0, 1.0, east.shape) and Pad.covers(spot, east.radius, east.half_size, spot, 0.0, 1.0, east.shape) and not Pad.covers(spot, east.radius, east.half_size, spot - Vector3(east.half_size.x + 0.02, 0, 0), 0.0, 1.0, east.shape), "A half's hit test is its drawn squircle half, not its bounding rectangle")
 
 func _pose(node: Node3D) -> Array:
 	var pose: Array = []

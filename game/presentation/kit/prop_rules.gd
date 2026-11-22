@@ -355,7 +355,7 @@ static func drawn_radius(view: Dictionary, spot: Dictionary, styles: Callable, l
 	if kind not in FLAT_CONTROLS: return 0.0
 	if not styles.is_valid(): return radius
 	if kind in PAD_KINDS: return PadKit.drawn_radius(str(styles.call("pad", id)), radius)
-	if kind in ["goal", "goals"]: return GoalKit.drawn_radius(str(styles.call("goal", id)), radius, GoalKit.GoalNeeds.terms(view.get("goal_policy", {}).get("when", {})).size())
+	if kind in ["goal", "goals"]: return GoalKit.drawn_radius(str(styles.call("goal", id)), radius)
 	return radius
 
 ## Whether two control bodies (control_bodies) draw into each other.
