@@ -481,8 +481,13 @@ func _reactions(level: Dictionary) -> void:
 	var length := int(turns[1].duration_ticks)
 	var before := mini(handoff - 1, 3)
 	var after := handoff + mini(length - handoff - 1, 3 + RunReactionTrack.COOLDOWN_TICKS)
-	if not _check(before >= 1 and after - before >= RunReactionTrack.COOLDOWN_TICKS and after < length, "%s: turn 3 takes over at %d of turn 2's %d ticks, room for a reaction on each side" % [chapter, handoff, length]): return
-	RunReactionStore.new().keep(str(turns[1].recording_hash), [{"tick": before, "id": "happy"}, {"tick": after, "id": "sad"}])
+	# A turn 2 that ends on the hand-off has nothing left to play beside turn 3: only the first reaction is kept.
+	var beside := after > handoff
+	if not _check(before >= 1 and (not beside or (after - before >= RunReactionTrack.COOLDOWN_TICKS and after < length)), "%s: turn 3 takes over at %d of turn 2's %d ticks, room for a reaction before it" % [chapter, handoff, length]): return
+	var kept: Array = [{"tick": before, "id": "happy"}] + ([{"tick": after, "id": "sad"}] if beside else [])
+	var expected: Array = [{"id": "happy", "tick": before, "phase": "watch"}] + ([{"id": "sad", "tick": after - handoff, "phase": "play"}] if beside else [])
+	var expected_replay: Array = [["happy", before]] + ([["sad", after - handoff]] if beside else [])
+	RunReactionStore.new().keep(str(turns[1].recording_hash), kept)
 	var path := _journal_path(chapter, "reactions")
 	var journey := _journal(chapter, path)
 	if not _check(journey.accept_recording(turns[0]) and journey.accept_recording(turns[1]), "%s: turn 3 is next (%s)" % [chapter, journey.last_error]): return
@@ -496,7 +501,7 @@ func _reactions(level: Dictionary) -> void:
 			await _close_screen(screen)
 			continue
 		var steps := 0
-		while screen.mode in ["watch", "play"] and steps < 20000 and (screen.mode == "watch" or int(screen.sim.tick) <= after - handoff + 2):
+		while screen.mode in ["watch", "play"] and steps < 20000 and (screen.mode == "watch" or int(screen.sim.tick) <= after - handoff + 2) and (screen.mode == "watch" or beside or int(screen.sim.tick) < 8):
 			steps += 1
 			probe.phase = screen.mode
 			if screen.mode == "watch":
@@ -506,7 +511,7 @@ func _reactions(level: Dictionary) -> void:
 			# Fast-forward holds while the friend's turn still plays, as the screen's own tick does.
 			elif fast and screen.memory_wait.waiting(): screen._wait().fast_forward_tick(screen.advance_input, screen._playing_turn)
 			else: screen.advance_input(STILL)
-		_check(probe.shown == [{"id": "happy", "tick": before, "phase": "watch"}, {"id": "sad", "tick": after - handoff, "phase": "play"}], "%s: each shows when turn 2 reaches its tick, before and after the hand-off (%s; ended on tick %d, mode %s, %d steps)" % [label, str(probe.shown), int(screen.sim.tick), screen.mode, steps])
+		_check(probe.shown == expected, "%s: each shows when turn 2 reaches its tick, before and after the hand-off (%s; ended on tick %d, mode %s, %d steps)" % [label, str(probe.shown), int(screen.sim.tick), screen.mode, steps])
 		await _close_screen(screen)
 	# The stage's replay: turn 2 plays to the hand-off, then beside turn 3.
 	var rows: Array = await _rows(chapter, level.path, false)
@@ -519,11 +524,11 @@ func _reactions(level: Dictionary) -> void:
 	screen._play_collection_pair()
 	var shown_at: Array = []
 	var steps := 0
-	while screen.mode == "replay" and screen.running and steps < 100000 and probe.shown.size() < 2:
+	while screen.mode == "replay" and screen.running and steps < 100000 and probe.shown.size() < expected_replay.size():
 		steps += 1
 		screen._physics_process(0.0)
 		if probe.shown.size() > shown_at.size(): shown_at.append(int(screen._replay_turns.find(screen._replay_runs[0])) if not screen._replay_runs.is_empty() else -1)
-	_check(probe.shown.map(func(item: Dictionary) -> Array: return [item.id, item.tick]) == [["happy", before], ["sad", after - handoff]] and shown_at == [1, 2], "%s reactions replay: each shows at turn 2's tick, the second beside turn 3 (%s, %s)" % [chapter, str(probe.shown), str(shown_at)])
+	_check(probe.shown.map(func(item: Dictionary) -> Array: return [item.id, item.tick]) == expected_replay and shown_at == ([1, 2] if beside else [1]), "%s reactions replay: each shows at turn 2's tick, the second beside turn 3 (%s, %s)" % [chapter, str(probe.shown), str(shown_at)])
 	await _close_screen(screen)
 
 ## The level's chapter screen on the journal at `path`, its journal loaded
