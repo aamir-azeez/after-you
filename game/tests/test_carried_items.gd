@@ -476,6 +476,8 @@ func _raft_ride() -> void:
 	_tap(b_sim)
 	state = b_sim._mechanisms.items.pipsport
 	_check(b_sim._mechanisms.controls.rope == "SOUTH" and state.surface_id == "raft-south" and int(state.z) == 660 and int(state.x) == 200 and "rode:raft" in b_sim._events, "The live pip's pull carries it over the water: %s" % [state])
+	# The pip steps aboard once the raft is there (simulation.gd _may_step).
+	while not b_sim._decks.is_empty() and not b_sim.finished: b_sim.step({})
 	_go(b_sim, [200, 690])
 	_check(b_sim._players.p1.surface_id == "raft-south" and b_sim.context_action().id == "take", "At the far stop it may be picked up again")
 	_tap(b_sim)

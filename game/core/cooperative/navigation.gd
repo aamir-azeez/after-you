@@ -14,6 +14,10 @@ extends RefCounted
 ## once per definition (index_for, keyed by its digest; shared by every engine
 ## and thread, never changed once built) and passes it to at().
 
+## How far up or down (cm) a walker's centre steps from one floor to the next:
+## a slight ledge, never a storey. A moving platform's deck is boarded or left
+## only within it too (core/journey/simulation.gd _may_step).
+const STEP_CM := 2
 ## The index grid's square size (cm).
 const CELL_CM := 64
 ## Cells either way of the origin a cell number covers (about 21 km).
@@ -29,7 +33,7 @@ static var _indexes_lock := Mutex.new()
 ## cells: the level's index_for(); {} tests every surface.
 static func at(level: Dictionary, routes: Dictionary, levers: Dictionary, previous: Dictionary, x: int, z: int, slot: String, radius: int, allow_drop: bool = true, cells: Dictionary = {}) -> Dictionary:
 	var point := Vector2i(x, z)
-	var surface := _support(level, routes, point, slot, previous, 2, cells)
+	var surface := _support(level, routes, point, slot, previous, STEP_CM, cells)
 	if surface.is_empty(): return {}
 	var samples := [Vector2i(-radius,0),Vector2i(radius,0),Vector2i(0,-radius),Vector2i(0,radius)]
 	var diagonal := int(ceil(float(radius) * 0.707107))
@@ -50,7 +54,7 @@ static func at(level: Dictionary, routes: Dictionary, levers: Dictionary, previo
 	surface["z"] = z
 	return surface
 
-static func _support(level: Dictionary, routes: Dictionary, point: Vector2i, slot: String, previous: Dictionary, tolerance: int = 2, cells: Dictionary = {}) -> Dictionary:
+static func _support(level: Dictionary, routes: Dictionary, point: Vector2i, slot: String, previous: Dictionary, tolerance: int = STEP_CM, cells: Dictionary = {}) -> Dictionary:
 	var old_height := int(previous.get("height", 0))
 	# The first island, open bridge or open stair under the point within
 	# tolerance of the height it comes from, in that order: of the point's own
@@ -66,8 +70,8 @@ static func _support(level: Dictionary, routes: Dictionary, point: Vector2i, slo
 	for stair: Dictionary in lists[2]:
 		if not bool(routes.get(stair.id, false)) or not _owns(stair, slot) or not inside(point, stair.rect_cm): continue
 		var height := stair_height(stair, point)
-		# The centre's own step (tolerance 2) never comes down a one way stair.
-		if tolerance == 2 and height < old_height and stair.has("one_way"): continue
+		# The centre's own step (STEP_CM) never comes down a one way stair.
+		if tolerance == STEP_CM and height < old_height and stair.has("one_way"): continue
 		if absi(height - old_height) <= tolerance:
 			return {"surface_id":str(stair.id),"height":height}
 	return {}
