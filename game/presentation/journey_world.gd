@@ -808,8 +808,10 @@ func _build_light(stage: Dictionary) -> void:
 				if (leg[0] as Vector3).distance_to(leg[1]) > 0.01: cables.append(_floor_cable(leg[0], leg[1], 0.025, LIGHT_LINK))
 		_lamp_cables[id] = cables
 
-## A cable's lift off its floor, and its colour while its lamp is dark (m).
-const LIGHT_LINK_LIFT := 0.03
+## A cable's lift off its floor (clear of a throw landing's ticks it may
+## cross, kit/pieces/socket.gd landing()), and its colour while its lamp is
+## dark (m).
+const LIGHT_LINK_LIFT := 0.04
 const LIGHT_LINK := Color("8a8f86")
 
 ## What powers a lamp in its lit_when: each light pad ({"pad_id"}) and each
