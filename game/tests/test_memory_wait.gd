@@ -8,7 +8,10 @@ extends SceneTree
 ## and Skip reach the same tick and world as plain play, then the live turn
 ## takes over at its tick 0; Pause and Resume go on watching; Retry starts at
 ## the hand-off), and a pip at the goal first dozes until the friend's replay
-## arrives (the stage ends) or ends elsewhere (it wakes and plays on).
+## arrives (the stage ends) or ends elsewhere (it wakes and plays on). Only
+## the live pip dozes: never the friend's turn shown before the hand-off, and
+## a pip that dozed in one turn is awake when the next turn (where it may be
+## the friend, replaying) begins.
 const MemoryWait = preload("res://presentation/memory_wait.gd")
 const Soundscape = preload("res://services/soundscape.gd")
 const ChapterSoundMap = preload("res://services/chapter_sound_map.gd")
@@ -200,6 +203,7 @@ func _run() -> void:
 	_timed(_test_skip_budget_per_frame)
 	_timed(_test_playback_stepper)
 	_timed(_test_carried_arrival)
+	_timed(_test_doze_only_live)
 	if not to_ring.is_empty():
 		for way: String in ["play", "fast_forward", "skip", "pause"]: _timed(_test_watch_screen.bind(way))
 	for reduced: bool in [false, true]:
@@ -640,6 +644,52 @@ func _test_carried_arrival() -> void:
 	wait.step(state.call(6, true), {}, true)
 	wait.step(state.call(30, true), {}, true)
 	_check(world.woken == 0 and wait.ring_pending() == false and wait.shown_state(state.call(30, true)).has("ring_held"), "Before carry-over turns a memory that ends without the stage keeps the ring held as before")
+
+## Carry-over turns: only the live pip dozes, and only while it waits at the
+## goal. The playback before the hand-off shows the friend's turn, whose pip
+## is live there and moving: it never dozes, shown tick by tick, placed at
+## once, fast-forwarded or skipped. A pip that dozed in the turn before is
+## awake when the next turn begins, where it is the friend replaying.
+func _test_doze_only_live() -> void:
+	var world := KeyedDozeWorld.new()
+	var wait := MemoryWait.new()
+	wait.world = world
+	wait.skip_budget_usec = 1 << 40
+	var state := func(tick: int, live: String, done: bool = false) -> Dictionary:
+		var players := {"p0": {}, "p1": {}}
+		players[live] = {}
+		players["p1" if live == "p0" else "p0"] = {"ghost": true}
+		return {"tick": tick, "role": "b", "active_slot": live, "objective_done": done, "complete": false, "finished": false, "players": players}
+	# Turn k: Teal (p1) at the goal first dozes while Gold's replay plays.
+	wait.begin("b", 30, true)
+	wait.step(state.call(6, "p1", true), {}, true)
+	_check(world.dozing.keys() == ["p1"], "The live pip at the goal first dozes (%s)" % str(world.dozing.keys()))
+	# Turn k+1, Gold's: Teal's turn plays before the hand-off, Teal live and walking in it.
+	var frames: Array = []
+	for index in range(20): frames.append({"move_x": 1.0, "move_z": 0.0, "interact": false})
+	wait.begin_playback(20, frames)
+	_check(world.dozing.is_empty(), "A pip that dozed in its turn is awake when the next turn begins (%s)" % str(world.dozing.keys()))
+	wait.show(state.call(0, "p1"), true)
+	for tick in range(1, 8): wait.step(state.call(tick, "p1"), {}, false, tick % 2 == 0)
+	wait.fast_forward_tick(func(_input: Dictionary) -> void: wait.step(state.call(9, "p1"), {}, false), func() -> bool: return true)
+	var sim := StepLog.new()
+	wait.skipping = true
+	wait.skip_tick(sim, func(_s: Dictionary) -> Dictionary: return {}, func(_input: Dictionary) -> void: wait.step(state.call(20, "p1"), {}, false, true))
+	_check(world.dozing.is_empty(), "Nobody dozes in the playback before the hand-off, placed at once, fast-forwarded or skipped (%s)" % str(world.dozing.keys()))
+	# The hand-off: Gold live, Teal's replay walking beside him; Gold reaches the goal first.
+	wait.begin("b", 30, true)
+	for tick in range(0, 4): wait.step(state.call(tick, "p0"), {}, true, tick == 0)
+	_check(world.dozing.is_empty(), "The friend's replay never dozes while it plays")
+	wait.step(state.call(5, "p0", true), {}, true)
+	wait.show(state.call(5, "p0", true), true)
+	_check(world.dozing.keys() == ["p0"], "Only the live pip dozes, at the goal waiting for the replay (%s)" % str(world.dozing.keys()))
+
+class KeyedDozeWorld extends Node:
+	var dozing: Dictionary = {}
+	func present(_state: Dictionary, _immediate: bool = false) -> void: pass
+	func show_memory_wait(live: String, _memory: String, _immediate: bool = false) -> void: dozing[live] = true
+	func end_memory_wait(live: String) -> void: dozing.erase(live)
+	func wake_from_memory_wait(live: String, _reduced: bool) -> void: dozing.erase(live)
 
 class DozeWorld extends Node:
 	var dozing := false

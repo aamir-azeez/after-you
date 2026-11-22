@@ -30,9 +30,20 @@ const BOARD_SINK := 0.025
 const PAN_SINK := 0.06
 ## How much further a pressed pad dips before it springs back (m).
 const DIP := 0.01
+## Where each style's standing part sits over its floor, its middle and its
+## thickness (m): a plain pad's disc, a pan's dish, a board's planks. An item
+## set down on a pad rests on top of it (top()).
+const PLAIN_Y := 0.025
+const PLAIN_THICK := 0.055
+const DISH_Y := 0.075
+const DISH_THICK := 0.035
+const BOARD_Y := 0.045
+const BOARD_THICK := 0.03
 
 ## The ring the world lights while the pad is held.
 var rim: MeshInstance3D
+## The pad's radius as built (m): an item within it rests on the pad.
+var radius_m := 0.0
 ## The stand spot of a "stand_spot" pad, else null.
 var spot: StandSpotKit
 ## A pan's dish or a board's top, which sinks while held; a crank board's drum.
@@ -63,6 +74,14 @@ func set_held(on: bool, immediate: bool = false) -> void:
 	_dip_rest = _dipping().position.y
 	if pressed and not immediate: _arrive(-DIP)
 
+## How high over its floor an item set down on the pad rests now (m): on top
+## of its disc, dish or board, sunk with it while held, so it never sinks
+## into the pad.
+func top() -> float:
+	if spot != null: return StandSpotKit.DISC_HEIGHT + spot.position.y - spot._rest_y
+	if _dish == null: return PLAIN_Y + PLAIN_THICK / 2.0
+	return _dish.position.y + (DISH_Y + DISH_THICK / 2.0 if style == "pan" else BOARD_Y + BOARD_THICK / 2.0)
+
 func moving() -> bool:
 	return _arriving()
 
@@ -86,6 +105,7 @@ func moving_parts() -> Array[Node3D]:
 
 func _make(pad_style: String, at: Vector3, radius_m: float, parent: Node3D, options: Dictionary, heavy: bool) -> void:
 	style = pad_style
+	self.radius_m = radius_m
 	var owner := str(options.get("owner", "p0"))
 	var color := Parts.GOLD if heavy else Parts.owner_color(owner)
 	if pad_style == "stand_spot":
@@ -105,7 +125,7 @@ func _make(pad_style: String, at: Vector3, radius_m: float, parent: Node3D, opti
 		return
 	_root("Pad_plain", at, parent)
 	anchor = root
-	Parts.cylinder(radius_m, 0.055, color.darkened(0.25), Vector3(0, 0.025, 0), root)
+	Parts.cylinder(radius_m, PLAIN_THICK, color.darkened(0.25), Vector3(0, PLAIN_Y, 0), root)
 	rim = Parts.ring(radius_m, color, Vector3(0, 0.065, 0), root)
 	if heavy: Parts.ring(0.16, Parts.CREAM, Vector3(0, 0.06, 0), root)
 
@@ -118,7 +138,7 @@ func _make_pan(at: Vector3, radius_m: float, parent: Node3D, color: Color) -> vo
 	Parts.disc(radius_m, 0.05, Parts.TIMBER, Vector3(0, 0.025, 0), root)
 	_dish = Node3D.new()
 	root.add_child(_dish)
-	Parts.disc(radius_m * 0.9, 0.035, Parts.BRASS, Vector3(0, 0.075, 0), _dish, radius_m * 0.96)
+	Parts.disc(radius_m * 0.9, DISH_THICK, Parts.BRASS, Vector3(0, DISH_Y, 0), _dish, radius_m * 0.96)
 	rim = Parts.ring(radius_m, color, Vector3(0, 0.1, 0), _dish)
 
 ## A square timber board the pad's size on two bearers, its rim ring lit while
@@ -131,7 +151,7 @@ func _make_board(at: Vector3, radius_m: float, parent: Node3D, color: Color) -> 
 	_dish = Node3D.new()
 	root.add_child(_dish)
 	for index in range(4):
-		Parts.box(Vector3(side, 0.03, side / 4.0 - 0.012), Parts.TIMBER_LIGHT.darkened(0.06 * float(index % 2)), Vector3(0, 0.045, -side * 0.5 + (float(index) + 0.5) * side / 4.0), _dish)
+		Parts.box(Vector3(side, BOARD_THICK, side / 4.0 - 0.012), Parts.TIMBER_LIGHT.darkened(0.06 * float(index % 2)), Vector3(0, BOARD_Y, -side * 0.5 + (float(index) + 0.5) * side / 4.0), _dish)
 	rim = Parts.ring(radius_m, color, Vector3(0, 0.07, 0), _dish)
 	if style != "crank_board": return
 	var frame_z := -side * 0.5 - 0.1
