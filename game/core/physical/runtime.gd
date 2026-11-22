@@ -347,7 +347,7 @@ func _play_both(frame: Dictionary) -> void:
 	var frames := {active_slot: frame, memory_slot: _friend_frame()}
 	_before_moves()
 	_refresh_routes()
-	if _plays_friend_world: _move_floor = {"routes": _walk_routes(memory_slot).duplicate(), "levers": _mechanisms.levers.duplicate()}
+	if _plays_friend_world: _move_floor = {"routes": _routes.duplicate(), "levers": _mechanisms.levers.duplicate()}
 	for slot: String in SLOTS: _move(frames[slot], slot)
 	for slot: String in SLOTS: _after_move(slot)
 	_refresh_routes()
