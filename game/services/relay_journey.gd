@@ -15,6 +15,7 @@ const Canonical = preload("res://core/v2/canonical.gd")
 const Keepsakes = preload("res://services/home_keepsakes.gd")
 const Proofs = preload("res://services/journey_proofs.gd")
 const OpenTurns = preload("res://core/physical/open_turns.gd")
+const OpenTurnStore = preload("res://services/open_turn_store.gd")
 const Frozen = preload("res://services/frozen_simulation.gd")
 const PATH := "user://relay-journey-v2.json"
 ## A chapter's journal, its backup and each archived attempt, raw. The Saved
@@ -233,7 +234,29 @@ func open_turns() -> Dictionary:
 	var stage: Dictionary = _level.stages[index]
 	var held: Array = _state.get(PASSES, [])
 	var turn := 1 if role() == "a" else held.size() + 2
-	return {"turn": turn, "cap": OpenTurns.cap(stage), "must_finish": OpenTurns.must_finish(stage, turn), "player_slot": OpenTurns.slot(str(stage.get("first_player_slot", "")), turn), "stage_index": index}
+	return {"turn": turn, "cap": OpenTurns.cap(stage), "must_finish": OpenTurns.must_finish(stage, turn), "player_slot": OpenTurns.slot(OpenTurnStore.first_slot(stage, _checkpoint), turn), "stage_index": index}
+
+
+## Carry-over turns: the turn the next turn shows before its hand-off, as the
+## room's coordinator gives it (playback()): from turn 3 the stage's latest
+## turn up to the hand-off, and before a later stage's first turn the stage
+## before's closing turn whole. {} when there is nothing to watch.
+func playback() -> Dictionary:
+	if not OpenTurns.pinned(_level): return {}
+	_ensure_loaded()
+	if read_only or chapter_complete(): return {}
+	var turns: Array = [] if _state.a.is_empty() else [_state.a] + _state.get(PASSES, [])
+	var closed: Array = []
+	var start := _checkpoint
+	if turns.is_empty() and not _state.pairs.is_empty():
+		closed = OpenTurns.pair_turns(_state.pairs[-1])
+		start = Registry.previous_checkpoint(_chapter_key, _checkpoint)
+	var shown := OpenTurnStore.playback(turns, closed)
+	if shown.is_empty() or start.is_empty(): return {}
+	shown = shown.duplicate(true)
+	shown["stage_id"] = str(shown.turns[-1].get("stage_id", ""))
+	shown["checkpoint"] = start.duplicate(true)
+	return shown
 
 
 ## Open turns: the turns under prior_recording(), oldest first ([] until a

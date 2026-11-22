@@ -17,6 +17,7 @@ const Canonical = preload("res://core/v2/canonical.gd")
 const Typed = preload("res://services/typed_values.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const KnownCheckpoints = preload("res://core/physical/known_checkpoints.gd")
+const OpenTurns = preload("res://core/physical/open_turns.gd")
 const ROOT := "user://open-turns"
 const TURN_SUFFIX := ".turn.json"
 const CHECKPOINT_SUFFIX := ".checkpoint.json"
@@ -71,6 +72,66 @@ static func hash_ok(record: Dictionary) -> bool:
 
 static func _hash(value: Variant) -> bool:
 	return value is String and value.length() == 64 and value.is_valid_hex_number(false) and value == value.to_lower()
+
+# --- Carry-over turns (claude-20261011/carry-over-turns/design.md) ---
+# How the phone plays a stage's shared timeline (OpenTurns.start_tick and the
+# rest): what a turn shows before its hand-off, how long the friend's replay
+# plays beside it, and the stretches a stage replay plays straight through.
+# A turn recorded under carry-over turns carries its hand-off tick
+# (OpenTurns.HANDOFF_TICK); one recorded before plays as it always has.
+
+## Whether `record` is a turn of the shared timeline.
+static func carried(record: Variant) -> bool:
+	return record is Dictionary and record.has(OpenTurns.HANDOFF_TICK)
+
+## Each turn's length L, in play order.
+static func lengths(turns: Array) -> Array:
+	return turns.map(func(turn: Variant) -> int: return int(turn.get("duration_ticks", 0)) if turn is Dictionary else 0)
+
+## How long the friend's replay plays beside the next turn, which follows
+## `prior` with the stage's turns before it in `chain` (oldest first): the rest
+## of the friend's turn after the hand-off (M). A memory from before carry-over
+## turns plays whole, its own length.
+static func replay_ticks(prior: Variant, chain: Array = []) -> int:
+	if not prior is Dictionary: return 0
+	if not carried(prior): return int(prior.get("duration_ticks", 0))
+	var played := lengths(chain + [prior])
+	return OpenTurns.replay_ticks(played, played.size() + 1)
+
+## What the next turn shows before its hand-off: {"turns", "ticks"}, the
+## friend's turn being the last of `turns` with the stage's turns before it,
+## played from its start for `ticks` (-1: to its end). From turn 3 on it is
+## the stage's latest turn up to the hand-off (H); before a later stage's first
+## turn, the stage before's closing turn whole (`closed`: that stage's turns).
+## {} when there is nothing to watch: turns 1 and 2, a hand-off at tick 0, or
+## turns from before carry-over turns.
+static func playback(turns: Array, closed: Array = []) -> Dictionary:
+	if turns.is_empty():
+		return {"turns": closed, "ticks": -1} if closed.size() >= 2 and carried(closed[-1]) else {}
+	if turns.size() < 2 or not carried(turns[-1]): return {}
+	var ticks := OpenTurns.handoff_tick(lengths(turns), turns.size() + 1)
+	return {"turns": turns, "ticks": ticks} if ticks > 0 else {}
+
+## A completed stage's turns as a replay plays them, straight through the
+## shared timeline: [{"turn": index into `turns`, "ticks"}], each later turn
+## from its start up to where the next takes over (H of the next), the closing
+## turn to its end (-1). Turn 1 plays inside turn 2, so it has no stretch of
+## its own, nor does a turn handed over at its tick 0. [] for turns from
+## before carry-over turns, which each screen plays as it always has.
+static func timeline(turns: Array) -> Array:
+	if turns.size() < 2 or not carried(turns[-1]): return []
+	var played := lengths(turns)
+	var stretches: Array = []
+	for index in range(1, turns.size()):
+		var ticks := -1 if index == turns.size() - 1 else OpenTurns.handoff_tick(played, index + 2)
+		if ticks != 0: stretches.append({"turn": index, "ticks": ticks})
+	return stretches
+
+## The pip that starts the stage after `checkpoint`: the checkpoint's
+## next_first_slot (OpenTurns.first_slot), or `stage`'s own first pip for a
+## checkpoint without one (a level's first stage, rules before carry-over turns).
+static func first_slot(stage: Dictionary, checkpoint: Dictionary) -> String:
+	return OpenTurns.first_slot(checkpoint) if checkpoint.has(OpenTurns.NEXT_FIRST_SLOT) else str(stage.get("first_player_slot", ""))
 
 func _stage_directory(stage_index: int) -> String:
 	var base := directory()

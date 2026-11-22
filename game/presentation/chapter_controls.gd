@@ -124,7 +124,7 @@ func update_state(title: String, remaining: float, state: Dictionary, interactiv
 	action_button.disabled = not bool(action.get("enabled", false))
 	# Open turns (core/physical/open_turns.gd): a later turn may end at any time; it passes once its memory is over.
 	finish_button.disabled = not (bool(state.get("can_commit", false)) or bool(state.get("can_pass", false)) or bool(state.get("can_end_early", false)))
-	stick.visible = interactive
+	stick.visible = interactive and not _playback
 	action_button.visible = interactive and not action_button.text.is_empty() and not _memory_wait
 	finish_button.visible = interactive and not _memory_wait
 	fast_forward_button.visible = interactive and _memory_wait
@@ -164,6 +164,18 @@ func show_memory_wait(text: String, ratio: float, skipping: bool = false) -> voi
 		_place_wait_row.call_deferred()
 	_memory_wait = true
 
+## Carry-over turns: the friend's turn plays before this turn's hand-off. The
+## wait row shows with Fast-forward and Skip as in a wait; the clock and the
+## stick come at the hand-off (hide_memory_wait), with nothing said.
+var _playback := false
+func show_playback(text: String, ratio: float, skipping: bool = false) -> void:
+	show_memory_wait(text, ratio, skipping)
+	if _playback: return
+	_playback = true
+	stick.release()
+	stick.visible = false
+	turn_progress.visible = false
+
 ## True while the fast-forward mark shows (a skipped or fast-forwarded wait).
 func fast_forwarding() -> bool:
 	return fast_forward_badge.active()
@@ -171,6 +183,9 @@ func fast_forwarding() -> bool:
 ## The wait is over (or there is none). Fast-forward lets go of its fingers.
 func hide_memory_wait() -> void:
 	fast_forward_badge.set_active(false)
+	if _playback:
+		_playback = false
+		turn_progress.visible = true
 	if not _memory_wait and not wait_row.visible: return
 	_memory_wait = false
 	wait_row.visible = false

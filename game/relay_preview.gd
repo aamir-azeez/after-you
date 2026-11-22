@@ -252,6 +252,7 @@ const OpeningCard = preload("res://presentation/chapter_loading_card.gd")
 const Proofs = preload("res://services/journey_proofs.gd")
 const Typed = preload("res://services/typed_values.gd")
 const OpenTurns = preload("res://core/physical/open_turns.gd")
+const OpenTurnStore = preload("res://services/open_turn_store.gd")
 const CheckpointPairs = preload("res://services/checkpoint_pairs.gd")
 const PollenResultLine = preload("res://presentation/pollen_result_line.gd")
 const FruitWallet = preload("res://services/fruit_wallet.gd")
@@ -364,9 +365,9 @@ func _ready() -> void:
 	add_child(world)
 	GraphicsPolicy.apply(world, settings)
 	world.footstep.connect(func(spirit: String):
-		if running and mode in ["play", "replay"]: soundscape.play_footstep(spirit))
+		if running and mode in ["play", "replay", "watch"]: soundscape.play_footstep(spirit))
 	world.reunion.connect(func():
-		if running and mode in ["play", "replay"]: soundscape.play_reunion())
+		if running and mode in ["play", "replay", "watch"]: soundscape.play_reunion())
 	# A big change buzzes only in the player's own turn (theirs or their memory's).
 	world.big_change_haptic = func(duration_ms: int, amplitude: float) -> void:
 		if running and mode == "play": soundscape.haptic(duration_ms, amplitude)
@@ -1239,7 +1240,8 @@ func _open_turns_view() -> Dictionary:
 	var open: Dictionary = journey.open_turns()
 	var index := int(open.get("stage_index", -1))
 	if open.is_empty() or index < 0 or index >= definition.stages.size(): return {}
-	return TurnDots.view(open, str(definition.stages[index].get("first_player_slot", "")))
+	# Carry-over turns: a later stage starts with the pip its checkpoint names.
+	return TurnDots.view(open, OpenTurnStore.first_slot(definition.stages[index], checkpoint))
 
 ## The player's pip colour in this room: the host's slot is peach, the guest's
 ## mint. In Solo, the pip this turn steers.
@@ -1932,6 +1934,7 @@ func _pairs() -> Array:
 func _begin() -> void:
 	if _room_context_lost: return
 	if online_session != null and online_session.busy(): return
+	_watch = {}
 	if not _reset_live():
 		return
 	review = {}
@@ -1952,10 +1955,98 @@ func _begin() -> void:
 	var before := mode
 	if redo_flow.nudge_before(_live_tries, _try_slot, func() -> void:
 		if mode == before and not running and not _leaving and not backgrounded:
-			_start_play()
-			_glance_at_goal()): return
+			_open_turn()): return
+	_open_turn()
+
+## A turn's first try first watches the friend's turn up to the hand-off
+## (_start_watch); every other start goes straight to play.
+func _open_turn() -> void:
+	if _start_watch(): return
 	_start_play()
 	_glance_at_goal()
+
+## Carry-over turns (services/open_turn_store.gd playback): the live turn
+## waiting at its hand-off while its first try watches the friend's turn, and
+## the stage that turn is on ({} when none plays). Retry starts at the hand-off.
+var _watch: Dictionary = {}
+## The playback's last state as shown, for its HUD.
+var _watch_state: Dictionary = {}
+
+## Plays the friend's turn from its start up to this turn's hand-off, or
+## before a later stage's first turn their closing turn whole. Their turn is
+## the one shown, so the camera follows them; Fast-forward and Skip to end
+## step it through the wait's own stepper (memory_wait.gd begin_playback).
+## The clock and controls come at the hand-off (_hand_off). False when there
+## is nothing to watch.
+func _start_watch() -> bool:
+	if _live_tries != 1 or not journey.has_method("playback"): return false
+	var shown: Dictionary = journey.playback()
+	if shown.is_empty(): return false
+	var turns: Array = shown.turns
+	var watched: Dictionary = turns[-1]
+	var replay: RefCounted = _simulation.new()
+	if not Registry.reset_simulation(replay, chapter_key, definition, str(shown.stage_id), shown.checkpoint, turns[-2], str(watched.role), watched, turns.slice(0, turns.size() - 2)): return false
+	_watch = {"live": sim, "stage": str(shown.stage_id)}
+	sim = replay
+	_begin_sound_turn()
+	_refusals.begin(chapter_key, definition, sim.snapshot(), turns[-2])
+	if str(shown.stage_id) != journey.stage_id(): _present_stage_history(_simulation.stage_by_id(definition, str(shown.stage_id)), shown.checkpoint)
+	_wait().reduced_motion = bool(settings.get("reduced_motion", false))
+	memory_wait.auto_skip = MemoryWait.skip_waits(settings)
+	var frames: Array = _simulation.expand_recording_inputs(watched)
+	memory_wait.begin_playback(int(shown.ticks) if int(shown.ticks) >= 0 else frames.size(), frames)
+	_restore_ready_world()
+	mode = "watch"
+	overlay.visible = false
+	hud.visible = true
+	running = true
+	_watch_state = sim.snapshot()
+	_wait().show(_watch_state, true)
+	_update_hud(_watch_state)
+	return true
+
+## One physics tick of the playback: Skip to end, Hold to fast-forward or
+## one ordinary tick, then the hand-off once it is over.
+func _step_watch() -> void:
+	if memory_wait.auto_skip_due(): memory_wait.skipping = true
+	if memory_wait.skipping:
+		var reached: Dictionary = _wait().skip_tick(sim, _turn_sounds, _advance_watch)
+		if not reached.is_empty(): _watch_state = reached
+	elif controls.has_method("fast_forward_held") and controls.fast_forward_held(): _wait().fast_forward_tick(_advance_watch, func() -> bool: return running and mode == "watch" and not backgrounded)
+	else: _advance_watch(MemoryWait.STILL_INPUT)
+	if mode != "watch": return
+	if memory_wait.waiting(): _update_hud(_watch_state)
+	else: _hand_off()
+
+## One tick of the friend's turn, by its recorded input.
+func _advance_watch(_input: Dictionary) -> void:
+	if mode != "watch" or bool(sim.get("finished")) or not memory_wait.waiting(): return
+	var state: Dictionary = sim.step(memory_wait.playback_input())
+	_watch_state = _wait().step(state, _sounds_of(state), false)
+
+## The playback is over: this turn's own live simulation, built at the
+## hand-off, takes over in that same world. The friend's pip becomes the
+## memory beside this one's, which turns live.
+func _hand_off() -> void:
+	var stage_changed: bool = str(_watch.get("stage", "")) != journey.stage_id()
+	sim = _watch.live
+	_watch = {}
+	_watch_state = {}
+	if stage_changed: _present_stage_history(_simulation.stage_by_id(definition, journey.stage_id()), journey.checkpoint())
+	_begin_sound_turn()
+	_begin_memory_wait(journey.role(), journey.prior_recording(), true)
+	_wait().show(sim.snapshot(), stage_changed)
+	_start_play()
+	_glance_at_goal()
+
+## Pause over the playback: Resume goes on watching where it was.
+func _resume_watch() -> void:
+	if _watch.is_empty(): return
+	mode = "watch"
+	overlay.visible = false
+	hud.visible = true
+	running = true
+	_update_hud(_watch_state)
 
 
 ## The turn being played, for its try count (services/turn_tries.gd).
@@ -2174,11 +2265,14 @@ func _physics_process(_delta: float) -> void:
 	if _glancing:
 		if world.glancing() and stick.value == Vector2.ZERO and not action_pressed: return
 		_end_glance()
+	if mode == "watch":
+		_step_watch()
+		return
 	var input: Dictionary
 	if mode == "replay":
 		if not _replay_ready(): return
 		if replay_cursor >= replay_frames.size():
-			_finish_replay_playback()
+			if not _next_stretch(): _finish_replay_playback()
 			return
 		input = replay_frames[replay_cursor]
 	elif _fast_forward_wait():
@@ -2203,6 +2297,11 @@ func _physics_process(_delta: float) -> void:
 func advance_input(input: Dictionary) -> void:
 	if _room_context_lost:
 		_hide_race_ghost()
+		return
+	# The friend's turn before the hand-off plays its own recorded inputs.
+	if mode == "watch":
+		_advance_watch(input)
+		if mode == "watch" and not memory_wait.waiting(): _hand_off()
 		return
 	if mode == "replay":
 		if not _replay_ready() or replay_cursor >= replay_frames.size(): return
@@ -2362,7 +2461,7 @@ func _wait() -> RefCounted:
 	memory_wait.world = world
 	memory_wait.soundscape = soundscape
 	if not memory_wait.present_state.is_valid():
-		memory_wait.present_state = func(state: Dictionary, immediate: bool) -> void: world.present(_replay_badges(state) if mode == "replay" or (mode == "bloom" and _completion_is_replay) else state, immediate)
+		memory_wait.present_state = func(state: Dictionary, immediate: bool) -> void: world.present(_replay_badges(state) if mode in ["replay", "watch"] or (mode == "bloom" and _completion_is_replay) else state, immediate)
 	return memory_wait
 
 ## The simulation is back at tick zero for `turn_role`, following `prior`.
@@ -2371,17 +2470,18 @@ func _wait() -> RefCounted:
 ## solo, never a replay); they know when the memory ends.
 func _begin_memory_wait(turn_role: String, prior_recording: Variant, live: bool = false) -> void:
 	_refusals.begin(chapter_key, definition, sim.snapshot(), prior_recording)
+	var chain: Array = _replay_chain
+	if live: chain = journey.memory_chain() if journey.has_method("memory_chain") else []
 	# A world that keeps where the stage's pips have been gets this turn's history.
 	if is_instance_valid(world) and world.has_method("wants_turn_paths") and world.wants_turn_paths():
-		var chain: Array = _replay_chain
-		if live: chain = journey.memory_chain() if journey.has_method("memory_chain") else []
 		world.present_turn_paths(TurnPaths.of(sim, prior_recording if prior_recording is Dictionary else {}, chain))
 	_wait().reduced_motion = bool(settings.get("reduced_motion", false))
 	memory_wait.auto_skip = MemoryWait.skip_waits(settings)
-	memory_wait.begin(turn_role, MemoryWait.prior_ticks(prior_recording))
+	# Carry-over turns: the memory is the rest of the friend's turn after the hand-off.
+	var ticks := OpenTurnStore.replay_ticks(prior_recording, chain)
+	memory_wait.begin(turn_role, ticks, OpenTurnStore.carried(prior_recording))
 	if is_instance_valid(world) and world.has_method("set_wait_hints"):
 		# A memory with no length is unknown (-1): its end is never assumed.
-		var ticks := MemoryWait.prior_ticks(prior_recording)
 		world.set_wait_hints(WaitHints.wanted(live, turn_role == "b"), ticks if ticks > 0 else -1)
 	_memory_wait_text = ""
 	_update_memory_wait_hud()
@@ -2390,6 +2490,7 @@ func _begin_memory_wait(turn_role: String, prior_recording: Variant, live: bool 
 func _update_memory_wait_hud() -> void:
 	if not is_instance_valid(controls) or not controls.has_method("show_memory_wait"): return
 	if mode == "play" and memory_wait.waiting(): controls.show_memory_wait(_memory_wait_label(), memory_wait.remaining_ratio(), memory_wait.skipping)
+	elif mode == "watch" and controls.has_method("show_playback"): controls.show_playback(_memory_wait_label(), memory_wait.remaining_ratio(), memory_wait.skipping)
 	else: controls.hide_memory_wait()
 	# Wait hints step aside for the fast-forward mark.
 	if is_instance_valid(world) and world.has_method("hush_wait_hints"): world.hush_wait_hints(controls.has_method("fast_forwarding") and controls.fast_forwarding())
@@ -2450,9 +2551,10 @@ func _playing_turn() -> bool:
 ## Skip to end: the rest of the memory goes by on the next physics ticks.
 ## The draft is saved first, so an app closed mid-skip keeps the press.
 func _skip_memory_wait() -> void:
-	if not running or backgrounded or mode != "play" or not memory_wait.waiting(): return
+	if not running or backgrounded or mode not in ["play", "watch"] or not memory_wait.waiting(): return
 	if _room_context_lost: return
-	if not _persist_draft(): return
+	# The playback before a hand-off has no draft yet.
+	if mode == "play" and not _persist_draft(): return
 	memory_wait.skipping = true
 	_update_memory_wait_hud()
 
@@ -2489,7 +2591,7 @@ func _update_hud(state: Dictionary) -> void:
 	if turn.is_empty(): title = title.trim_suffix(" · ")
 	if controls.has_method("show_turns"): controls.show_turns(open, _own_room_color())
 	controls.set("solo", online_session == null)
-	controls.update_state(title,(int(state.get("duration_ticks", 600))-int(state.tick))/30.0,display,mode=="play")
+	controls.update_state(title,(int(state.get("duration_ticks", 600))-int(state.tick))/30.0,display,mode in ["play", "watch"])
 	_update_run_pill(int(state.tick))
 
 ## A stage_copy chapter may name where a turn ends ("goal_a", "goal_b"): the
@@ -3033,7 +3135,11 @@ func _drop_prefetch() -> void:
 
 
 func _preview_turn() -> void:
+	# Open turns: the turn starts where the stage's turns before it left it.
+	_replay_stretches = []
+	_replay_chain = journey.memory_chain() if journey.has_method("memory_chain") else []
 	_start_replay(review, checkpoint, prior)
+	_replay_chain = []
 
 
 func _start_replay(recording: Dictionary, start: Dictionary, source: Dictionary) -> void:
@@ -3136,11 +3242,45 @@ func _play_collection_pair(continue_collection: bool = false) -> void:
 	_continue_replay_context = continue_collection
 	# Open turns: the closing turn plays over its stage's last pass, which nests the turns before it.
 	var turns := OpenTurns.pair_turns(pair)
-	_replay_chain = turns.slice(0, turns.size() - 2)
-	_start_replay(pair.b, start, turns[-2])
-	_replay_chain = []
+	# Carry-over turns: the stage plays straight through its shared timeline.
+	_replay_stretches = OpenTurnStore.timeline(turns)
+	_replay_turns = turns if not _replay_stretches.is_empty() else []
+	_replay_from = start
+	_replay_stretch = 0
+	if _replay_stretches.is_empty():
+		_replay_chain = turns.slice(0, turns.size() - 2)
+		_start_replay(pair.b, start, turns[-2])
+		_replay_chain = []
+	else: _play_stretch()
 	_continue_replay_context = false
 	_load_replay_photos()
+
+## Carry-over turns: a stage replay's stretches (OpenTurnStore.timeline), the
+## stage's turns, the checkpoint it started from and the stretch playing.
+var _replay_stretches: Array = []
+var _replay_turns: Array = []
+var _replay_from: Dictionary = {}
+var _replay_stretch := 0
+
+## Plays stretch _replay_stretch: its turn over the one before, from its
+## start up to where the next turn takes over (the last to its end).
+func _play_stretch() -> void:
+	var stretch: Dictionary = _replay_stretches[_replay_stretch]
+	var index := int(stretch.turn)
+	_replay_chain = _replay_turns.slice(0, index - 1)
+	_start_replay(_replay_turns[index], _replay_from, _replay_turns[index - 1])
+	_replay_chain = []
+	if mode == "replay" and int(stretch.ticks) >= 0: replay_frames = replay_frames.slice(0, int(stretch.ticks))
+
+## The stretch played out: the next one takes over in the same world. False
+## after the last.
+func _next_stretch() -> bool:
+	if _replay_stretch + 1 >= _replay_stretches.size(): return false
+	_replay_stretch += 1
+	_continue_replay_context = true
+	_play_stretch()
+	_continue_replay_context = false
+	return true
 
 
 func _load_replay_photos() -> void:
@@ -3439,6 +3579,9 @@ func _show_paused(previous: String) -> void:
 	if previous == "play":
 		card.add_child(_action_button("resume", _start_play))
 		card.add_child(_action_button("retry", _begin))
+	elif previous == "watch":
+		card.add_child(_action_button("resume", _resume_watch))
+		card.add_child(_action_button("retry", _begin))
 	elif previous == "replay":
 		card.add_child(_action_button("resume", _resume_replay))
 		_add_preview_retry(card, previous)
@@ -3591,7 +3734,7 @@ func _process(delta: float) -> void:
 	if (mode == "replay" or (mode == "bloom" and _completion_is_replay)) and not _replay_ready():
 		if is_instance_valid(world): world.set_process(false)
 		return
-	if is_instance_valid(world): world.set_process(not backgrounded and mode in ["play", "replay", "bloom", "drowning"])
+	if is_instance_valid(world): world.set_process(not backgrounded and mode in ["play", "watch", "replay", "bloom", "drowning"])
 	# The ready and waiting cards hold the world still but let its spirits
 	# breathe, a few times a second (island_world.advance_idle).
 	if is_instance_valid(world) and not backgrounded and not _world_covered and mode in ["ready", "online_waiting"] and world.has_method("advance_idle"): world.advance_idle(delta)
@@ -3631,7 +3774,7 @@ func _service_world_cover() -> void:
 func frame_demand() -> String:
 	if _world_building: return Frames.LOADING
 	if mode == "loading": return Frames.ACTIVE
-	if (running and not backgrounded) or mode in ["play", "replay", "bloom", "moment", "drowning"]: return Frames.ACTIVE
+	if (running and not backgrounded) or mode in ["play", "watch", "replay", "bloom", "moment", "drowning"]: return Frames.ACTIVE
 	return Frames.CALM
 
 

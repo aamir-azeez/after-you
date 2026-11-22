@@ -468,6 +468,27 @@ func prior_recording() -> Dictionary:
 func memory_chain() -> Array:
 	return _memory(snapshot()).chain.duplicate(true)
 
+## Carry-over turns: the friend's turn this player's next turn shows before
+## its hand-off (OpenTurnStore.playback): {"stage_id", "checkpoint" (where that
+## stage started), "turns" (the friend's turn last, its stage's turns before
+## it), "ticks" (-1: to its end)}, or {} when there is nothing to watch or a
+## turn is missing here.
+func playback() -> Dictionary:
+	var room := snapshot()
+	if not _open_view(room) or _turns == null: return {}
+	var memory := _memory(room)
+	var turns: Array = memory.chain + [memory.prior] if not memory.prior.is_empty() else []
+	var closed: Array = []
+	var start: Dictionary = room.checkpoint
+	if turns.is_empty() and int(room.stage_index) > 0:
+		closed = OpenTurns.proof_turns(room.checkpoint.get("proof")) if room.checkpoint.has("proof") else _turns.checkpoint_turns(room.checkpoint)
+		start = _previous_checkpoint(_chapter_key, room.checkpoint)
+	var shown := OpenTurnStore.playback(turns, closed)
+	if shown.is_empty() or start.is_empty(): return {}
+	shown["stage_id"] = str(shown.turns[-1].get("stage_id", room.stage_id))
+	shown["checkpoint"] = start
+	return shown
+
 ## Open turns: the room's turn count view ({} before open turns): turn, cap,
 ## must_finish, the viewer's player_slot and the stage_index. Cheap enough for
 ## every tick of the turn HUD (kit/turn_dots.gd): it copies none of the room's turns.
@@ -1523,8 +1544,10 @@ func _valid_snapshot(value: Variant) -> bool:
 	if index == stages:
 		return Typed.equal(value.stage_id, "") and Typed.equal(value.active_role, "complete") and value.first_player_id == null and value.active_player_id == null and value.a_turn_id == null and value.recording_a == null and (not open or (Typed.equal(value.open_turns.turn, 0) and value.open_turns.turn_hashes.is_empty() and value.open_turns.newest == null))
 	var stage: Dictionary = level.stages[index]
-	var first: Variant = value.host_id if stage.first_player_slot == "p0" else value.guest_id
-	var second: Variant = value.guest_id if stage.first_player_slot == "p0" else value.host_id
+	# Carry-over turns: a later stage starts with whoever did not close the one before (the checkpoint's next_first_slot).
+	var first_slot := OpenTurnStore.first_slot(stage, value.checkpoint) if value.checkpoint is Dictionary else str(stage.first_player_slot)
+	var first: Variant = value.host_id if first_slot == "p0" else value.guest_id
+	var second: Variant = value.guest_id if first_slot == "p0" else value.host_id
 	if not Typed.equal(value.stage_id, stage.id) or not Typed.equal(value.first_player_id, first):
 		return false
 	# Open turns: the stage's turns so far (WIRE.md section 4), each the next
