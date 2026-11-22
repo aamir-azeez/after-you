@@ -232,9 +232,18 @@ static func _manifest_valid(value: Variant, owner: String, room_id: String) -> b
 		var id: String = item.turn_id
 		if int(id.substr(1).get_slice("-", 0)) > room.branch: return false
 		var stage: Dictionary = level.stages[int(id.get_slice("-", 1))]
-		if not Typed.equal(item.player_id, room.host_id if OpenTurns.slot(str(stage.first_player_slot), OpenTurns.number(id)) == "p0" else room.guest_id): return false
+		if not open and not Typed.equal(item.player_id, room.host_id if OpenTurns.slot(str(stage.first_player_slot), OpenTurns.number(id)) == "p0" else room.guest_id): return false
 		turns[id] = item
 		revisions[item.accepted_revision] = item
+	# Carry-over turns: a later stage may start with either pip (whoever did not
+	# close the one before, which the replayed checkpoints prove), so here a
+	# stage's turns alternate from its first, and a level starts with the host's.
+	if open:
+		for id: String in turns:
+			var first: Variant = turns.get(id.left(id.length() - 1) + "a")
+			if not first is Dictionary or not (Typed.equal(turns[id].player_id, room.host_id) or Typed.equal(turns[id].player_id, room.guest_id)): return false
+			if Typed.equal(turns[id].player_id, first.player_id) != (OpenTurns.number(id) % 2 == 1): return false
+			if id.get_slice("-", 1) == "0" and not Typed.equal(first.player_id, room.host_id if str(level.stages[0].first_player_slot) == "p0" else room.guest_id): return false
 	var pairs: Dictionary = {}
 	for item: Variant in value.pairs:
 		if not item is Dictionary or not _exact(item, ["pair_id", "branch", "stage_index", "a_hash", "b_hash", "checkpoint_hash"]) or not _integer(item.branch, 0, int(room.branch)) or not RoomStages.within(item.stage_index, level) or not Typed.equal(item.pair_id, "p%d-%d" % [item.branch, item.stage_index]) or pairs.has(item.pair_id) or not _hash(item.checkpoint_hash): return false

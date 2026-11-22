@@ -1,0 +1,24 @@
+{
+	"catch_assistance": true,
+	"checkpoint_hash": "037c2a7ca78e6aa5bacdeacfc6da543b5e833bdb9297cb4f85a4a0d1faec4797",
+	"completed": false,
+	"definition_hash": "30ff6b4e95e79dbadb6c4928c6bc80c1fb4a5b4f495e649f0087912c56a42bb9",
+	"duration_ticks": 341,
+	"final_state_hash": "e99263bcf8eb87bc64e4215ea28812f0bfe93a5131f665070152a4a723f99f43",
+	"level_id": "relay-isles",
+	"level_version": 3,
+	"outcome": {
+		"objective_complete": false,
+		"source_ready": true
+	},
+	"packed": "ARMeAGQGZAACSwDIAQAAOGQAAksAKAAADGQAAhkAAgAAAwAADgCcAgDOJGQAAksAtAEAADKcACoAZAIAGa170ualh56ycOk48rYLlHYO6qLVG+xs1JXwu4aZin9FlZTec3i00KnqUrm288tGgJRgt8VaXR78AKAUd/yICNyoFaewiF9WbaBXxabQfhFeXk8zsgpG9Hd2jkTNcT7Rn/yZsv2eK/pasWjskLSa/JeXmJRhZXRMhgt8o6sxrmIu+6NY1YC8XBc=",
+	"player_slot": "p1",
+	"recording_hash": "c7d8d002571f9003fd7792bebd9608df44e5738df32a538b0f1655089926fc43",
+	"role": "b",
+	"schema_version": 7,
+	"simulation_version": 16,
+	"source_recording_hash": "bd293ed84e345b4ef25103d4f3e5a00f6d6d3f080b8542f7235a7d308864a7b7",
+	"stage_id": "relay",
+	"stage_version": 1,
+	"tick_rate": 30
+}

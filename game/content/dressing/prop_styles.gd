@@ -126,6 +126,9 @@ const SLOTS := {
 	# Rules 16's carried items and floats (kit/pieces/carried_item.gd) and the
 	# current that carries them (kit/pieces/current.gd).
 	"carried_item": {"parcel": {}, "pipsport": {}, "raft": {}, "seed": {}},
+	# Where an item rests (kit/pieces/socket.gd item_spot): nothing drawn, a
+	# stone pedestal, a garden planter or the relay nest.
+	"item_spot": {"none": {}, "pedestal": {}, "planter": {}, "nest": {}},
 	"current": {"ripples": {}, "chevrons": {}},
 	# The post by a missing crossing (kit/pieces/pulley.gd): each style names the
 	# weight that hangs from it, down while the crossing is laid.
@@ -137,14 +140,14 @@ const SLOTS := {
 
 ## Slots that pick a kit piece's look rather than a prop to stand: the resolved
 ## dressing carries the pick as a field of the same name ("tag": "stone_tile").
-const LOOK_SLOTS := ["tag", "barrier", "lever", "selector", "pad", "goal", "lift", "deck", "raft", "ladder", "fog", "spillway", "carried_item", "current", "pulley", "seabed"]
+const LOOK_SLOTS := ["tag", "barrier", "lever", "selector", "pad", "goal", "lift", "deck", "raft", "ladder", "fog", "spillway", "carried_item", "current", "pulley", "seabed", "item_spot"]
 
 ## The pick for a slot that neither the theme nor the level names.
 const DEFAULT_PICKS := {
 	"lamp": "lantern", "tree": "orchard", "shrub": "flowering", "trim": "flowers", "scatter": "tufts",
 	"bank": "meadow", "fence": "hedge", "railing": "picket", "bench": "bench", "path": "stones",
 	"clutter": "crates", "landmark": "cottage", "wall_hanging": "shelf", "tag": "painted_tile", "barrier": "rope",
-	"lever": "plain", "selector": "plain", "pad": "plain", "goal": "bell", "lift": "plain", "deck": "plank", "raft": "logs", "ladder": "rope", "fog": "mist", "spillway": "trickle", "carried_item": "parcel", "current": "ripples", "pulley": "lantern_hook", "seabed": "sand",
+	"lever": "plain", "selector": "plain", "pad": "plain", "goal": "bell", "lift": "plain", "deck": "plank", "raft": "logs", "ladder": "rope", "fog": "mist", "spillway": "trickle", "carried_item": "parcel", "current": "ripples", "pulley": "lantern_hook", "seabed": "sand", "item_spot": "none",
 }
 
 ## Kinds drawn along "from" to "to" by themselves; any other kind given a line

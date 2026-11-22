@@ -9,12 +9,19 @@ extends SceneTree
 ## - The Falls and Fog Marsh play their first two stages (8 and 6 turns) and
 ##   High and Low plays to the end with no draft save error, and a later
 ##   turn's draft, saved while its memory still plays, reopens from disk.
+## - Carry-over turns: before each turn the journal names what it watches
+##   before the hand-off (playback()): from turn 3 the turn before, up to the
+##   hand-off tick of the shared timeline, and before a later stage's first
+##   turn the stage before's closing turn whole; nothing for turns recorded
+##   before carry-over turns. The turn dots' first pip is the stage's.
 ## - A periodic save that failed never strands the turn: the next save writes,
 ##   and the chapter screen plays on without the save problem card.
 const Registry = preload("res://services/chapter_registry.gd")
 const Journey = preload("res://services/relay_journey.gd")
 const Witness = preload("res://tests/chapter_witness.gd")
 const Preview = preload("res://cooperative_preview.gd")
+const OpenTurns = preload("res://core/physical/open_turns.gd")
+const OpenTurnStore = preload("res://services/open_turn_store.gd")
 
 ## How many stages each level plays (0: all of them), within a suite's time.
 const CHAPTERS := {"the-falls@1": 2, "fog-marsh@1": 2, "high-and-low@2": 0}
@@ -96,18 +103,38 @@ func _play_through(chapter: String, stages: int) -> void:
 	var journey := _journey(chapter, "solo")
 	var turn := 0
 	var over_pass := 0
+	var closed: Array = []
 	for pair: Dictionary in pairs:
+		var played: Array = []
 		for recorded: Dictionary in pair.turns:
 			turn += 1
+			_check_playback(journey, played, closed, "%s turn %d" % [chapter, turn])
+			played.append(recorded)
 			var memory_is_pass := not journey.passes().is_empty()
 			# The first stage's later turns also reopen their draft from disk mid-memory.
 			var problem := _play_turn(journey, recorded, journey.role() == "b" and journey.pairs().is_empty())
 			_check(problem.is_empty(), "%s turn %d (%s): %s" % [chapter, turn, journey.stage_id(), problem])
 			if not problem.is_empty(): return
 			if memory_is_pass: over_pass += 1
+		closed = played
 	_check(over_pass >= pairs.size() and turn >= 6, "%s: %d turns, %d of them over a pass" % [chapter, turn, over_pass])
 	_check(journey.pairs().size() == pairs.size() and journey.last_error.is_empty(), "%s: Solo saves every stage it played" % chapter)
 	if stages <= 0: _check(journey.chapter_complete(), "%s: Solo finishes the level" % chapter)
+
+## What the journal says the next turn watches, against the design's timeline:
+## `played` is the stage's turns so far, `closed` the stage before's.
+func _check_playback(journey: Journey, played: Array, closed: Array, label: String) -> void:
+	var shown := journey.playback()
+	var watched: Array = played if not played.is_empty() else closed
+	var carried: bool = not watched.is_empty() and watched[-1].has(OpenTurns.HANDOFF_TICK)
+	var ticks: int = -1 if played.is_empty() else (OpenTurns.handoff_tick(watched.map(func(t: Dictionary) -> int: return int(t.duration_ticks)), played.size() + 1) if played.size() >= 2 else 0)
+	if not carried or ticks == 0:
+		_check(shown.is_empty(), label + ": nothing to watch before the hand-off")
+	else:
+		_check(shown.get("turns", []).size() == watched.size() and shown.turns[-1].recording_hash == watched[-1].recording_hash and int(shown.ticks) == ticks, label + ": watches the friend's turn up to the hand-off (%d ticks)" % ticks)
+	var open := journey.open_turns()
+	var first := OpenTurnStore.first_slot(journey._level.stages[int(open.get("stage_index", 0))], journey.checkpoint())
+	_check(str(open.get("player_slot", "")) == OpenTurns.slot(first, int(open.get("turn", 0))), label + ": the turn dots follow the stage's first pip (%s)" % first)
 
 ## A periodic write that failed (a full disk, a lost worker) is reported once
 ## and the next save writes the whole turn; nothing stays stuck.
