@@ -1,8 +1,9 @@
 extends RefCounted
 ## The one motion-blur look, shared by every moving object that blurs: the
-## rolling ball's spin exposure and the thrown seed's path exposure. Tune it
-## here and every blur follows. Tuned from the long roll in Rolling Home's
-## second stage, a little softer. Low graphics quality has no blur at all.
+## rolling ball's spin exposure and the path exposure behind anything thrown
+## (kit/throw_look.gd). Tune it here and every blur follows. Tuned from the
+## long roll in Rolling Home's second stage, a little softer. Low graphics
+## quality has no blur at all.
 
 ## Below this speed (m/s) nothing is exposed.
 const MIN_SPEED := 0.45

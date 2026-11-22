@@ -42,6 +42,10 @@ const PHYSICAL := {
 	"handoff_offer": "handoff_offered",
 	"handoff_claim": "seed_caught",
 }
+## Cues for a thrown item (core/journey/simulation.gd "item_thrown:<id>"):
+## the seed's throw, catch and landing, named as the seed's, so every throw
+## sounds alike live, as the memory, on a retry and in a replay.
+const ITEM_THROWS := {"item_thrown": "seed_thrown", "item_caught": "seed_caught", "item_landed": "seed_landed"}
 ## Cues for First Steps' lift and loft.
 const FIRST_STEPS := {
 	"lift_arrived": "lift_ready",
@@ -117,6 +121,10 @@ static func cues(chapter_key: String, state: Dictionary, seen: Dictionary = {}) 
 		elif event.begins_with("fell:"): cue = "well_plunk" if not str(chapter.get("water", "")).is_empty() else "spirit_fell_away"
 		elif event == "relay_filled": cue = "garden_opened"
 		elif event == "garden_bloomed": cue = "island_bloomed"
+		elif journey and ITEM_THROWS.has(event.get_slice(":", 0)):
+			cue = ITEM_THROWS[event.get_slice(":", 0)]
+			_add(out, cue, Soundscape.event_source(cue, role))
+			continue
 		elif cooperative and PHYSICAL.has(event): cue = PHYSICAL[event]
 		elif cooperative and event.begins_with("selector:"): cue = SoundCues.look_cue(PieceStyles.style("selector", event.trim_prefix("selector:"), chapter, dressing), "switch_set")
 		elif chapter_key == Registry.FIRST_STEPS and FIRST_STEPS.has(event): cue = FIRST_STEPS[event]

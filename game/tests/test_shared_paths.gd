@@ -110,6 +110,12 @@ extends SceneTree
 ##     shaders are preloaded by the kit alone). test_contact_shadows.gd, which
 ##     must stay in CI, builds every style and kind; test_world_looks checks
 ##     every chapter stage bakes them and that every floor is a ground.
+## (aa) thrown things: presentation/kit/throw_look.gd alone draws a flight (it
+##     alone makes the path blur, seed_motion_trail.gd; services/gl_warmup.gd
+##     only warms its shader), island_world alone makes the looks (throw_look,
+##     its blurs kept with the world's others), and the journey world gives
+##     every item it can throw one. test_throw_look.gd, which must stay in CI,
+##     flies every item kind with it and keeps First Steps @1's look.
 ##
 ## Every allow-list entry says why. An entry that no longer matches anything
 ## fails, so the lists shrink as code moves. KNOWN_FAILURES holds the checks
@@ -441,7 +447,7 @@ const OWN_ENVIRONMENTS := {
 }
 
 ## Suites that guard a shared path on their own and must stay in CI.
-const GUARD_SUITES := ["shared_paths", "full_screen_bleed", "pollen_mark", "connectivity", "owner_marks", "pair_tags", "fall_effect", "piece_styles", "open_hints", "contact_shadows"]
+const GUARD_SUITES := ["shared_paths", "full_screen_bleed", "pollen_mark", "connectivity", "owner_marks", "pair_tags", "fall_effect", "piece_styles", "open_hints", "contact_shadows", "throw_look"]
 ## (w) The one reader of the ready line, and the one builder of the goal beacon.
 const READY_LINE := "MAIN_1AAC5BE95E22"
 const READY_LINE_READER := "res://relay_preview.gd"
@@ -514,6 +520,7 @@ func _initialize() -> void:
 	_space_backdrop()
 	_water_worlds()
 	_contact_shadows()
+	_thrown()
 	_suites()
 	for id: String in KNOWN_FAILURES:
 		_check(_known_seen.has(id), "KNOWN_FAILURES names '%s', which no check reached: delete it" % id)
@@ -1154,6 +1161,23 @@ func _contact_shadows() -> void:
 	_check(_found("\\bContactShadows\\.mark\\(root\\)", str(_sources.get(PIECE_KIT_BASE, ""))) > 0, "piece.gd _root() marks every piece root for a contact shadow")
 	_check(_found("\\bContactShadows\\.prop\\(root, spec\\)", str(_sources.get("res://presentation/kit/props.gd", ""))) > 0, "kit/props.gd build() marks every dressing prop for a contact shadow")
 	_check(_found("\\bContactShadows\\.(?:single_material|pip_quad)\\(", str(_sources.get("res://presentation/spirit_visual.gd", ""))) > 0, "A pip's shadow takes the contact shadows' look")
+
+# (aa) Thrown things -----------------------------------------------------------
+
+const THROW_LOOK := "res://presentation/kit/throw_look.gd"
+const THROW_LOOK_MAKER := "res://presentation/island_world.gd"
+const PATH_BLUR := "res://presentation/seed_motion_trail.gd"
+
+## (aa) One look for every flight, made by the world.
+func _thrown() -> void:
+	for path: String in _sources:
+		var source: String = _sources[path]
+		var blur := _alias(source, PATH_BLUR)
+		_check(path == THROW_LOOK or blur.is_empty() or _found("\\b" + blur + "\\.new\\(", source) == 0, "%s makes a path blur itself: a thrown thing flies with kit/throw_look.gd" % path)
+		var look := _alias(source, THROW_LOOK)
+		_check(path == THROW_LOOK_MAKER or look.is_empty() or _found("\\b" + look + "\\.new\\(", source) == 0, "%s makes a throw look itself: island_world throw_look() makes each, with the world's blurs" % path)
+	_check(_found("\\bThrowLook\\.new\\(", str(_sources.get(THROW_LOOK_MAKER, ""))) == 1, "island_world makes the throw looks")
+	_check(_found("\\bthrow_look\\(piece\\.root,", str(_sources.get("res://presentation/journey_world.gd", ""))) == 1, "The journey world gives every item it can throw the throw look")
 
 # (y) Water worlds -------------------------------------------------------------
 
