@@ -9,6 +9,8 @@ const DATA := {
 	"scene": "res://the_falls.tscn",
 	"local_path": "user://the-falls-journey-v1.json",
 	"released": false,
+	# Free, shown right after High and Low.
+	"shown_after": "high-and-low",
 	"copy": {
 		"title": PlayerCopy.THE_FALLS_TITLE,
 		"summary": PlayerCopy.THE_FALLS_SUMMARY,

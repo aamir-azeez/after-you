@@ -56,6 +56,8 @@ const DATA := {
 		"sounds": {"base": "lantern_lit", "together": "well_plunk", "hard": "waypoint", "top": "island_bloomed"},
 	},
 	"unlock": {"fruits": 3},
+	# The last level a free player reaches, after The Wishing Well.
+	"shown_after": "the-wishing-well",
 	"dressing": "res://content/dressing/fog_marsh.gd",
 	"water": "res://content/water/fog_marsh.gd",
 	"beds": ["water_far"],

@@ -7,6 +7,7 @@ extends SceneTree
 ## played chapters and Full Journey access go in as data.
 const Unlocks = preload("res://services/chapter_unlocks.gd")
 const Registry = preload("res://services/chapter_registry.gd")
+const Index = preload("res://content/chapters/index.gd")
 const Picker = preload("res://presentation/chapter_picker.gd")
 const Catalog = preload("res://services/home_keepsake_catalog.gd")
 const KeepsakeStates = preload("res://services/home_keepsake_states.gd")
@@ -76,6 +77,16 @@ func _order() -> void:
 		_check(Unlocks.reached(chain[index + 1] if index + 1 < chain.size() else chain[index], _from(earned)), "Clearing %s opens the chapter after it" % chain[index])
 	_check(first_paid > 0 and chain[first_paid] == Registry.LIGHTHOUSE_V2, "The Sleeping Lighthouse leads the Full Journey part of the chain")
 	_check(chain[-1].begins_with("turn-of-the-tide@"), "Turn of the Tide ends the chain, the last Full Journey chapter: %s" % chain[-1])
+	# With every chapter released (the owner's test build), the order the owner set.
+	var all: Array = Registry.picker_order(Index.shown_keys().filter(func(key: String) -> bool: return not Registry.solo_scene(key).is_empty()),
+		func(key: String) -> int: return Registry.picker_rank(key, Registry.descriptor(key).premium))
+	var owner := ["first-steps", "relay-isles", "high-and-low", "the-falls", "the-wishing-well", "fog-marsh",
+		"sleeping-lighthouse", "rolling-home", "a-house-for-two", "conservatory", "long-way-home", "turn-of-the-tide"]
+	var levels: Array[String] = []
+	for key: String in all:
+		# A chapter added later (a scaffolded one) may sit anywhere.
+		if key.get_slice("@", 0) in owner and not key.get_slice("@", 0) in levels: levels.append(key.get_slice("@", 0))
+	_check(levels == owner, "Every chapter released shows in the owner's order: %s" % [levels])
 	var fresh := _from([])
 	_check(Unlocks.chain_key("") == "" and Unlocks.reached("", fresh) and Unlocks.reached("no-such@1", fresh), "Keys outside the chain, such as the earlier islands, are never gated")
 
