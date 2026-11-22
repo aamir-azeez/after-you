@@ -408,9 +408,8 @@ const PIECE_KITS := "res://presentation/kit/pieces/"
 ## Scripts that preload a piece kit, with why.
 const PIECE_BUILDERS := {
 	"res://presentation/cooperative_world.gd": "builds every pad, lever, selector and pulley post in the style its piece resolves to",
-	"res://presentation/lighthouse_world.gd": "builds every goal in the style it resolves to",
-	"res://presentation/island_world.gd": "builds every island world's pads from its family's layout in the style each resolves to (_build_pad), and its crossings as the bridge kit draws them (_build_crossings)",
-	"res://presentation/first_steps_world.gd": "builds its lift in the style it resolves to (lift); its loft bell is the kit bell on its own post and arm",
+	"res://presentation/island_world.gd": "builds every island world's pads from its family's layout in the style each resolves to (_build_pad), every goal in the style it resolves to (_build_goal), and its crossings as the bridge kit draws them (_build_crossings)",
+	"res://presentation/first_steps_world.gd": "builds its lift in the style it resolves to (lift)",
 	"res://presentation/kit/new_pieces.gd": "builds the new pieces' decks, moving platforms and rope ladders (rules 16) in the styles they resolve to, for cooperative_world",
 }
 ## Scripts that read a descriptor's pins themselves, with why.

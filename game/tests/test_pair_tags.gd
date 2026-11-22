@@ -20,6 +20,13 @@ extends SceneTree
 ##   a selector's tile at a gate glows only at a value that gate
 ##   asks, and a receiver's plaque only while one of its gates is open;
 ## - a receiver lit through turnable mirrors has those mirrors as its inputs.
+## The same sweep checks every goal of every stage of every chapter and
+## version (its family's layout "goal") is drawn by the goal kit
+## (kit/pieces/goal.gd, the world's goal_pieces) at its exact spot, two pip
+## pads and all, and no world rings a goal its own way (SocketKit.garden's
+## "GoalRing"). Not goals a pip stands at, so left out: a ball's home
+## (ball_home), a beacon the light wakes (activate_receivers) and the relay
+## nest the seed is handed through (a "relay" socket, an item spot).
 ## The pure parts are checked on small stages too: no pairs, past ten, a
 ## missing gate or control, a gate several controls work. A failure names the
 ## chapter, the stage and what clashed.
@@ -54,6 +61,10 @@ const BUILD_BUDGET_USEC := 150000
 var checks := 0
 var failures := 0
 var _slowest := [0, ""]
+## Goals the sweep found drawn by the goal kit.
+var _goals := 0
+## Goal kinds no pip stands at (see the header).
+const NOT_STOOD_AT := ["ball_home", "activate_receivers"]
 
 func _initialize() -> void: _run.call_deferred()
 
@@ -74,7 +85,9 @@ func _run() -> void:
 		world.load_level(level)
 		for stage: Dictionary in level.stages:
 			world.show_stage(stage)
-			tagged += _stage(world, key, Layout.for_key(key, str(stage.id), level))
+			var view := Layout.for_key(key, str(stage.id), level)
+			tagged += _stage(world, key, view)
+			_goal_drawn(world, key, view)
 			stages += 1
 		# The frame follows the level's tag style (the harbour's and the marsh's plaque).
 		var style := str(world.dressing.get("tag", PairTags.DEFAULT_FRAME))
@@ -83,6 +96,7 @@ func _run() -> void:
 		world.free()
 	_hud()
 	_check(stages > 10 and tagged > 30, "The sweep sees the chapters' pair tags: %d tiles on %d stages" % [tagged, stages])
+	_check(_goals > 30, "The sweep sees the chapters' goals: %d" % _goals)
 	print("PAIR TAGS: slowest layout %.1f ms (%s)" % [float(_slowest[0]) / 1000.0, _slowest[1]])
 	_check(PairTags.cached_letters() > 0, "Letters are cached once made")
 	_check(SessionRelease._releases.has(Callable(PairTags, "release_cached")), "The letter cache lets go at session end (SessionRelease)")
@@ -90,6 +104,20 @@ func _run() -> void:
 	_check(PairTags.cached_letters() == 0, "release_cached() lets every letter go")
 	print("PAIR TAGS: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
+
+## The stage's goal (its layout's "goal"), if a pip stands at it, is a goal
+## piece of the world's at its exact spot with both pips' pads, and nothing
+## rings a goal its own way.
+func _goal_drawn(world: Node3D, key: String, view: Dictionary) -> void:
+	var where := "%s %s" % [key, world.displayed_stage_id]
+	_check(world.terrain.find_child("GoalRing", true, false) == null, "%s: no goal ring drawn outside the goal kit" % where)
+	var goal: Dictionary = view.get("goal", {})
+	if goal.is_empty() or str(view.get("goal_policy", {}).get("kind", "")) in NOT_STOOD_AT or str(goal.get("kind", "")) == "relay": return
+	var spot := Vector2(float(goal.position_cm[0]), float(goal.position_cm[1])) / 100.0
+	var drawn: Array = world.goal_pieces.values().filter(func(piece: RefCounted) -> bool:
+		return is_instance_valid(piece.root) and piece.root.is_inside_tree() and Vector2(piece.root.position.x, piece.root.position.z).distance_to(spot) < 0.01)
+	_check(drawn.size() == 1 and drawn[0].pads.size() == 2, "%s: goal %s is drawn by the goal kit at its spot with both pads (%d found)" % [where, goal.get("id", ""), drawn.size()])
+	_goals += 1
 
 ## The play screen asks the shown world's pair tags for its chip: at a lever
 ## of Slack Water the action button carries its letter at its left end (room

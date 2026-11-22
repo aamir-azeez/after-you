@@ -6,8 +6,7 @@ const BEAM_HEIGHT := 1.12
 const LIGHT_COLOR := Parts.LIGHT
 const SLEEP_COLOR := Color("536979")
 const StageCatalog = preload("res://core/lighthouse/stage_catalog.gd")
-## The goal kit; a piece's style comes from island_world's PieceStyles.
-const GoalPiece = preload("res://presentation/kit/pieces/goal.gd")
+## The kit bell, for an earlier stage's rung bell left resting (present_history).
 const Bell = preload("res://presentation/kit/pieces/bell.gd")
 ## Two lights, two receivers or two mirrors this close (cm) overlap: their
 ## widest tops reach 22 cm from their centres at the same heights, so they
@@ -109,6 +108,7 @@ func load_level(definition: Dictionary) -> void:
 	plate = null
 	_pad_ring = null
 	_goal_piece = null
+	goal_pieces.clear()
 	_bell = null
 	_bell_ring = null
 	_court_light = null
@@ -534,16 +534,10 @@ func _build_selector(control: Dictionary) -> void:
 
 ## The goal in its style (kit/pieces/goal.gd), at its exact centre and radius.
 func _build_bell(goal: Dictionary) -> void:
-	_goal_piece = GoalPiece.build(_piece_style("goal", str(goal.get("id", ""))), point(goal.position_cm), float(goal.radius_cm) / 100.0, terrain)
+	_goal_piece = _build_goal(str(goal.get("id", "")), point(goal.position_cm), float(goal.radius_cm) / 100.0)
 	_bell = _goal_piece.bell
 	_bell_ring = _goal_piece.ring
 	_court_light = _goal_piece.light
-
-## The stage's pads and the goal's two (kit/pieces/goal.gd pad_spots).
-func pad_spots() -> Array:
-	var spots := super.pad_spots()
-	if _goal_piece != null and is_instance_valid(_bell): spots.append_array(_goal_piece.pad_spots())
-	return spots
 
 ## Whether an owned goal's cradle carries its owner's mark (kit/owner_mark.gd):
 ## its style says (kit/pieces/goal.gd MARKED).
@@ -941,13 +935,10 @@ func _fold_key() -> String:
 func _static_keep() -> Array:
 	var keep := super._static_keep()
 	keep.append_array(_beam_roots)
-	# The goal's parts that light or swing (a window's shutters) stay whole.
-	if _goal_piece != null: keep.append_array(_goal_piece.moving_parts())
 	return keep
 
 func _process(delta: float) -> void:
 	super._process(delta)
-	if _goal_piece != null and _goal_piece.moving(): _goal_piece.advance(delta)
 	_follow_lenses()
 
 func _idle_card_frame() -> void:

@@ -3,30 +3,17 @@ extends "res://presentation/island_world.gd"
 ## Visual interpolation never decides boarding, arrival, seed ownership or activation.
 ## Floors, pads, scenery, the seed's throw, the follow camera and each stage's
 ## barriers, marks and tags come from island_world's shared build; this world
-## adds the lift, the seed pedestal, the garden and the loft bell.
+## adds the lift and the seed pedestal. Its goals, the loft bell and the
+## garden planter, are goal pieces (island_world _build_goal), each with a pad
+## per pip; the bell lights and rings as the loft opens, the planter as the
+## seed is planted.
 const Catalog = preload("res://core/first_steps/stage_catalog.gd")
 const Typed = preload("res://services/typed_values.gd")
 ## The lift's look (content/dressing/piece_styles.gd "lift") and its kit.
 const LiftKit = preload("res://presentation/kit/pieces/lift.gd")
-const Bell = preload("res://presentation/kit/pieces/bell.gd")
-## The bell hangs from a bracket on one post in front of the goal, clear of
-## the rider's way in from the lift, so neither the post nor the bell stands
-## between the play camera and the seed pedestal behind the goal. The goal
-## ring stays on the exact spot. BELL_HANG is the arm's end over the bell;
-## BELL_SPACE the room under its underside (kit/pieces/bell.gd), down to just
-## over a pip standing on the ring.
-const BELL_POST := Vector3(-0.30, 0, 0.55)
-const BELL_HANG := Vector3(-0.22, 1.86, 0.05)
-const BELL_SPACE := Vector2(0.6, 0.55)
-## The arm's thickness.
-const ARM := 0.07
 var lift_piece: RefCounted
 var actor_badges: Dictionary = {}
 var lift_target_height := 0.0
-var loft_bell: Node3D
-## The bell itself (kit/pieces/bell.gd), rung as the loft opens.
-var loft_chime: RefCounted
-var bell_ring: MeshInstance3D
 var pedestal: Node3D
 var active_stage: Dictionary = {}
 var valid_definition := false
@@ -40,8 +27,8 @@ func load_level(definition: Dictionary) -> void:
 	current_level = definition.duplicate(true)
 	displayed_stage_id = ""
 	pad_pieces.clear()
+	goal_pieces.clear()
 	lift_piece = null
-	loft_chime = null
 	if is_instance_valid(terrain):
 		remove_child(terrain)
 		terrain.queue_free()
@@ -65,35 +52,24 @@ func load_level(definition: Dictionary) -> void:
 	_build_lift(definition.lift)
 	await _build_step()
 	for socket: Dictionary in definition.sockets:
-		var root := Node3D.new()
-		root.name = str(socket.id)
-		root.position = _floor_point(socket.position_cm, socket.surface_id)
-		terrain.add_child(root)
+		var at := _floor_point(socket.position_cm, socket.surface_id)
 		if socket.kind == "garden":
-			garden = root
-			goal_ring = SocketKit.garden(root, 0.48, GOLD)
+			# The planting finds the planter by the socket's name.
+			garden = _build_goal(str(socket.id), at, float(socket.radius_cm) / 100.0).root
+			garden.name = str(socket.id)
 			_create_garden(SocketKit.PLANTER + 0.02)
 		else:
+			var root := Node3D.new()
+			root.name = str(socket.id)
+			root.position = at
+			terrain.add_child(root)
 			pedestal = root
 			cylinder(0.28, 0.35, Color("bbccb5"), Vector3(0, 0.175, 0), root)
 			cylinder(0.37, 0.10, CREAM, Vector3(0, 0.39, 0), root)
 			ring(0.31, GOLD, Vector3(0, 0.455, 0), root)
 	await _build_step()
 	for goal: Dictionary in definition.goals:
-		loft_bell = Node3D.new()
-		loft_bell.name = str(goal.id)
-		loft_bell.position = _floor_point(goal.position_cm, goal.surface_id)
-		terrain.add_child(loft_bell)
-		# Keep the exact floor goal beneath an overhead chime. A waist-high
-		# frame obscures the spirit's face at the adjacent seed pedestal.
-		cylinder(0.055, 1.95, Parts.TIMBER, BELL_POST + Vector3(0, 0.975, 0), loft_bell)
-		box(Vector3(0.14, 0.05, 0.14), Parts.TIMBER_DARK, BELL_POST + Vector3(0, 1.97, 0), loft_bell)
-		var arm_end := BELL_HANG - Vector3(0, 0, 0.06)
-		var arm_start := BELL_POST + Vector3(0, BELL_HANG.y, 0)
-		Primitives.bar_between(arm_start, arm_end, ARM, Primitives.shared_material(Parts.TIMBER_DARK), loft_bell)
-		Primitives.bar_between(BELL_POST + Vector3(0, 1.55, 0), arm_start.lerp(arm_end, 0.4), 0.04, Primitives.shared_material(Parts.TIMBER), loft_bell)
-		loft_chime = Bell.build(loft_bell, BELL_HANG - Vector3(0, ARM * 0.5, 0), BELL_SPACE)
-		bell_ring = ring(float(goal.radius_cm) / 100.0, CREAM, Vector3(0, 0.04, 0), loft_bell)
+		_build_goal(str(goal.id), _floor_point(goal.position_cm, goal.surface_id), float(goal.radius_cm) / 100.0)
 	await _build_step()
 	for slot: String in ["p0", "p1"]:
 		var spirit := _create_spirit(GOLD if slot == "p0" else TEAL, slot)
@@ -156,10 +132,11 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 		pad_pieces[id].set_held(bool(state.controls.get(id, false)), immediate or reduced_motion)
 	# A bell rung while the friend's memory still plays rings when it ends.
 	var rung := bool(state.mechanisms.loft_open) and not bool(state.get("ring_held", false))
-	bell_ring.visible = not rung
-	if loft_chime != null: loft_chime.set_rung(rung, immediate or reduced_motion)
+	var planted: bool = bool(state.complete) and state.seed.status == "planted"
+	for piece: RefCounted in goal_pieces.values(): piece.set_lit(planted if piece.root == garden else rung, immediate or reduced_motion)
+	_present_goal_pips(state.players, immediate or reduced_motion)
 	_present_seed(state.seed, immediate)
-	_present_garden(bool(state.mechanisms.garden_open), bool(state.complete) and state.seed.status == "planted", immediate)
+	_present_garden(bool(state.mechanisms.garden_open), planted, immediate)
 	_present_stage_marks(state)
 	_present_follow(state, immediate)
 
@@ -182,14 +159,14 @@ func _fold_key() -> String:
 
 func _doze_anchors() -> Array[Node3D]:
 	var anchors := super._doze_anchors()
-	if is_instance_valid(loft_bell): anchors.append(loft_bell)
+	for piece: RefCounted in goal_pieces.values():
+		if piece.root != garden and is_instance_valid(piece.root): anchors.append(piece.root)
 	return anchors
 
 ## A planted seed finds its socket by name and reads its cylinders.
 func _static_keep() -> Array:
 	var keep := super._static_keep() + [pedestal]
 	if lift_piece != null: keep += lift_piece.moving_parts()
-	if loft_chime != null: keep += loft_chime.moving_parts()
 	return keep
 
 ## The lift is still once it is this close (metres) to its height.
@@ -203,4 +180,3 @@ func _process(delta: float) -> void:
 		note_motion("lift", "lift", (1 if travel > 0.0 else -1) if absf(travel) > LIFT_SETTLED else 0)
 		lift.position.y = lerpf(lift.position.y, lift_target_height, minf(delta * 14.0, 1.0))
 		if lift_piece != null: lift_piece.set_height(lift.position.y)
-	if loft_chime != null and loft_chime.moving(): loft_chime.advance(delta)

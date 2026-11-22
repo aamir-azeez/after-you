@@ -100,13 +100,20 @@ static func relay(root: Node3D) -> void:
 ## Returns the ring, which the world lights as the goal.
 static func garden(root: Node3D, radius: float, ring_color: Color) -> MeshInstance3D:
 	ContactShadows.mark(root)
-	var drum := Parts.cylinder(radius, PLANTER, BASE, Vector3(0, PLANTER * 0.5, 0), root)
-	drum.name = "Planter"
-	var soil := Parts.cylinder(radius - 0.12, 0.035, SOIL, Vector3(0, PLANTER + 0.015, 0), root)
-	soil.name = "Soil"
+	planter(root, radius, radius - 0.12)
 	var ring := Parts.ring(radius + 0.01, ring_color, Vector3(0, PLANTER + 0.03, 0), root)
 	ring.name = "GoalRing"
 	return ring
+
+## A planter's drum `radius` across and its soil `soil_radius` across under
+## `root`, with no ring (a goal's planter rings itself, kit/pieces/goal.gd).
+## Returns the soil.
+static func planter(root: Node3D, radius: float, soil_radius: float) -> MeshInstance3D:
+	var drum := Parts.cylinder(radius, PLANTER, BASE, Vector3(0, PLANTER * 0.5, 0), root)
+	drum.name = "Planter"
+	var soil := Parts.cylinder(soil_radius, 0.035, SOIL, Vector3(0, PLANTER + 0.015, 0), root)
+	soil.name = "Soil"
+	return soil
 
 ## A stone pedestal under `root`, its drum `radius` across.
 static func pedestal(root: Node3D, radius: float) -> void:

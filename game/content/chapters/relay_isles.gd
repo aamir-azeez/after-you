@@ -10,6 +10,8 @@ const DATA := {
 	"local_path": "user://relay-journey-v2.json",
 	# Scenery, grounds and plate looks: a garden crossing.
 	"dressing": "res://content/dressing/relay_isles.gd",
+	# The garden socket is its last stage's goal, drawn as the goal kit's planter.
+	"piece_styles": {"garden": "planter"},
 	"copy": {
 		"summary": PlayerCopy.CHAPTER_REGISTRY_F78F85CE3DE5,
 		"completion": PlayerCopy.CHAPTER_REGISTRY_E73948E6FDBC,

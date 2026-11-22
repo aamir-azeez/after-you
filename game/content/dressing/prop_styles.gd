@@ -113,7 +113,7 @@ const SLOTS := {
 	"lever": {"plain": {}, "brass": {}, "winch": {}, "bolt": {}, "lantern": {}},
 	"selector": {"plain": {}, "brass": {}, "valve": {}, "lamp_post": {}, "gate_arch": {}, "shutter": {}, "rope_wheel": {}},
 	"pad": {"board": {}, "crank_board": {}, "pan": {}},
-	"goal": {"bell": {}, "harbour_lantern": {}, "crest": {}, "window": {}, "walled_window": {}},
+	"goal": {"bell": {}, "harbour_lantern": {}, "crest": {}, "window": {}, "walled_window": {}, "planter": {}},
 	"lift": {"plain": {}, "rope_tower": {}},
 	# The new pieces' looks (rules 16): a crossing's deck, a rope raft, a stair
 	# ridden up only (a pull-up rope ladder or a turning wheel), the fog round a

@@ -15,6 +15,10 @@ extends "res://presentation/kit/pieces/piece.gd"
 ##       (presentation/house_window.gd); lit, its shutters swing open.
 ##   "walled_window": the window set in a short plaster wall, so it never
 ##       stands free inside a room.
+##   "planter": the garden planter a seed is planted in (kit/pieces/socket.gd
+##       planter()), its soil wide enough for both pads; the soil glows as
+##       the goal lights. The world names its root for the socket, so a
+##       planting finds the soil right under it (plant_animation.gd soil()).
 ##
 ## Every style stands two pads on its disc side by side (kit/pieces/pad.gd),
 ## the first pip's west and the second's east, each in its pip's colour: the
@@ -36,6 +40,7 @@ const Bell = preload("res://presentation/kit/pieces/bell.gd")
 const Models = preload("res://presentation/kit/models.gd")
 const PadKit = preload("res://presentation/kit/pieces/pad.gd")
 const GoalNeeds = preload("res://presentation/kit/goal_needs.gd")
+const SocketKit = preload("res://presentation/kit/pieces/socket.gd")
 ## The goal's pads: each one's radius and its centre's distance from the
 ## goal's centre, as shares of the goal's radius. Together under 1, so a pip
 ## anywhere on a pad stands at the goal; far enough out to clear a crest's lamp.
@@ -49,7 +54,8 @@ const PAD_HEIGHT := 0.3
 ## The top of each style's disc (the bell frame's step). Its pads stand
 ## PAD_SINK into it, so a pad's rim stays low enough to stand in (kit/
 ## prop_rules.gd STEP_ON) and a pressed board's top stays above the disc.
-const DISC_TOPS := {"bell": 0.065, "harbour_lantern": 0.05, "crest": 0.044, "window": 0.0475, "walled_window": 0.0475}
+## A planter's is its soil's top (socket.gd PLANTER + 0.0325).
+const DISC_TOPS := {"bell": 0.065, "harbour_lantern": 0.05, "crest": 0.044, "window": 0.0475, "walled_window": 0.0475, "planter": 0.1225}
 const PAD_SINK := 0.02
 ## The bell style's frame, modelled in Blender (tools/blender/models/bell_frame.py).
 const FRAME := "res://assets/models/bell_frame.glb"
@@ -57,12 +63,12 @@ const FRAME := "res://assets/models/bell_frame.glb"
 const HARBOUR := "res://assets/models/harbour_more.glb"
 ## A lit goal's light, before the look's lamp scale (kit/look.gd lamp_energy).
 const LIGHT_ENERGY := 1.2
-const STYLES := ["bell", "harbour_lantern", "crest", "window", "walled_window"]
+const STYLES := ["bell", "harbour_lantern", "crest", "window", "walled_window", "planter"]
 ## Styles whose cradle carries its owner's mark (kit/owner_mark.gd): the ones a
 ## spirit lights from in front, where the mark stands clear of the ornament.
 const MARKED := ["harbour_lantern", "window", "walled_window"]
 ## Root node names, one per style.
-const NAMES := {"bell": "CourtBell", "harbour_lantern": "HarbourLanternGoal", "crest": "GardenLightCrest", "window": "ArrivalWindowGoal", "walled_window": "ArrivalWindowGoal"}
+const NAMES := {"bell": "CourtBell", "harbour_lantern": "HarbourLanternGoal", "crest": "GardenLightCrest", "window": "ArrivalWindowGoal", "walled_window": "ArrivalWindowGoal", "planter": "GardenPlanter"}
 const BELL_LIGHT := Color("ffd9a2")
 const SLATE := Color("6b8984")
 ## The plaster wall's plane, just behind the window's frame.
@@ -169,6 +175,7 @@ func _make(goal_style: String, at: Vector3, radius_m: float, parent: Node3D) -> 
 		"harbour_lantern": _make_lantern(radius_m)
 		"crest": _make_crest(radius_m)
 		"window", "walled_window": _make_window(radius_m)
+		"planter": _make_planter(radius_m)
 		_: _make_bell(radius_m)
 	parent.add_child(light)
 	for slot: String in PAD_SLOTS:
@@ -233,3 +240,10 @@ func _make_window(radius_m: float) -> void:
 		Parts.box(Vector3(0.90, 0.18, 0.07), Parts.HOME_PLASTER, Vector3(0, 1.27, WALL_Z), root)
 		Parts.box(Vector3(1.86, 0.07, 0.12), Parts.HOME_FRAME, Vector3(0, 1.39, WALL_Z), root)
 	_light(Parts.GOLD, 4.0, Vector3(0, 1.0, -0.20))
+
+## The planter's soil reaches past the pads' outer edges (PAD_OUT + PAD_SHARE),
+## inside its drum; its ring lies over the drum's rim, where a garden's does.
+func _make_planter(radius_m: float) -> void:
+	bell = SocketKit.planter(root, radius_m, minf(radius_m * (PAD_OUT + PAD_SHARE) + 0.01, radius_m - 0.04))
+	ring = Parts.ring(radius_m, Parts.CREAM, Vector3(0, SocketKit.PLANTER + 0.03, 0), root)
+	_light(Parts.GOLD, 4.0, Vector3(0, 0.8, 0))

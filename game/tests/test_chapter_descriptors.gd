@@ -33,6 +33,7 @@ const Isles = preload("res://presentation/keepsakes/home_isles.gd")
 const Dressing = preload("res://content/dressing/catalog.gd")
 const Looks = preload("res://content/water/looks.gd")
 const IslandWorld = preload("res://presentation/island_world.gd")
+const LevelLayout = preload("res://services/level_layout.gd")
 const SoundCues = preload("res://services/sound_cues.gd")
 const Props = preload("res://presentation/kit/props.gd")
 const WaitHints = preload("res://presentation/wait_hints.gd")
@@ -294,9 +295,12 @@ func _wait_hints(key: String, data: Dictionary, level: Dictionary) -> void:
 		for lever: Dictionary in stage.get("levers", []): levers[str(lever.id)] = true
 		for control: Dictionary in stage.get("controls", []):
 			if control.get("kind") == "selector": selectors[str(control.id)] = true
+	# Each stage's goal as its family lays it out (an older family's bell or socket).
 	var goals: Dictionary = {}
 	for stage: Dictionary in level.stages:
 		if stage.get("goal") is Dictionary: goals[str(stage.goal.get("id", ""))] = true
+		var planned: Variant = LevelLayout.for_key(key, str(stage.id), level).get("goal")
+		if planned is Dictionary: goals[str(planned.get("id", ""))] = true
 	# Rules 16's crossings take a deck style, and its one way stairs a ladder.
 	var bridges: Dictionary = {}
 	for route: Dictionary in level.get("bridges", []): bridges[str(route.id)] = true
