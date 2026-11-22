@@ -16,8 +16,9 @@ function state(levers: Record<string, boolean>, p0 = away, p1 = away) {
 
 describe("new pieces (rules 16)", () => {
   it("numbers the pieces as tide, open controls and open turns too", () => {
-    expect(PIECES_RULES).toEqual([16]);
-    expect([15, 16].map(piecesRules)).toEqual([false, true]);
+    // 20 is 16 on carry-over turns.
+    expect(PIECES_RULES).toEqual([16, 20]);
+    expect([15, 16, 19, 20].map(piecesRules)).toEqual([false, true, false, true]);
     expect([openControls(16), openTurns(16), tideRules(16), COMFORT_RULES.includes(16), OPEN_TURNS_RULES.includes(16)]).toEqual([true, true, true, true, true]);
   });
 

@@ -10,6 +10,9 @@ export type ChapterRecording = ChapterKey & {
   /** A packed record's runs and checks in place of `actions` and `replay_checks` (v2/recording-codec.ts). */
   packed?: string;
   completed: boolean; outcome: Record<string, boolean>; source_recording_hash: string; recording_hash: string;
+  /** Carry-over turns (rules 18 to 21, open-turns.ts carryFits): the tick of the turn before at which this one took over, the
+   * world hash at this turn's start, and its world hash at the tick the next turn takes over. All three are under recording_hash. */
+  handoff_tick?: number; start_hash?: string; handoff_hash?: string;
 };
 /** A recording in its JSON form, its runs and checks listed (every record before packed recordings, and every JSON turn since). */
 export type JsonChapterRecording = ChapterRecording & { actions: NonNullable<ChapterRecording["actions"]>; replay_checks: NonNullable<ChapterRecording["replay_checks"]>; packed?: never };
@@ -18,6 +21,8 @@ export type ChapterCheckpoint = ChapterKey & {
   previous_checkpoint_hash: string; a_recording_hash: string; b_recording_hash: string; checkpoint_hash: string;
   /** Open turns (open-turns.ts, schema 8) name every turn of the stage here in place of the a and b hashes, and nest no proof. */
   turn_hashes?: string[];
+  /** Carry-over turns (schema 9): the pip that plays the next stage's first turn, the one that did not close this stage. */
+  next_first_slot?: Slot;
 };
 export type ChapterLimits = { checkpoint_bytes: number; checkpoint_values: number; turn_body_bytes: number; turn_body_values: number; recording_bytes?: number; recording_values?: number };
 /** Stage digits in turn, pair and photo ids are one character. */
@@ -45,27 +50,33 @@ export type ChapterAdapter = {
  * chapter pinned to it can refuse 0.5.x guests, which never advertised 9. 10 (tide
  * rules), 12 and 13 (open controls) build on them: same records and bounds, only
  * the checkpoint envelope differs. 11 is the Lighthouse room's own. */
-export const COMFORT_RULES: readonly number[] = [8, 9, 10, 12, 13, 14, 15, 16, 17];
+export const COMFORT_RULES: readonly number[] = [8, 9, 10, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21];
 export function comfortRules(version: unknown): boolean { return typeof version === "number" && COMFORT_RULES.includes(version); }
-/** Tide rules: 10, 13 (tide rules with open controls), 15 (with open turns too) and 16 (15 with the new pieces). No route latches. */
-export const TIDE_RULES: readonly number[] = [10, 13, 15, 16];
+/** Tide rules: 10, 13 (tide rules with open controls), 15 (with open turns too) and 16 (15 with the new pieces), and their
+ * carry-over turns 19 and 20. No route latches. */
+export const TIDE_RULES: readonly number[] = [10, 13, 15, 16, 19, 20];
 export function tideRules(version: unknown): boolean { return typeof version === "number" && TIDE_RULES.includes(version); }
 /** Open controls: 12 (comfort rules) and 13 (tide rules) with every pad held by
  * either player and every lever, switch or selector worked by either. Older
  * clients never advertised 12 or 13, so a chapter pinned to one refuses them on join. */
-export const OPEN_CONTROLS_RULES: readonly number[] = [12, 13, 14, 15, 16, 17];
+export const OPEN_CONTROLS_RULES: readonly number[] = [12, 13, 14, 15, 16, 17, 18, 19, 20, 21];
 /** Open turns: 14 (12 with open turns) and 15 (13 with open turns). A stage passes
  * back and forth until its goal holds at the end of a turn, up to its turn_cap. */
-export const OPEN_TURNS_RULES: readonly number[] = [14, 15, 16, 17];
-/** The new pieces of The Falls and Fog Marsh: 16 is 15 plus "not" in gates, moving
+export const OPEN_TURNS_RULES: readonly number[] = [14, 15, 16, 17, 18, 19, 20, 21];
+/** Carry-over turns (claude-20261011/carry-over-turns/design.md): 18, 19, 20 and 21 are 14, 15, 16 and 17 played as one
+ * timeline, each turn taking over from the one before at its hand-off (open-turns.ts carryFits). The phone's
+ * core/physical/open_controls.gd mirrors the numbers. */
+export const CARRY_OVER_RULES: readonly number[] = [18, 19, 20, 21];
+export function carryOver(version: unknown): boolean { return typeof version === "number" && CARRY_OVER_RULES.includes(version); }
+/** The new pieces of The Falls and Fog Marsh: 16 (and 20 on carry-over turns) is 15 plus "not" in gates, moving
  * platforms, sinking stones and pull-up ladders (game/core/physical/pieces_rules.gd).
  * None adds a mechanism: the checkpoint keeps its four. */
-export const PIECES_RULES: readonly number[] = [16];
+export const PIECES_RULES: readonly number[] = [16, 20];
 export function piecesRules(version: unknown): boolean { return typeof version === "number" && PIECES_RULES.includes(version); }
-/** The shared ball: 17 is 14 with one ball both players push in every turn, the memory's pushes landing first, and a
+/** The shared ball: 17 (and 21 on carry-over turns) is 14 with one ball both players push in every turn, the memory's pushes landing first, and a
  * ball home stage that ends with the ball in its cradle (game/core/physical/runtime.gd _shared_ball). A cooperative
  * level with a ball pins it on open turns; the checkpoint keeps its four mechanisms (open-turns.ts openBallProblem). */
-export const SHARED_BALL_RULES: readonly number[] = [17];
+export const SHARED_BALL_RULES: readonly number[] = [17, 21];
 export function sharedBall(version: unknown): boolean { return typeof version === "number" && SHARED_BALL_RULES.includes(version); }
 export function openTurns(version: unknown): boolean { return typeof version === "number" && OPEN_TURNS_RULES.includes(version); }
 export function openControls(version: unknown): boolean { return typeof version === "number" && OPEN_CONTROLS_RULES.includes(version); }

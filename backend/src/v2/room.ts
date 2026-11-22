@@ -12,7 +12,7 @@ import { MAX_V2_BODY_BYTES, RELAY_KEY, acceptedRecording, chapter, boundedTurnVa
 import { sameChapter } from "./chapters";
 import { checkpointAt } from "./checkpoint-chain";
 import { MAX_ROOM_PAIRS, MAX_ROOM_TURNS } from "./row-bound";
-import { fingerprint, isFingerprint, mustFinish, turnId, turnSlot } from "./open-turns";
+import { carryFits, fingerprint, firstSlot, isFingerprint, mustFinish, turnId, turnSlot } from "./open-turns";
 import { isStub } from "./history-blob";
 import { clearAttempts, clearHistory, noteHistorySupport, storedAttempts, type AttemptRecord, type HistorySupport } from "./history";
 import { v1Transferred, offloadedCount, stubReleased, acknowledgeAttempt, archived, attemptDownload, checkedUpload, historyView, loadChain, parseAck, parseWant, restoreAttempt, wantAttempt, type HistoryRoom, type HistoryView } from "./history-room";
@@ -417,7 +417,7 @@ export class RoomV2 extends DurableObject<Env> {
   /** Whose turn is next: odd turns the stage's first player's, even turns the other member's (`guest` may stand in for a missing guest). */
   private nextPlayer(state: RoomStateV2, guest: string | null = state.guest_id): string | null {
     const stage = chapter(state).stages[state.stage_index]; if (!stage) return null;
-    return turnSlot(stage.first_player_slot, this.nextTurn(state)) === "p0" ? state.host_id : guest;
+    return turnSlot(firstSlot(chapter(state).open_turns, stage, state.checkpoint), this.nextTurn(state)) === "p0" ? state.host_id : guest;
   }
   /** What an open turns member reads beside the room (OpenTurnsView); `first` is the stage's turn 1 as stored, already read. */
   private openView(state: RoomStateV2, first: RecordingV2 | null, player?: string): OpenTurnsView | undefined {
@@ -601,8 +601,10 @@ export class RoomV2 extends DurableObject<Env> {
     // The open stage's own record stays inside; its reader's view is open_turns.
     const { invite_code, open_stage: _openStage, ...safe } = state; void _openStage;
     const stage = chapter(state).stages[state.stage_index];
-    const first = !stage ? null : stage.first_player_slot === "p0" ? state.host_id : state.guest_id;
-    const second = !stage ? null : stage.first_player_slot === "p0" ? state.guest_id : state.host_id;
+    // Carry-over turns: the stage's first pip is the one its checkpoint names (open-turns.ts firstSlot).
+    const firstPip = stage ? firstSlot(chapter(state).open_turns, stage, state.checkpoint) : null;
+    const first = !stage ? null : firstPip === "p0" ? state.host_id : state.guest_id;
+    const second = !stage ? null : firstPip === "p0" ? state.guest_id : state.host_id;
     const hard = this.hard.run(this.ctx.storage), link = duelLink(this.ctx.storage);
     const recordingA = state.a_turn_id ? this.turn(state.a_turn_id) : null;
     // A commit's own check reads no open turns view: it hands nothing to the phone, and the view reads the full turns.
@@ -1266,12 +1268,17 @@ export class RoomV2 extends DurableObject<Env> {
         if (!this.capacity() || this.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM turns").one().n >= MAX_TURNS) return fail(409, "room_history_full");
         if (recording.role === "a") {
           if (!acceptedRecording(recording)) return fail(422, "incomplete_first_turn");
+          // Carry-over turns: a stage's first turn may be either pip's, so it must be the one the checkpoint names.
+          if (open?.carry && recording.player_slot !== current.player_slot) return fail(409, "wrong_turn");
         } else {
           // The memory: the stage's latest turn (before open turns, always its first).
           const turns = this.stageTurns(state);
           memory = { turn_id: turns.at(-1)!.turn_id, recording: this.turn(turns.at(-1)!.turn_id) };
           const { recording: memoryRecording } = memory;
-          if (recording.source_recording_hash !== memoryRecording.recording_hash || recording.duration_ticks < memoryRecording.duration_ticks) return fail(409, "source_recording_mismatch");
+          // Carry-over turns: it starts from the memory's hand-off world at its hand-off tick and, as a pass, outlasts the rest of it (open-turns.ts carryFits).
+          // Turn k-2 is read only then, and only from turn 3 on.
+          if (recording.source_recording_hash !== memoryRecording.recording_hash || (open?.carry ? !carryFits(recording, memoryRecording, turns.length >= 2 ? this.turn(turns.at(-2)!.turn_id) : null) :
+            recording.duration_ticks < memoryRecording.duration_ticks)) return fail(409, "source_recording_mismatch");
           if (open && recording.player_slot !== current.player_slot) return fail(409, "wrong_turn");
           if (pass) {
             if (!acceptedRecording(recording)) return fail(422, "incomplete_second_turn");
