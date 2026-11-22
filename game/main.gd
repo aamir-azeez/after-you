@@ -1915,10 +1915,17 @@ func _enter_online_relay() -> void:
 		relay_child.wear_available = wardrobe_flow.available
 	relay_child.board_line = board_feedback.line_for
 	relay_child.closed.connect(_leave_online_relay)
+	relay_child.new_room_requested.connect(func(key: String) -> void: _new_room_after_leave = key)
 	add_child(relay_child)
 	_sync_presence()
 
+## Start over on a room this phone could not verify (relay_preview.gd): the
+## chapter whose new room is hosted once the room screen has closed.
+var _new_room_after_leave := ""
+
 func _leave_online_relay() -> void:
+	var new_room := _new_room_after_leave
+	_new_room_after_leave = ""
 	if is_instance_valid(relay_child):
 		remove_child(relay_child)
 		relay_child.queue_free()
@@ -1928,8 +1935,9 @@ func _leave_online_relay() -> void:
 	soundscape.set_covered(false)
 	lifecycle_generation += 1
 	_sync_presence()
-	_return_to_room_hub(relay_session.last_error if relay_session != null else "",false)
+	_return_to_room_hub("" if not new_room.is_empty() else relay_session.last_error if relay_session != null else "",false)
 	_deliver_then_refresh_hub.call_deferred()
+	if not new_room.is_empty(): room_hub_flow.host_again(new_room)
 
 ## The one replay delivery after leaving play goes first; the hub reads its
 ## rooms after, so neither request finds the API busy and gives up.

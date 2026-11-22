@@ -20,6 +20,7 @@ const TesterSwitches = preload("res://services/tester_switches.gd")
 const TesterAccess = preload("res://services/tester_access.gd")
 const MemoryWait = preload("res://presentation/memory_wait.gd")
 const ScreenSwitch = preload("res://services/screen_switch.gd")
+const Registry = preload("res://services/chapter_registry.gd")
 const SlotLooks = preload("res://presentation/slot_looks.gd")
 const SOUND_CHAPTER := "sleeping-lighthouse@1"
 
@@ -783,7 +784,22 @@ func _continue_replay() -> void:
 func _show_error(text: String) -> void:
 	mode = "error"
 	var card := _card(PlayerCopy.LIGHTHOUSE_PREVIEW_CE5202BED332, text)
+	if _start_over_offered(): card.add_child(controls.button_for("start_over", _start_over))
 	card.add_child(controls.button_for("back", _leave))
+
+## Start over on an @1 save that could not be verified, as relay_preview.gd's:
+## the save moves aside whole (LighthouseJourney.start_over) and, with no @1
+## journey left to continue, the current Lighthouse opens fresh.
+func _start_over_offered() -> bool:
+	return journey != null and not _loader.busy() and journey.read_only and journey.can_start_over()
+
+func _start_over() -> void:
+	if mode != "error" or not _start_over_offered(): return
+	if not journey.start_over():
+		_show_error(journey.last_error)
+		return
+	mode = "leaving"
+	ScreenSwitch.to_file(get_tree(), Registry.open_scene(Registry.LIGHTHOUSE_V2))
 
 func _show_save_problem(text: String, after_retry: String) -> void:
 	mode = "save_error"
