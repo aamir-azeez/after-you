@@ -113,10 +113,12 @@ static func relay(root: Node3D, base: float = NEST_BASE) -> void:
 	_ring(root, 0.14, 0.035, NEST, Vector3(0, 0.38, 0))
 	_ring(root, 0.17, 0.035, NEST_DARK, Vector3(0, 0.425, 0))
 	_ring(root, 0.19, 0.03, NEST, Vector3(0, 0.465, 0))
-	# Three teal leaves fanning out under the nest.
+	# Three teal leaves fanning out under the nest, from inside the stump's top
+	# so only their outer half shows, below the nest's floor (never in its bowl).
 	for index in range(3):
 		var angle := TAU * index / 3.0 + PI / 2.0
-		var leaf := Primitives.mesh_node(Primitives.shared_mesh("sphere", 0.16), Primitives.shared_material(LEAF), Vector3(cos(angle) * 0.26 * fan, 0.40, sin(angle) * 0.26 * fan), root)
+		var out := maxf(0.26 * fan, 0.17)
+		var leaf := Primitives.mesh_node(Primitives.shared_mesh("sphere", 0.16), Primitives.shared_material(LEAF), Vector3(cos(angle) * out, 0.33, sin(angle) * out), root)
 		leaf.scale = Vector3(0.42 * fan, 0.14, fan)
 		leaf.rotation = Vector3(0, -angle + PI / 2.0, 0)
 		leaf.rotate_object_local(Vector3.RIGHT, -0.35)
