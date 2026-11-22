@@ -24,6 +24,7 @@ const HardMode = preload("res://services/hard_mode.gd")
 const Isles = preload("res://presentation/keepsakes/home_isles.gd")
 const StaticBatch = preload("res://presentation/kit/static_batch.gd")
 const Reach = preload("res://tests/keepsake_reach.gd")
+const ContactShadows = preload("res://presentation/kit/contact_shadows.gd")
 const SPIRIT_HEIGHT := 1.15
 ## The Home islands' trees along their back edges (x, at z -2.87 to -2.37).
 const TREE_XS := [2.45, 3.95, -4.15, -2.65]
@@ -643,6 +644,19 @@ func _pose(layer: Node3D, id: String) -> Array:
 			if part is MeshInstance3D: pose.append((part as MeshInstance3D).material_override)
 	return pose
 
+## A floor's baked shade, both its textures.
+func _shade_bytes(overlay: Dictionary) -> Array:
+	return [(overlay.image as Image).get_data() if overlay.image != null else null, (overlay.moving as Image).get_data() if overlay.moving != null else null]
+
+## Whether a playing part's live shadow lies on its floor under it, or as far
+## along the sun as it is raised.
+func _shadow_follows(shadows: Node3D, drawn: Dictionary) -> bool:
+	var part: Node3D = drawn.part
+	var box: AABB = shadows.global_transform.affine_inverse() * part.global_transform * (part.get_meta(ContactShadows.MOVER_META).box as AABB)
+	var at: Vector3 = (drawn.transform as Transform3D).origin
+	var raised := maxf(box.get_center().y - (at.y - ContactShadows.SHADE_TOP), 0.0)
+	return Vector2(at.x - box.get_center().x, at.z - box.get_center().z).length() <= raised * ContactShadows.SUN_REACH + 0.01
+
 func _tweens() -> int:
 	return get_processed_tweens().size()
 
@@ -660,6 +674,8 @@ func _check_play() -> void:
 		else:
 			cues.append(cue)
 			heard.append([cue, variant])
+	var shadows: Node3D = world.contact_shadows
+	var measured := 0
 	for id: String in layer.shown_ids():
 		var rest := _pose(layer, id)
 		var tap_start := Time.get_ticks_msec()
@@ -670,13 +686,22 @@ func _check_play() -> void:
 		_check(not stage.play_keepsake(id), "A second tap while %s plays is ignored" % id)
 		var moved := false
 		var asked := false
+		var parts: Array = layer.prop_node(id).get_meta(ContactShadows.MOVERS_META, {}).get("movers", [])
+		var live_most := 0
+		var strays := 0
 		while stage.keepsake_playing() and Time.get_ticks_msec() - tap_start < 6000:
 			await process_frame
 			moved = moved or _pose(layer, id) != rest
+			# Its moving parts' live shadows, where they stand this frame.
+			shadows.refresh()
+			live_most = maxi(live_most, shadows.part_shadows().size())
+			for drawn: Dictionary in shadows.part_shadows(): strays += int(not parts.has(drawn.part) or not _shadow_follows(shadows, drawn))
 			if not asked and Time.get_ticks_msec() - tap_start > 1000:
 				asked = true
 				_check(not stage.play_keepsake(id), "A tap halfway through %s neither stacks nor restarts it" % id)
 		_check(moved, "%s moves its parts while it plays" % id)
+		measured += parts.size()
+		_check(live_most == parts.size() and strays == 0, "%s draws a live shadow under each of its moving parts while it plays, following it: %d of %d, %d astray" % [id, live_most, parts.size(), strays])
 		# A long tap may take up to 5.65 s (test_keepsake_props.gd LONG_TAPS); the rest 4.5 s.
 		var limit := 5850 if id in LONG_TAPS else 4700
 		_check(not stage.keepsake_playing() and Time.get_ticks_msec() - tap_start <= limit, "%s finishes within its time: %d ms" % [id, Time.get_ticks_msec() - tap_start])
@@ -684,11 +709,24 @@ func _check_play() -> void:
 		# The glasshouse and the lighthouse hold their end (test_keepsake_held.gd); let go here.
 		if layer.holding(id): layer._release(id)
 		_check(_pose(layer, id) == rest, "%s ends in exactly its rest pose" % id)
+		shadows.refresh()
+		_check(shadows.part_shadows().is_empty(), "%s at rest draws no live shadow" % id)
 		var keepsake: Dictionary = States.entries()[States.entries().map(func(entry: Dictionary) -> String: return entry.id).find(id)].keepsake
 		if BELLS_HEARD.has(id): _check(heard == BELLS_HEARD[id], "%s strikes each bell it has in turn, each at its own pitch: %s" % [id, heard])
 		else: _check(cues.size() == keepsake.sounds.size() and cues == keepsake.sounds.values(), "%s plays one fixed cue per beat: %s" % [id, cues])
 		_check(water == WATER_HEARD.get(id, []), "%s plays its water at its moments, each drop of a run at its own pitch: %s" % [id, water])
 		_check(layer.prop_node(id).get_node_or_null("Tap") == null, "%s frees what it made for the tap" % id)
+	_check(measured >= 10, "The keepsakes' moving parts are measured for shadows: %d" % measured)
+	# Every floor baked again only round what played is what a whole bake makes.
+	var patched := {}
+	for overlay: Dictionary in shadows.overlays(): patched[overlay.ground] = _shade_bytes(overlay)
+	shadows._baked.clear()
+	ContactShadows.touch()
+	for frame in range(120):
+		await process_frame
+		if shadows.settled(): break
+	var rebaked: Array = shadows.overlays()
+	_check(rebaked.size() == patched.size() and rebaked.all(func(overlay: Dictionary) -> bool: return patched.get(overlay.ground) == _shade_bytes(overlay)), "Home's floors, baked again round each keepsake that played, are what a whole bake makes")
 	# Reduce motion: parts jump to the lit pose, hold, and go back; nothing slides.
 	world.reduced_motion = true
 	var well_rest := _pose(layer, "the-wishing-well")
