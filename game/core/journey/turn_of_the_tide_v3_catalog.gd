@@ -4,8 +4,8 @@ extends RefCounted
 ## 15), so it never shares a record with an earlier version, its controls carry
 ## no owner, and a stage passes back and forth until both pips end a turn at its goal,
 ## up to its cap. Its words are the descriptor's copy and stage_copy, never the
-## definition's. Its turns are development limits, 120 seconds every turn, to explore while
-## the owner records; the release step sets the owner's numbers (scripts/chapter_turn_limits.py).
+## definition's. Its turns are the fallback until the owner plays it: twice the longest carry-over witness turn, at least 60 s
+## (60 s every turn; scripts/chapter_turn_limits.py --suggested).
 const Earlier = preload("res://core/journey/turn_of_the_tide_v2_catalog.gd")
 const OpenControls = preload("res://core/physical/open_controls.gd")
 const OpenTurns = preload("res://core/physical/open_turns.gd")
@@ -35,12 +35,17 @@ const LINE := {"position_cm": [1024, -448]}
 ## The basin valve stands 80 cm east of @2's spot, so its dial no longer
 ## stands over the gate bar and its lamp on the catwalk behind it.
 const BASIN := {"position_cm": [-232, -64]}
+## A closing crossing keeps its floor for the one grace every open turns level
+## plays (core/physical/runtime.gd CLOSING_GRACE_TICKS, which the engine reads),
+## not @2's longer 45 ticks.
+const CLOSING_TICKS := 25
 
 static func definition() -> Dictionary:
 	var level: Dictionary = Earlier.definition().duplicate(true)
 	level.version = 3
+	level.closing_ticks = CLOSING_TICKS
 	OpenTurns.pin(level, CAPS)
-	level.turn_limits = {"a_ticks":3600,"b_ticks":3600}
+	level.turn_limits = {"a_ticks":1800,"b_ticks":1800}
 	OpenControls.open_crossings(level, OWNED)
 	for field: String in WORDS:
 		level.erase(field)

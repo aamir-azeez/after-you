@@ -114,7 +114,9 @@ export function physicalRecording(definition: { stages: readonly { id: string; f
     const published = comfortRules(r.simulation_version) && role === "b" ? 1200 : MAX_TICKS;
     const limit = Math.min(turns ? (role === "b" ? turns.b_ticks : turns.a_ticks) : published, maxTicks);
     const duration = integer(r.duration_ticks, 1, limit); bool(r.catch_assistance); bool(r.completed);
-    for (const name of ["checkpoint_hash", "final_state_hash", "recording_hash", ...(carry ? ["start_hash", "handoff_hash"] : [])]) text(r[name], HASH_PATTERN);
+    for (const name of ["checkpoint_hash", "final_state_hash", "recording_hash", ...(carry ? ["start_hash"] : [])]) text(r[name], HASH_PATTERN);
+    // A turn that closes its stage before the friend's replay is over hands nothing off (an empty handoff_hash).
+    if (carry && !(r.completed === true && r.handoff_hash === "")) text(r.handoff_hash, HASH_PATTERN);
     // Carry-over turns: a hand-off inside the turn before (never longer than this limit); a first turn hands off at 0 from its own start.
     if (carry) { integer(r.handoff_tick, 0, limit); need(r.role !== "a" || carryFits(r as ChapterRecording, null, null), "invalid_handoff"); }
     need(r.role === "a" ? r.source_recording_hash === "" : typeof r.source_recording_hash === "string" && HASH_PATTERN.test(r.source_recording_hash), "invalid_source_hash");

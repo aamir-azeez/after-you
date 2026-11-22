@@ -1,10 +1,10 @@
 extends RefCounted
-## Open turns (open_controls.gd OPEN_TURNS_RULES: 14 is the comfort rules with
-## open controls and open turns, 15 the tide rules with both). A stage no
-## longer has exactly two turns: it ends when a turn ends with both pips at
-## its goal (the live pip and the memory standing there once the memory has
-## played out) and the goal's light holds, otherwise play passes back to the
-## other pip, up to the stage's own cap ("turn_cap", set in the level). There
+## Open turns (open_controls.gd OPEN_TURNS_RULES: 18 is the comfort rules with
+## open controls and open turns, 19 the tide rules with both). A stage no
+## longer has exactly two turns: it ends the moment both pips stand at its goal
+## (the live pip and the friend's replay, whoever got there first) and the
+## goal's light holds, otherwise play passes back to the other pip once the
+## friend's replay is over, up to the stage's own cap ("turn_cap", set in the level). There
 ## is no bell to ring and no first pip's part that must still hold at the end:
 ## both pips at the goal is the whole finish (runtime.gd _at_goal). Every turn
 ## has the level's time limit. The level checker (tests/test_level_checker.gd)
@@ -21,14 +21,14 @@ const MIN_CAP := 2
 const MAX_CAP := 20
 
 ## The open turns rules that keep `earlier`'s other rules: the tide rules as
-## 15, anything else as 14.
+## 19, anything else as 18.
 static func rules_for(earlier: int) -> int:
 	if earlier in RULES: return earlier
 	return OpenControls.OPEN_TURNS_TIDE_RULES_VERSION if earlier in OpenControls.TIDE_RULES else OpenControls.OPEN_TURNS_RULES_VERSION
 
 ## `level` on open controls and open turns, each stage's cap from `caps`
 ## ({stage id: turns}; a stage left out keeps DEFAULT_CAP). A level with a
-## ball (its "props") takes the shared ball rules (17, runtime.gd
+## ball (its "props") takes the shared ball rules (21, runtime.gd
 ## _shared_ball). Changes and returns `level`.
 static func pin(level: Dictionary, caps: Dictionary) -> Dictionary:
 	var earlier := int(level.get("simulation_version", 0))
@@ -61,19 +61,21 @@ static func cap_valid(stage: Dictionary) -> bool:
 	var declared: Variant = stage.get("turn_cap", DEFAULT_CAP)
 	return (declared is int or (declared is float and declared == floor(declared))) and int(declared) >= MIN_CAP and int(declared) <= MAX_CAP
 
-## How a stage's turns play and nest (the server's mirror is
-## backend/src/v2/open-turns.ts). Turn 1 is a first turn as before (role "a");
-## every later turn (role "b") plays from the stage's checkpoint with the other
-## pip's latest turn as its memory, which nests the turns before it by
-## source_recording_hash. Odd turns are the stage's first pip's, even turns the
-## other's. A later turn that has both pips at the goal once its memory has
-## played out closes the stage; the pip may instead pass once the memory is over. Every
-## turn has the second turn's time limit. Turn ids keep a letter for the
-## turn's number: t<branch>-<stage>-a, -b, -c ...
+## How a stage's turns play (the server's mirror is backend/src/v2/open-turns.ts).
+## Turn 1 is a first turn (role "a") from the stage's checkpoint, the other pip
+## standing. Every later turn (role "b") starts from the world the turn before
+## it handed off (the shared timeline below) with the rest of that turn
+## replaying beside it, and names it by source_recording_hash; nothing nests.
+## Odd turns are the stage's first pip's (first_slot), even turns the other's.
+## A later turn closes the stage the moment both pips are at the goal; the pip
+## may instead pass once the friend's replay is over. Every turn has the second
+## turn's time limit. Turn ids keep a letter for the turn's number:
+## t<branch>-<stage>-a, -b, -c ...
 const LETTERS := "abcdefghijklmnopqrst"
-## Checkpoints of open turns nest every turn of their stage, in place of a and b.
-const CHECKPOINT_SCHEMA := 8
-const CHECKPOINT_KEYS := ["schema_version", "level_id", "level_version", "definition_hash", "stage_index", "completed_stage_id", "next_stage_id", "players", "mechanisms", "previous_checkpoint_hash", "turn_hashes", "checkpoint_hash", "proof"]
+## Checkpoints of open turns hold every turn of their stage, in place of a and
+## b, and the pip that starts the next stage (schema 9).
+const CHECKPOINT_SCHEMA := 9
+const CHECKPOINT_KEYS := ["schema_version", "level_id", "level_version", "definition_hash", "stage_index", "completed_stage_id", "next_stage_id", "players", "mechanisms", "previous_checkpoint_hash", "turn_hashes", "next_first_slot", "checkpoint_hash", "proof"]
 
 ## A completed stage's turns in play order, from its checkpoint's `proof`:
 ## every turn under open turns (proof.turns), a and b before. [] when the
@@ -115,7 +117,15 @@ static func pair_turns(pair: Dictionary) -> Array:
 		passes = nested.slice(1, nested.size() - 1) if nested.size() > 2 else []
 	return [pair.get("a")] + passes + [pair.get("b")]
 
-## Carry-over turns (claude-20261011/carry-over-turns/design.md): a stage is
+## A completed pair's closing turn set up again (a completion scene, a check):
+## the turn it played over ("prior") and the stage's turns before that
+## ("chain"), so it replays exactly as it was played and proved. Before open
+## turns that is {a, []}.
+static func closing_memory(pair: Dictionary) -> Dictionary:
+	var turns := pair_turns(pair)
+	return {"prior": turns[-2], "chain": turns.slice(0, turns.size() - 2)}
+
+## Carry-over turns: a stage is
 ## one shared timeline that only moves forward. Turn k starts from turn k-1's
 ## world at its hand-off tick H(k), with the rest of turn k-1 (its pip's
 ## recorded inputs) replaying beside the live pip for M(k) ticks. Every turn's
@@ -123,8 +133,7 @@ static func pair_turns(pair: Dictionary) -> Array:
 ## (handoff_tick), the world hash at its start (start_hash) and at its tick M,
 ## which is the next turn's start (handoff_hash). A checkpoint adds the pip
 ## that starts the next stage (next_first_slot, checkpoint schema 9). The rules
-## numbers 18, 19, 20 and 21 take over from 14, 15, 16 and 17 when the engine
-## lands (open_controls.gd).
+## numbers are 18 to 21 (open_controls.gd).
 const HANDOFF_TICK := "handoff_tick"
 const START_HASH := "start_hash"
 const HANDOFF_HASH := "handoff_hash"
@@ -141,6 +150,18 @@ static func start_tick(lengths: Array, turn: int) -> int:
 	var start := 0
 	for k in range(turn - 2, 0, -2): start += int(lengths[k - 1])
 	return start
+
+## Run time (2026-11-21): each turn's share of its stage's length on the shared
+## timeline, so a stage counts once, S(last) + L(last), however its turns
+## overlapped: turn k adds (S(k) + L(k)) - (S(k-1) + L(k-1)). A closing turn
+## that drops the rest of the friend's replay may add less than nothing. The
+## server's open-turns.ts timelineShares is the same.
+static func timeline_shares(lengths: Array) -> Array:
+	var shares := []
+	for k in range(1, lengths.size() + 1):
+		var before := 0 if k == 1 else start_tick(lengths, k - 1) + int(lengths[k - 2])
+		shares.append(start_tick(lengths, k) + int(lengths[k - 1]) - before)
+	return shares
 
 ## H(turn): how many ticks into turn - 1 turn `turn` takes over, S(k) - S(k-1).
 ## 0 for turns 1 and 2 (turn 2 hands off at tick 0 of turn 1).

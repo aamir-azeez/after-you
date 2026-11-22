@@ -31,7 +31,6 @@ const Gorge = preload("res://presentation/kit/gorge.gd")
 const PropRules = preload("res://presentation/kit/prop_rules.gd")
 ## How strongly a prop standing in the water rings it (a float rings at 1).
 const WATERLINE_RINGS := 0.6
-const Drowning = preload("res://presentation/kit/drowning.gd")
 const Floats = preload("res://presentation/kit/floats.gd")
 const Models = preload("res://presentation/kit/models.gd")
 ## Every boat that floats is the rowboat model at this size, so one set of
@@ -67,8 +66,6 @@ var _flow_look: ShaderMaterial
 var _flows_gathered := false
 ## The water world's own clock (seconds), for every bob.
 var _clock := 0.0
-## A drowning, shown from the snapshot (kit/drowning.gd).
-var drowning := Drowning.new(self)
 ## Boats riding the water (each a node, its keel at its origin).
 var _boats: Array[Node3D] = []
 ## Dressing "boat" props standing over water, built as floating boats once
@@ -85,7 +82,6 @@ func show_stage(stage: Dictionary) -> void:
 	_boats.clear()
 	_floating.clear()
 	_stones.clear()
-	drowning.forget()
 	_forget_stage()
 	waters.start(stage, _water_block(), _standing_routes(stage))
 	await super.show_stage(stage)
@@ -370,6 +366,10 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	_present_water(state, immediate)
 	drowning.show(state.get("drowned", {}))
 
+## Shown at the end of present, once the water stands at the snapshot's level.
+func _present_drowned(_state: Dictionary) -> void:
+	pass
+
 ## The water at the snapshot's levels, the walled stubs' floods, and the
 ## doors and wall fade round where the spirits stand.
 func _present_water(state: Dictionary, immediate: bool) -> void:
@@ -399,7 +399,6 @@ func _advance_water(delta: float) -> void:
 	if not _stones.is_empty(): _sink_stones(delta)
 	waters.advance_fade(delta)
 	if not reduced_motion:
-		drowning.advance(delta)
 		waters.bob()
 		# From the world's clock, so a frame shows the same turn however it is reached.
 		for part: Node3D in _spinning:
@@ -451,7 +450,6 @@ func _waterline(prop: Node3D) -> void:
 func _static_keep() -> Array:
 	var keep := super._static_keep()
 	keep.append_array(waters.moving_nodes())
-	keep.append_array(drowning.moving_nodes())
 	keep.append_array(_boats)
 	for stone: Dictionary in _stones.values(): keep.append(stone.deck)
 	return keep

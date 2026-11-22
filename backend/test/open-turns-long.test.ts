@@ -74,8 +74,9 @@ async function sealed(body: Rec): Promise<Rec> { const { checkpoint_hash: _old, 
 /** `carry`: the carry-over twin's turn in a stage pip `carry.first` starts, after `carry.turns` (its hand-off from them, with stand-in world hashes). */
 async function turn(index: number, n: number, checkpointHash: string, memory: Rec | null, closes: boolean, ticks = TICKS, carry?: { first: string; turns: Rec[] }): Promise<Rec> {
   const stage = stages()[index], fixture = (index % 2 ? slackA : setA) as Rec;
-  const { actions: _a, replay_checks: _c, recording_hash: _h, ...header } = structuredClone(fixture); void _a; void _c; void _h;
-  const body = { ...header, level_version: FIVE.level_version, definition_hash: FIVE.definition_hash, stage_id: stage.id, checkpoint_hash: checkpointHash,
+  // The native fixture is a carry-over turn: the older rules' twin takes its header without the hand-off fields.
+  const { actions: _a, replay_checks: _c, recording_hash: _h, handoff_tick: _t, start_hash: _s, handoff_hash: _o, ...header } = structuredClone(fixture); void _a; void _c; void _h; void _t; void _s; void _o;
+  const body = { ...header, simulation_version: 15, level_version: FIVE.level_version, definition_hash: FIVE.definition_hash, stage_id: stage.id, checkpoint_hash: checkpointHash,
     role: n === 1 ? "a" : "b", player_slot: turnSlot(stage.first_player_slot, n), duration_ticks: ticks, source_recording_hash: memory ? memory.recording_hash : "", catch_assistance: false,
     completed: n > 1 && closes, outcome: { source_ready: true, objective_complete: n > 1 && closes }, final_state_hash: (await digest(`${index}-${n}`)), packed: ticks === TICKS ? PACKED : widestPacked(ticks),
     ...(carry ? await handoff(index, n, ticks, carry) : {}) };
@@ -89,7 +90,7 @@ async function handoff(index: number, n: number, ticks: number, carry: { first: 
 }
 /** The flat checkpoint closing stage `index`: the fixture's end, both pips at its goal, this stage's controls and levers over the ones before. */
 async function closing(index: number, previous: Rec, turns: Rec[], carry = false): Promise<Rec> {
-  const stage = stages()[index], { proof: _p, a_recording_hash: _a, b_recording_hash: _b, ...end } = structuredClone((index % 2 ? slackEnd : setEnd) as Rec); void _p; void _a; void _b;
+  const stage = stages()[index], { proof: _p, a_recording_hash: _a, b_recording_hash: _b, next_first_slot: _n, ...end } = structuredClone((index % 2 ? slackEnd : setEnd) as Rec); void _p; void _a; void _b; void _n;
   const own = (values: Rec, ids: string[]) => Object.fromEntries(Object.entries(values).filter(([id]) => ids.includes(id)));
   // Both pips where the fixture's goal pip ended (on carry-over turns a stage may start with either pip).
   const goal = end.players[(index % 2 ? slackA : setA).player_slot === "p0" ? "p1" : "p0"];

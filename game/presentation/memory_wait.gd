@@ -116,6 +116,9 @@ var _skip_shown_frame := -1
 ## turn of carry-over turns (OpenTurnStore.carried), whose memory is the rest
 ## of the friend's turn (OpenTurnStore.replay_ticks).
 func begin(role: String, prior_ticks: int, carried: bool = false) -> void:
+	# The spirit that dozed in the turn before wakes before its key is cleared:
+	# in the next turn it may be the friend, who never dozes while it moves.
+	_release_world()
 	_role = role
 	_prior_end = maxi(0, prior_ticks)
 	_carried = carried
@@ -139,7 +142,6 @@ func begin(role: String, prior_ticks: int, carried: bool = false) -> void:
 	_early_tick = -1
 	_feels.reset()
 	if is_instance_valid(soundscape) and soundscape.has_method("drop_held_cues"): soundscape.drop_held_cues()
-	_release_world()
 
 ## Carry-over turns: the friend's turn plays before this turn's hand-off,
 ## `ticks` of it from its start, stepped through `frames`, its recorded inputs
@@ -430,10 +432,11 @@ func _find_keys(state: Dictionary) -> void:
 	# A sound caused by role a or b is heard from that role's pip.
 	if is_instance_valid(world) and world.has_method("note_live_spirit"): world.note_live_spirit(str(state.get("role", _role)), _live_key)
 
-## Doze by the goal and let the camera follow the memory.
+## Doze by the goal and let the camera follow the memory. A playback before
+## the hand-off has no wait: the pip it shows live is the friend, moving.
 func _apply_wait(immediate: bool = false) -> void:
 	if not is_instance_valid(world) or not world.has_method("show_memory_wait"): return
-	if _waiting: world.show_memory_wait(_live_key, _memory_key, immediate)
+	if _waiting and not _watching: world.show_memory_wait(_live_key, _memory_key, immediate)
 	else: world.end_memory_wait(_live_key)
 
 func _wake() -> void:

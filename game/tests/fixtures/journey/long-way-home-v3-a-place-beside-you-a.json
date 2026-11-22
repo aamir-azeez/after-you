@@ -1,24 +1,27 @@
 {
 	"catch_assistance": true,
-	"checkpoint_hash": "b4dcb231b63ca31eade9bc8a6ad0ed6ed2d21748246311db31f64ddf92fa150c",
+	"checkpoint_hash": "dca4d2a171091f20a2ac0c6ab90104b131a34f8cf5f6226683c3e8dbf9dafa4b",
 	"completed": false,
-	"definition_hash": "dd36a5597d8c06daaec3a34fdb79a0d854ddbc3647fa806fdd4ad5fa3f1d8a2f",
+	"definition_hash": "a6320deb49d769a2eda26d1ff53594977599b20c99c103f9915ba170d527ec8d",
 	"duration_ticks": 122,
-	"final_state_hash": "d1b8effce96b2482b7ac69998db0d1a40f4ab6c4887691ca9999ca04cab2c693",
+	"final_state_hash": "4bc8fcc861e0999097cb23d64c74a164c5c58a932b22d19328882fbbd4a8506a",
+	"handoff_hash": "cf412d7094c1cc81836b6772848ac24f1ebcc90fa1838cb13ea89db0b4cc9ccc",
+	"handoff_tick": 0,
 	"level_id": "long-way-home",
 	"level_version": 3,
 	"outcome": {
 		"objective_complete": false,
 		"source_ready": true
 	},
-	"packed": "AQwQZAA+AJwCAM48ZAAKAJwCALUCAAADAAAKAGQCAEtAZAAMAGTudpgjpTD3F7f5QgrsctChRQAC2FdPNXVFqOBkhCuu6g==",
+	"packed": "AQwQZAA+AJwCAM48ZAAKAJwCALUCAAADAAAKAGQCAEtAZAAMAGQB+fk6WfIMzd/wF15aa0L+QTSWuclZzsEGxGQhQDRxsg==",
 	"player_slot": "p1",
-	"recording_hash": "9b951f2396f37adf09fe8a9b36ceb709db11baea04fd99688444dc1fc4bd0c3b",
+	"recording_hash": "2ff0492f3be188474a3ea2f044e0c62f6903bb7e278800232740709f1fac57c2",
 	"role": "a",
 	"schema_version": 7,
-	"simulation_version": 14,
+	"simulation_version": 18,
 	"source_recording_hash": "",
 	"stage_id": "a-place-beside-you",
 	"stage_version": 1,
+	"start_hash": "cf412d7094c1cc81836b6772848ac24f1ebcc90fa1838cb13ea89db0b4cc9ccc",
 	"tick_rate": 30
 }

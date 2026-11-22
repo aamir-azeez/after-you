@@ -14,6 +14,10 @@ extends RefCounted
 ## once per definition (index_for, keyed by its digest; shared by every engine
 ## and thread, never changed once built) and passes it to at().
 
+## How far up or down (cm) a walker's centre steps from one floor to the next:
+## a slight ledge, never a storey. A moving platform's deck is boarded or left
+## only within it too (core/journey/simulation.gd _may_step).
+const STEP_CM := 2
 ## The index grid's square size (cm).
 const CELL_CM := 64
 ## Cells either way of the origin a cell number covers (about 21 km).
@@ -25,11 +29,14 @@ const INDEX_FROM_SURFACES := 10
 const MAX_INDEXES := 16
 static var _indexes: Dictionary = {}
 static var _indexes_lock := Mutex.new()
+## offsets_by_distance's lists by reach, shared by every engine and thread.
+static var _offsets: Dictionary = {}
+static var _offsets_lock := Mutex.new()
 
 ## cells: the level's index_for(); {} tests every surface.
 static func at(level: Dictionary, routes: Dictionary, levers: Dictionary, previous: Dictionary, x: int, z: int, slot: String, radius: int, allow_drop: bool = true, cells: Dictionary = {}) -> Dictionary:
 	var point := Vector2i(x, z)
-	var surface := _support(level, routes, point, slot, previous, 2, cells)
+	var surface := _support(level, routes, point, slot, previous, STEP_CM, cells)
 	if surface.is_empty(): return {}
 	var samples := [Vector2i(-radius,0),Vector2i(radius,0),Vector2i(0,-radius),Vector2i(0,radius)]
 	var diagonal := int(ceil(float(radius) * 0.707107))
@@ -50,7 +57,7 @@ static func at(level: Dictionary, routes: Dictionary, levers: Dictionary, previo
 	surface["z"] = z
 	return surface
 
-static func _support(level: Dictionary, routes: Dictionary, point: Vector2i, slot: String, previous: Dictionary, tolerance: int = 2, cells: Dictionary = {}) -> Dictionary:
+static func _support(level: Dictionary, routes: Dictionary, point: Vector2i, slot: String, previous: Dictionary, tolerance: int = STEP_CM, cells: Dictionary = {}) -> Dictionary:
 	var old_height := int(previous.get("height", 0))
 	# The first island, open bridge or open stair under the point within
 	# tolerance of the height it comes from, in that order: of the point's own
@@ -66,8 +73,8 @@ static func _support(level: Dictionary, routes: Dictionary, point: Vector2i, slo
 	for stair: Dictionary in lists[2]:
 		if not bool(routes.get(stair.id, false)) or not _owns(stair, slot) or not inside(point, stair.rect_cm): continue
 		var height := stair_height(stair, point)
-		# The centre's own step (tolerance 2) never comes down a one way stair.
-		if tolerance == 2 and height < old_height and stair.has("one_way"): continue
+		# The centre's own step (STEP_CM) never comes down a one way stair.
+		if tolerance == STEP_CM and height < old_height and stair.has("one_way"): continue
 		if absi(height - old_height) <= tolerance:
 			return {"surface_id":str(stair.id),"height":height}
 	return {}
@@ -111,6 +118,36 @@ static func _cell(point: Vector2i) -> int:
 
 static func _low16(cell: int) -> int:
 	return cell & 0xFFFF
+
+## Whether a walker at `player` still touches floor at its own height: its
+## centre or one of at()'s eight rim samples over a floor within radius + 1 of
+## it (an island, or an open crossing it may use). A walker whose floor went
+## from under it steps back onto floor it touches (runtime.gd _keep_footing).
+static func touches(level: Dictionary, routes: Dictionary, player: Dictionary, slot: String, radius: int, cells: Dictionary = {}) -> bool:
+	var point := Vector2i(int(player.x), int(player.z))
+	var diagonal := int(ceil(float(radius) * 0.707107))
+	for offset: Vector2i in [Vector2i.ZERO, Vector2i(-radius,0), Vector2i(radius,0), Vector2i(0,-radius), Vector2i(0,radius), Vector2i(-diagonal,-diagonal), Vector2i(diagonal,-diagonal), Vector2i(-diagonal,diagonal), Vector2i(diagonal,diagonal)]:
+		if not _support(level, routes, point + offset, slot, player, radius + 1, cells).is_empty(): return true
+	return false
+
+## Every whole-cm offset within `reach` of a point, nearest first (ties by z,
+## then x), so a search over them is the same on every device. Built once per reach.
+static func offsets_by_distance(reach: int) -> Array:
+	_offsets_lock.lock()
+	var found: Variant = _offsets.get(reach)
+	if found == null:
+		var all: Array[Vector2i] = []
+		for dz in range(-reach, reach + 1):
+			for dx in range(-reach, reach + 1):
+				if dx * dx + dz * dz <= reach * reach: all.append(Vector2i(dx, dz))
+		all.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+			var da := a.length_squared()
+			var db := b.length_squared()
+			return da < db or (da == db and (a.y < b.y or (a.y == b.y and a.x < b.x))))
+		found = all
+		_offsets[reach] = found
+	_offsets_lock.unlock()
+	return found
 
 static func stair_height(stair: Dictionary, point: Vector2i) -> int:
 	var axis := 0 if stair.axis == "x" else 1

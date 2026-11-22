@@ -116,10 +116,11 @@ static func cues(chapter_key: String, state: Dictionary, seen: Dictionary = {}) 
 		elif event.begins_with("bridge_opened:"): cue = "bridge_opened"
 		# Tide rules: a crossing starts to close under rising water; a spirit
 		# caught on one as it shuts; a spirit falling off a stone left high
-		# lands in the water with the well's plunk.
+		# lands in the water with the well's plunk, and one falling away into
+		# the sky (a chapter with no water) goes in a soft pop.
 		elif event.begins_with("closing:"): cue = "crossing_closing"
 		elif event.begins_with("drowned:"): cue = "spirit_drowned"
-		elif event.begins_with("fell:"): cue = "well_plunk"
+		elif event.begins_with("fell:"): cue = "well_plunk" if not str(chapter.get("water", "")).is_empty() else "spirit_fell_away"
 		elif event == "relay_filled": cue = "garden_opened"
 		elif event == "garden_bloomed": cue = "island_bloomed"
 		elif journey and ITEM_THROWS.has(event.get_slice(":", 0)):

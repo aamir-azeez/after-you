@@ -35,6 +35,10 @@ const PAN_SINK := 0.06
 const PAN_RIM := 0.1
 ## How much further a pressed pad dips before it springs back (m).
 const DIP := 0.01
+## Pan: its dish's middle over the floor and its thickness (m). An item set
+## down on a pad rests on its dish or its board's planks (top()).
+const DISH_Y := 0.075
+const DISH_THICK := 0.035
 
 ## The ring the world lights while the pad is held.
 var rim: MeshInstance3D
@@ -89,6 +93,12 @@ func held() -> bool:
 func rest_rim() -> Vector3:
 	return root.to_global(Vector3(0, _rim_rest, 0))
 
+## How high over its floor an item set down on the pad rests now (m): on top
+## of its board or dish, sunk with it while held, so it never sinks into the
+## pad.
+func top() -> float:
+	return _dish.position.y + (DISH_Y + DISH_THICK / 2.0 if style == "pan" else BOARD_TOP)
+
 func moving() -> bool:
 	return _arriving()
 
@@ -125,7 +135,7 @@ func _make_pan(radius_m: float, color: Color) -> void:
 	Parts.disc(radius_m, 0.05, Parts.TIMBER, Vector3(0, 0.025, 0), root)
 	_dish = Node3D.new()
 	root.add_child(_dish)
-	Parts.disc(radius_m * 0.9, 0.035, Parts.BRASS, Vector3(0, 0.075, 0), _dish, radius_m * 0.96)
+	Parts.disc(radius_m * 0.9, DISH_THICK, Parts.BRASS, Vector3(0, DISH_Y, 0), _dish, radius_m * 0.96)
 	rim = Parts.ring(radius_m, color, Vector3(0, PAN_RIM, 0), _dish)
 
 ## A square timber board the pad's size, four thick planks standing on the

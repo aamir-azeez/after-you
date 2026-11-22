@@ -114,6 +114,7 @@ fold_present 2
 fold_present_tide 1
 fold_untouched 2
 follow_camera 1
+footing 1
 frame_policy 1
 friend_nicknames 3
 friend_play_icon 3
@@ -256,6 +257,7 @@ open_controls 1
 open_hints 2
 open_turn_fingerprints 3
 open_turns 2
+open_turns_arrival 1
 open_turns_long 1
 open_turns_memories 3
 open_turns_room 2

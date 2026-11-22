@@ -24,6 +24,7 @@ extends RefCounted
 ## and selector styles the world builds itself.
 ## Presentation only: nothing here feeds the simulation.
 const Deck = preload("res://presentation/kit/pieces/deck.gd")
+const PiecesRules = preload("res://core/physical/pieces_rules.gd")
 const Raft = preload("res://presentation/kit/pieces/raft.gd")
 const Lift = preload("res://presentation/kit/pieces/lift.gd")
 const RopeLadder = preload("res://presentation/kit/pieces/rope_ladder.gd")
@@ -33,8 +34,8 @@ const Parts = preload("res://presentation/kit/pieces/parts.gd")
 const FallsCurtain = preload("res://presentation/kit/pieces/falls_curtain.gd")
 ## The water in a filled pan.
 const PAN_WATER := Color("7fa7b0")
-## A lift's ride, metres a second.
-const LIFT_RATE := 0.8
+## A lift's ride, metres a second, the simulation's own pace for it.
+const LIFT_RATE := PiecesRules.LIFT_CM_A_SECOND / 100.0
 ## How many times faster a platform eases while it carries a pip that has
 ## already stepped off it (ride_off).
 const HURRY := 4.0
@@ -186,7 +187,8 @@ func ride(surface: String) -> Array:
 	return []
 
 ## A pip that stepped off the deck `root` (ride's) onto a floor while that deck
-## is still on its way, as the simulation lets it: it waits on the deck until
+## is still on its way here (the simulation's deck got there first, at the
+## same pace): it waits on the deck until
 ## the deck reaches the stop it goes to, and the deck hurries there (HURRY), so
 ## the pip never hops the rest of the way nor walks through the floor's edge.
 ## [root, how far the root stands from that stop, the deck's half size (m)],

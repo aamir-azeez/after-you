@@ -15,20 +15,24 @@ extends "res://presentation/kit/pieces/piece.gd"
 ##       of it, a lantern under its beam showing the value's colour.
 ##   "shutter": the plain lever with a shutter board in a frame beside it,
 ##       slid down for the value "down" and up for any other.
-##   "rope_wheel": a raft's rope wheel (rules 16's rope_raft block): the plain
-##       lever beside a spoked wheel on a timber post, rope wound on its drum;
-##       the wheel turns a half turn to each next value.
+##   "rope_wheel": a raft's rope wheel (rules 16's rope_raft block), the
+##       control itself: a spoked wheel on a timber post, facing the camera,
+##       rope wound on its drum and a handle knob in the owner's colour on its
+##       rim; it turns a half turn to each next value.
 ##
-## Every style stands on its control's own spot. A valve's arrow turns at
-## VALVE_RATE and snaps on its first value, overshooting a little (VALVE_OVER)
-## as it stops; the rest snap, a lever's handle settling as a lever's does.
+## Every style stands on its control's own spot. A valve's arrow and a rope
+## wheel turn at VALVE_RATE and snap on their first value, overshooting a
+## little (VALVE_OVER) as they stop; the rest snap, a lever's handle settling
+## as a lever's does.
 ## The world passes
 ## "values" (the selector's values in order) and, for a valve, "marks": per
 ## value, how many bands mark it on the dial (0: a bar).
 const Lever = preload("res://presentation/kit/pieces/lever.gd")
 const LEVER_STYLES := ["plain", "brass"]
 ## Styles that stand a prop beside a plain lever.
-const PROPS := ["lamp_post", "gate_arch", "shutter", "rope_wheel"]
+const PROPS := ["lamp_post", "gate_arch", "shutter"]
+## Styles that are a turning wheel, the control itself, with no lever.
+const WHEELS := ["valve", "rope_wheel"]
 const REACH := Lever.REACH
 ## Valve: where a bubble's tail lands (its top, m over its spot); its wheel's
 ## height; the sweep of its marks either side of straight back (radians, the
@@ -58,11 +62,12 @@ const ARCH_POSTS := [-0.60, 0.28]
 const SHUTTER_AT := Vector3(0.40, 0, -0.42)
 const SHUTTER_DOWN := 0.30
 const SHUTTER_UP := 0.86
-## Rope wheel: its post east and north of the spot, the wheel's height and
-## radius, and the rope on its drum.
-const ROPE_POST := Vector3(0.40, 0, -0.16)
-const WHEEL_Y := 0.72
-const WHEEL_R := 0.24
+## Rope wheel: the wheel's centre over its spot (just in front of its post),
+## its radius, where a bubble's tail lands (its rim's top, m over its spot),
+## and the rope on its drum.
+const ROPE_WHEEL_AT := Vector3(0, 0.66, 0.02)
+const WHEEL_R := 0.26
+const ROPE_TOP := 0.95
 const ROPE := Color("c9b48a")
 
 var _lever: RefCounted
@@ -82,18 +87,18 @@ var _rope_wheel: Node3D
 ## (a valve's bands per value), "id" (names a lamp "Lamp_<id>").
 static func build(selector_style: String, at: Vector3, parent: Node3D, options: Dictionary = {}) -> RefCounted:
 	var piece: RefCounted = load("res://presentation/kit/pieces/selector.gd").new()
-	piece._make(selector_style if selector_style in LEVER_STYLES + PROPS + ["valve"] else "plain", at, parent, options)
+	piece._make(selector_style if selector_style in LEVER_STYLES + PROPS + WHEELS else "plain", at, parent, options)
 	return piece
 
-## Shows value `index` (of its values): a valve's arrow eased there from where
-## it points, or at once; every other style at once.
+## Shows value `index` (of its values): a valve's arrow or a rope wheel eased
+## there from where it points, or at once; every other style at once.
 func set_value(index: int, immediate: bool = false) -> void:
 	if _lever != null: _lever.set_value(index, immediate)
 	if index < 0: return
 	var value := str(_values[index]) if index < _values.size() else ""
 	match style:
-		"valve":
-			var target := value_angle(index, _count)
+		"valve", "rope_wheel":
+			var target := value_angle(index, _count) if style == "valve" else PI * float(index)
 			if target != _target or immediate:
 				_stop_arrival()
 				_over = 0.0
@@ -106,7 +111,6 @@ func set_value(index: int, immediate: bool = false) -> void:
 		"shutter":
 			_shutter.position.y = SHUTTER_DOWN if value == "down" else SHUTTER_UP
 			_shutter.set_meta("down", value == "down")
-		"rope_wheel": _rope_wheel.rotation.z = PI * float(index)
 
 ## The arrow's turn (radians about up) for value `index` of `count`: from
 ## VALVE_SWEEP (the first, west) to -VALVE_SWEEP (the last, east).
@@ -140,7 +144,10 @@ func anchor_rest() -> Transform3D:
 
 ## How high the anchor stands over the spot.
 func anchor_lift() -> float:
-	return VALVE_TOP - Lever.KNOB_REACH if style == "valve" else _lever.anchor_lift()
+	match style:
+		"valve": return VALVE_TOP - Lever.KNOB_REACH
+		"rope_wheel": return ROPE_TOP - Lever.KNOB_REACH
+	return _lever.anchor_lift()
 
 ## Where a valve's sign plate goes (parent space), for the world to fill.
 func sign_point() -> Vector3:
@@ -169,13 +176,15 @@ func moving_parts() -> Array[Node3D]:
 func _make(selector_style: String, at: Vector3, parent: Node3D, options: Dictionary) -> void:
 	style = selector_style
 	_values = Array(options.get("values", []))
-	if style == "valve":
-		_root("Selector_valve", at, parent)
+	if style in WHEELS:
+		_root("Selector_" + style, at, parent)
 		anchor = Node3D.new()
 		anchor.name = "LeverAnchor"
 		anchor.position = at + Vector3(0, anchor_lift(), 0)
 		parent.add_child(anchor)
-		_make_valve(Parts.owner_color(str(options.get("owner", "p0"))), Array(options.get("marks", [])))
+		var knob := Parts.owner_color(str(options.get("owner", "p0")))
+		if style == "valve": _make_valve(knob, Array(options.get("marks", [])))
+		else: _make_rope_wheel(knob)
 		_pose()
 		return
 	_lever = Lever.build("brass" if style == "brass" else "plain", at, parent, options)
@@ -186,24 +195,28 @@ func _make(selector_style: String, at: Vector3, parent: Node3D, options: Diction
 		"lamp_post": _make_lamp_post(str(options.get("id", "")))
 		"gate_arch": _make_gate_arch(str(options.get("id", "")))
 		"shutter": _make_shutter()
-		"rope_wheel": _make_rope_wheel()
 
-## A timber post holding a spoked wheel (turning about the north-south axis)
-## with a rope wound on its drum.
-func _make_rope_wheel() -> void:
-	Parts.box(Vector3(0.08, WHEEL_Y + 0.05, 0.08), Parts.TIMBER_DARK, ROPE_POST + Vector3(0, (WHEEL_Y + 0.05) * 0.5, -0.06), root)
+## A timber post on a plank foot holding a spoked wheel (turning about the
+## north-south axis, so it faces the camera) with rope wound on its drum and
+## a handle knob in the owner's colour on its rim.
+func _make_rope_wheel(knob: Color) -> void:
+	var post_height := ROPE_WHEEL_AT.y + 0.06
+	Parts.box(Vector3(0.30, 0.04, 0.16), Parts.TIMBER_DARK, Vector3(0, 0.02, -0.06), root)
+	Parts.box(Vector3(0.09, post_height, 0.09), Parts.TIMBER_DARK, Vector3(0, post_height * 0.5, -0.07), root)
 	_rope_wheel = Node3D.new()
 	_rope_wheel.name = "RopeWheel"
-	_rope_wheel.position = ROPE_POST + Vector3(0, WHEEL_Y, 0.02)
+	_rope_wheel.position = ROPE_WHEEL_AT
 	root.add_child(_rope_wheel)
-	var rim := Parts.torus(WHEEL_R, 0.02, Parts.TIMBER, Vector3.ZERO, _rope_wheel)
+	var rim := Parts.torus(WHEEL_R, 0.024, Parts.TIMBER, Vector3.ZERO, _rope_wheel)
 	rim.rotation.x = PI / 2.0
 	for spoke in range(4):
-		var bar := Parts.box(Vector3(0.025, WHEEL_R * 2.0, 0.025), Parts.TIMBER_LIGHT, Vector3.ZERO, _rope_wheel)
+		var bar := Parts.box(Vector3(0.03, WHEEL_R * 2.0, 0.03), Parts.TIMBER_LIGHT, Vector3.ZERO, _rope_wheel)
 		bar.rotation.z = float(spoke) * PI / 4.0
-	var drum := Parts.disc(0.07, 0.10, ROPE, Vector3(0, 0, 0.04), _rope_wheel)
+	var drum := Parts.disc(0.08, 0.10, ROPE, Vector3(0, 0, 0.03), _rope_wheel)
 	drum.rotation.x = PI / 2.0
-	Parts.ball(0.03, Parts.BRASS, Vector3(WHEEL_R, 0, 0.02), _rope_wheel)
+	var handle := Parts.cylinder(0.018, 0.10, Parts.TIMBER_LIGHT, Vector3(WHEEL_R, 0, 0.06), _rope_wheel)
+	handle.rotation.x = PI / 2.0
+	Parts.ball(0.035, knob, Vector3(WHEEL_R, 0, 0.11), _rope_wheel)
 
 ## A post with a glass globe.
 func _make_lamp_post(id: String) -> void:
@@ -288,3 +301,4 @@ func _make_valve(knob: Color, marks: Array) -> void:
 
 func _pose() -> void:
 	if is_instance_valid(_wheel): _wheel.rotation.y = _shown + _over
+	if is_instance_valid(_rope_wheel): _rope_wheel.rotation.z = _shown + _over

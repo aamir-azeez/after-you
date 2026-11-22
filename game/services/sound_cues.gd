@@ -93,6 +93,8 @@ const CUES := {
 	# A crossing has started to close: the water rises over it before it shuts.
 	"crossing_closing": {"clip": WATER_SURGE, "range": Vector2(2.0, 6.0), "db": -3.0},
 	"spirit_drowned": {"clip": WELL_PLUNK, "range": Vector2(-7.0, -3.0), "priority": 3},
+	# A pip falling away into the sky: a soft, high pop as it puffs out of view.
+	"spirit_fell_away": {"clip": POP, "range": Vector2(3.0, 7.0), "db": -5.0, "priority": 3},
 	# Controls drawn as machines (LOOK_CUES): a winch's pawl ticking as the chain
 	# winds, lower as it pays out; a bolt sliding home into its catch, lower as it
 	# draws back; a valve wheel's iron creak to its value.

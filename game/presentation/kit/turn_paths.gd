@@ -5,12 +5,11 @@ extends RefCounted
 ##
 ## A stage's history is a pure function of its recorded turns, so a rebuild,
 ## a reconnect, a replay and a retry all show the same: both pips' starts, the
-## path of each earlier turn's pip (on open turns a later turn's memory walks
-## exactly the turn before it, so that covers the memories too) and every lever
-## that turn had on at any tick (a lit lantern). Each earlier turn is read from
-## its kept memory trace (core/physical/memory_trace.gd), or simulated again
-## when no trace is kept, and boiled down once per recording to the 25 cm
-## squares its pip stood in.
+## path of each earlier turn's pip (on open turns a later turn's friend replays
+## the turn before it, so that covers the replays too) and every lever that
+## turn had on at any tick (a lit lantern). Each earlier turn is simulated
+## again (from its kept start world on open turns) and boiled down once per
+## recording to the 25 cm squares its pip stood in.
 ##
 ## The turn being played adds to that live, a tick at a time (note()): its own
 ## pip's squares and the levers it turns on, each with its tick, so going back
@@ -22,7 +21,7 @@ const VERSION := 1
 ## Persisted turns: once a service attaches a store (services/turn_paths_store.gd:
 ## `persist` writes an id's bytes, `restore` reads them back), every walked
 ## turn is kept there too and a miss reads it back, so a restart neither reads
-## the stage's traces nor simulates its turns again.
+## nor simulates the stage's turns again.
 static var persist := Callable()
 static var restore := Callable()
 
@@ -79,25 +78,16 @@ static func _turn(sim: RefCounted, checkpoint: Dictionary, turns: Array, index: 
 		return walked
 	walked = {"points": PackedInt32Array(), "levers": {}}
 	var seen := {}
-	var trace: Dictionary = sim._proof_engine().memory_trace(sim.level, record, checkpoint, turns.slice(0, index))
-	if not trace.is_empty():
-		var shared: Variant = null
-		for frame: Array in trace.frames:
-			_add(walked.points, seen, frame[0])
-			if not is_same(frame[1], shared):
-				shared = frame[1]
-				_levers(walked.levers, frame[1])
-	else:
-		# No kept trace (traces off, or not kept): the turn again, as it was checked.
-		var again: RefCounted = sim._new_simulation()
-		again.simulation_version = sim.simulation_version
-		again.catch_assistance = bool(record.get("catch_assistance", true))
-		var first := index == 0
-		again._reset_trusted(sim.level, str(record.get("stage_id", "")), checkpoint, {} if first else turns[index - 1], "a" if first else "b", turns.slice(0, maxi(0, index - 1)))
-		for input: Dictionary in sim.expand_recording_inputs(record):
-			again._tick(input)
-			_add(walked.points, seen, again._players[again.active_slot])
-			_levers(walked.levers, again._mechanisms)
+	# The turn again, as it was checked (from its kept start world under open turns).
+	var again: RefCounted = sim._new_simulation()
+	again.simulation_version = sim.simulation_version
+	again.catch_assistance = bool(record.get("catch_assistance", true))
+	var first := index == 0
+	again._reset_trusted(sim.level, str(record.get("stage_id", "")), checkpoint, {} if first else turns[index - 1], "a" if first else "b", turns.slice(0, maxi(0, index - 1)))
+	for input: Dictionary in sim.expand_recording_inputs(record):
+		again._tick(input)
+		_add(walked.points, seen, again._players[again.active_slot])
+		_levers(walked.levers, again._mechanisms)
 	_keep(id, walked)
 	if persist.is_valid(): persist.call(id, var_to_bytes([VERSION, id, walked.points, walked.levers]))
 	return walked

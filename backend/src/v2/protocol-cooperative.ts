@@ -24,10 +24,10 @@ export const HIGH_AND_LOW_HASH = "3b6576badcdd214630373a0f51040706e014845d9b8bc1
 export const ROLLING_HOME_HASH = "3362e8afd9fb3504868ab4b8b436050f62fe601e5c7ff8fea995424064f2dbff";
 export const HOUSE_HASH = "f14fb0abf330fa46afdb61078a8e8e99cee4cc2ade845304508cc90b05d27995";
 export const WISHING_WELL_HASH = "14cfffbdd9b23cee06056548f29bbae7f1e95c348315ff3ff0098b7190ee5f3e";
-export const HIGH_AND_LOW_V2_HASH = "fbb692198e561d0944358bb4d6635ff2d5e178df82e0881f70941d64db5ed3a2";
-export const WISHING_WELL_V2_HASH = "037322be4ec939f2986a063735c2471589dd87482f717db520af8ed7b1039f3b";
-export const ROLLING_HOME_V2_HASH = "43943f8c08a4f289a278b9fd2f4a39772ae6ce987a4735a6025adfd36053a3d7";
-export const HOUSE_V2_HASH = "0354b76e8f8120a3eab8c49d9b9cb57984dc8ef2dc49d07d30133b274a88a8fa";
+export const HIGH_AND_LOW_V2_HASH = "79593b0e7e0b2a8fb055643dafb74734e332d26c8814e33415e233d186e80a58";
+export const WISHING_WELL_V2_HASH = "f99b1dbf05ec73274773822eee85e2a7eb7f56b674a18201221f6396ff319dda";
+export const ROLLING_HOME_V2_HASH = "6d8c6e7f2cdf75cabc49b48d9e72451f7f7b12c1c3cb13f6d00e489ff34f51b8";
+export const HOUSE_V2_HASH = "f3df2ecdb01a9b02ce3a3dfd4f3ba649d061ff7cfbf1f184ee312d4ea4202270";
 
 type Surface = { id: string; rect_cm: number[]; height_cm?: number; owner_slot?: string; axis?: string; from_height_cm?: number; to_height_cm?: number };
 type Marker = { id: string; position_cm: number[]; surface_id: string; radius_cm: number; owner_slot?: string; prop_id?: string };

@@ -825,6 +825,8 @@ func _current_water(at: Vector3, view: Dictionary) -> bool:
 func _ride_current(_legs: Array) -> void:
 	pass
 
+## A pad counts as under an item only on the item's own floor (m apart at most).
+const PAD_FLOOR_M := 0.02
 func _item_point(state: Dictionary) -> Vector3:
 	if state.is_empty(): return Vector3.ZERO
 	# Thrown: where its arc has it.
@@ -834,7 +836,18 @@ func _item_point(state: Dictionary) -> Vector3:
 	var at := _at({"position_cm": [int(state.x), int(state.z)], "surface_id": str(state.surface_id)})
 	# At a drawn item spot: on its pedestal, in its planter's soil or its nest.
 	var spot := str(state.get("spot", ""))
-	return at if spot.is_empty() else at + Vector3(0, SocketKit.rest_height(_piece_style("item_spot", spot)), 0)
+	var lift := 0.0 if spot.is_empty() else SocketKit.rest_height(_piece_style("item_spot", spot))
+	# Set down on a pad (a pan, a board, a floor button): on top of it, never in it.
+	return at + Vector3(0, maxf(lift, _pad_top(at)), 0)
+
+## How high over its floor the pad under `at` (terrain m) stands now, its
+## dish or board sunk while held; 0 off every pad.
+func _pad_top(at: Vector3) -> float:
+	var top := 0.0
+	for piece: RefCounted in pad_pieces.values():
+		var centre: Vector3 = piece.root.position
+		if absf(centre.y - at.y) <= PAD_FLOOR_M and Vector2(centre.x - at.x, centre.z - at.z).length() <= float(piece.radius): top = maxf(top, piece.top())
+	return top
 
 ## Rungs across a both-hands crossing every RUNG_CM along it, at its height
 ## there, with a post at each end: plain leaves the static fold batches.

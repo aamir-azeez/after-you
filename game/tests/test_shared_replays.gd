@@ -445,7 +445,7 @@ func _viewer(entry: Dictionary, api: Node, owner: RefCounted, expected_title: St
 	view.sim = counted
 	var trace: SnapshotTrace = counted.trace
 	trace.retaining = true
-	_check(view.mode == "replay" and view.running and not view.controls.stick.visible, "Real shared replay viewer starts without editable gameplay controls")
+	_check(view.mode == "replay" and view.running and view.controls.stick.watching and view.controls.stick.value == Vector2.ZERO, "Real shared replay viewer starts without editable gameplay controls, the watch in the stick's spot")
 	view.world.camera_exploration.zoom_ratio = 0.8
 	view.controls._process(0.0)
 	_check(view.controls.reset_view_button.is_visible_in_tree(), "Zooming the real shared replay view reveals Reset view")

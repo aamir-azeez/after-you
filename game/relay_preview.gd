@@ -600,7 +600,7 @@ static func solo_replay_rules(chapter: String, level: Dictionary, simulation_scr
 		var checkpoint: Dictionary = Registry.initial_checkpoint(chapter)
 		if checkpoint.is_empty(): return false
 		for pair: Dictionary in pairs:
-			var derived: Dictionary = simulation_script.derive_checkpoint(level, checkpoint, pair.a, pair.b)
+			var derived: Dictionary = CheckpointPairs.derive(simulation_script, level, checkpoint, pair)
 			if not derived.get("valid", false) or not derived.get("checkpoint") is Dictionary: return false
 			checkpoint = derived.checkpoint
 		return true}
@@ -2496,6 +2496,9 @@ func _update_memory_wait_hud() -> void:
 	if mode == "play" and memory_wait.waiting(): controls.show_memory_wait(_memory_wait_label(), memory_wait.remaining_ratio(), memory_wait.skipping)
 	elif mode == "watch" and controls.has_method("show_playback"): controls.show_playback(_memory_wait_label(), memory_wait.remaining_ratio(), memory_wait.skipping)
 	else: controls.hide_memory_wait()
+	# A replay is watched too: the stick's spot fills toward its end.
+	if mode == "replay" and controls.has_method("show_watching"): controls.show_watching(float(replay_cursor) / maxf(1.0, replay_frames.size()))
+	elif mode != "watch" and controls.has_method("hide_watching"): controls.hide_watching()
 	# Wait hints step aside for the fast-forward mark.
 	if is_instance_valid(world) and world.has_method("hush_wait_hints"): world.hush_wait_hints(controls.has_method("fast_forwarding") and controls.fast_forwarding())
 
@@ -3369,13 +3372,8 @@ func _show_completed() -> void:
 	elif not pairs.is_empty():
 		var start: Dictionary = Registry.initial_checkpoint(chapter_key)
 		for pair: Dictionary in pairs:
-			if not sim.reset(definition, str(pair.b.stage_id), start, pair.a, "b"):
-				_show_error(sim.error)
-				return
-			sim.catch_assistance = bool(pair.b.catch_assistance)
-			for input: Dictionary in _simulation.expand_recording_inputs(pair.b):
-				sim.step(input)
-			var derived: Dictionary = _simulation.derive_checkpoint(definition, start, pair.a, pair.b)
+			# Open turns: the closing turn replays over the turn before it, its passes included.
+			var derived: Dictionary = CheckpointPairs.replay_closing(sim, _simulation, chapter_key, definition, start, pair)
 			if not derived.get("valid", false):
 				_show_error(str(derived.get("error", PlayerCopy.RELAY_PREVIEW_DA6BA2478FE5)))
 				return
@@ -3484,7 +3482,7 @@ func _poll_final_scene() -> void:
 func _started_final_turn(last: Dictionary) -> bool:
 	var proof: Variant = journey.checkpoint().get("proof")
 	if not proof is Dictionary: return online_session == null
-	return Canonical.same(prior, last.get("a", {})) and Canonical.same(checkpoint, proof.get("checkpoint", {}))
+	return Canonical.same(prior, OpenTurns.closing_memory(last).prior) and Canonical.same(checkpoint, proof.get("checkpoint", {}))
 
 func _holds_final_turn(last: Dictionary, simulation: RefCounted) -> bool:
 	return simulation != null and str(simulation.get("error")).is_empty() and simulation.get("role") == "b" and Canonical.same(simulation.export_recording(), last.get("b", {})) and str(journey.checkpoint().get("next_stage_id", "x")).is_empty()

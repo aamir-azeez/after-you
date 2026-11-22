@@ -1,24 +1,27 @@
 {
 	"catch_assistance": true,
-	"checkpoint_hash": "1e5bef102d04d9f9980f1e5ae47f6b00c9788bfc1132dacc919b2c6df44d30a8",
+	"checkpoint_hash": "7e72a8ce47870c00d4c2df1e7b86e8e3d3d88321b41b3d46d3557bbaa2cb33e0",
 	"completed": false,
-	"definition_hash": "0354b76e8f8120a3eab8c49d9b9cb57984dc8ef2dc49d07d30133b274a88a8fa",
+	"definition_hash": "f3df2ecdb01a9b02ce3a3dfd4f3ba649d061ff7cfbf1f184ee312d4ea4202270",
 	"duration_ticks": 545,
-	"final_state_hash": "e872893bd676dc4b17bb58940fa606fb45d9a1d95ef091913d544120ee172bff",
+	"final_state_hash": "5abc2a93843b1b7b50f1e3c3936c54823e587c9bd303abe581dda916f9244a32",
+	"handoff_hash": "612ba1acb3438da056f81b059708ed3153714f629ebd3f4bc039680f7070064b",
+	"handoff_tick": 0,
 	"level_id": "a-house-for-two",
 	"level_version": 2,
 	"outcome": {
 		"objective_complete": false,
 		"source_ready": true
 	},
-	"packed": "AQwEnAAqAGQCAEsCAAADAAAQnAACAEsKAGQCADIkZABIAJyEBwAA8Y6jfUlHxNysNZgJBELYsAFPATCEBIIiY7B4ye452tE3TweNfjP+BHgQTPTBf05oyGRAA67Xt20DLMPeetWOzKSesEzlwf4FgXmJ4AnO1AL2/d3+rzxIc1Uc4kYdA74fYs38UHENk/8YUMYMXszZxZmJ0IXfRGJChuZxWeIDvqpGCnrTewU4osyfwCnGZDqI+YF5WKudMYFiF5qsHmFkt/g6wJ1d6aIILzHALQBCSEcmwlwVyBKD9Sp0gxXGnAHrKNi3k6KNlZyFEHaUhMqspjYm4N93SoRf",
+	"packed": "AQwEnAAqAGQCAEsCAAADAAAQnAACAEsKAGQCADIkZABIAJyEBwAAs1jxgxEjX5hQ11s27zoTlMS9vwiP6eTuc9wL2KsqQwPyU1nN5N/FhPMawiPnIvLFd5ttE/zIRHVHgyUUXYZnQY1o0oaBQMw5RDxfgbP7DuS1jp6fCVG0AIvEh5PQSOr8oRavoedVnEAFT1t0bKu4haR10BTJVZYoW9lSKTegWmQKwmuYejGhSsKGVkJ/NIktLMYmZqBLn58VPRhOsfoYxQC+WOPQwKr+/udC0/+Uno7EARHSEKh7FOSgg+4tyErAfVv9wVR7j5GIKBU7oOKF4a8sZ2Gmd/W5",
 	"player_slot": "p1",
-	"recording_hash": "4abd0ac63b943eb0ef0e4121ba78c4f5c44ae060b2471d2b43c0bde54b7923d9",
+	"recording_hash": "4cde3caf7bf4bab7401b581c162d2040dfccd3350597db360398400f3446a7a0",
 	"role": "a",
 	"schema_version": 6,
-	"simulation_version": 17,
+	"simulation_version": 21,
 	"source_recording_hash": "",
 	"stage_id": "the-room-below",
 	"stage_version": 1,
+	"start_hash": "612ba1acb3438da056f81b059708ed3153714f629ebd3f4bc039680f7070064b",
 	"tick_rate": 30
 }

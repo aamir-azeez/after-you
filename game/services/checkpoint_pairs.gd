@@ -39,6 +39,19 @@ static func _pair_at(checkpoint: Dictionary, stage: int, branch: int) -> Diction
 	if turns.is_empty(): return {}
 	return {"pair_id": "p%d-%d" % [branch, stage], "branch": branch, "stage_index": stage, "a": turns[0].duplicate(true), "b": turns[-1].duplicate(true), "checkpoint": checkpoint.duplicate(true)}
 
+## Sets `simulation` (of `engine`) up on `pair`'s closing turn from
+## `previous`, over the turn before it with the stage's passes under that
+## (OpenTurns.closing_memory), replays it to its end as it was played, then
+## derives the checkpoint after the stage. A completion scene rebuilt without
+## its worker goes this way. {valid, error, checkpoint}.
+static func replay_closing(simulation: RefCounted, engine: Script, chapter_key: String, definition: Dictionary, previous: Dictionary, pair: Dictionary) -> Dictionary:
+	var memory := OpenTurns.closing_memory(pair)
+	if not Registry.reset_simulation(simulation, chapter_key, definition, str(pair.b.stage_id), previous, memory.prior, "b", pair.b, memory.chain):
+		return {"valid": false, "error": str(simulation.get("error"))}
+	simulation.catch_assistance = bool(pair.b.get("catch_assistance", true))
+	for input: Dictionary in engine.expand_recording_inputs(pair.b): simulation.step(input)
+	return derive(engine, definition, previous, pair)
+
 ## `engine` (a facade script or proof) derives the checkpoint after `pair`'s
 ## stage from `previous`, its passes included (OpenTurns.pair_turns). Engines
 ## without open turns take four arguments.

@@ -526,6 +526,10 @@ func _update_hud(state: Dictionary) -> void:
 	if not controls.has_method("show_memory_wait"): pass
 	elif mode == "play" and memory_wait.waiting(): controls.show_memory_wait(PlayerCopy.MEMORY_WAIT_SOLO, memory_wait.remaining_ratio(), memory_wait.skipping)
 	else: controls.hide_memory_wait()
+	# A replay is watched: the stick's spot fills toward its end.
+	if not controls.has_method("show_watching"): pass
+	elif mode == "replay": controls.show_watching(float(replay_cursor) / maxf(1.0, replay_frames.size()))
+	else: controls.hide_watching()
 	var display := LighthouseHud.display(state, stage)
 	controls.update_state("THE SLEEPING LIGHTHOUSE\n%d / %d  ·  %s" % [int(checkpoint.stage_index) + 1, Journey.TOTAL_STAGES, "Replay" if mode == "replay" else stage.title], float(Simulation.MAX_TICKS - int(state.tick)) / Simulation.TICK_RATE, display, mode == "play")
 

@@ -1,24 +1,27 @@
 {
 	"catch_assistance": true,
-	"checkpoint_hash": "140deb4b024aff397a185362c98f35884828cbbac9cc7f10f571c46405207fe9",
+	"checkpoint_hash": "ada555e200880fc8440808e26e599f608e970fa631869b6a95ea615fd6914e43",
 	"completed": false,
-	"definition_hash": "d0e39655afb04303003d35e899554df28ff8aee2af4b917e070cd02c43316015",
+	"definition_hash": "e7ddc8b6d35402c9e788e5a77ac8c1c4206bebea36130573b5e9d1179b892220",
 	"duration_ticks": 979,
-	"final_state_hash": "87414d1a4cc1b93579f829b56b45654fa22edd6ec79f7220892b0738fe46ac40",
+	"final_state_hash": "b23a5bebc4dbc95388bda5a138316c340e8f35215705594982a5d17ad1e550dd",
+	"handoff_hash": "6e2e12f49bad6defbe3323535cc47a46c42da8d727cf2e6445044769ef7314f0",
+	"handoff_tick": 0,
 	"level_id": "fog-marsh",
 	"level_version": 1,
 	"outcome": {
 		"objective_complete": false,
 		"source_ready": true
 	},
-	"packed": "ARZoAGSQA2QALACcAgDn+AUAAEacAALOALABAGQCADICAAADAAACAAADAACGAgCcAgDOAgAAAwAAbGQAAiYAAgC1CABkAgBYz/d38xqjfPCBtnLbSPzDmTFN+LJr2Moy0JYNjiHgEoDLIcEpaJ6eEq1iUGDr22opZ9qiqUPtYhrnfWvWqCqp5XGcJ7icyq2J0k7/wkGjQKL5gbd90NMftaGM0zNfz7LUU5wtxaVTv6sj3HwIp0aFF52yHDo+e6fZiy0bWkfiQ/ExGaa2Acxi8yP3dqKepzBukI04xkvAPx/dOV51uffSGhxKn2O3JHJGgeIfAcRpiEJQEYpXcoh+D1e61oY2sgDPRXCFpf5YEiqjBmG8ulG949A7AsP4+FBs9ClIPAygzdGfkqS0/SarVvCABICbxhq9WIJwe1zSsAfYKzw4g77SaNrEogLe4XOGMSOiHR/zRbnrdw4lTyA/rALmiCmWrsr6hABAEq2RX+sWx8yabVT1gkJrK6EZief0oxdfABPe9zUxbyexvda1UIAR9/5R1yp7HX/SAE58ON/soV4aVC0XnMYLy8mAsT1xVsX4SK/Wn4n1x4nqq4QWhsI8hgO6OAYWLztCbPSvFN7xRnfqWw0GSw==",
+	"packed": "ARZoAGSQA2QALACcAgDn+AUAAEacAALOALABAGQCADICAAADAAACAAADAACGAgCcAgDOAgAAAwAAbGQAAiYAAgC1CABkAgBYBDfcDsl2QRX0C9rt8YEILBd/udPg4stU+PYKHHz4qny1jO6ZNI2b0MU61AkQ9eTFmhLM4mxu6r3qPTb1JY/U3wVI7rljVZ9c30LYL8ddqF/2Pka5pcl8wcpLL4kf0wHysrLmzGMSuDhYsjzBmVgfJqa4aaqQJY6DKkdGMfcBov0cAcfopzB/hNXvLCUUE6YPrYbrc4rNYrMj2sGvDY4mNEuRYhHRbpSRAQWN/WGns0E8Ki22ea4R5ZgGtbf8FcjWR4KdMN5ZjAxraGi5K5M3yByfnmAFjDR5blCV5LK4bvuiZwP/z+iLPOkpU7vu3dbvapKrVXc1WrVfeLhvvxTc1JNS1Up7fLb5l4Pkl7aWrqD+31se497Qc7km2bVA1PGlJ0AOVUZgCJo6PbuOG8bxoXyVV2ESSjB3x0s+Wcghj9pEj7SyQyPlEzOfcPlzcGjb/BxLQz+IqgGnSxFZvfit9a2MNjX0ruTNv3nS4YNP7T7MykwOBgBFp4djHq0Hv5WdBXMJTTaI/QoxwnbKYNJTFQ==",
 	"player_slot": "p1",
-	"recording_hash": "971c6f7e75c195f1b1fc3396f3c5fa8a29e3e1d52686792edd486c1829f92e29",
+	"recording_hash": "f4c817076dee8939ba2e33a43567ab9b71adecfc7abbfb86400206cdc43a1f81",
 	"role": "a",
 	"schema_version": 7,
-	"simulation_version": 16,
+	"simulation_version": 20,
 	"source_recording_hash": "",
 	"stage_id": "catch-the-pipsport",
 	"stage_version": 1,
+	"start_hash": "6e2e12f49bad6defbe3323535cc47a46c42da8d727cf2e6445044769ef7314f0",
 	"tick_rate": 30
 }

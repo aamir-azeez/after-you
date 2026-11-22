@@ -18,8 +18,8 @@ extends SceneTree
 ##   between stops, never at the stop the simulation already moved it to: a
 ##   memory or the live pip riding the lift up and down or the raft over the
 ##   water, a carried item over a memory's head, an item put down on the lift;
-##   a memory that walks off the lift before its deck is up waits on the deck,
-##   which hurries there, and never hops.
+##   a memory that walks off the lift the moment the simulation's deck is up
+##   never hops.
 const Simulation = preload("res://core/journey/simulation.gd")
 const Catalog = preload("res://core/journey/stage_catalog.gd")
 const Witness = preload("res://tests/pieces_witness.gd")
@@ -173,14 +173,14 @@ func _riders() -> void:
 	_idle(aboard, 140, world, ride)
 	_check(str(aboard._players.p1.surface_id) == "lift-high", "The memory's weight took the live pip up: %s" % [aboard._players.p1])
 	_riding(ride, "The live pip riding the lift is drawn on its deck the same way", true)
-	# Off before the deck is up: the memory walks east onto the stilts a moment
-	# after the lift starts up (as the simulation lets it), so it waits on the
-	# deck, which hurries to the top.
+	# Off as soon as the deck is up: the memory walks east into the stilts from
+	# a moment after the lift starts up, and steps off the tick the simulation's
+	# deck gets there (simulation.gd _may_step).
 	var leaves := _sim("marsh", start)
 	_walk(leaves, [350, 200])
 	_walk(leaves, [450, 200])
 	_idle(leaves, 200 - int(leaves.tick))
-	for step in range(30): leaves.step({"move_x": 1.0})
+	for step in range(60): leaves.step({"move_x": 1.0})
 	_idle(leaves, 10)
 	var early := {"p0": start.p0, "p1": {"x": 100, "z": 150, "surface_id": "landing", "height": 0}}
 	var sends := _sim("marsh", early, _json(leaves.export_recording()), "b")
@@ -190,7 +190,7 @@ func _riders() -> void:
 	_walk(sends, [100, 100], world, ride)
 	_idle(sends, 80, world, ride)
 	_check(str(sends._players.p0.surface_id) == "stilts", "The memory walked off the lift onto the stilts: %s" % [sends._players.p0])
-	_riding(ride, "A memory stepping off before the lift is up waits on it and never hops", true)
+	_riding(ride, "A memory stepping off the moment the lift is up never hops", true)
 	# The raft: the memory waits on it, the live pip's pull carries it over the water.
 	var shore := {"p0": {"x": 200, "z": 300, "surface_id": "landing", "height": 0}, "p1": {"x": 300, "z": 860, "surface_id": "isle", "height": 0}}
 	var waits := _sim("marsh", shore)
@@ -367,7 +367,7 @@ func _sim(stage_id: String, players: Dictionary, prior: Dictionary = {}, role: S
 	checkpoint.next_stage_id = stage_id
 	for slot: String in players: checkpoint.players[slot] = players[slot]
 	var sim := Simulation.new()
-	sim.simulation_version = 16
+	sim.simulation_version = 20
 	sim._reset_trusted(level, stage_id, checkpoint, prior, role)
 	return sim
 

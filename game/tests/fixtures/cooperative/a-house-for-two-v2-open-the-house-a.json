@@ -1,24 +1,27 @@
 {
 	"catch_assistance": true,
-	"checkpoint_hash": "b0cdb9b86ae2ac71382b14b88e6c1bc1a280e26ffcb47e721f0b2f822ed9811c",
+	"checkpoint_hash": "218841e9890223880d5279190c566db7d54499f34f49650cbc081e9e1fbaf4ba",
 	"completed": false,
-	"definition_hash": "0354b76e8f8120a3eab8c49d9b9cb57984dc8ef2dc49d07d30133b274a88a8fa",
+	"definition_hash": "f3df2ecdb01a9b02ce3a3dfd4f3ba649d061ff7cfbf1f184ee312d4ea4202270",
 	"duration_ticks": 533,
-	"final_state_hash": "9c8f7afd9851ab3198513a821a8c9960f6d1562828484ca130ea4e004f60aa5e",
+	"final_state_hash": "d03780c9ccdb0b537157bf3308041a1e4ecde6598faa617a94507b1ef7ddffaa",
+	"handoff_hash": "8e1cf3ff091585606d3efbae0e0bc6cd274f96f841315aed010961050534c7b0",
+	"handoff_tick": 0,
 	"level_id": "a-house-for-two",
 	"level_version": 2,
 	"outcome": {
 		"objective_complete": false,
 		"source_ready": true
 	},
-	"packed": "ASA0ZAASAJwUZAAOAGQCADIiZAACMgAgZAACMgACAGQCABkCAAADAABAnAACtQAIAGQCABkIAJwWnAACzgAIZAAQAGQCADIQnABAAJwCAM4+ZAACSwBIAGQIZAACMgCIBAAAz936xp0JHp+MQes5jqzF5rUXyBMclZ2LOE2Zkkzhbt3Yos4qE5x62JIbZCsqK2QskSwCG7ptGmHBtFqs2evFU0rbwnV5WoWNLy6QUAbZExrc0K5sXOheEAhhZfM7w1A3v97v/OQUf9Iydc81j/kIaHYySJ2Kxtv5nNYF4dgcuVjVp0VM8JCMImbD8NvaEw8N517QY5ydrzCzNCSKehsAJbZlH7hhdMT6IrIbFsVzEuLfsKTfwNQB4fFQ+7mvQZ9fz1JrFBgvHu1df66AirOyyQ==",
+	"packed": "ASA0ZAASAJwUZAAOAGQCADIiZAACMgAgZAACMgACAGQCABkCAAADAABAnAACtQAIAGQCABkIAJwWnAACzgAIZAAQAGQCADIQnABAAJwCAM4+ZAACSwBIAGQIZAACMgCIBAAANlPTdeBSniaClgzAPTRw7DfCLZPE2PuaMB3wjWAyOSYpxlKQrfMKeWFNK/vpotgWgujOnxRelwOmGg9dVmUPdVOw1x97rkmizdyu4Y5jf4I9jbGQvLs8mczAst4Grq4inD/TOaCnzmig3TvfZqUMqZAEL7JxoAJBn09AYdBDTZMrZYIvEzpIwAVBWzo29RzmsOhjWOP3O2nOSp5Ld/DbYHH6bQfaxltME9ChaQ8KW7uio2q6qrMBhIvvDxot2PAFfIy6FqLQ8ymn1p1NKjUXeQ==",
 	"player_slot": "p0",
-	"recording_hash": "3d2cf31f77d23818dae4471e1c26ee62cb010c23371617b5c24dd49ce4c46bf0",
+	"recording_hash": "da8c4b8723588931cfb796413b635db4e9784aa3ce6c1236159f5e3f8faf877e",
 	"role": "a",
 	"schema_version": 6,
-	"simulation_version": 17,
+	"simulation_version": 21,
 	"source_recording_hash": "",
 	"stage_id": "open-the-house",
 	"stage_version": 1,
+	"start_hash": "8e1cf3ff091585606d3efbae0e0bc6cd274f96f841315aed010961050534c7b0",
 	"tick_rate": 30
 }

@@ -8,7 +8,10 @@ extends SceneTree
 ## and Skip reach the same tick and world as plain play, then the live turn
 ## takes over at its tick 0; Pause and Resume go on watching; Retry starts at
 ## the hand-off), and a pip at the goal first dozes until the friend's replay
-## arrives (the stage ends) or ends elsewhere (it wakes and plays on).
+## arrives (the stage ends) or ends elsewhere (it wakes and plays on). Only
+## the live pip dozes: never the friend's turn shown before the hand-off, and
+## a pip that dozed in one turn is awake when the next turn (where it may be
+## the friend, replaying) begins.
 const MemoryWait = preload("res://presentation/memory_wait.gd")
 const Soundscape = preload("res://services/soundscape.gd")
 const ChapterSoundMap = preload("res://services/chapter_sound_map.gd")
@@ -201,6 +204,7 @@ func _run() -> void:
 	_timed(_test_skip_budget_per_frame)
 	_timed(_test_playback_stepper)
 	_timed(_test_carried_arrival)
+	_timed(_test_doze_only_live)
 	if not to_ring.is_empty():
 		for way: String in ["play", "fast_forward", "skip", "pause"]: _timed(_test_watch_screen.bind(way))
 	for reduced: bool in [false, true]:
@@ -642,6 +646,52 @@ func _test_carried_arrival() -> void:
 	wait.step(state.call(30, true), {}, true)
 	_check(world.woken == 0 and wait.ring_pending() == false and wait.shown_state(state.call(30, true)).has("ring_held"), "Before carry-over turns a memory that ends without the stage keeps the ring held as before")
 
+## Carry-over turns: only the live pip dozes, and only while it waits at the
+## goal. The playback before the hand-off shows the friend's turn, whose pip
+## is live there and moving: it never dozes, shown tick by tick, placed at
+## once, fast-forwarded or skipped. A pip that dozed in the turn before is
+## awake when the next turn begins, where it is the friend replaying.
+func _test_doze_only_live() -> void:
+	var world := KeyedDozeWorld.new()
+	var wait := MemoryWait.new()
+	wait.world = world
+	wait.skip_budget_usec = 1 << 40
+	var state := func(tick: int, live: String, done: bool = false) -> Dictionary:
+		var players := {"p0": {}, "p1": {}}
+		players[live] = {}
+		players["p1" if live == "p0" else "p0"] = {"ghost": true}
+		return {"tick": tick, "role": "b", "active_slot": live, "objective_done": done, "complete": false, "finished": false, "players": players}
+	# Turn k: Teal (p1) at the goal first dozes while Gold's replay plays.
+	wait.begin("b", 30, true)
+	wait.step(state.call(6, "p1", true), {}, true)
+	_check(world.dozing.keys() == ["p1"], "The live pip at the goal first dozes (%s)" % str(world.dozing.keys()))
+	# Turn k+1, Gold's: Teal's turn plays before the hand-off, Teal live and walking in it.
+	var frames: Array = []
+	for index in range(20): frames.append({"move_x": 1.0, "move_z": 0.0, "interact": false})
+	wait.begin_playback(20, frames)
+	_check(world.dozing.is_empty(), "A pip that dozed in its turn is awake when the next turn begins (%s)" % str(world.dozing.keys()))
+	wait.show(state.call(0, "p1"), true)
+	for tick in range(1, 8): wait.step(state.call(tick, "p1"), {}, false, tick % 2 == 0)
+	wait.fast_forward_tick(func(_input: Dictionary) -> void: wait.step(state.call(9, "p1"), {}, false), func() -> bool: return true)
+	var sim := StepLog.new()
+	wait.skipping = true
+	wait.skip_tick(sim, func(_s: Dictionary) -> Dictionary: return {}, func(_input: Dictionary) -> void: wait.step(state.call(20, "p1"), {}, false, true))
+	_check(world.dozing.is_empty(), "Nobody dozes in the playback before the hand-off, placed at once, fast-forwarded or skipped (%s)" % str(world.dozing.keys()))
+	# The hand-off: Gold live, Teal's replay walking beside him; Gold reaches the goal first.
+	wait.begin("b", 30, true)
+	for tick in range(0, 4): wait.step(state.call(tick, "p0"), {}, true, tick == 0)
+	_check(world.dozing.is_empty(), "The friend's replay never dozes while it plays")
+	wait.step(state.call(5, "p0", true), {}, true)
+	wait.show(state.call(5, "p0", true), true)
+	_check(world.dozing.keys() == ["p0"], "Only the live pip dozes, at the goal waiting for the replay (%s)" % str(world.dozing.keys()))
+
+class KeyedDozeWorld extends Node:
+	var dozing: Dictionary = {}
+	func present(_state: Dictionary, _immediate: bool = false) -> void: pass
+	func show_memory_wait(live: String, _memory: String, _immediate: bool = false) -> void: dozing[live] = true
+	func end_memory_wait(live: String) -> void: dozing.erase(live)
+	func wake_from_memory_wait(live: String, _reduced: bool) -> void: dozing.erase(live)
+
 class DozeWorld extends Node:
 	var dozing := false
 	var woken := 0
@@ -655,8 +705,11 @@ class DozeWorld extends Node:
 ## Carry-over turns on the chapter screen: a turn's first try plays the
 ## friend's turn up to the hand-off (`way`: plain ticks, held Fast-forward,
 ## Skip to end, or a Pause and Resume in the middle), reaching the same tick
-## and world every way, with the stick and clock hidden; then the live turn,
-## built and waiting at its tick 0, takes over. Retry starts at the hand-off.
+## and world every way, with the clock hidden and the stick's spot showing
+## the watch, taking no movement; then the live turn, built and waiting at its
+## tick 0, takes over and the stick is back, steered by a finger held through
+## the hand-off. Plain ticks and Skip run on the real chapter controls.
+## Retry starts at the hand-off.
 func _test_watch_screen(way: String) -> void:
 	const HANDOFF := 40
 	var friend: Dictionary = _still_recording().recording
@@ -666,7 +719,12 @@ func _test_watch_screen(way: String) -> void:
 	var preview := Preview.new()
 	preview.memory_wait.step_budget_usec = 1 << 40
 	preview.memory_wait.skip_budget_usec = 1 << 40
-	var controls := ControlsStub.new()
+	var real := way in ["play", "skip"]
+	var controls: CanvasLayer = ChapterControls.new() if real else ControlsStub.new()
+	if real:
+		root.add_child(controls)
+		# The screen plays with the controls' card overlay put away.
+		controls.show_play()
 	var sound := CueLog.new()
 	var world := WorldStub.new()
 	var journey := WatchJourney.new()
@@ -696,10 +754,17 @@ func _test_watch_screen(way: String) -> void:
 	var watched: RefCounted = preview.sim
 	_check(preview.mode == "watch" and watched != live and preview.memory_wait.watching(), way + ": the first try opens on the friend's turn")
 	preview._physics_process(1.0 / 30.0)
-	_check(controls.playbacks > 0, way + ": the playback shows its Fast-forward and Skip row, with no clock or stick")
+	var stick: Control = controls.stick
+	if real:
+		var spot: Vector2 = stick.get_global_rect().get_center()
+		_watch_touch(controls, spot + Vector2(Joystick.MAX_TRAVEL, 0.0), true)
+		_check(controls.watching() and controls.memory_wait_shown() and stick.is_visible_in_tree() and stick.watching and not controls.turn_progress.visible, way + ": the playback shows the watch in the stick's spot and its Fast-forward and Skip row, with no clock")
+		_check(stick.value == Vector2.ZERO, way + ": a finger on the watch moves nothing")
+	else:
+		_check(controls.playbacks > 0, way + ": the playback shows its Fast-forward and Skip row, with no clock or stick")
+		controls.held = way == "fast_forward"
 	var ticks := 1
 	if way == "skip": preview._skip_memory_wait()
-	controls.held = way == "fast_forward"
 	while preview.mode != "play" and ticks < 400:
 		if way == "pause" and ticks == 10:
 			preview._pause()
@@ -712,10 +777,22 @@ func _test_watch_screen(way: String) -> void:
 	_check(int(watched.snapshot().tick) == HANDOFF and watched.state_hash() == reference.state_hash(), way + ": the friend's turn reached the hand-off tick, same as played straight")
 	if way == "fast_forward": _check(ticks <= HANDOFF / MemoryWait.FAST_FORWARD_TICKS + 2, way + ": Fast-forward plays it faster (%d ticks)" % ticks)
 	if way == "skip": _check(ticks <= 3, way + ": Skip goes straight to the hand-off (%d ticks)" % ticks)
+	if real:
+		_check(not controls.watching() and stick.is_visible_in_tree() and not stick.watching and controls.turn_progress.visible, way + ": the hand-off turns the watch back into the stick, with the clock")
+		_check(stick.value.x > 0.5, way + ": the finger held through the hand-off steers at once")
+		_watch_touch(controls, stick.get_global_rect().get_center(), false)
 	preview._live_tries = 2
 	preview._open_turn()
 	_check(preview.mode == "play" and preview.sim == live, way + ": a later try starts at the hand-off")
 	_free_preview({"preview": preview, "controls": controls, "sound": sound, "world": world})
+
+## A finger down or up at `at`, through the controls' own viewport.
+static func _watch_touch(controls: CanvasLayer, at: Vector2, pressed: bool) -> void:
+	var touch := InputEventScreenTouch.new()
+	touch.index = 0
+	touch.position = at
+	touch.pressed = pressed
+	controls.get_viewport().push_input(touch, true)
 
 static func _count(played: Array, key: String) -> int:
 	var total := 0

@@ -26,12 +26,17 @@ extends SceneTree
 ##    controls only, and the route barriers still show those causes.
 ##    A crossing an open version keeps owned must still be needed: opening it
 ##    lets one pip finish a stage alone.
-##  - Open turns (core/physical/open_turns.gd, 14 and 15): a stage ends when a
-##    turn ends with both pips at its goal, its light holding. So no stage may
+##  - Open turns (core/physical/open_turns.gd, carry-over turns): a stage is
+##    one shared timeline and ends the first moment both pips are at its goal,
+##    its light holding. So no stage may
 ##    be finished by one pip alone across any number of its own turns while
 ##    the other does nothing: only a pip that starts at the goal (or on a
 ##    platform that could carry it there, rules 16) could stand there doing
-##    nothing, and the other would still have to reach it. Each
+##    nothing, and the other would still have to reach it. A level's first
+##    stage starts with the host's pip and each later one with whoever did not
+##    close the stage before, so every later stage is checked with either pip
+##    first: neither starts on a pad it would hold through the first turn, and
+##    both pips can stand at a ring goal. Each
 ##    stage must be solvable: both pips reach the goal's floor and stand at it
 ##    with its light able to hold (an over-approximation; the chapter suite's
 ##    witness, played within the cap, is the proof). Each cap is a whole
@@ -488,7 +493,9 @@ func _reach(key: String) -> void:
 		var goal: Dictionary = stage.get("goal", {})
 		if not goal.is_empty():
 			if str(stage.get("goal_policy", {}).get("kind", "ring")) == "ring":
-				_stand(graph, found, goal, Shots.goal_slot(stage), where, "goal", journey)
+				# On open turns both pips stand at the goal to finish.
+				for slot: String in (["p0", "p1"] if OpenTurns.pinned(Registry.definition(key)) else [Shots.goal_slot(stage)]):
+					_stand(graph, found, goal, slot, where, "goal", journey)
 			else:
 				var surface := str(goal.get("surface_id", ""))
 				_expect(found.floors.p0.has(surface) or found.floors.p1.has(surface), "%s goal %s" % [where, goal.id], "%s: neither pip reaches the goal %s's floor %s at %s" % [where, goal.id, surface, _cm(goal.position_cm)])
@@ -552,10 +559,18 @@ func _needs_both(key: String) -> void:
 		else:
 			_expect(not solo_finish(graph, stage, item.checkpoint, journey), "%s alone" % where, "%s: with the first pip standing still, the second still reaches the goal with it lit; give the first pip a part only it can play" % where)
 		# The first turn sees the second pip standing still at its start; on a
-		# pad there it would hold it for the first turn.
-		var second: Dictionary = item.checkpoint.get("players", {}).get(Shots.goal_slot(stage), {})
-		for pad: Dictionary in stage.get("pressure_pads", []):
-			_expect(second.is_empty() or not Seven.near(second, pad), "%s pad %s under the second pip" % [where, pad.id], "%s: the second pip starts on the pad %s, so it holds it through the first turn" % [where, pad.id])
+		# pad there it would hold it for the first turn. On open turns a later
+		# stage may start with either pip, so either may be the second.
+		for slot: String in _second_slots(item, turns):
+			var second: Dictionary = item.checkpoint.get("players", {}).get(slot, {})
+			for pad: Dictionary in stage.get("pressure_pads", []):
+				_expect(second.is_empty() or not Seven.near(second, pad), "%s pad %s under the second pip" % [where, pad.id], "%s: %s may play second and starts on the pad %s, so it holds it through the first turn" % [where, slot, pad.id])
+
+## The pips that may play second on a stage of `item` (level_stages.gd): the
+## stage's own second pip, or on open turns either pip for a stage after the
+## first (it starts with whoever did not close the stage before).
+static func _second_slots(item: Dictionary, turns: bool) -> Array:
+	return ["p0", "p1"] if turns and int(item.get("index", 0)) > 0 else [Shots.goal_slot(item.view)]
 
 ## Whether one pip could finish `stage` alone, the other standing still at its
 ## start. Two turns (the default): the second pip lights the goal itself. Open

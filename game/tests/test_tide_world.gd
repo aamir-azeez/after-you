@@ -791,7 +791,7 @@ func _ramp_waits_for_pad() -> void:
 		opening.mechanisms.get_or_add("levers", {})["sluice"] = true
 		if held: opening.players.p0 = {"x": 192, "z": -512, "height": 96, "surface_id": "wheel-step"}
 		var sim := Simulation.new()
-		sim.simulation_version = 15
+		sim.simulation_version = 19
 		sim._reset_trusted(level, "set-the-tide", opening, {}, "a")
 		var state: Dictionary = sim.snapshot()
 		world.present(state, true)
@@ -805,7 +805,7 @@ func _ramp_waits_for_pad() -> void:
 			var opening := start.duplicate(true)
 			opening.mechanisms.controls.merge({"tide": tide, "winch": winch}, true)
 			var sim := Simulation.new()
-			sim.simulation_version = 15
+			sim.simulation_version = 19
 			sim._reset_trusted(level, "set-the-tide", opening, {}, "a")
 			var state: Dictionary = sim.snapshot()
 			world.present(state, true)
@@ -828,7 +828,7 @@ func _ramp_big_change() -> void:
 		var opening := start.duplicate(true)
 		opening.mechanisms.controls.merge({"tide": "half", "winch": winch}, true)
 		var sim := Simulation.new()
-		sim.simulation_version = 15
+		sim.simulation_version = 19
 		sim._reset_trusted(level, "set-the-tide", opening, {}, "a")
 		states[winch] = sim.snapshot()
 	var seen := SoundMap.remember(states.stowed, key)
@@ -845,7 +845,7 @@ func _ramp_big_change() -> void:
 	var dry := start.duplicate(true)
 	dry.mechanisms.controls.merge({"tide": "low", "winch": "slip"}, true)
 	var low := Simulation.new()
-	low.simulation_version = 15
+	low.simulation_version = 19
 	low._reset_trusted(level, "set-the-tide", dry, {}, "a")
 	var tide_seen := SoundMap.remember(low.snapshot(), key)
 	var flooded := SoundMap.cues(key, states.slip, tide_seen)

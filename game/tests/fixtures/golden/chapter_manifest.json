@@ -25,12 +25,12 @@
 		},
 		"a-house-for-two@2": {
 			"definition_fixture": "cooperative/a-house-for-two-v2-definition.json",
-			"definition_hash": "0354b76e8f8120a3eab8c49d9b9cb57984dc8ef2dc49d07d30133b274a88a8fa",
+			"definition_hash": "f3df2ecdb01a9b02ce3a3dfd4f3ba649d061ff7cfbf1f184ee312d4ea4202270",
 			"family": "cooperative",
 			"flag": "A_HOUSE_FOR_TWO_V2_CHAPTER_ENABLED",
 			"full_journey": false,
 			"hard": false,
-			"initial_checkpoint_hash": "b0cdb9b86ae2ac71382b14b88e6c1bc1a280e26ffcb47e721f0b2f822ed9811c",
+			"initial_checkpoint_hash": "218841e9890223880d5279190c566db7d54499f34f49650cbc081e9e1fbaf4ba",
 			"initial_fixture": "cooperative/a-house-for-two-v2-initial-checkpoint.json",
 			"key": "a-house-for-two@2",
 			"level_id": "a-house-for-two",
@@ -38,10 +38,10 @@
 			"max_branches": 7,
 			"premium": true,
 			"recording_version": 6,
-			"simulation_version": 17,
+			"simulation_version": 21,
 			"stage_count": 2,
 			"supported_simulation_versions": [
-				17
+				21
 			],
 			"unlock_fruits": 0
 		},
@@ -70,12 +70,12 @@
 		},
 		"conservatory@2": {
 			"definition_fixture": "journey/conservatory-v2-definition.json",
-			"definition_hash": "a0a839959180b0608a5967602d49d511f0fe274121fec246c6d2e735fc4aa4f8",
+			"definition_hash": "f72e035f86687403b8c5057266db33b4fa1211d2100bb5b021cc3678db83845f",
 			"family": "journey",
 			"flag": "CONSERVATORY_V2_CHAPTER_ENABLED",
 			"full_journey": false,
 			"hard": false,
-			"initial_checkpoint_hash": "11f7a4b2de07786f4c7b5159552ba01a7fcdba229561f83348d4f5b759f549c8",
+			"initial_checkpoint_hash": "b5f367478846e872a522493cab8680c455a6bed475809bd6ba583163a06fdb67",
 			"initial_fixture": "journey/conservatory-v2-initial-checkpoint.json",
 			"key": "conservatory@2",
 			"level_id": "conservatory",
@@ -83,10 +83,10 @@
 			"max_branches": 7,
 			"premium": true,
 			"recording_version": 7,
-			"simulation_version": 14,
+			"simulation_version": 18,
 			"stage_count": 2,
 			"supported_simulation_versions": [
-				14
+				18
 			],
 			"unlock_fruits": 0
 		},
@@ -116,12 +116,12 @@
 		},
 		"first-steps@2": {
 			"definition_fixture": "journey/first-steps-v2-definition.json",
-			"definition_hash": "12cbcd0d89a440e6d81889441382d1a86136b58579ce872ff308bbf5f1621840",
+			"definition_hash": "6bfce669f541bea4fb0978ad80019b0388c8009f8769379a54706dbb20bfc1ab",
 			"family": "journey",
 			"flag": "FIRST_STEPS_V2_CHAPTER_ENABLED",
 			"full_journey": false,
 			"hard": false,
-			"initial_checkpoint_hash": "853784fec0f5d35275cd1727a0ed265de4dfeef43a08084d615345dd69e67116",
+			"initial_checkpoint_hash": "1a48d37b1b93179a2b7c85a4ed4e77d4a52723d79190fdf261ab5d36f1a75fb7",
 			"initial_fixture": "journey/first-steps-v2-initial-checkpoint.json",
 			"key": "first-steps@2",
 			"level_id": "first-steps",
@@ -129,21 +129,21 @@
 			"max_branches": 7,
 			"premium": false,
 			"recording_version": 7,
-			"simulation_version": 16,
+			"simulation_version": 20,
 			"stage_count": 2,
 			"supported_simulation_versions": [
-				16
+				20
 			],
 			"unlock_fruits": 0
 		},
 		"fog-marsh@1": {
 			"definition_fixture": "journey/fog-marsh-definition.json",
-			"definition_hash": "d0e39655afb04303003d35e899554df28ff8aee2af4b917e070cd02c43316015",
+			"definition_hash": "e7ddc8b6d35402c9e788e5a77ac8c1c4206bebea36130573b5e9d1179b892220",
 			"family": "journey",
 			"flag": "FOG_MARSH_CHAPTER_ENABLED",
 			"full_journey": false,
 			"hard": false,
-			"initial_checkpoint_hash": "4785397d1852bff228238b3c2a57dd6e623cc6ba1be90fee01f89b6fc606ecd6",
+			"initial_checkpoint_hash": "ac0af6f92f9aa8137977026a4757644956111ae3c2908e9f97543f1298d5464e",
 			"initial_fixture": "journey/fog-marsh-initial-checkpoint.json",
 			"key": "fog-marsh@1",
 			"level_id": "fog-marsh",
@@ -151,10 +151,10 @@
 			"max_branches": 7,
 			"premium": false,
 			"recording_version": 7,
-			"simulation_version": 16,
+			"simulation_version": 20,
 			"stage_count": 3,
 			"supported_simulation_versions": [
-				16
+				20
 			],
 			"unlock_fruits": 3
 		},
@@ -183,12 +183,12 @@
 		},
 		"high-and-low@2": {
 			"definition_fixture": "cooperative/high-and-low-v2-definition.json",
-			"definition_hash": "fbb692198e561d0944358bb4d6635ff2d5e178df82e0881f70941d64db5ed3a2",
+			"definition_hash": "79593b0e7e0b2a8fb055643dafb74734e332d26c8814e33415e233d186e80a58",
 			"family": "cooperative",
 			"flag": "HIGH_AND_LOW_V2_CHAPTER_ENABLED",
 			"full_journey": false,
 			"hard": false,
-			"initial_checkpoint_hash": "34b258e76e33da29d4dde7962954b6fe79d569e80035af817332e86cc1749170",
+			"initial_checkpoint_hash": "bf6bc6dbbad22b24b9c4d597e08b385850f7703d9871f5d082479ca696c2bb2c",
 			"initial_fixture": "cooperative/high-and-low-v2-initial-checkpoint.json",
 			"key": "high-and-low@2",
 			"level_id": "high-and-low",
@@ -196,10 +196,10 @@
 			"max_branches": 7,
 			"premium": false,
 			"recording_version": 6,
-			"simulation_version": 14,
+			"simulation_version": 18,
 			"stage_count": 2,
 			"supported_simulation_versions": [
-				14
+				18
 			],
 			"unlock_fruits": 0
 		},
@@ -250,12 +250,12 @@
 		},
 		"long-way-home@3": {
 			"definition_fixture": "journey/long-way-home-v3-definition.json",
-			"definition_hash": "dd36a5597d8c06daaec3a34fdb79a0d854ddbc3647fa806fdd4ad5fa3f1d8a2f",
+			"definition_hash": "a6320deb49d769a2eda26d1ff53594977599b20c99c103f9915ba170d527ec8d",
 			"family": "journey",
 			"flag": "LONG_WAY_HOME_V3_CHAPTER_ENABLED",
 			"full_journey": false,
 			"hard": false,
-			"initial_checkpoint_hash": "770fc38500edb7e09716503e40ee88b62f57ab8334a94a47d490a1ea614dee69",
+			"initial_checkpoint_hash": "8d6207dee7c520d8178b6d6c8c8028df6599c2ce1607638304bcd682eb181810",
 			"initial_fixture": "journey/long-way-home-v3-initial-checkpoint.json",
 			"key": "long-way-home@3",
 			"level_id": "long-way-home",
@@ -263,10 +263,10 @@
 			"max_branches": 7,
 			"premium": true,
 			"recording_version": 7,
-			"simulation_version": 14,
+			"simulation_version": 18,
 			"stage_count": 2,
 			"supported_simulation_versions": [
-				14
+				18
 			],
 			"unlock_fruits": 0
 		},
@@ -295,12 +295,12 @@
 		},
 		"relay-isles@3": {
 			"definition_fixture": "journey/relay-isles-v3-definition.json",
-			"definition_hash": "54d9a252f8cbbb33ca49b4db0365e33d5f6e4250ee1c1616c4474814e050a986",
+			"definition_hash": "3dada19b365b4035a50e19a55b1d5e01dc8a3d1391987efe83755ba5bce42fce",
 			"family": "journey",
 			"flag": "RELAY_ISLES_V3_CHAPTER_ENABLED",
 			"full_journey": false,
 			"hard": false,
-			"initial_checkpoint_hash": "228231c045b4ba278de578349f22efb927fd1d00f336580c561e1f4e8eca0e05",
+			"initial_checkpoint_hash": "09662a351948444a8b67963feaae9c1ecc19657449dd712d77ecbe6477ffca12",
 			"initial_fixture": "journey/relay-isles-v3-initial-checkpoint.json",
 			"key": "relay-isles@3",
 			"level_id": "relay-isles",
@@ -308,10 +308,10 @@
 			"max_branches": 7,
 			"premium": false,
 			"recording_version": 7,
-			"simulation_version": 16,
+			"simulation_version": 20,
 			"stage_count": 2,
 			"supported_simulation_versions": [
-				16
+				20
 			],
 			"unlock_fruits": 0
 		},
@@ -340,12 +340,12 @@
 		},
 		"rolling-home@2": {
 			"definition_fixture": "cooperative/rolling-home-v2-definition.json",
-			"definition_hash": "43943f8c08a4f289a278b9fd2f4a39772ae6ce987a4735a6025adfd36053a3d7",
+			"definition_hash": "6d8c6e7f2cdf75cabc49b48d9e72451f7f7b12c1c3cb13f6d00e489ff34f51b8",
 			"family": "cooperative",
 			"flag": "ROLLING_HOME_V2_CHAPTER_ENABLED",
 			"full_journey": false,
 			"hard": false,
-			"initial_checkpoint_hash": "eab3e8c70ae541c1c946bce25fa4ef11c5bfcb7e70c5754ab5a883a4b59fbc7a",
+			"initial_checkpoint_hash": "76a8974e32a1d80f337bca215010988fe8eb483533aa177ef48f03804cf31764",
 			"initial_fixture": "cooperative/rolling-home-v2-initial-checkpoint.json",
 			"key": "rolling-home@2",
 			"level_id": "rolling-home",
@@ -353,10 +353,10 @@
 			"max_branches": 7,
 			"premium": true,
 			"recording_version": 6,
-			"simulation_version": 17,
+			"simulation_version": 21,
 			"stage_count": 2,
 			"supported_simulation_versions": [
-				17
+				21
 			],
 			"unlock_fruits": 0
 		},
@@ -384,12 +384,12 @@
 		},
 		"the-falls@1": {
 			"definition_fixture": "journey/the-falls-definition.json",
-			"definition_hash": "b4c618bab73170d2218e6af527f2b6af69c5e5e581f9f322c16d5f3a8d944cdc",
+			"definition_hash": "04bb186a63543d697f77aa42eb0d831e3e6e0d1a3754247531dad45769753ac4",
 			"family": "journey",
 			"flag": "THE_FALLS_CHAPTER_ENABLED",
 			"full_journey": false,
 			"hard": false,
-			"initial_checkpoint_hash": "7410f18b6973502abc415db60a2fc569d04a2d882866cb7ba3c8057f1875f927",
+			"initial_checkpoint_hash": "8fe770706c59b4770772868756a1509e129a83024b4b2c2115d3681b78d1a369",
 			"initial_fixture": "journey/the-falls-initial-checkpoint.json",
 			"key": "the-falls@1",
 			"level_id": "the-falls",
@@ -397,10 +397,10 @@
 			"max_branches": 7,
 			"premium": false,
 			"recording_version": 7,
-			"simulation_version": 16,
+			"simulation_version": 20,
 			"stage_count": 4,
 			"supported_simulation_versions": [
-				16
+				20
 			],
 			"unlock_fruits": 0
 		},
@@ -428,12 +428,12 @@
 		},
 		"the-wishing-well@2": {
 			"definition_fixture": "cooperative/the-wishing-well-v2-definition.json",
-			"definition_hash": "037322be4ec939f2986a063735c2471589dd87482f717db520af8ed7b1039f3b",
+			"definition_hash": "f99b1dbf05ec73274773822eee85e2a7eb7f56b674a18201221f6396ff319dda",
 			"family": "cooperative",
 			"flag": "THE_WISHING_WELL_V2_CHAPTER_ENABLED",
 			"full_journey": false,
 			"hard": false,
-			"initial_checkpoint_hash": "46f657b706578de0fe2447b0cb82a812070f1d5120af69ef7963d04be93a712e",
+			"initial_checkpoint_hash": "2a2eed0bdf762d3420eb3ea392334880cba6c6b67985f62ca1f03dcc2ab97fbc",
 			"initial_fixture": "cooperative/the-wishing-well-v2-initial-checkpoint.json",
 			"key": "the-wishing-well@2",
 			"level_id": "the-wishing-well",
@@ -441,10 +441,10 @@
 			"max_branches": 7,
 			"premium": false,
 			"recording_version": 6,
-			"simulation_version": 14,
+			"simulation_version": 18,
 			"stage_count": 2,
 			"supported_simulation_versions": [
-				14
+				18
 			],
 			"unlock_fruits": 0
 		},
@@ -494,12 +494,12 @@
 		},
 		"turn-of-the-tide@3": {
 			"definition_fixture": "journey/turn-of-the-tide-v3-definition.json",
-			"definition_hash": "f6d35bd1d93cf379cbcd13e17c2194185fb3d77789e6aaa2d1143adc933ce68d",
+			"definition_hash": "85cbc39001fa7bf96611f88c307499284b847a6145da5168d4c51a28500f16ba",
 			"family": "journey",
 			"flag": "TURN_OF_THE_TIDE_V3_CHAPTER_ENABLED",
 			"full_journey": true,
 			"hard": false,
-			"initial_checkpoint_hash": "d47370dd8406de458fc94b76c7a4139afcc732340f05699e51bbbe1d8a03c4a1",
+			"initial_checkpoint_hash": "bef10c62e954f7a3615f586503d9a888e09d7008fdeb640589e9f37963c09774",
 			"initial_fixture": "journey/turn-of-the-tide-v3-initial-checkpoint.json",
 			"key": "turn-of-the-tide@3",
 			"level_id": "turn-of-the-tide",
@@ -507,10 +507,10 @@
 			"max_branches": 7,
 			"premium": false,
 			"recording_version": 7,
-			"simulation_version": 15,
+			"simulation_version": 19,
 			"stage_count": 2,
 			"supported_simulation_versions": [
-				15
+				19
 			],
 			"unlock_fruits": 0
 		}

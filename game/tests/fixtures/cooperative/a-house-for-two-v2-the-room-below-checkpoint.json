@@ -1,7 +1,7 @@
 {
-	"checkpoint_hash": "00999688c0d68d29490d50a416b2adea02b6e5eabe1d1f80db12def62e763cea",
+	"checkpoint_hash": "a55f4cb14bed4984e808f64d2c26a1635ca5c30ee9ef284a3af4826e9e8beeef",
 	"completed_stage_id": "the-room-below",
-	"definition_hash": "0354b76e8f8120a3eab8c49d9b9cb57984dc8ef2dc49d07d30133b274a88a8fa",
+	"definition_hash": "f3df2ecdb01a9b02ce3a3dfd4f3ba649d061ff7cfbf1f184ee312d4ea4202270",
 	"level_id": "a-house-for-two",
 	"level_version": 2,
 	"mechanisms": {
@@ -28,6 +28,7 @@
 			}
 		}
 	},
+	"next_first_slot": "p0",
 	"next_stage_id": "",
 	"players": {
 		"p0": {
@@ -43,12 +44,12 @@
 			"z": 112
 		}
 	},
-	"previous_checkpoint_hash": "1e5bef102d04d9f9980f1e5ae47f6b00c9788bfc1132dacc919b2c6df44d30a8",
+	"previous_checkpoint_hash": "7e72a8ce47870c00d4c2df1e7b86e8e3d3d88321b41b3d46d3557bbaa2cb33e0",
 	"proof": {
 		"checkpoint": {
-			"checkpoint_hash": "1e5bef102d04d9f9980f1e5ae47f6b00c9788bfc1132dacc919b2c6df44d30a8",
+			"checkpoint_hash": "7e72a8ce47870c00d4c2df1e7b86e8e3d3d88321b41b3d46d3557bbaa2cb33e0",
 			"completed_stage_id": "open-the-house",
-			"definition_hash": "0354b76e8f8120a3eab8c49d9b9cb57984dc8ef2dc49d07d30133b274a88a8fa",
+			"definition_hash": "f3df2ecdb01a9b02ce3a3dfd4f3ba649d061ff7cfbf1f184ee312d4ea4202270",
 			"level_id": "a-house-for-two",
 			"level_version": 2.0,
 			"mechanisms": {
@@ -73,6 +74,7 @@
 					}
 				}
 			},
+			"next_first_slot": "p1",
 			"next_stage_id": "the-room-below",
 			"players": {
 				"p0": {
@@ -88,14 +90,14 @@
 					"z": -128.0
 				}
 			},
-			"previous_checkpoint_hash": "b0cdb9b86ae2ac71382b14b88e6c1bc1a280e26ffcb47e721f0b2f822ed9811c",
+			"previous_checkpoint_hash": "218841e9890223880d5279190c566db7d54499f34f49650cbc081e9e1fbaf4ba",
 			"proof": {
 				"checkpoint": {
 					"a_recording_hash": "",
 					"b_recording_hash": "",
-					"checkpoint_hash": "b0cdb9b86ae2ac71382b14b88e6c1bc1a280e26ffcb47e721f0b2f822ed9811c",
+					"checkpoint_hash": "218841e9890223880d5279190c566db7d54499f34f49650cbc081e9e1fbaf4ba",
 					"completed_stage_id": "",
-					"definition_hash": "0354b76e8f8120a3eab8c49d9b9cb57984dc8ef2dc49d07d30133b274a88a8fa",
+					"definition_hash": "f3df2ecdb01a9b02ce3a3dfd4f3ba649d061ff7cfbf1f184ee312d4ea4202270",
 					"level_id": "a-house-for-two",
 					"level_version": 2.0,
 					"mechanisms": {
@@ -136,166 +138,184 @@
 				"turns": [
 					{
 						"catch_assistance": true,
-						"checkpoint_hash": "b0cdb9b86ae2ac71382b14b88e6c1bc1a280e26ffcb47e721f0b2f822ed9811c",
+						"checkpoint_hash": "218841e9890223880d5279190c566db7d54499f34f49650cbc081e9e1fbaf4ba",
 						"completed": false,
-						"definition_hash": "0354b76e8f8120a3eab8c49d9b9cb57984dc8ef2dc49d07d30133b274a88a8fa",
+						"definition_hash": "f3df2ecdb01a9b02ce3a3dfd4f3ba649d061ff7cfbf1f184ee312d4ea4202270",
 						"duration_ticks": 533.0,
-						"final_state_hash": "9c8f7afd9851ab3198513a821a8c9960f6d1562828484ca130ea4e004f60aa5e",
+						"final_state_hash": "d03780c9ccdb0b537157bf3308041a1e4ecde6598faa617a94507b1ef7ddffaa",
+						"handoff_hash": "8e1cf3ff091585606d3efbae0e0bc6cd274f96f841315aed010961050534c7b0",
+						"handoff_tick": 0.0,
 						"level_id": "a-house-for-two",
 						"level_version": 2.0,
 						"outcome": {
 							"objective_complete": false,
 							"source_ready": true
 						},
-						"packed": "ASA0ZAASAJwUZAAOAGQCADIiZAACMgAgZAACMgACAGQCABkCAAADAABAnAACtQAIAGQCABkIAJwWnAACzgAIZAAQAGQCADIQnABAAJwCAM4+ZAACSwBIAGQIZAACMgCIBAAAz936xp0JHp+MQes5jqzF5rUXyBMclZ2LOE2Zkkzhbt3Yos4qE5x62JIbZCsqK2QskSwCG7ptGmHBtFqs2evFU0rbwnV5WoWNLy6QUAbZExrc0K5sXOheEAhhZfM7w1A3v97v/OQUf9Iydc81j/kIaHYySJ2Kxtv5nNYF4dgcuVjVp0VM8JCMImbD8NvaEw8N517QY5ydrzCzNCSKehsAJbZlH7hhdMT6IrIbFsVzEuLfsKTfwNQB4fFQ+7mvQZ9fz1JrFBgvHu1df66AirOyyQ==",
+						"packed": "ASA0ZAASAJwUZAAOAGQCADIiZAACMgAgZAACMgACAGQCABkCAAADAABAnAACtQAIAGQCABkIAJwWnAACzgAIZAAQAGQCADIQnABAAJwCAM4+ZAACSwBIAGQIZAACMgCIBAAANlPTdeBSniaClgzAPTRw7DfCLZPE2PuaMB3wjWAyOSYpxlKQrfMKeWFNK/vpotgWgujOnxRelwOmGg9dVmUPdVOw1x97rkmizdyu4Y5jf4I9jbGQvLs8mczAst4Grq4inD/TOaCnzmig3TvfZqUMqZAEL7JxoAJBn09AYdBDTZMrZYIvEzpIwAVBWzo29RzmsOhjWOP3O2nOSp5Ld/DbYHH6bQfaxltME9ChaQ8KW7uio2q6qrMBhIvvDxot2PAFfIy6FqLQ8ymn1p1NKjUXeQ==",
 						"player_slot": "p0",
-						"recording_hash": "3d2cf31f77d23818dae4471e1c26ee62cb010c23371617b5c24dd49ce4c46bf0",
+						"recording_hash": "da8c4b8723588931cfb796413b635db4e9784aa3ce6c1236159f5e3f8faf877e",
 						"role": "a",
 						"schema_version": 6.0,
-						"simulation_version": 17.0,
+						"simulation_version": 21.0,
 						"source_recording_hash": "",
 						"stage_id": "open-the-house",
 						"stage_version": 1.0,
+						"start_hash": "8e1cf3ff091585606d3efbae0e0bc6cd274f96f841315aed010961050534c7b0",
 						"tick_rate": 30.0
 					},
 					{
 						"catch_assistance": true,
-						"checkpoint_hash": "b0cdb9b86ae2ac71382b14b88e6c1bc1a280e26ffcb47e721f0b2f822ed9811c",
+						"checkpoint_hash": "218841e9890223880d5279190c566db7d54499f34f49650cbc081e9e1fbaf4ba",
 						"completed": false,
-						"definition_hash": "0354b76e8f8120a3eab8c49d9b9cb57984dc8ef2dc49d07d30133b274a88a8fa",
+						"definition_hash": "f3df2ecdb01a9b02ce3a3dfd4f3ba649d061ff7cfbf1f184ee312d4ea4202270",
 						"duration_ticks": 533.0,
-						"final_state_hash": "9f2e871520ea7c0f2953310e55eee227c3551bc94e372e32272e1df15e6002e2",
+						"final_state_hash": "83ebd4af76bd7b7c3224c221c700992b9f1c957cdb2162be2a684cadda1d855b",
+						"handoff_hash": "03199c5327da3403a90d3ac3644223e7b6f03285db6cea6fa4e7f9b00c421ded",
+						"handoff_tick": 0.0,
 						"level_id": "a-house-for-two",
 						"level_version": 2.0,
 						"outcome": {
 							"objective_complete": false,
 							"source_ready": true
 						},
-						"packed": "AQ3EBAAAFgCcSGQAFgBkqAFkABQAnAIAzgIAAAMAACRkABAAZAIAMnoAAGMPam86g2ArMdFFBMpBkwpjBPVPQrZPy7Kiy2yjV4P+LapwxnOdlSTa0J1wlzLM3OFz+B3IdCByPIIorrC9vuL5MIoj5/pi/qATcmCRq4AIgCtVzPFYBa1MkJ2973oh897uG+ke2DXL9cTxLWaMo838jTYaQyiBWKiqGoPcpGKkYMr0lBqQL4opu9MXo8lIoST0s/40GJwzXliKR01mLaYFsGvjKGz/JjVb1aIJ3seIeK8nXF5EFM2yzRij6QN9UtAht4SolNmj8eBuWfrdVL4=",
+						"packed": "AQ3EBAAAFgCcSGQAFgBkqAFkABQAnAIAzgIAAAMAACRkABAAZAIAMnoAAFwCFtsLEu6FKf1ZOiO93k5cFuitb09vmDmskEycXYWlu/49mr+S8MpaSemmxcB4BRRhdFfUMK8xlzkUiHhTnINOE5PzwAz6PtXcWLL8FqKP2vvcFNGHMW7DkBscAcffFZS2aOc5R1YVazZP09QtsIkA7N9P6SdSOuRmiGSztDWHHkntd7xsU117qBxcnGrTxlIee5STw+Jebx/NtBMh/+M2puAMtCerjEMb1NyE+uLJa2M3OU8E1umZzGhoTT/fNPyK4C3/SYaTEfIMTzffGM8=",
 						"player_slot": "p1",
-						"recording_hash": "4dc4d2fa7c088c1cad9adcd48fa088e6d20bf24bd1b210481e55af218716566d",
+						"recording_hash": "50554cc35d01bfa5b28226e7b284499e9e47c24ec71a7b88caae6542af9246fb",
 						"role": "b",
 						"schema_version": 6.0,
-						"simulation_version": 17.0,
-						"source_recording_hash": "3d2cf31f77d23818dae4471e1c26ee62cb010c23371617b5c24dd49ce4c46bf0",
+						"simulation_version": 21.0,
+						"source_recording_hash": "da8c4b8723588931cfb796413b635db4e9784aa3ce6c1236159f5e3f8faf877e",
 						"stage_id": "open-the-house",
 						"stage_version": 1.0,
+						"start_hash": "8e1cf3ff091585606d3efbae0e0bc6cd274f96f841315aed010961050534c7b0",
 						"tick_rate": 30.0
 					},
 					{
 						"catch_assistance": true,
-						"checkpoint_hash": "b0cdb9b86ae2ac71382b14b88e6c1bc1a280e26ffcb47e721f0b2f822ed9811c",
+						"checkpoint_hash": "218841e9890223880d5279190c566db7d54499f34f49650cbc081e9e1fbaf4ba",
 						"completed": true,
-						"definition_hash": "0354b76e8f8120a3eab8c49d9b9cb57984dc8ef2dc49d07d30133b274a88a8fa",
-						"duration_ticks": 591.0,
-						"final_state_hash": "6fa850f1d7428e591394d92f74ca4b19418c0743098377cb9c5a5390be46d482",
+						"definition_hash": "f3df2ecdb01a9b02ce3a3dfd4f3ba649d061ff7cfbf1f184ee312d4ea4202270",
+						"duration_ticks": 118.0,
+						"final_state_hash": "b7bb5f0667e7723d5158080fce5bf6d76d50a6f2aa0d2e1e465a8dbf789c9276",
+						"handoff_hash": "03199c5327da3403a90d3ac3644223e7b6f03285db6cea6fa4e7f9b00c421ded",
+						"handoff_tick": 533.0,
 						"level_id": "a-house-for-two",
 						"level_version": 2.0,
 						"outcome": {
 							"objective_complete": true,
 							"source_ready": true
 						},
-						"packed": "ASI0ZAASAJwUZAAOAGQCADIiZAACMgAgZAACMgACAGQCABkCAAADAABAnAACtQAIAGQCABkIAJwWnAACzgAIZAAQAGQCADIQnABAAJwCAM4+ZAACSwBIAGQIZAACMgCQAwAAUACcnAFkANH6sR6b57x1YwnL9s4/jjs9n1rblUlWgUuudqzV8uz4SQ1duTELDosXIe10EZzigIk3JJUo6oWyrFuaF4qSevciWZhNecURnmUQwmAtoi3mIpii25BTCBnnPgX3FEiuR+QaXGPXBjQMj4k011UtozwECfQ3EfxFbe//pkaM0ilbizRPBKMMgTGP6gVT4Eo/WDaesFNjpRE837Q3RsH7HmCrXGuotYSekP9f2O6sdzx59OXfJ1qcd17LWyhkI3n49sJhBJ4MDSbP9jRs5MRMCsvWSdFEO/pJX37Kh8FAEENq",
+						"packed": "AQJQAJycAWQAuhgIDWHzbGQCBWO0bsNpDvfFCFVXrPqy",
 						"player_slot": "p0",
-						"recording_hash": "1064f0412060ee08078724c9e46433c481d07f25622ee052b78caa7f9f12bbf3",
+						"recording_hash": "65603260dc738e1bc76743e6ac2f92ebc931e49f82e91fa7af43086f569f8af6",
 						"role": "b",
 						"schema_version": 6.0,
-						"simulation_version": 17.0,
-						"source_recording_hash": "4dc4d2fa7c088c1cad9adcd48fa088e6d20bf24bd1b210481e55af218716566d",
+						"simulation_version": 21.0,
+						"source_recording_hash": "50554cc35d01bfa5b28226e7b284499e9e47c24ec71a7b88caae6542af9246fb",
 						"stage_id": "open-the-house",
 						"stage_version": 1.0,
+						"start_hash": "03199c5327da3403a90d3ac3644223e7b6f03285db6cea6fa4e7f9b00c421ded",
 						"tick_rate": 30.0
 					}
 				]
 			},
-			"schema_version": 8.0,
+			"schema_version": 9.0,
 			"stage_index": 1.0,
 			"turn_hashes": [
-				"3d2cf31f77d23818dae4471e1c26ee62cb010c23371617b5c24dd49ce4c46bf0",
-				"4dc4d2fa7c088c1cad9adcd48fa088e6d20bf24bd1b210481e55af218716566d",
-				"1064f0412060ee08078724c9e46433c481d07f25622ee052b78caa7f9f12bbf3"
+				"da8c4b8723588931cfb796413b635db4e9784aa3ce6c1236159f5e3f8faf877e",
+				"50554cc35d01bfa5b28226e7b284499e9e47c24ec71a7b88caae6542af9246fb",
+				"65603260dc738e1bc76743e6ac2f92ebc931e49f82e91fa7af43086f569f8af6"
 			]
 		},
 		"turns": [
 			{
 				"catch_assistance": true,
-				"checkpoint_hash": "1e5bef102d04d9f9980f1e5ae47f6b00c9788bfc1132dacc919b2c6df44d30a8",
+				"checkpoint_hash": "7e72a8ce47870c00d4c2df1e7b86e8e3d3d88321b41b3d46d3557bbaa2cb33e0",
 				"completed": false,
-				"definition_hash": "0354b76e8f8120a3eab8c49d9b9cb57984dc8ef2dc49d07d30133b274a88a8fa",
+				"definition_hash": "f3df2ecdb01a9b02ce3a3dfd4f3ba649d061ff7cfbf1f184ee312d4ea4202270",
 				"duration_ticks": 545.0,
-				"final_state_hash": "e872893bd676dc4b17bb58940fa606fb45d9a1d95ef091913d544120ee172bff",
+				"final_state_hash": "5abc2a93843b1b7b50f1e3c3936c54823e587c9bd303abe581dda916f9244a32",
+				"handoff_hash": "612ba1acb3438da056f81b059708ed3153714f629ebd3f4bc039680f7070064b",
+				"handoff_tick": 0.0,
 				"level_id": "a-house-for-two",
 				"level_version": 2.0,
 				"outcome": {
 					"objective_complete": false,
 					"source_ready": true
 				},
-				"packed": "AQwEnAAqAGQCAEsCAAADAAAQnAACAEsKAGQCADIkZABIAJyEBwAA8Y6jfUlHxNysNZgJBELYsAFPATCEBIIiY7B4ye452tE3TweNfjP+BHgQTPTBf05oyGRAA67Xt20DLMPeetWOzKSesEzlwf4FgXmJ4AnO1AL2/d3+rzxIc1Uc4kYdA74fYs38UHENk/8YUMYMXszZxZmJ0IXfRGJChuZxWeIDvqpGCnrTewU4osyfwCnGZDqI+YF5WKudMYFiF5qsHmFkt/g6wJ1d6aIILzHALQBCSEcmwlwVyBKD9Sp0gxXGnAHrKNi3k6KNlZyFEHaUhMqspjYm4N93SoRf",
+				"packed": "AQwEnAAqAGQCAEsCAAADAAAQnAACAEsKAGQCADIkZABIAJyEBwAAs1jxgxEjX5hQ11s27zoTlMS9vwiP6eTuc9wL2KsqQwPyU1nN5N/FhPMawiPnIvLFd5ttE/zIRHVHgyUUXYZnQY1o0oaBQMw5RDxfgbP7DuS1jp6fCVG0AIvEh5PQSOr8oRavoedVnEAFT1t0bKu4haR10BTJVZYoW9lSKTegWmQKwmuYejGhSsKGVkJ/NIktLMYmZqBLn58VPRhOsfoYxQC+WOPQwKr+/udC0/+Uno7EARHSEKh7FOSgg+4tyErAfVv9wVR7j5GIKBU7oOKF4a8sZ2Gmd/W5",
 				"player_slot": "p1",
-				"recording_hash": "4abd0ac63b943eb0ef0e4121ba78c4f5c44ae060b2471d2b43c0bde54b7923d9",
+				"recording_hash": "4cde3caf7bf4bab7401b581c162d2040dfccd3350597db360398400f3446a7a0",
 				"role": "a",
 				"schema_version": 6.0,
-				"simulation_version": 17.0,
+				"simulation_version": 21.0,
 				"source_recording_hash": "",
 				"stage_id": "the-room-below",
 				"stage_version": 1.0,
+				"start_hash": "612ba1acb3438da056f81b059708ed3153714f629ebd3f4bc039680f7070064b",
 				"tick_rate": 30.0
 			},
 			{
 				"catch_assistance": true,
-				"checkpoint_hash": "1e5bef102d04d9f9980f1e5ae47f6b00c9788bfc1132dacc919b2c6df44d30a8",
+				"checkpoint_hash": "7e72a8ce47870c00d4c2df1e7b86e8e3d3d88321b41b3d46d3557bbaa2cb33e0",
 				"completed": false,
-				"definition_hash": "0354b76e8f8120a3eab8c49d9b9cb57984dc8ef2dc49d07d30133b274a88a8fa",
+				"definition_hash": "f3df2ecdb01a9b02ce3a3dfd4f3ba649d061ff7cfbf1f184ee312d4ea4202270",
 				"duration_ticks": 545.0,
-				"final_state_hash": "9b8012539e63baaf91b9aeb9f0eb9e22e8c47436877fe267d0ad4392539ef740",
+				"final_state_hash": "67902b19168a927cbcd89469a5d281e1b3b2ce0130ff9c4b12d682f110672824",
+				"handoff_hash": "d3c7b5e2f9ad25904581492ac733cdc6c03a6eefa9ab1cf85f3c2914b55d6acf",
+				"handoff_tick": 0.0,
 				"level_id": "a-house-for-two",
 				"level_version": 2.0,
 				"outcome": {
 					"objective_complete": false,
 					"source_ready": true
 				},
-				"packed": "ASFAnAACzgAEAJwknAACtQACAJwCAM5knAAOAJwCAM4qnAAC5wAWAGSAAWQAAksACACcAgC1CGQAHABkAgBLCJwACABkcmQAAksACgCcFGQACgBkQGQAAjIAGABkAgAyCmQA2AIAAHaWRsV3ls2FXIn6jG1Dhf7WnXxuN20ORGcvZ463+Tt9+9APTaRaJzwz5oVRwKjTl6j9GjeISNblHVzfUQ/ESVHjzGBtLHHfO9uR3oeeVjoWbwKVthhkRtMZBcXJcIEb1TxG+Rcc1OolNU+xhbM5AaowIZ1RV8y00ww4cpfUdUZCmWS+C6xjxoo2MLyToljSoNNEnHLp3nb2CA46szldKYiWLk2Nj67JmG+8A+RhV5IF3oMcx/JT+xeG88MDP+Dg5NQhVtlWGWpRQdWLQCLdFOEkF1yQSln6Zw==",
+				"packed": "ASFAnAACzgAEAJwknAACtQACAJwCAM5knAAOAJwCAM4qnAAC5wAWAGSAAWQAAksACACcAgC1CGQAHABkAgBLCJwACABkcmQAAksACgCcFGQACgBkQGQAAjIAGABkAgAyCmQA2AIAAMjY1qDZ27laG6yae6VijxE13QTLFzWVMIy+lqhStKxWvPuVMYTChN+rXuuhKp69mUpUdwM9m3gDD74j4rA38fqoa9sSRNjsWHAmMLgJ6FHpg1j/zZCJwEpXSTAOVAfB6cE4omWINkEv0+ILDeYBiWDr4tQ/8xBRAQ1KUE1l6/dULWEn2jjh2K3PFEWVnnt/PeC4JfD5ex4T568gI6f4TnGAFeSuhXHuKjSJxr7MhMQLeAIce8qD5X4Hb8gXMjHg9K2Ga07FBF5MWVooHnlX2dOE753Zyvy38w==",
 				"player_slot": "p0",
-				"recording_hash": "7b5cfa1622cd3e4b92ab8bd7280c1915fc3f3e5efdd5673d8a038befc176d0fa",
+				"recording_hash": "20bcff86d9179942220ab57cae235dcc9559188db83656b0d37aef917b645e08",
 				"role": "b",
 				"schema_version": 6.0,
-				"simulation_version": 17.0,
-				"source_recording_hash": "4abd0ac63b943eb0ef0e4121ba78c4f5c44ae060b2471d2b43c0bde54b7923d9",
+				"simulation_version": 21.0,
+				"source_recording_hash": "4cde3caf7bf4bab7401b581c162d2040dfccd3350597db360398400f3446a7a0",
 				"stage_id": "the-room-below",
 				"stage_version": 1.0,
+				"start_hash": "612ba1acb3438da056f81b059708ed3153714f629ebd3f4bc039680f7070064b",
 				"tick_rate": 30.0
 			},
 			{
 				"catch_assistance": true,
-				"checkpoint_hash": "1e5bef102d04d9f9980f1e5ae47f6b00c9788bfc1132dacc919b2c6df44d30a8",
+				"checkpoint_hash": "7e72a8ce47870c00d4c2df1e7b86e8e3d3d88321b41b3d46d3557bbaa2cb33e0",
 				"completed": true,
-				"definition_hash": "0354b76e8f8120a3eab8c49d9b9cb57984dc8ef2dc49d07d30133b274a88a8fa",
-				"duration_ticks": 590.0,
-				"final_state_hash": "30751944e55665f3793fc39158bdf5096977b9cdeeea96c6bcfd83d880f072ff",
+				"definition_hash": "f3df2ecdb01a9b02ce3a3dfd4f3ba649d061ff7cfbf1f184ee312d4ea4202270",
+				"duration_ticks": 75.0,
+				"final_state_hash": "ee559ef3ac2266525321e25addbbb921f05c04fb1a3b72eaf1d94299908bebc8",
+				"handoff_hash": "d3c7b5e2f9ad25904581492ac733cdc6c03a6eefa9ab1cf85f3c2914b55d6acf",
+				"handoff_tick": 545.0,
 				"level_id": "a-house-for-two",
 				"level_version": 2.0,
 				"outcome": {
 					"objective_complete": true,
 					"source_ready": true
 				},
-				"packed": "AREEnAAqAGQCAEsCAAADAAAQnAACAEsKAGQCADIkZABIAJzIBgAAMABkQGQAAjIAHABkCGQAM1AsGkYf7HmrHr8APPotlBKOdb1mbCXtn6IviW8m/HsOtaHiNZgD9iWOwGniD545aBwLv05M91YCeqVjzfr2iBRo84jIVrmhba1l6+Jw+KKxumeMA7DBdzslGymJ9XdsSvPJYSJXWFj0Tx+vGy5dqMKBHPW+7IqWTVGVuIaNpgSvbxu5/UQBu1CfLVyadPzFVUwKS47zfXdRILNS5NFD3OExArywg6TdFggsg5IY8BOaok6afDrLkDMeEY2TULFgvT2LXdtDuDjo6Xz8KgwY+BNXKej9Erwyf5wlVGqNNhk=",
+				"packed": "AQUwAGRAZAACMgAcAGQIZABMeCLmkR4MGr5CNWTAFyZa",
 				"player_slot": "p1",
-				"recording_hash": "77c84e68db792145a1362d6da3dcfbe5fdde71f46bf8e7aab8e0aafe83183d25",
+				"recording_hash": "df038f327c321c3363ae4441385f7ad4b590cf13f9e1f556a103b26dafed3d87",
 				"role": "b",
 				"schema_version": 6.0,
-				"simulation_version": 17.0,
-				"source_recording_hash": "7b5cfa1622cd3e4b92ab8bd7280c1915fc3f3e5efdd5673d8a038befc176d0fa",
+				"simulation_version": 21.0,
+				"source_recording_hash": "20bcff86d9179942220ab57cae235dcc9559188db83656b0d37aef917b645e08",
 				"stage_id": "the-room-below",
 				"stage_version": 1.0,
+				"start_hash": "d3c7b5e2f9ad25904581492ac733cdc6c03a6eefa9ab1cf85f3c2914b55d6acf",
 				"tick_rate": 30.0
 			}
 		]
 	},
-	"schema_version": 8,
+	"schema_version": 9,
 	"stage_index": 2,
 	"turn_hashes": [
-		"4abd0ac63b943eb0ef0e4121ba78c4f5c44ae060b2471d2b43c0bde54b7923d9",
-		"7b5cfa1622cd3e4b92ab8bd7280c1915fc3f3e5efdd5673d8a038befc176d0fa",
-		"77c84e68db792145a1362d6da3dcfbe5fdde71f46bf8e7aab8e0aafe83183d25"
+		"4cde3caf7bf4bab7401b581c162d2040dfccd3350597db360398400f3446a7a0",
+		"20bcff86d9179942220ab57cae235dcc9559188db83656b0d37aef917b645e08",
+		"df038f327c321c3363ae4441385f7ad4b590cf13f9e1f556a103b26dafed3d87"
 	]
 }

@@ -1,28 +1,32 @@
 extends SceneTree
-## The new pieces (rules 16, core/physical/pieces_rules.gd) on their witness
+## The new pieces (rules 20, core/physical/pieces_rules.gd) on their witness
 ## level (tests/pieces_witness.gd), played through the journey engine with
-## the memory trace off (an unregistered level replays its memory in its own
-## world, untrusted proofs aside):
-## - 16 is a tide, open controls and open turns number, records name it, and
+## kept start worlds off (a later turn plays the turns before it again):
+## - 20 is a tide, open controls and open turns number, records name it, and
 ##   the blocks expand to the plain data the engine reads, with no problems;
 ## - the fog lantern: lit, its pump floods the low boards; out, they are dry;
 ## - the weight lift: a pip on the pan lifts the live pip riding it to the
 ##   stilts; one on the top pan brings it down; stops never close slowly;
-## - the rope raft: the memory's pull carries the live pip over the water;
-## - memories ride too: a memory on the lift as it rises rides up, one on the
-##   raft as the live pip pulls it crosses the water, a memory whose own world
-##   lifted it while this one did not stays below, walking its input from
-##   there, and a live pip and a memory on one lift ride up together, whoever
-##   winds it;
+## - the rope raft: the friend's replay pulls and carries the live pip over
+##   the water;
+## - boarding a deck (core/journey/simulation.gd _may_step) on first-steps@2's
+##   lift: raised to the top and let down for a moment, its deck is still a
+##   storey up, so the pip on the shore cannot board until the deck is within
+##   a step (Navigation.STEP_CM) of the shore; at its stop it boards as ever,
+##   and a rider stays on until the deck reaches the loft;
+## - the replay rides too, in the one world: on the lift as it rises it rides
+##   up, on the raft as the live pip pulls it crosses the water, and a live pip
+##   and the replay on one lift ride up together, whoever winds it; a third
+##   turn takes over with the rest of the second replaying as it was played;
 ## - the ride witness (tests/ride_witness.gd) through the real proof: carried
-##   up, the memory's walk into the stilts' edge takes it on to the lamp; both
-##   turns replay exactly, from a trace or simulated; the stage's checkpoint
+##   up, the replay's walk into the stilts' edge takes it on to the lamp; both
+##   turns replay exactly, from a kept start world or played again; the stage's checkpoint
 ##   derives and verifies; the server's copy (tests/fixtures/memory_rides/,
 ##   read by backend/test/pieces-rules.test.ts) is this suite's, and
 ##   `-- --write` writes it again;
 ## - the pull-up ladder: climbed to the stilts, never come down;
 ## - sinking stones: one pip stands on a stone, the second pushes it under,
-##   the one that stepped on last (live or memory) named;
+##   the one that stepped on last (live or replayed) named;
 ## - a crank board at either end holds the rope bridge; the water gate dries
 ##   the path behind the falls; the wheel ride carries a pip up while the gate
 ##   board is held, never down; a pan holds the footbridge down;
@@ -41,6 +45,8 @@ const LevelGraph = preload("res://tests/level_graph.gd")
 const RideWitness = preload("res://tests/ride_witness.gd")
 const Proof = preload("res://core/physical/two_pair_proof.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const FirstStepsV2 = preload("res://core/journey/first_steps_v2_catalog.gd")
+const Navigation = preload("res://core/cooperative/navigation.gd")
 const SERVER_FIXTURES := "res://tests/fixtures/memory_rides/"
 var checks := 0
 var failures := 0
@@ -56,6 +62,7 @@ func _run() -> void:
 	_fog_lantern()
 	_weight_lift()
 	_raft()
+	_boarding()
 	_memory_rides()
 	_ride_witness()
 	_ladder()
@@ -67,10 +74,10 @@ func _run() -> void:
 
 func _numbers() -> void:
 	var v := OpenControls.PIECES_RULES_VERSION
-	_check(v == 16 and PiecesRules.on(16) and not PiecesRules.on(15), "The new pieces are rules 16")
-	_check(v in OpenControls.TIDE_RULES and v in OpenControls.OPEN_RULES and OpenTurns.rules(v), "16 keeps the tide, open controls and open turns")
-	_check(Simulation._record_version({"simulation_version": 16.0}) == 16, "A record names rules 16, JSON floats included")
-	_check(level.simulation_version == 16 and PiecesRules.pinned(level) and Simulation.rules_allowed(level, 16) and not Simulation.rules_allowed(level, 15), "The witness pins 16 and plays nothing else")
+	_check(v == 20 and PiecesRules.on(20) and not PiecesRules.on(19), "The new pieces are rules 20")
+	_check(v in OpenControls.TIDE_RULES and v in OpenControls.OPEN_RULES and OpenTurns.rules(v), "20 keeps the tide, open controls and open turns")
+	_check(Simulation._record_version({"simulation_version": 20.0}) == 20, "A record names rules 20, JSON floats included")
+	_check(level.simulation_version == 20 and PiecesRules.pinned(level) and Simulation.rules_allowed(level, 20) and not Simulation.rules_allowed(level, 19), "The witness pins 20 and plays nothing else")
 
 func _blocks() -> void:
 	var source := Witness.source()
@@ -122,7 +129,7 @@ func _weight_lift() -> void:
 	_check(bool(a._routes["lift-high"]) and not bool(a._routes["lift-low"]), "Weight in the pan raises the lift; its low stop shuts at once")
 	_idle(a, 20)
 	var record := a.export_recording()
-	# Turn 2: the second pip steps onto the lift before the memory weighs the pan, and rides up.
+	# Turn 2: the second pip steps onto the lift before the replay weighs the pan, and rides up.
 	var b := _sim("marsh", start, record, "b")
 	_check(b.active_slot == "p1" and bool(b._routes["lift-low"]), "Turn 2 is the second pip's, with the lift down")
 	_walk(b, [450, 200])
@@ -131,18 +138,20 @@ func _weight_lift() -> void:
 		b.step({})
 		if b._players.p1.surface_id == "lift-high": rode = true
 		if rode or b.finished: break
-	_check(rode and int(b._players.p1.height) == 96 and int(b._players.p1.x) == 450 and b._drowned.is_empty(), "The memory weighs the pan and the live pip rides the lift up: %s" % [b._players.p1])
+	_check(rode and int(b._players.p1.height) == 96 and int(b._players.p1.x) == 450 and b._drowned.is_empty(), "The replay weighs the pan and the live pip rides the lift up: %s" % [b._players.p1])
+	_arrive(b)
 	_walk(b, [600, 200])
 	_check(b._players.p1.surface_id == "stilts", "And steps off onto the stilts")
 	_walk(b, [850, 50])
 	_check(not bool(b._routes["lift-high"]) and bool(b._routes["lift-low"]), "Weight in the top pan too brings the lift back down")
-	# Turn 3: the first pip stays off the pan, so the lift never rises here.
-	# Its memory of turn 2 rode up in its own world: here it stays below, on the
-	# lift, walking its input into the stilts' edge.
+	# Turn 3: the first pip takes over on the pan where turn 1 left it, in
+	# turn 2's world there, and with it staying put the rest of turn 2 plays
+	# out as it was played.
 	var turn_two := b.export_recording()
 	var e := _sim("marsh", start, turn_two, "b", {}, [record])
-	_idle(e, int(turn_two.duration_ticks) + 5)
-	_check(e._drowned.is_empty() and e._players.p1.surface_id == "lift-low" and int(e._players.p1.height) == 0, "A memory its own world lifted stays below when this one does not, never drowned: %s" % [e._players.p1])
+	_check(e.handoff_tick == int(record.duration_ticks) and e._players.p0.surface_id == a._players.p0.surface_id and bool(e._routes["lift-high"]), "Turn 3 takes over on the pan, the lift up")
+	_idle(e, e.replay_ticks())
+	_check(e._drowned.is_empty() and Canonical.same(e._players.p1, b._players.p1) and not bool(e._routes["lift-high"]), "The rest of turn 2 plays out as it was played: %s" % [e._players.p1])
 
 func _raft() -> void:
 	var start := {"p0": _at(300, 890, "isle", 0), "p1": _at(200, 300, "landing", 0)}
@@ -159,11 +168,94 @@ func _raft() -> void:
 		b.step({})
 		if b._players.p1.surface_id == "raft-south": rode = true
 		if rode or b.finished: break
-	_check(rode and int(b._players.p1.z) == 660 and "rode:raft" in b._events, "The memory's pull carries the live pip over the water: %s" % [b._players.p1])
+	_check(rode and int(b._players.p1.z) == 660 and "rode:raft" in b._events, "The replay's pull carries the live pip over the water: %s" % [b._players.p1])
+	_arrive(b)
 	_walk(b, [200, 800])
 	_check(b._players.p1.surface_id == "isle", "And it steps off onto the isle")
 
-## Memories ride too (core/journey/simulation.gd _move_platforms, _place_memory).
+## first-steps@2's lift. Turn 1: orange starts on the power spot, so the lift
+## stands at the loft; it steps off for a moment and back (the lift turns down
+## and up again), later steps off for good, and comes back once teal is aboard.
+## Turn 2: teal walks east from the shore into the lift every tick.
+func _boarding() -> void:
+	var fs := FirstStepsV2.definition()
+	var checkpoint := Catalog.initial_checkpoint(fs)
+	checkpoint.players.p0 = _at(-300, -130, "shore", 0)
+	checkpoint.players.p1 = _at(-150, 0, "shore", 0)
+	var a := _fs_sim(fs, checkpoint)
+	_check(bool(a._routes["lift-high"]) and a._decks.is_empty(), "Orange on the power spot: the lift stands at the loft")
+	var north := {"move_z": -1.0}
+	var south := {"move_z": 1.0}
+	var lowered := -1
+	var lowest := FirstStepsV2.LOFT
+	for input: Dictionary in _inputs([[6, north], [6, south]]):
+		a.step(input)
+		if lowered < 0 and bool(a._routes["lift-low"]): lowered = int(a.tick)
+		lowest = mini(lowest, _deck_height(a))
+	_check(lowered > 0 and bool(a._routes["lift-high"]) and lowest < FirstStepsV2.LOFT and lowest > FirstStepsV2.LOFT - 20, "A moment off the spot turns the lift down, and back on it turns up again before its deck gets far (lowest %d cm)" % lowest)
+	_idle(a, 80 - int(a.tick))
+	for input: Dictionary in _inputs([[10, north]]): a.step(input)
+	_idle(a, 200 - int(a.tick))
+	for input: Dictionary in _inputs([[10, south]]): a.step(input)
+	_idle(a, 300 - int(a.tick))
+	var b := _fs_sim(fs, checkpoint, _json(a.export_recording()))
+	var boarded := -1
+	var down_at := -1
+	var early := ""
+	var off_at := -1
+	var lift_up := -1
+	for tick in range(300):
+		var was_low := bool(b._routes["lift-low"])
+		b.step({"move_x": 1.0})
+		if boarded < 0 and bool(b._routes["lift-low"]) and not was_low: down_at = int(b.tick)
+		var surface := str(b._players.p1.surface_id)
+		var deck := _deck_height(b)
+		if boarded < 0 and surface.begins_with("lift-"):
+			boarded = int(b.tick)
+			if absi(deck) > Navigation.STEP_CM: early = "boarded with the deck at %d cm" % deck
+		if boarded > 0 and lift_up < 0 and surface == "lift-high": lift_up = int(b.tick)
+		if surface == "loft":
+			off_at = int(b.tick)
+			if absi(deck - FirstStepsV2.LOFT) > Navigation.STEP_CM: early = "stepped off with the deck at %d cm" % deck
+			break
+	_check(early.is_empty() and down_at > lowered and boarded >= down_at + 59, "Teal never boards the lowered lift while its deck is a storey up, only once it is down (boarded at tick %d, the lift turned down for good at %d; %s)" % [boarded, down_at, early])
+	_check(lift_up > boarded and off_at >= lift_up + 59 and b._decks.is_empty(), "Riding up, teal stays on the deck until it reaches the loft (up at tick %d, off at %d)" % [lift_up, off_at])
+	# At its stop the lift is boarded at once.
+	checkpoint.players.p0 = _at(-420, -130, "shore", 0)
+	var c := _fs_sim(fs, checkpoint)
+	var d := _fs_sim(fs, checkpoint, _json(_idle_record(c, 30)))
+	for _step in range(6): d.step({"move_x": 1.0})
+	_check(str(d._players.p1.surface_id) == "lift-low" and d._decks.is_empty(), "With the lift resting at the shore, teal steps straight on: %s" % [d._players.p1])
+
+## A first-steps@2 turn from `checkpoint`: the first with no `prior`, else the second.
+func _fs_sim(fs: Dictionary, checkpoint: Dictionary, prior: Dictionary = {}) -> Simulation:
+	var sim := Simulation.new()
+	sim.simulation_version = OpenControls.PIECES_RULES_VERSION
+	sim._reset_trusted(fs, "a-little-lift", checkpoint, prior, "a" if prior.is_empty() else "b")
+	return sim
+
+## [[ticks, input], ...] as one input a tick.
+static func _inputs(spans: Array) -> Array:
+	var all: Array = []
+	for span: Array in spans:
+		for _tick in range(int(span[0])): all.append(span[1])
+	return all
+
+static func _idle_record(sim: Simulation, ticks: int) -> Dictionary:
+	_idle(sim, ticks)
+	return sim.export_recording()
+
+## The height (cm) of the deck of the stage's first platform, where it is this tick.
+static func _deck_height(sim: Simulation) -> int:
+	var entry: Array = sim._platforms[0]
+	var at: Dictionary = entry[1].filter(func(stop: Dictionary) -> bool: return bool(sim._routes.get(stop.id, false)))[0]
+	return int(sim._deck_now(entry, at)[2])
+
+## Stands still until every deck has reached its stop.
+static func _arrive(sim: Simulation) -> void:
+	while not sim._decks.is_empty() and not sim.finished: sim.step({})
+
+## The friend's replay rides too (core/journey/simulation.gd _move_platforms).
 func _memory_rides() -> void:
 	# Up the lift: the first pip waits on it, the second weighs the pan.
 	var start := {"p0": _at(100, 300, "landing", 0), "p1": _at(350, 200, "landing", 0)}
@@ -177,7 +269,7 @@ func _memory_rides() -> void:
 	_walk(d, [100, 100])
 	_idle(d, 40)
 	var memory: Dictionary = d._players.p0
-	_check(d._drowned.is_empty() and memory.surface_id == "lift-high" and int(memory.height) == 96 and int(memory.x) == int(c._players.p0.x) and int(memory.z) == int(c._players.p0.z), "A memory standing on the lift as it rises rides up with it: %s" % [memory])
+	_check(d._drowned.is_empty() and memory.surface_id == "lift-high" and int(memory.height) == 96 and int(memory.x) == int(c._players.p0.x) and int(memory.z) == int(c._players.p0.z), "The replay standing on the lift as it rises rides up with it: %s" % [memory])
 	# Over the water: the first pip waits on the raft, the second pulls the rope.
 	var shore := {"p0": _at(200, 300, "landing", 0), "p1": _at(300, 860, "isle", 0)}
 	var a := _sim("marsh", shore)
@@ -189,8 +281,8 @@ func _memory_rides() -> void:
 	_walk(b, [300, 885])
 	_press(b)
 	memory = b._players.p0
-	_check(b._mechanisms.controls.rope == "SOUTH" and b._drowned.is_empty() and memory.surface_id == "raft-south" and int(memory.z) == 660 and int(memory.x) == 200, "The live pip's pull carries the memory over the water: %s" % [memory])
-	# One lift, both pips: the live pip winds the crank inside it with the memory aboard.
+	_check(b._mechanisms.controls.rope == "SOUTH" and b._drowned.is_empty() and memory.surface_id == "raft-south" and int(memory.z) == 660 and int(memory.x) == 200, "The live pip's pull carries the replay over the water: %s" % [memory])
+	# One lift, both pips: the live pip winds the crank inside it with the replay aboard.
 	var ride := RideWitness.definition()
 	var begin := RideWitness.initial_checkpoint(ride)
 	var waits := _witness_sim(ride, begin)
@@ -201,8 +293,8 @@ func _memory_rides() -> void:
 	_walk(aboard, [300, 210])
 	_walk(aboard, [460, 210])
 	_press(aboard)
-	_check(aboard._drowned.is_empty() and aboard._players.p0.surface_id == "lift-high" and aboard._players.p1.surface_id == "lift-high" and int(aboard._players.p0.height) == 96 and int(aboard._players.p0.x) == int(waits._players.p0.x), "Wound from inside, the lift carries the live pip and the memory up together: %s" % [aboard._players])
-	# And the memory winds it with the live pip aboard.
+	_check(aboard._drowned.is_empty() and aboard._players.p0.surface_id == "lift-high" and aboard._players.p1.surface_id == "lift-high" and int(aboard._players.p0.height) == 96 and int(aboard._players.p0.x) == int(waits._players.p0.x), "Wound from inside, the lift carries the live pip and the replay up together: %s" % [aboard._players])
+	# And the replay winds it with the live pip aboard.
 	var winds := _witness_sim(ride, begin)
 	_walk(winds, [440, 200])
 	_idle(winds, 120 - int(winds.tick))
@@ -213,7 +305,7 @@ func _memory_rides() -> void:
 	_walk(rider, [300, 210])
 	_walk(rider, [460, 210])
 	_idle(rider, 130 - int(rider.tick))
-	_check(rider._drowned.is_empty() and rider._players.p1.surface_id == "lift-high" and Simulation._same_spot(rider._players.p0, rider._source._players.p0), "The memory's crank carries the live pip up with it, the memory where its own world has it: %s" % [rider._players])
+	_check(rider._drowned.is_empty() and rider._players.p1.surface_id == "lift-high" and Canonical.same(rider._players.p0, winds._players.p0), "The replay's crank carries the live pip up with it, the replay where its own turn had it: %s" % [rider._players])
 
 ## The ride witness through the real proof, and the server's copy of it.
 func _ride_witness() -> void:
@@ -229,13 +321,13 @@ func _ride_witness() -> void:
 	_idle(a_sim, 10)
 	_check(a_sim._players.p0.surface_id == "lift-low" and int(a_sim._players.p0.x) < 500, "Alone, the first pip's walk east ends at the stilts' edge: %s" % [a_sim._players.p0])
 	var a: Dictionary = _json(a_sim.export_recording())
-	# Turn 2: p1 winds the winch, the lift carries the memory up, and the memory's
+	# Turn 2: p1 winds the winch, the lift carries the replay up, and the replay's
 	# walk east now takes it onto the stilts to the lamp; p1 climbs the ladder.
 	var b_sim := _witness_sim(ride, begin, a)
 	_walk(b_sim, [300, 70])
 	_idle(b_sim, 150 - int(b_sim.tick))
 	b_sim.step({"interact": true})
-	_check(b_sim._players.p0.surface_id == "lift-high" and "rode:lift" in b_sim.snapshot().events, "The winch carries the memory up the lift: %s" % [b_sim._players.p0])
+	_check(b_sim._players.p0.surface_id == "lift-high" and "rode:lift" in b_sim.snapshot().events, "The winch carries the replay up the lift: %s" % [b_sim._players.p0])
 	b_sim.step({})
 	_walk(b_sim, [350, 70])
 	_walk(b_sim, [350, 350])
@@ -243,7 +335,7 @@ func _ride_witness() -> void:
 	_walk(b_sim, [600, 210])
 	_idle(b_sim, 1200)
 	var memory: Dictionary = b_sim._players.p0
-	_check(memory.surface_id == "stilts" and int(memory.height) == 96 and absi(int(memory.x) - RideWitness.LAMP[0]) <= 40, "Carried up, the memory's walk takes it onto the stilts to the lamp: %s" % [memory])
+	_check(memory.surface_id == "stilts" and int(memory.height) == 96 and absi(int(memory.x) - RideWitness.LAMP[0]) <= 40, "Carried up, the replay's walk takes it onto the stilts to the lamp: %s" % [memory])
 	_check(b_sim.complete, "Both pips at the lamp close the stage (%s)" % b_sim.commit_reason())
 	var b: Dictionary = _json(b_sim.export_recording())
 	MemoryTrace.enabled = true
@@ -251,19 +343,19 @@ func _ride_witness() -> void:
 	for pair: Array in [[a, {}], [b, a]]:
 		var checked: Dictionary = proof._verify_raw(ride, pair[0], begin, pair[1])
 		_check(checked.valid, "Turn %s replays exactly (%s)" % [pair[0].role, checked.get("error", "")])
-	var traced := _witness_sim(ride, begin, a)
-	_replay(traced, b)
+	var from_kept := _witness_sim(ride, begin, a)
+	_replay(from_kept, b)
 	MemoryTrace.enabled = false
-	var simulated := _witness_sim(ride, begin, a)
-	_replay(simulated, b)
-	_check(Canonical.same(_json(traced.export_recording()), b) and Canonical.same(_json(simulated.export_recording()), b), "Turn 2 plays byte for byte the same from its memory's trace as simulated")
+	var played := _witness_sim(ride, begin, a)
+	_replay(played, b)
+	_check(Canonical.same(_json(from_kept.export_recording()), b) and Canonical.same(_json(played.export_recording()), b), "Turn 2 plays byte for byte the same from its kept start world as with turn 1 played again")
 	MemoryTrace.enabled = true
 	var derived: Dictionary = proof.derive_checkpoint(ride, begin, a, b, [])
 	MemoryTrace.enabled = false
 	_check(derived.valid, "The stage's checkpoint derives (%s)" % derived.get("error", ""))
 	if not derived.valid: return
 	var checkpoint: Dictionary = _json(derived.checkpoint)
-	_check(checkpoint.players.p0.surface_id == "stilts" and proof.verify_checkpoint(ride, checkpoint).valid, "It has the memory on the stilts, carried there, and verifies again")
+	_check(checkpoint.players.p0.surface_id == "stilts" and proof.verify_checkpoint(ride, checkpoint).valid, "It has the replayed pip on the stilts, carried there, and verifies again")
 	var files := {"definition.json": ride, "initial.json": begin, "a.json": a, "b.json": b, "checkpoint.json": checkpoint}
 	var write := "--write" in OS.get_cmdline_user_args()
 	if write: DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(SERVER_FIXTURES))
@@ -294,7 +386,7 @@ func _stones() -> void:
 	var apart := _sim("falls", {"p0": _at(200, 1340, "bank", 0), "p1": _at(420, 1340, "s2", 0)}, {}, "a", low)
 	_walk(apart, [340, 1340])
 	_check(not apart.finished and apart._players.p0.surface_id == "s1", "One pip a stone holds")
-	# The memory steps onto the stone the live pip already stands on: the memory sank it.
+	# The replay steps onto the stone the live pip already stands on: the replay sank it.
 	var first := _sim("falls", {"p0": _at(200, 1340, "bank", 0), "p1": _at(200, 1250, "bank", 0)}, {}, "a", low)
 	_idle(first, 40)
 	_walk(first, [340, 1340])
@@ -303,7 +395,7 @@ func _stones() -> void:
 	_walk(b, [200, 1330])
 	_walk(b, [345, 1330])
 	_idle(b, 80)
-	_check(b._drowned.get("slot") == "p0" and b._drowned.get("route") == "s1" and b.commit_reason() == Simulation.DROWNED_FRIEND, "The memory stepping on last is the one that sank it: %s" % [b._drowned])
+	_check(b._drowned.get("slot") == "p0" and b._drowned.get("route") == "s1" and b.commit_reason() == Simulation.DROWNED_FRIEND, "The replay stepping on last is the one that sank it: %s" % [b._drowned])
 
 func _crossings() -> void:
 	var sim := _sim("falls", {"p0": _at(100, 1500, "bank", 0)})
@@ -349,14 +441,14 @@ func _graph() -> void:
 # ---------------------------------------------------------------- helpers
 
 ## A trusted turn on `stage_id` with players and controls moved in a copy of
-## the opening checkpoint (unregistered: no proof, memory replayed in its own world).
+## the opening checkpoint (unregistered: no proof, the turns before played again).
 func _sim(stage_id: String, players: Dictionary, prior: Dictionary = {}, role: String = "a", controls: Dictionary = {}, chain: Array = []) -> Simulation:
 	var checkpoint := Catalog.initial_checkpoint(level)
 	checkpoint.next_stage_id = stage_id
 	for slot: String in players: checkpoint.players[slot] = players[slot]
 	for id: String in controls: checkpoint.mechanisms.controls[id] = controls[id]
 	var sim := Simulation.new()
-	sim.simulation_version = 16
+	sim.simulation_version = 20
 	sim._reset_trusted(level, stage_id, checkpoint, prior, role, chain)
 	return sim
 

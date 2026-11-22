@@ -88,10 +88,14 @@ static func run_time(chapter_key: String, checkpoint: Dictionary) -> Dictionary:
 		# Every turn of the stage: a and b, or every open turn (core/physical/open_turns.gd).
 		var turns := OpenTurns.proof_turns(proof)
 		if turns.is_empty(): return {}
+		var lengths := []
 		for turn: Variant in turns:
 			if not turn is Dictionary or not Typed.whole_number(turn.get("duration_ticks")): return {}
-			ticks += int(turn.duration_ticks)
+			lengths.append(int(turn.duration_ticks))
 			assisted = assisted or not Typed.equal(turn.get("catch_assistance"), false)
+		# Carry-over turns overlap on one shared timeline: a stage counts once (OpenTurns.timeline_shares).
+		var carried := turns.all(func(turn: Dictionary) -> bool: return turn.has(OpenTurns.HANDOFF_TICK))
+		for share: int in (OpenTurns.timeline_shares(lengths) if carried else lengths): ticks += share
 		current = Registry.previous_checkpoint(chapter_key, current)
 	return {"ticks": ticks, "assisted": assisted} if Typed.equal(current.get("stage_index"), 0) else {}
 

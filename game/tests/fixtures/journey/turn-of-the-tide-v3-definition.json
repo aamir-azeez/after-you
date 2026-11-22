@@ -326,7 +326,7 @@
 			"to_surface": "quay-catwalk"
 		}
 	],
-	"closing_ticks": 45,
+	"closing_ticks": 25,
 	"drops": [
 		{
 			"destination_surface": "e-beach",
@@ -548,7 +548,7 @@
 	"premium": false,
 	"props": [],
 	"schema_version": 7,
-	"simulation_version": 15,
+	"simulation_version": 19,
 	"stages": [
 		{
 			"ball_pads": [],
@@ -1921,8 +1921,8 @@
 		}
 	},
 	"turn_limits": {
-		"a_ticks": 3600,
-		"b_ticks": 3600
+		"a_ticks": 1800,
+		"b_ticks": 1800
 	},
 	"version": 3
 }

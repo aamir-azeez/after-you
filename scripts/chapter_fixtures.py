@@ -102,16 +102,19 @@ def _run_writers(game: Game, chapter: Chapter, staged: dict[str, bytes]) -> tupl
     return changes, written, sorted(bakes.glob(f"{key}-*.json"))
 
 
-def plan(game: Game, chapter: Chapter, staged: dict[str, bytes] | None = None, republish: bool = False) -> tuple[dict[str, bytes], list[str]]:
+def plan(game: Game, chapter: Chapter, staged: dict[str, bytes] | None = None, also: tuple[str, ...] = (), republish: bool = False) -> tuple[dict[str, bytes], list[str]]:
     """Runs the writers in `game` with `staged` ({repository path: bytes}, such as
     new routes or a new catalog) in place, and returns ({repository path: new
-    bytes}, notes). The repository is left as it was; apply() writes."""
+    bytes}, notes). `also`: other chapters regenerated in the same change (a
+    rules change that re-pins several at once), whose manifest rows may move
+    too; only this chapter's row is written, theirs by their own runs. The
+    repository is left as it was; apply() writes."""
     root, key = chapter.root, chapter.key
     staged = dict(staged or {})
     old = manifest(root)
     changes, written, baked = _run_writers(game, chapter, staged)
     changes.update(staged)
-    moved = sorted(other for other, earlier in old["chapters"].items() if other != key and written["chapters"].get(other) != earlier)
+    moved = sorted(other for other, earlier in old["chapters"].items() if other != key and other not in also and written["chapters"].get(other) != earlier)
     if moved and not republish:
         raise ToolError(f"{key}: the manifest rows of {', '.join(moved)} would change too; only {key}'s row may (see test_chapter_manifest)")
     row = written["chapters"][key]
@@ -161,6 +164,11 @@ def plan(game: Game, chapter: Chapter, staged: dict[str, bytes] | None = None, r
     return changes, notes
 
 
+def also_keys(text: str) -> tuple[str, ...]:
+    """The --with list: chapter keys, comma separated."""
+    return tuple(key.strip() for key in text.split(",") if key.strip())
+
+
 def apply(root: Path, chapter: Chapter, changes: dict[str, bytes], notes: list[str], republish: bool = False) -> list[str]:
     """Writes the planned changes (refused for a released chapter unless
     `republish`) and returns what to print."""
@@ -174,8 +182,8 @@ def apply(root: Path, chapter: Chapter, changes: dict[str, bytes], notes: list[s
     return lines + notes
 
 
-def refresh(game: Game, chapter: Chapter, republish: bool = False) -> list[str]:
-    changes, notes = plan(game, chapter, republish=republish)
+def refresh(game: Game, chapter: Chapter, also: tuple[str, ...] = (), republish: bool = False) -> list[str]:
+    changes, notes = plan(game, chapter, also=also, republish=republish)
     return apply(chapter.root, chapter, changes, notes, republish)
 
 
@@ -186,6 +194,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--root", default=str(ROOT), help="the repository (default: this one)")
     parser.add_argument("--in-place", action="store_true", help="run in the repository's own imported game/ instead of a temporary copy")
     parser.add_argument("--keep", action="store_true", help="keep the temporary copy")
+    parser.add_argument("--with", dest="also", default="", help="other chapters re-pinned in the same change, comma separated: their manifest rows may move too (each is written by its own run)")
     parser.add_argument("--republish", action="store_true", help="let a released chapter change in place: only on the owner's word that a"
                         " shared rule moves published definitions (2026-11-20: solid hand controls on every chapter)")
     args = parser.parse_args(argv)
@@ -193,7 +202,7 @@ def main(argv: list[str]) -> int:
     try:
         chapter = Chapter(root, args.key)
         with Game(binary(args.godot), root / "game", args.in_place, args.keep) as game:
-            lines = refresh(game, chapter, args.republish)
+            lines = refresh(game, chapter, also_keys(args.also), args.republish)
     except ToolError as error:
         print(f"chapter_fixtures.py: {error}", file=sys.stderr)
         return 1

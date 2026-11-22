@@ -6,19 +6,19 @@ import { canonicalJson, digest } from "../src/protocol";
 import { chapter, checkpointV2, initialCheckpoint } from "../src/v2/protocol";
 import { CHAPTERS } from "../src/v2/chapters";
 import { MAX_ROW_BYTES, MAX_REPLAY_ARCHIVE_BYTES } from "../src/v2/row-bound";
-import { CARRY_RECORD_KEYS, DEFAULT_TURN_CAP, MAX_OPEN_TURN_TICKS, OPEN_CHECKPOINT_KEYS, OPEN_TURN_ID_PATTERN, PACKED_RECORDING_VALUES, carryFits, fingerprint, handoffTick, isFingerprint, mustFinish, openCheckpointShape, openAccepted, openTurnLimits, packedRecordingBytes, recordingBytes, turnId, turnNumber, turnSlot } from "../src/v2/open-turns";
+import { CARRY_RECORD_KEYS, DEFAULT_TURN_CAP, MAX_OPEN_TURN_TICKS, OPEN_CHECKPOINT_KEYS, OPEN_TURN_ID_PATTERN, PACKED_RECORDING_VALUES, carryFits, fingerprint, handoffTick, isFingerprint, mustFinish, openCheckpointShape, openAccepted, openTurnLimits, packedRecordingBytes, recordingBytes, timelineShares, turnId, turnNumber, turnSlot } from "../src/v2/open-turns";
 import { MAX_PACKED_CHARS, checkTicks, packRecording, unpackRecording } from "../src/v2/recording-codec";
 import { conservatoryV2, firstStepsV2, fogMarsh, longWayHomeV2, longWayHomeV3, relayIslesV3, theFalls, turnOfTheTideV2, turnOfTheTideV3 } from "../src/v2/protocol-journey";
 import { highAndLowV2, houseForTwoV2, rollingHomeV2, wishingWellV2 } from "../src/v2/protocol-cooperative";
 import { carryOver, comfortRules, openControls, openTurns, piecesRules, sharedBall, tideRules, type ChapterCheckpoint, type ChapterRecording } from "../src/v2/chapter-types";
 import type { MutationV2, RoomSnapshotV2 } from "../src/v2/room";
 import type { RedoStateV2 } from "../src/redo-control";
-import setA from "../../game/tests/fixtures/journey/turn-of-the-tide-v3-set-the-tide-a.json";
-import setB from "../../game/tests/fixtures/journey/turn-of-the-tide-v3-set-the-tide-b.json";
-import setEnd from "../../game/tests/fixtures/journey/turn-of-the-tide-v3-set-the-tide-checkpoint.json";
-import slackA from "../../game/tests/fixtures/journey/turn-of-the-tide-v3-slack-water-a.json";
-import slackB from "../../game/tests/fixtures/journey/turn-of-the-tide-v3-slack-water-b.json";
-import slackEnd from "../../game/tests/fixtures/journey/turn-of-the-tide-v3-slack-water-checkpoint.json";
+import carrySetA from "../../game/tests/fixtures/journey/turn-of-the-tide-v3-set-the-tide-a.json";
+import carrySetB from "../../game/tests/fixtures/journey/turn-of-the-tide-v3-set-the-tide-b.json";
+import carrySetEnd from "../../game/tests/fixtures/journey/turn-of-the-tide-v3-set-the-tide-checkpoint.json";
+import carrySlackA from "../../game/tests/fixtures/journey/turn-of-the-tide-v3-slack-water-a.json";
+import carrySlackB from "../../game/tests/fixtures/journey/turn-of-the-tide-v3-slack-water-b.json";
+import carrySlackEnd from "../../game/tests/fixtures/journey/turn-of-the-tide-v3-slack-water-checkpoint.json";
 import { physicalAccepted, scaledLimits, turnLimits } from "../src/v2/protocol-physical-recording";
 import tideV2Definition from "../src/v2/turn-of-the-tide-v2.json";
 import { withConfig } from "./config";
@@ -27,8 +27,9 @@ import { decodeBlob } from "../src/blob-codec";
 import { countingEnv, meterRows } from "./meter";
 
 /**
- * Open turns (v2/open-turns.ts) on Turn of the Tide@3 (rules 15, Full Journey: the hosts hold a tester grant). The server never simulates, so the chains
- * here are built from the native two-turn fixtures: a pass is the fixture's second turn not finished, a later turn
+ * Open turns (v2/open-turns.ts) on Turn of the Tide@3 pinned to the older open turns rules 15, a chapter only this file
+ * knows (LEGACY: every published open level now pins carry-over turns, 18 to 21, and the server still takes 14 to 17).
+ * The server never simulates, so the chains here are built from the native fixtures' first two turns, as rules 15 records: a pass is the fixture's second turn not finished, a later turn
  * swaps the pip and chains its source, and every record and checkpoint is hashed again. Every turn goes packed
  * (v2/recording-codec.ts), as an open turns room takes no other form.
  */
@@ -36,20 +37,38 @@ type Account = { player_id: string; device_token: string };
 type Rec = Record<string, any>;
 /** Carry-over turns (the last describe): Turn of the Tide@3 pinned to rules 19, a chapter only this file knows. */
 const CARRY = vi.hoisted(() => ({ level_id: "turn-of-the-tide", level_version: 98, definition_hash: "c".repeat(64) }));
+/** Every other describe: Turn of the Tide@3 on the older open turns rules 15, a chapter only this file knows. */
+const LEGACY = vi.hoisted(() => ({ level_id: "turn-of-the-tide", level_version: 97, definition_hash: "b".repeat(64) }));
 vi.mock("../src/v2/chapters", async original => {
   const actual = await original<typeof import("../src/v2/chapters")>();
   const { journeyAdapter } = await import("../src/v2/protocol-journey");
   const { canonicalJson: canonical, digest: hash } = await import("../src/protocol");
-  const definition = { ...structuredClone((await import("../src/v2/turn-of-the-tide-v3.json")).default), version: CARRY.level_version, simulation_version: 19 };
-  const { checkpoint_hash: _old, proof, ...body } = { ...structuredClone((await import("../src/v2/turn-of-the-tide-v3-initial.json")).default), level_version: CARRY.level_version, definition_hash: CARRY.definition_hash } as Record<string, unknown>; void _old;
-  const carried = journeyAdapter(definition as never, { ...body, checkpoint_hash: await hash(canonical(body)), proof } as never, CARRY.definition_hash, 7);
-  const is = (value: unknown) => value !== null && typeof value === "object" && (value as Record<string, unknown>).level_id === CARRY.level_id && (value as Record<string, unknown>).level_version === CARRY.level_version && (value as Record<string, unknown>).definition_hash === CARRY.definition_hash;
-  return { ...actual, chapter: (value: unknown) => is(value) ? carried : actual.chapter(value), chapterKey: (value: unknown) => is(value) ? { ...carried.key } : actual.chapterKey(value),
-    chapterFlag: (entry: unknown) => entry === carried ? "" : actual.chapterFlag(entry as never), creatable: (entry: unknown, e: Env) => entry === carried || actual.creatable(entry as never, e) };
+  const pinned = async (pin: { level_version: number; definition_hash: string }, rules: number) => {
+    const definition = { ...structuredClone((await import("../src/v2/turn-of-the-tide-v3.json")).default), version: pin.level_version, simulation_version: rules };
+    const { checkpoint_hash: _old, proof, ...body } = { ...structuredClone((await import("../src/v2/turn-of-the-tide-v3-initial.json")).default), level_version: pin.level_version, definition_hash: pin.definition_hash } as Record<string, unknown>; void _old;
+    return journeyAdapter(definition as never, { ...body, checkpoint_hash: await hash(canonical(body)), proof } as never, pin.definition_hash, 7);
+  };
+  const carried = await pinned(CARRY, 19), legacy = await pinned(LEGACY, 15);
+  const is = (value: unknown, pin: typeof CARRY) => value !== null && typeof value === "object" && (value as Record<string, unknown>).level_id === pin.level_id && (value as Record<string, unknown>).level_version === pin.level_version && (value as Record<string, unknown>).definition_hash === pin.definition_hash;
+  const mocked = (value: unknown) => is(value, CARRY) ? carried : is(value, LEGACY) ? legacy : null;
+  return { ...actual, chapter: (value: unknown) => mocked(value) ?? actual.chapter(value), chapterKey: (value: unknown) => mocked(value) ? { ...mocked(value)!.key } : actual.chapterKey(value),
+    chapterFlag: (entry: unknown) => entry === carried || entry === legacy ? "" : actual.chapterFlag(entry as never), creatable: (entry: unknown, e: Env) => entry === carried || entry === legacy || actual.creatable(entry as never, e) };
 });
 const FLAGS = { TURN_OF_THE_TIDE_V3_CHAPTER_ENABLED: "true", NOTIFICATIONS_ENABLED: "false" };
 const NEW_CLIENT = [2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
-const adapter = turnOfTheTideV3;
+const adapter = chapter(LEGACY);
+/** A native carry-over record as the older rules 15 write it: no hand-off fields, LEGACY's pin. */
+function legacyTurn(record: Rec): Rec {
+  const { handoff_tick: _h, start_hash: _s, handoff_hash: _o, ...rest } = structuredClone(record); void _h; void _s; void _o;
+  return { ...rest, simulation_version: 15, level_version: LEGACY.level_version, definition_hash: LEGACY.definition_hash };
+}
+/** A native schema 9 checkpoint as the older rules write it: schema 8, no next_first_slot, LEGACY's pin. */
+function legacyCheckpoint(checkpoint: Rec): Rec {
+  const { next_first_slot: _next, ...rest } = structuredClone(checkpoint); void _next;
+  return { ...rest, schema_version: 8, level_version: LEGACY.level_version, definition_hash: LEGACY.definition_hash };
+}
+const [setA, setB, slackA, slackB] = [carrySetA, carrySetB, carrySlackA, carrySlackB].map(record => legacyTurn(record as Rec));
+const [setEnd, slackEnd] = [carrySetEnd, carrySlackEnd].map(checkpoint => legacyCheckpoint(checkpoint as Rec));
 const key = () => crypto.randomUUID();
 let address = 0;
 async function call(path: string, method = "GET", account?: Account, body?: unknown, headers: Record<string, string> = {}): Promise<Response> {
@@ -162,8 +181,8 @@ describe("open turns: rules and bounds", () => {
     expect(() => openTurnLimits([{ turn_cap: 9 }], 65_536, 7)).not.toThrow();
   });
   it("sizes every bound by the widest packed turn: a new stick every tick, at most the bound", async () => {
-    // Turn of the Tide@3's development turns: 3,600 ticks each.
-    const ticks = 3600;
+    // Turn of the Tide@3's fallback turns: 1,800 ticks each (60 s).
+    const ticks = 1800;
     expect(adapter.open_turns!.recording_bytes).toBe(packedRecordingBytes(ticks));
     expect(adapter.limits!.recording_values).toBe(PACKED_RECORDING_VALUES);
     // Every field of the header at its widest the parser allows, every run one tick, every stick at its far end.
@@ -181,7 +200,7 @@ describe("open turns: rules and bounds", () => {
     expect(() => turnLimits({ simulation_version: 13, turn_limits: { a_ticks: 9000, b_ticks: 9001 } })).toThrow("invalid turn_limits");
     expect(() => openTurnLimits([{}, {}, {}, {}], packedRecordingBytes(MAX_OPEN_TURN_TICKS), 7)).not.toThrow();
     // Under a ninth of the same JSON turn's bytes, the header allowance included.
-    expect(packedRecordingBytes(3000) * 9).toBeLessThan(recordingBytes(await hashedJson({ ...bare(setB), duration_ticks: 3000, actions, replay_checks: checkTicks(3000).map(tick => ({ tick, state_hash: "f".repeat(64) })) }) as ChapterRecording));
+    expect(packedRecordingBytes(3000) * 9).toBeLessThan(recordingBytes(await hashedJson({ ...bare(setB), duration_ticks: 3000, actions: Array.from({ length: 3000 }, (_, i) => actions[i % ticks]), replay_checks: checkTicks(3000).map(tick => ({ tick, state_hash: "f".repeat(64) })) }) as ChapterRecording));
   });
   it("names turns by letter, a and b first, and gives odd turns to the stage's first pip", () => {
     expect([1, 2, 3, 20].map(n => turnId(3, 1, n))).toEqual(["t3-1-a", "t3-1-b", "t3-1-c", "t3-1-t"]);
@@ -795,6 +814,13 @@ describe("carry-over turns", () => {
     expect(CARRY_RECORD_KEYS).toEqual(["handoff_tick", "start_hash", "handoff_hash"]);
   });
 
+  it("counts a run's carry-over turns by what each adds to the shared timeline", () => {
+    // The design's Falls stage 1: S(4) = 40 s, so the stage lasts 40 + 45 = 85 s, or 60 s when turn 4 closes it at 20 s.
+    expect(timelineShares([8, 40, 70, 45])).toEqual([8, 32, 38, 7]);
+    expect(timelineShares([8, 40, 70, 20])).toEqual([8, 32, 38, -18]);
+    expect(timelineShares([30])).toEqual([30]);
+  });
+
   it("works each hand-off out from the turn before and the one under it, as the timeline says", () => {
     // The design's Falls: 8 s, 40 s and 70 s, then the friend's turn ending at 45 s or exactly at the rest of the 70 s.
     expect(handoffs([240, 1200, 2100, 1350, 300])).toEqual([0, 0, 240, 960, 1140]);
@@ -832,20 +858,20 @@ describe("carry-over turns", () => {
     const t1 = await carryTurn(setA as Rec, start, "p0", [], 577);
     let current = (await send(joined, host, t1)).room;
     // Turn 2 starts from turn 1's start world, at its tick 0.
-    await refused(current, guest, await carryTurn(setB as Rec, start, "p1", [t1], 1200, false, turn => { turn.start_hash = "b".repeat(64); }), "source_recording_mismatch");
-    await refused(current, guest, await carryTurn(setB as Rec, start, "p1", [t1], 1200, false, turn => { turn.handoff_tick = 1; }), "source_recording_mismatch");
-    const t2 = await carryTurn(setB as Rec, start, "p1", [t1], 1200);
+    await refused(current, guest, await carryTurn(setB as Rec, start, "p1", [t1], 1300, false, turn => { turn.start_hash = "b".repeat(64); }), "source_recording_mismatch");
+    await refused(current, guest, await carryTurn(setB as Rec, start, "p1", [t1], 1300, false, turn => { turn.handoff_tick = 1; }), "source_recording_mismatch");
+    const t2 = await carryTurn(setB as Rec, start, "p1", [t1], 1300);
     current = (await send(current, guest, t2)).room;
-    // Turn 3 takes over at turn 1's length (577) and, as a pass, outlasts the rest of turn 2 (623 ticks).
+    // Turn 3 takes over at turn 1's length (577) and, as a pass, outlasts the rest of turn 2 (723 ticks).
     expect(t2.handoff_hash).not.toBe(t1.handoff_hash);
-    await refused(current, host, await carryTurn(setB as Rec, start, "p0", [t1, t2], 622), "source_recording_mismatch");
-    await refused(current, host, await carryTurn(setB as Rec, start, "p0", [t1, t2], 1300, false, turn => { turn.handoff_tick = 0; }), "source_recording_mismatch");
-    await refused(current, host, await carryTurn(setB as Rec, start, "p0", [t1, t2], 1300, false, turn => { turn.start_hash = t1.handoff_hash; }), "source_recording_mismatch");
-    const t3 = await carryTurn(setB as Rec, start, "p0", [t1, t2], 1300);
+    await refused(current, host, await carryTurn(setB as Rec, start, "p0", [t1, t2], 722), "source_recording_mismatch");
+    await refused(current, host, await carryTurn(setB as Rec, start, "p0", [t1, t2], 1400, false, turn => { turn.handoff_tick = 0; }), "source_recording_mismatch");
+    await refused(current, host, await carryTurn(setB as Rec, start, "p0", [t1, t2], 1400, false, turn => { turn.start_hash = t1.handoff_hash; }), "source_recording_mismatch");
+    const t3 = await carryTurn(setB as Rec, start, "p0", [t1, t2], 1400);
     current = (await send(current, host, t3)).room;
-    // Turn 4 hands off at 623 with 677 ticks of turn 3 left, and closes the stage sooner: the rest of the replay is dropped.
+    // Turn 4 hands off at 723 with 677 ticks of turn 3 left, and closes the stage sooner: the rest of the replay is dropped.
     const t4 = await carryTurn(setB as Rec, start, "p1", [t1, t2, t3], (setB as Rec).duration_ticks, true);
-    expect([t4.handoff_tick, t3.duration_ticks - t4.handoff_tick]).toEqual([623, 677]);
+    expect([t4.handoff_tick, t3.duration_ticks - t4.handoff_tick]).toEqual([723, 677]);
     await failure(call(`/v2/rooms/${joined.room_id}/turns`, "POST", guest, { base_revision: current.revision, branch: 0, idempotency_key: key(), recording: t4,
       checkpoint: await carryClosing(setEnd as Rec, start, [t1, t2, t3, t4], "p1") }), 422, "checkpoint_recording_mismatch");
     const stageOne = await carryClosing(setEnd as Rec, start, [t1, t2, t3, t4]);
@@ -872,7 +898,7 @@ describe("carry-over turns", () => {
     const offered = await stub(current).replayTransfer(host.player_id);
     expect(offered).toMatchObject({ ok: true });
     const archive = (offered as { value: { archive: { turns: { recording: Rec }[] } } }).value.archive;
-    expect(archive.turns.map(turn => turn.recording.handoff_tick)).toEqual(expect.arrayContaining([0, 0, 577, 623]));
+    expect(archive.turns.map(turn => turn.recording.handoff_tick)).toEqual(expect.arrayContaining([0, 0, 577, 723]));
     expect(archive.turns.every(turn => isFingerprint(turn.recording))).toBe(true);
   });
 

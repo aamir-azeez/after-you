@@ -198,7 +198,7 @@
 	"premium": false,
 	"props": [],
 	"schema_version": 6,
-	"simulation_version": 14,
+	"simulation_version": 18,
 	"stages": [
 		{
 			"ball_pads": [],
@@ -499,8 +499,8 @@
 	},
 	"title": "The Wishing Well",
 	"turn_limits": {
-		"a_ticks": 2730,
-		"b_ticks": 2730
+		"a_ticks": 1800,
+		"b_ticks": 1800
 	},
 	"version": 2
 }

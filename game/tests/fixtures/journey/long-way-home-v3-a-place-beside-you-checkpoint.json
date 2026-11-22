@@ -1,7 +1,7 @@
 {
-	"checkpoint_hash": "dcdc5e314cb3857a0261d09c015070457685da7f636936c2dfb2967d9df357c4",
+	"checkpoint_hash": "5ca26c7d6cebdb09b513563a293b02e2f0816da729e528ea5022e57f913f43e8",
 	"completed_stage_id": "a-place-beside-you",
-	"definition_hash": "dd36a5597d8c06daaec3a34fdb79a0d854ddbc3647fa806fdd4ad5fa3f1d8a2f",
+	"definition_hash": "a6320deb49d769a2eda26d1ff53594977599b20c99c103f9915ba170d527ec8d",
 	"level_id": "long-way-home",
 	"level_version": 3,
 	"mechanisms": {
@@ -15,9 +15,12 @@
 		"latched_bridges": [
 			"court-landing",
 			"drop-garden",
+			"friend-crossing",
 			"garden-arch",
 			"garden-door",
 			"home-shortcut",
+			"near-crossing",
+			"porch-door",
 			"recovery-stair",
 			"service-down",
 			"service-up",
@@ -28,6 +31,7 @@
 		},
 		"props": {}
 	},
+	"next_first_slot": "p0",
 	"next_stage_id": "",
 	"players": {
 		"p0": {
@@ -43,12 +47,12 @@
 			"z": 72
 		}
 	},
-	"previous_checkpoint_hash": "b4dcb231b63ca31eade9bc8a6ad0ed6ed2d21748246311db31f64ddf92fa150c",
+	"previous_checkpoint_hash": "dca4d2a171091f20a2ac0c6ab90104b131a34f8cf5f6226683c3e8dbf9dafa4b",
 	"proof": {
 		"checkpoint": {
-			"checkpoint_hash": "b4dcb231b63ca31eade9bc8a6ad0ed6ed2d21748246311db31f64ddf92fa150c",
+			"checkpoint_hash": "dca4d2a171091f20a2ac0c6ab90104b131a34f8cf5f6226683c3e8dbf9dafa4b",
 			"completed_stage_id": "the-path-you-leave",
-			"definition_hash": "dd36a5597d8c06daaec3a34fdb79a0d854ddbc3647fa806fdd4ad5fa3f1d8a2f",
+			"definition_hash": "a6320deb49d769a2eda26d1ff53594977599b20c99c103f9915ba170d527ec8d",
 			"level_id": "long-way-home",
 			"level_version": 3.0,
 			"mechanisms": {
@@ -62,6 +66,7 @@
 				"latched_bridges": [
 					"court-landing",
 					"drop-garden",
+					"friend-crossing",
 					"home-shortcut",
 					"recovery-stair",
 					"upper-stair"
@@ -71,6 +76,7 @@
 				},
 				"props": {}
 			},
+			"next_first_slot": "p1",
 			"next_stage_id": "a-place-beside-you",
 			"players": {
 				"p0": {
@@ -86,14 +92,14 @@
 					"z": 236.0
 				}
 			},
-			"previous_checkpoint_hash": "770fc38500edb7e09716503e40ee88b62f57ab8334a94a47d490a1ea614dee69",
+			"previous_checkpoint_hash": "8d6207dee7c520d8178b6d6c8c8028df6599c2ce1607638304bcd682eb181810",
 			"proof": {
 				"checkpoint": {
 					"a_recording_hash": "",
 					"b_recording_hash": "",
-					"checkpoint_hash": "770fc38500edb7e09716503e40ee88b62f57ab8334a94a47d490a1ea614dee69",
+					"checkpoint_hash": "8d6207dee7c520d8178b6d6c8c8028df6599c2ce1607638304bcd682eb181810",
 					"completed_stage_id": "",
-					"definition_hash": "dd36a5597d8c06daaec3a34fdb79a0d854ddbc3647fa806fdd4ad5fa3f1d8a2f",
+					"definition_hash": "a6320deb49d769a2eda26d1ff53594977599b20c99c103f9915ba170d527ec8d",
 					"level_id": "long-way-home",
 					"level_version": 3.0,
 					"mechanisms": {
@@ -131,166 +137,184 @@
 				"turns": [
 					{
 						"catch_assistance": true,
-						"checkpoint_hash": "770fc38500edb7e09716503e40ee88b62f57ab8334a94a47d490a1ea614dee69",
+						"checkpoint_hash": "8d6207dee7c520d8178b6d6c8c8028df6599c2ce1607638304bcd682eb181810",
 						"completed": false,
-						"definition_hash": "dd36a5597d8c06daaec3a34fdb79a0d854ddbc3647fa806fdd4ad5fa3f1d8a2f",
+						"definition_hash": "a6320deb49d769a2eda26d1ff53594977599b20c99c103f9915ba170d527ec8d",
 						"duration_ticks": 332.0,
-						"final_state_hash": "d5594c901c46ce8aa5cb57c28dbad530f1bcd0317620ecde14359d9f65977871",
+						"final_state_hash": "6ffe766a19b471ca0647937ac123944b23f705f9db46e1b4065cc7a47a71bc00",
+						"handoff_hash": "0683d26b0bcd46eb628cd08a544ebfc3c43db0026c52416a108f056c7501478e",
+						"handoff_tick": 0.0,
 						"level_id": "long-way-home",
 						"level_version": 3.0,
 						"outcome": {
 							"objective_complete": false,
 							"source_ready": true
 						},
-						"packed": "AQw0ZAAQAJxgZAAQAGQCAAADAAAQAJxgnAA8AJzcAWQARABkFGQAyWJS0GZ7tDculynSy0FyuBA8KtKvJi6Sd9kzui+fDt6iCeqL9RuH3MrhZUUsb0mO9icwhArg0daQWiAzptu042FHyPoslrX3OaNTcLJrgnalpSIs5Sor/k38XDldHe6LPmuAr9aIGoeUN+6Cabsh/XVWSCpx1T8ANxjElQkwRSDnkY3vAS6FiQ==",
+						"packed": "AQw0ZAAQAJxgZAAQAGQCAAADAAAQAJxgnAA8AJzcAWQARABkFGQAgIBv6abUO3Q+wXbwcUJlip81eL2Ckenh4tCWkpvQ68bLd1XgoahZMAoR3UDLHrM02PUeAFQFX7AoOG+/cWWuYTjIbtyzVMBrFFQjOTzPhjnuFWmjdHcGZ07TV0Jg3wswhKZhM74MlClE2QhQIU1fJzEm93f7dye0KsAInXpMn3ioo/Si3ydE/g==",
 						"player_slot": "p0",
-						"recording_hash": "72197228e8fd973cfc4bddf0e8e1d3a8e72d5c719c8d6999f540672092f654c7",
+						"recording_hash": "07766bc720df064a79eb53c77054a99593552ed7a83aa20deb33b990a11b5ac7",
 						"role": "a",
 						"schema_version": 7.0,
-						"simulation_version": 14.0,
+						"simulation_version": 18.0,
 						"source_recording_hash": "",
 						"stage_id": "the-path-you-leave",
 						"stage_version": 1.0,
+						"start_hash": "0683d26b0bcd46eb628cd08a544ebfc3c43db0026c52416a108f056c7501478e",
 						"tick_rate": 30.0
 					},
 					{
 						"catch_assistance": true,
-						"checkpoint_hash": "770fc38500edb7e09716503e40ee88b62f57ab8334a94a47d490a1ea614dee69",
+						"checkpoint_hash": "8d6207dee7c520d8178b6d6c8c8028df6599c2ce1607638304bcd682eb181810",
 						"completed": false,
-						"definition_hash": "dd36a5597d8c06daaec3a34fdb79a0d854ddbc3647fa806fdd4ad5fa3f1d8a2f",
+						"definition_hash": "a6320deb49d769a2eda26d1ff53594977599b20c99c103f9915ba170d527ec8d",
 						"duration_ticks": 332.0,
-						"final_state_hash": "1967f8643e71469ebbe83155997f2806bcf2bc55469ce401381f7ffc2a00aa63",
+						"final_state_hash": "b852798fcac37cbf4e9cf069dd70a54cbfb6b40a1fdc0b8d52a1ba46d137cfe8",
+						"handoff_hash": "8843222b267590edb12fbba1a1b6f232add4745f1790cd41d63d52ae4742b68a",
+						"handoff_tick": 0.0,
 						"level_id": "long-way-home",
 						"level_version": 3.0,
 						"outcome": {
 							"objective_complete": false,
 							"source_ready": true
 						},
-						"packed": "ASkQZAACMgAKAJwCAMECAAADAAB4AAAEZAACAGQEZAACAGQEZAACGQAEAJwGZAAGAJwCZAAUAJwCALVgZAACMgACZAACJgAEAJwCANoCAAADAAAEZAACAGQCZAACSwAEAJwGZAAGAJwCZAAoAJwCALV4ZAAmAGQCADJuAAA4OuOMLij3LN/prpSOpGysb12DadLyUSfhGebLddfwuafj9+rlONJU3r6xU43dNupriSFyJQ2Spc0FBxYE65oLi0voBJkvPcxStLdwMJ3NxetGFuoqTe5pZWDirCcKQLsbEKqPJ2G03ZgndboAZTXHIFvSuvZcVWi3bl06AAi1KD46/ULCnNgE",
+						"packed": "ATEQZAACMgAKAJwCAMECAAADAAB4AAAEZAACAGQEZAACAGQEZAACGQAEAJwGZAAGAJwCZAAMAJwCnAACAJwGnAAGAJwCALVoZAACMgACZAACJgAEAJwCANoCAAADAAAEZAACAGQCZAACSwAEAJwGZAAGAJwCZAAMAJwCnAACAJwGnAAaAJwCALWAAWQAJgBkAgAyTgAAbf+muFvQQv4+2XV8XY4fv186Tgwe9Xn/vjp/4l7ZLudtwcxgAO49cXQK2dWyBKlGy4bvN0pCjJCI+R8RKpBlNw3bbZiotUWdnoVv664hPde9nNAG3vxvqDHUY2tVVaRkIXcHPBHZoREKS9xMUaRD0F/GtrpBdO3uXA9MC97BKw7sUZ2L1PFBZw==",
 						"player_slot": "p1",
-						"recording_hash": "77f371970a6cd4d47aa6530c8c577182b24134152b72cf4013432d9cf2bad141",
+						"recording_hash": "f9971928392fb90788ec36b37eaef2526e26eb13474de1a86118605f7e7896c1",
 						"role": "b",
 						"schema_version": 7.0,
-						"simulation_version": 14.0,
-						"source_recording_hash": "72197228e8fd973cfc4bddf0e8e1d3a8e72d5c719c8d6999f540672092f654c7",
+						"simulation_version": 18.0,
+						"source_recording_hash": "07766bc720df064a79eb53c77054a99593552ed7a83aa20deb33b990a11b5ac7",
 						"stage_id": "the-path-you-leave",
 						"stage_version": 1.0,
+						"start_hash": "0683d26b0bcd46eb628cd08a544ebfc3c43db0026c52416a108f056c7501478e",
 						"tick_rate": 30.0
 					},
 					{
 						"catch_assistance": true,
-						"checkpoint_hash": "770fc38500edb7e09716503e40ee88b62f57ab8334a94a47d490a1ea614dee69",
+						"checkpoint_hash": "8d6207dee7c520d8178b6d6c8c8028df6599c2ce1607638304bcd682eb181810",
 						"completed": true,
-						"definition_hash": "dd36a5597d8c06daaec3a34fdb79a0d854ddbc3647fa806fdd4ad5fa3f1d8a2f",
-						"duration_ticks": 357.0,
-						"final_state_hash": "264d6d77bf521ffddf253a648585ac61740e6d7be731fd51bd3d97161a085f6b",
+						"definition_hash": "a6320deb49d769a2eda26d1ff53594977599b20c99c103f9915ba170d527ec8d",
+						"duration_ticks": 25.0,
+						"final_state_hash": "d13fd7de66bfe884bf12dedfdcf4723808a3a0cac78177874ce06fddf25e5e54",
+						"handoff_hash": "8843222b267590edb12fbba1a1b6f232add4745f1790cd41d63d52ae4742b68a",
+						"handoff_tick": 332.0,
 						"level_id": "long-way-home",
 						"level_version": 3.0,
 						"outcome": {
 							"objective_complete": true,
 							"source_ready": true
 						},
-						"packed": "AQ00ZAAQAJxgZAAQAGQCAAADAAAQAJxgnAA8AJzcAWQARABkFGQAMgBkvw5W48Jnxv1Vsy4ZRqBl1+x0OJSVE7YOOdFZyYI6CJ73rqm6F15kq4v95HbyLgsrGp18dF5Kazp4Qv52kKmXILA+JvZj0k0OYTNgM7y95MwO52/lms9Gb1J6Uf8uxCUWB9Egj2rX5tQ0XI1Hmea27UANOHXtX0B1Nf6jVcrvCOSar/toF0NHwQ==",
+						"packed": "AQEyAGQ=",
 						"player_slot": "p0",
-						"recording_hash": "1ef78b6fe2aa23330c271b5547427ed76761e78341200f7301971caa5de64299",
+						"recording_hash": "acb9de815cf44159e2929e45330da51f26b0bfe415d01e95869df99f47d1041b",
 						"role": "b",
 						"schema_version": 7.0,
-						"simulation_version": 14.0,
-						"source_recording_hash": "77f371970a6cd4d47aa6530c8c577182b24134152b72cf4013432d9cf2bad141",
+						"simulation_version": 18.0,
+						"source_recording_hash": "f9971928392fb90788ec36b37eaef2526e26eb13474de1a86118605f7e7896c1",
 						"stage_id": "the-path-you-leave",
 						"stage_version": 1.0,
+						"start_hash": "8843222b267590edb12fbba1a1b6f232add4745f1790cd41d63d52ae4742b68a",
 						"tick_rate": 30.0
 					}
 				]
 			},
-			"schema_version": 8.0,
+			"schema_version": 9.0,
 			"stage_index": 1.0,
 			"turn_hashes": [
-				"72197228e8fd973cfc4bddf0e8e1d3a8e72d5c719c8d6999f540672092f654c7",
-				"77f371970a6cd4d47aa6530c8c577182b24134152b72cf4013432d9cf2bad141",
-				"1ef78b6fe2aa23330c271b5547427ed76761e78341200f7301971caa5de64299"
+				"07766bc720df064a79eb53c77054a99593552ed7a83aa20deb33b990a11b5ac7",
+				"f9971928392fb90788ec36b37eaef2526e26eb13474de1a86118605f7e7896c1",
+				"acb9de815cf44159e2929e45330da51f26b0bfe415d01e95869df99f47d1041b"
 			]
 		},
 		"turns": [
 			{
 				"catch_assistance": true,
-				"checkpoint_hash": "b4dcb231b63ca31eade9bc8a6ad0ed6ed2d21748246311db31f64ddf92fa150c",
+				"checkpoint_hash": "dca4d2a171091f20a2ac0c6ab90104b131a34f8cf5f6226683c3e8dbf9dafa4b",
 				"completed": false,
-				"definition_hash": "dd36a5597d8c06daaec3a34fdb79a0d854ddbc3647fa806fdd4ad5fa3f1d8a2f",
+				"definition_hash": "a6320deb49d769a2eda26d1ff53594977599b20c99c103f9915ba170d527ec8d",
 				"duration_ticks": 122.0,
-				"final_state_hash": "d1b8effce96b2482b7ac69998db0d1a40f4ab6c4887691ca9999ca04cab2c693",
+				"final_state_hash": "4bc8fcc861e0999097cb23d64c74a164c5c58a932b22d19328882fbbd4a8506a",
+				"handoff_hash": "cf412d7094c1cc81836b6772848ac24f1ebcc90fa1838cb13ea89db0b4cc9ccc",
+				"handoff_tick": 0.0,
 				"level_id": "long-way-home",
 				"level_version": 3.0,
 				"outcome": {
 					"objective_complete": false,
 					"source_ready": true
 				},
-				"packed": "AQwQZAA+AJwCAM48ZAAKAJwCALUCAAADAAAKAGQCAEtAZAAMAGTudpgjpTD3F7f5QgrsctChRQAC2FdPNXVFqOBkhCuu6g==",
+				"packed": "AQwQZAA+AJwCAM48ZAAKAJwCALUCAAADAAAKAGQCAEtAZAAMAGQB+fk6WfIMzd/wF15aa0L+QTSWuclZzsEGxGQhQDRxsg==",
 				"player_slot": "p1",
-				"recording_hash": "9b951f2396f37adf09fe8a9b36ceb709db11baea04fd99688444dc1fc4bd0c3b",
+				"recording_hash": "2ff0492f3be188474a3ea2f044e0c62f6903bb7e278800232740709f1fac57c2",
 				"role": "a",
 				"schema_version": 7.0,
-				"simulation_version": 14.0,
+				"simulation_version": 18.0,
 				"source_recording_hash": "",
 				"stage_id": "a-place-beside-you",
 				"stage_version": 1.0,
+				"start_hash": "cf412d7094c1cc81836b6772848ac24f1ebcc90fa1838cb13ea89db0b4cc9ccc",
 				"tick_rate": 30.0
 			},
 			{
 				"catch_assistance": true,
-				"checkpoint_hash": "b4dcb231b63ca31eade9bc8a6ad0ed6ed2d21748246311db31f64ddf92fa150c",
+				"checkpoint_hash": "dca4d2a171091f20a2ac0c6ab90104b131a34f8cf5f6226683c3e8dbf9dafa4b",
 				"completed": false,
-				"definition_hash": "dd36a5597d8c06daaec3a34fdb79a0d854ddbc3647fa806fdd4ad5fa3f1d8a2f",
+				"definition_hash": "a6320deb49d769a2eda26d1ff53594977599b20c99c103f9915ba170d527ec8d",
 				"duration_ticks": 285.0,
-				"final_state_hash": "4210269677984b40e04449bbac20e39ce8cb7e10bf351064a406091f990e807a",
+				"final_state_hash": "1d05eedd6aed7bd5e1b53a3696587303fda521b289133142edcc8d82b1519957",
+				"handoff_hash": "a56d6aacd6bf916eb3b907d5c09e268288bebe7569cc17db9f66f5c2a9749e48",
+				"handoff_tick": 0.0,
 				"level_id": "long-way-home",
 				"level_version": 3.0,
 				"outcome": {
 					"objective_complete": false,
 					"source_ready": true
 				},
-				"packed": "ARm0AQAAGGQAAgBkAgAyOgBkAgAyBmQAAksAAgAAAwAABpwAArUAOACcLmQAAksAAgAAAwAABGQABgBkBmQAAgBkdGQAAksAJACcAgDOJgXDEAUU/HO8soZoklCcBzQ6WtzPzsjnUK6RcJ9be/0Cylpy8b0I2MWx2g+FmKMs8jYlD4ewA8BxF8yTqpnbwMUtEfqGmgPpV/bv9DljQ2oX7aKiR5has2QLPMbZjdNf",
+				"packed": "AR20AQAAGGQAAgBkAgAyOgBkAgAyBmQAAksAAgAAAwAABpwAArUAOACcLmQAAksAAgAAAwAABGQABgBkBmQAAgBkDGQAAgCcAmQABgCcZmQAAksAHACcAgDOVUK2VW3zI0EVva6YQVgAM8XGI/GFRTJzZzaPHj9XLDM6p0mTBX8qsBi5zGQsEH3BBJjDLgq+R+dhiiCwlt5QJeqAfUVIEC7HO70xVAhtYkjRIlQYyVmLsUio8Z0QTPhw",
 				"player_slot": "p0",
-				"recording_hash": "0a2fb96c01d18b6dcfe926386042e5757f83501e8fb61152972536ee6bcee13f",
+				"recording_hash": "d9090d0c2f4ce0b479e51b4e278a1f9720abad8397825a7c096673c551f77a81",
 				"role": "b",
 				"schema_version": 7.0,
-				"simulation_version": 14.0,
-				"source_recording_hash": "9b951f2396f37adf09fe8a9b36ceb709db11baea04fd99688444dc1fc4bd0c3b",
+				"simulation_version": 18.0,
+				"source_recording_hash": "2ff0492f3be188474a3ea2f044e0c62f6903bb7e278800232740709f1fac57c2",
 				"stage_id": "a-place-beside-you",
 				"stage_version": 1.0,
+				"start_hash": "cf412d7094c1cc81836b6772848ac24f1ebcc90fa1838cb13ea89db0b4cc9ccc",
 				"tick_rate": 30.0
 			},
 			{
 				"catch_assistance": true,
-				"checkpoint_hash": "b4dcb231b63ca31eade9bc8a6ad0ed6ed2d21748246311db31f64ddf92fa150c",
+				"checkpoint_hash": "dca4d2a171091f20a2ac0c6ab90104b131a34f8cf5f6226683c3e8dbf9dafa4b",
 				"completed": true,
-				"definition_hash": "dd36a5597d8c06daaec3a34fdb79a0d854ddbc3647fa806fdd4ad5fa3f1d8a2f",
-				"duration_ticks": 293.0,
-				"final_state_hash": "b96ace0fe5292bd673892ba4466f4d7f4e20efc03d11575500d77bffdbaac8da",
+				"definition_hash": "a6320deb49d769a2eda26d1ff53594977599b20c99c103f9915ba170d527ec8d",
+				"duration_ticks": 171.0,
+				"final_state_hash": "20211455aa7f6fc8c9802e62d5703e5e956c5497ff3e7eb6d3ac7071ee83a5ae",
+				"handoff_hash": "6c1f70a516924195f6d4516eeb46ff99dd13c0f718cf4bd7a75aff3a10183800",
+				"handoff_tick": 122.0,
 				"level_id": "long-way-home",
 				"level_version": 3.0,
 				"outcome": {
 					"objective_complete": true,
 					"source_ready": true
 				},
-				"packed": "AQ8QZAA+AJwCAM48ZAAKAJwCALUCAAADAAAKAGQCAEtAZAAMAGSYAgAANGQACgBkjXkJ2yC/SCdUvrMj+gfsX1NuM+aepZK80LDR2EOIPmRc+D5gLrNgi39GsU61fLMrQNFP5bQGL6C6lOezMm1Yqne2E3n6RifPSqRWgD7tWi1WYAUCVvTRDL0jMY7mrm7X",
+				"packed": "AQOYAgAANGQACgBkRj+SkBwZFTW1VW+BvTmrPvi/1Odk6D8VRP8h7lYN0N7XhDd19wSduN5/xk7pRPruT874r9ldDBij3H3srslBAw==",
 				"player_slot": "p1",
-				"recording_hash": "e98b4debcdd2a41bf1bb3ec047c924e0a813cd26cc78fe8ffe5dc6015478d637",
+				"recording_hash": "fafe866c08348908f7e65ac25eff015a5c5b61f1d59df5a549c18fc3ceb31fef",
 				"role": "b",
 				"schema_version": 7.0,
-				"simulation_version": 14.0,
-				"source_recording_hash": "0a2fb96c01d18b6dcfe926386042e5757f83501e8fb61152972536ee6bcee13f",
+				"simulation_version": 18.0,
+				"source_recording_hash": "d9090d0c2f4ce0b479e51b4e278a1f9720abad8397825a7c096673c551f77a81",
 				"stage_id": "a-place-beside-you",
 				"stage_version": 1.0,
+				"start_hash": "a56d6aacd6bf916eb3b907d5c09e268288bebe7569cc17db9f66f5c2a9749e48",
 				"tick_rate": 30.0
 			}
 		]
 	},
-	"schema_version": 8,
+	"schema_version": 9,
 	"stage_index": 2,
 	"turn_hashes": [
-		"9b951f2396f37adf09fe8a9b36ceb709db11baea04fd99688444dc1fc4bd0c3b",
-		"0a2fb96c01d18b6dcfe926386042e5757f83501e8fb61152972536ee6bcee13f",
-		"e98b4debcdd2a41bf1bb3ec047c924e0a813cd26cc78fe8ffe5dc6015478d637"
+		"2ff0492f3be188474a3ea2f044e0c62f6903bb7e278800232740709f1fac57c2",
+		"d9090d0c2f4ce0b479e51b4e278a1f9720abad8397825a7c096673c551f77a81",
+		"fafe866c08348908f7e65ac25eff015a5c5b61f1d59df5a549c18fc3ceb31fef"
 	]
 }
