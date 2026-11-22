@@ -89,7 +89,7 @@ func _leave_mid_turn() -> void:
 	var room: String = await h.hosted_and_joined()
 	await h.step("host starts stage 1 A", func(): await h.play_turn(host, 0.5))
 	await h.step("host presses Back (pause)", func(): h.back(host))
-	await h.step("host presses Back again (leave)", func(): h.press(host, "back"))
+	await h.step("host presses Home (leave)", func(): h.press(host, "CardHome"))
 	h.check(host.hub() != null, "the host is at the hub")
 	await h.step("host opens the room again", func(): h.open_room_card(host, room))
 	h.check(host.child() != null and host.button("resume") != null, "the room offers Resume for the saved draft")
