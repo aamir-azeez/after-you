@@ -956,7 +956,8 @@ func _dry_decks(world: Node3D, level: Dictionary) -> bool:
 		for rect: Rect2 in _water_rects(body):
 			for island: Dictionary in level.islands:
 				var r: Array = island.rect_cm
-				if rect.intersects(Rect2(Vector2(float(r[0]), float(r[1])) / 100.0, Vector2(float(r[2] - r[0]), float(r[3] - r[1])) / 100.0).grow(-0.01)): return false
+				# The water runs a few cm in under a deck's edge (WaterBodies.UNDER_FLOOR_CM), hidden by it.
+				if rect.intersects(Rect2(Vector2(float(r[0]), float(r[1])) / 100.0, Vector2(float(r[2] - r[0]), float(r[3] - r[1])) / 100.0).grow(-0.01 - WaterBodies.UNDER_FLOOR_CM / 100.0)): return false
 	return true
 
 ## The way each triangle of a mesh turns against its normal: 1, -1 or both.

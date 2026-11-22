@@ -9,7 +9,8 @@ extends RefCounted
 ##   what stands in it, a shade darker as it deepens, clear enough to show the
 ##   seabed while thin, rings and glints.
 ## - The seabed: a sheet under each body that shows it (its wet cells only, so
-##   it never runs under a floor), in the dressing's "seabed" style.
+##   it never runs under a floor), in the dressing's "seabed" style, drawn by
+##   kit/seabed.gdshader from the plan so it never repeats.
 ## - The foam reads one small edge map per body and level: the share of solid
 ##   ground round each spot, blurred, worked out once per stage build from the
 ##   water's own wet cells and the footprints of what crosses that level
@@ -27,6 +28,7 @@ extends RefCounted
 ## a sound. Per frame it writes one float per material and allocates nothing.
 const Looks = preload("res://content/water/looks.gd")
 const SHADER := preload("res://presentation/kit/water_surface.gdshader")
+const BED_SHADER := preload("res://presentation/kit/seabed.gdshader")
 const DefinitionGeometry = preload("res://presentation/kit/definition_geometry.gd")
 const GraphicsPolicy = preload("res://services/graphics_policy.gd")
 const Look = preload("res://presentation/kit/look.gd")
@@ -263,6 +265,8 @@ func present() -> void:
 	if quality != _quality:
 		_quality = quality
 		_set_all(DETAIL, 1.0 if GraphicsPolicy.water_detail(quality) else 0.0)
+		for entry: Dictionary in bodies.values():
+			if entry.bed != null: (entry.bed.material_override as ShaderMaterial).set_shader_parameter(DETAIL, 1.0 if GraphicsPolicy.water_detail(quality) else 0.0)
 		_written_count = -1
 	var warm := float(Look.preset(str(host.call("look_name")) if host.has_method("look_name") else "").get("glints", 0.0))
 	if warm != _warm:
@@ -381,7 +385,7 @@ func _set_lamps() -> void:
 # --- Building ---
 
 ## The seabed sheet under a body's rectangles (cm) less `holes`, at the
-## seabed, tiled in the dressing's style. Under a floor it stands inside the
+## seabed, in the dressing's style. Under a floor it stands inside the
 ## floor's walls, so it shows only under water and under floors on piers.
 ## Static: it never moves.
 func _bed(rects: Array, holes: Array, floor_y: float) -> MeshInstance3D:
@@ -413,8 +417,8 @@ static func _top_triangles(mesh: Mesh) -> PackedVector3Array:
 		if normals[index].y > 0.9: found.append_array([verts[index], verts[index + 1], verts[index + 2]])
 	return found
 
-## Flat quads at 0 over `rects` (cm) less `holes`, with the floor's tiling in
-## their UVs.
+## Flat quads at 0 over `rects` (cm) less `holes` (the shader reads their
+## place in the plan, so they carry no UVs).
 static func _bed_mesh(rects: Array, holes: Array) -> Mesh:
 	var pieces: Array = rects.duplicate()
 	for hole: Array in holes:
@@ -434,7 +438,6 @@ static func _bed_mesh(rects: Array, holes: Array) -> Mesh:
 		# Wound to face up (Godot draws a, b, c with (a - c) x (a - b) toward the eye).
 		for corner: Vector2 in [a, Vector2(b.x, a.y), b, a, b, Vector2(a.x, b.y)]:
 			shape.set_normal(Vector3.UP)
-			shape.set_uv(corner / Looks.TILE_M)
 			shape.add_vertex(Vector3(corner.x, 0.0, corner.y))
 	return shape.commit()
 
@@ -582,36 +585,21 @@ static func open_texture() -> Texture2D:
 	image.fill(Color.BLACK)
 	return DefinitionGeometry.keep(key, ImageTexture.create_from_image(image))
 
-## The seabed's look in a style of Looks.SEABEDS: one tile, mottled, its
-## edge lined when the style has lines, with its pebbles, seamless.
-static func bed_material(style: String) -> StandardMaterial3D:
+## The seabed's look in a style of Looks.SEABEDS (kit/seabed.gdshader), one
+## material a style shared by every bed.
+static func bed_material(style: String) -> ShaderMaterial:
 	var key := [&"water_seabed", style]
 	if DefinitionGeometry.has(key): return DefinitionGeometry.kept(key)
 	var look: Dictionary = Looks.SEABEDS.get(style, Looks.SEABEDS[Looks.DEFAULT_SEABED])
-	var px := 64
-	var image := Image.create(px, px, false, Image.FORMAT_RGBA8)
-	var ground: Color = look.ground
-	var light: Color = look.light
-	for j in range(px):
-		for i in range(px):
-			var n := sin(i * 0.9 + j * 0.37) * sin(j * 0.71 - i * 0.23)
-			var color := ground.lerp(light, 0.18 * maxf(n, 0.0))
-			if look.has("lines") and (i < 2 or j < 2): color = look.lines
-			image.set_pixel(i, j, color)
-	var colors: Array = look.get("pebble_colors", [])
-	# The first four lie where the board's floor had them; the rest seeded.
-	var placed: Array = [[18, 22], [44, 40], [30, 52], [52, 12]]
-	var random := RandomNumberGenerator.new()
-	random.seed = 11
-	for index in range(int(look.get("pebbles", 0))):
-		var at: Array = placed[index] if index < placed.size() else [random.randi_range(0, px - 1), random.randi_range(0, px - 1)]
-		var size := 3 if index < placed.size() else random.randi_range(2, 4)
-		var color: Color = colors[index % colors.size()] if not colors.is_empty() else ground.darkened(0.2)
-		for dj in range(-size, size + 1):
-			for di in range(-size - 1, size + 2):
-				if di * di + dj * dj * 2 <= size * size: image.set_pixel(posmod(int(at[0]) + di, px), posmod(int(at[1]) + dj, px), color)
-	image.generate_mipmaps()
-	var material := StandardMaterial3D.new()
-	material.albedo_texture = ImageTexture.create_from_image(image)
-	material.roughness = 0.9
+	var material := ShaderMaterial.new()
+	material.shader = BED_SHADER
+	material.set_shader_parameter(&"ground", look.ground)
+	material.set_shader_parameter(&"light", look.light)
+	var stones := PackedColorArray(look.stones)
+	material.set_shader_parameter(&"stone_count", stones.size())
+	stones.resize(5)
+	material.set_shader_parameter(&"stones", stones)
+	material.set_shader_parameter(&"density", float(look.density))
+	material.set_shader_parameter(&"patchiness", float(look.patchiness))
+	material.set_shader_parameter(&"ripples", float(look.ripples))
 	return DefinitionGeometry.keep(key, material)

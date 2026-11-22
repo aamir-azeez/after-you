@@ -26,6 +26,12 @@ extends SceneTree
 ##    there, or the pip leans over another floor (a ledge);
 ##  - a wall that holds nothing: a wall standing up over a floor's edge faces
 ##    water that can rise over that floor (else it is a fender);
+##  - water short of its stone: at every level each body stands at, every
+##    edge of its surface lies within EDGE_MEET (CORNER_MEET by a corner) of
+##    the inside of what holds it
+##    there (a water wall, a lock's stones, a floor's slab or its wall down to
+##    the water), meets another body or leaves the block's window, so no strip
+##    of bare bed shows between the water and the stone;
 ##  - a boat that leaks: every boat on a water world floats by the float rule
 ##    (kit/floats.gd), its keel in the water and its inside floor over it at
 ##    every level its water stands at and all through its bob, and no boat
@@ -53,6 +59,7 @@ const LevelGraph = preload("res://tests/level_graph.gd")
 const FoldPresent = preload("res://tests/test_fold_present.gd")
 const Navigation = preload("res://core/cooperative/navigation.gd")
 const WaterBodies = preload("res://presentation/kit/water_bodies.gd")
+const WaterLook = preload("res://presentation/kit/water_look.gd")
 const JourneyCatalog = preload("res://core/journey/stage_catalog.gd")
 const Runtime = preload("res://core/physical/runtime.gd")
 const WalkReach = preload("res://presentation/kit/walk_reach.gd")
@@ -90,6 +97,14 @@ const WALL_OVER := 0.06
 const PIP_TALL := 0.85
 ## A wall standing this far (m) over a floor beside it is a wall, not a fender.
 const WALL_UP := 0.30
+## A water edge meets what holds it within this much (m) any way round: a
+## wall stops 0.6 cm short of each end of its run, so two runs meeting in line
+## leave a 1.2 cm joint. By a corner of the water, where two walls' trimmed
+## ends and the inset meet, within CORNER_MEET along the edge's normal. Its
+## edges are read WATER_EDGE_STEP apart (m).
+const EDGE_MEET := 0.0065
+const CORNER_MEET := 0.016
+const WATER_EDGE_STEP := 0.04
 ## How far in from a floor's edge (cm) spots are tried, and how far apart.
 const EDGE_BAND := 24
 const EDGE_STEP := 4
@@ -156,6 +171,8 @@ const KNOWN := {
 	"turn-of-the-tide punt-post": "a neighbour 16 cm off (the next catwalk post): the gap between them stays readable (WalkReach KEEP_GAP_CM), so this side reaches only part of the way",
 	"turn-of-the-tide r-terrace": "its corner by stepping stones: the open water round the stones' mouth stays open a reach either side of them (WalkReach open), walled at the floor's edge",
 	"turn-of-the-tide race-stage": "a neighbour 32 cm off (the mill quay) and 48 cm (the mill ladder): the gap between them stays readable (WalkReach KEEP_GAP_CM), so this side reaches only part of the way",
+	"turn-of-the-tide e-beach water edge": "at low water, a few cm where its parapet's foot ends by the harbour's south sea wall, under the parapet's coping",
+	"turn-of-the-tide m-beach water edge": "at low water, a few cm where its parapet's foot ends by the harbour's south sea wall, under the parapet's coping",
 	"turn-of-the-tide sea-chamber": "the chamber's walls stand where the water block puts them, 15 cm past its floor",
 	"turn-of-the-tide stones-1": "an open deck by design: stones, rungs or a ride with water or air between them, drawn wider (kit/walk_reach.gd) but never a solid floor",
 	"turn-of-the-tide stones-2": "an open deck by design: stones, rungs or a ride with water or air between them, drawn wider (kit/walk_reach.gd) but never a solid floor",
@@ -195,6 +212,8 @@ var _stones_seen := 0
 var _rolls_seen := 0
 ## Meshes on the water worlds held to one size across the water's levels.
 var _sized_seen := 0
+## Water edge spots read against what holds them.
+var _water_edges := 0
 ## The rowboat model's floorboards (its "inside" slot), read once.
 var _rowboat_floor := NAN
 
@@ -222,6 +241,7 @@ func _run() -> void:
 	print("LEVEL VIEW: %d meshes held to one size across the water's levels" % _sized_seen)
 	_check(_cover_spots > least.cover, "The ground check stands pips at the edges of every world's floors (%d spots, %d over an edge)" % [_cover_spots, _cover_short])
 	_check(_wall_spots >= least.wall_spots and _walls_by_floors >= least.walls, "The wall checks stand pips by the water worlds' walls (%d spots) and read the walls beside floors (%d)" % [_wall_spots, _walls_by_floors])
+	_check(_water_edges >= int(least.get("water_edges", 0)), "The water edge check reads the water worlds' edges at every level (%d spots)" % _water_edges)
 	for prefix: String in KNOWN:
 		# Each suite answers for its own chapters' entries.
 		if not _keys().any(func(key: String) -> bool: return key.get_slice("@", 0) == prefix.get_slice(" ", 0)): continue
@@ -282,6 +302,7 @@ func _chapter(viewport: SubViewport, key: String) -> void:
 		await world.show_stage(item.stage)
 		world.present_history(item.opening)
 		_walls(world, where, view)
+		_meets_stone(world, where)
 		_barriers(world, where, view, item.checkpoint, ends)
 		var shots := Shots.new(key, level, str(view.stage_id), item.opening)
 		var base := shots.snapshot()
@@ -577,6 +598,84 @@ func _walls(world: Node3D, where: String, view: Dictionary) -> void:
 			if not flat.grow(3.0).intersects(Rect2(float(r[0]), float(r[1]), float(r[2] - r[0]), float(r[3] - r[1]))): continue
 			_walls_by_floors += 1
 			_expect(top > floor_top, "%s wall by %s" % [where, island.id], "%s: a wall stands %.2f m up beside %s, over water that never rises over that floor (its highest %.2f m): a fender, not a wall" % [where, box.end.y - floor_top, island.id, top])
+
+## Every edge of each body's surface, at every level the body stands at,
+## lies within EDGE_MEET (CORNER_MEET by a corner) of the inside of something
+## solid at that height (the water kit's walls, the locks' stones, the meshes
+## of each floor's deck: its slab, lips and wall down to the water), over
+## another body's water, under a crossing's deck where it lands, or out of the
+## block's window. Read on either side of the edge: water running under a wall
+## to its far face meets it as surely as water stopping inside it. Water over
+## a floor's height at its edge is the locks' doors' to hold.
+func _meets_stone(world: Node3D, where: String) -> void:
+	var kit: Variant = world.get("waters")
+	if kit == null or kit.water.is_empty(): return
+	var to_terrain: Transform3D = world.terrain.global_transform.affine_inverse()
+	var solids: Array[AABB] = []
+	solids.append_array(kit.walls)
+	for holder: Node in world.terrain.find_children("WaterLockStone", "", true, false) + world.terrain.find_children("Deck_*", "Node3D", false, false):
+		for piece: Node in holder.find_children("*", "MeshInstance3D", true, false):
+			solids.append(to_terrain * (piece as MeshInstance3D).global_transform * (piece as MeshInstance3D).get_aabb())
+	# Floors' tops: water standing over a floor at its edge is held there by
+	# the locks' doors at the crossing's mouth (kit/water_locks.gd), not here.
+	var decks: Array = []
+	for holder: Node in world.terrain.find_children("Deck_*", "Node3D", false, false):
+		# The floor's walking height, under every piece of it.
+		var top := (holder as Node3D).position.y
+		for piece: Node in holder.find_children("*", "MeshInstance3D", true, false):
+			var box: AABB = to_terrain * (piece as MeshInstance3D).global_transform * (piece as MeshInstance3D).get_aabb()
+			decks.append([Rect2(box.position.x, box.position.z, box.size.x, box.size.z).grow(0.0005), top, str(holder.name).trim_prefix("Deck_")])
+	# Where a crossing lands on a floor its deck covers the water's edge.
+	var landings: Array[Rect2] = []
+	for route: Dictionary in world.chapter_definition.get("bridges", []) + world.chapter_definition.get("stairs", []):
+		var r: Array = world.drawn_rect(route)
+		landings.append(Rect2(float(r[0]) / 100.0, float(r[1]) / 100.0, float(r[2] - r[0]) / 100.0, float(r[3] - r[1]) / 100.0).grow(0.001))
+	var wet: Dictionary = {}
+	for id: String in kit.bodies:
+		var sheet := (kit.bodies[id] as Node3D).get_node_or_null("Water") as MeshInstance3D
+		wet[id] = WaterLook._wet_rects(sheet.mesh) if sheet != null and sheet.mesh != null else []
+	var bounds: Array = kit.water.bounds
+	var window := Rect2(float(bounds[0]) / 100.0, float(bounds[1]) / 100.0, float(bounds[2] - bounds[0]) / 100.0, float(bounds[3] - bounds[1]) / 100.0)
+	var short: Dictionary = {}
+	for id: String in wet:
+		var others: Array[Rect2] = []
+		for other: String in wet:
+			if other != id: others.append_array(wet[other])
+		for rect: Rect2 in wet[id]:
+			for side in range(4):
+				var along_x := side < 2
+				var normal := Vector2(0, -1) if side == 0 else Vector2(0, 1) if side == 1 else Vector2(-1, 0) if side == 2 else Vector2(1, 0)
+				var from := rect.position + (Vector2(0, rect.size.y) if side == 1 else Vector2(rect.size.x, 0) if side == 3 else Vector2.ZERO)
+				var length := rect.size.x if along_x else rect.size.y
+				var t := WATER_EDGE_STEP * 0.5
+				while t < length:
+					var at := from + (Vector2(t, 0) if along_x else Vector2(0, t))
+					var reach := CORNER_MEET if t < WATER_EDGE_STEP or t > length - WATER_EDGE_STEP else 0.0
+					t += WATER_EDGE_STEP
+					var past := at + normal * EDGE_MEET
+					# Inside its own water: not an edge.
+					if (wet[id] as Array).any(func(other: Rect2) -> bool: return other.has_point(past)): continue
+					if not window.grow(-0.001).has_point(past): continue
+					if others.any(func(other: Rect2) -> bool: return other.grow(0.001).has_point(past)): continue
+					if landings.any(func(landing: Rect2) -> bool: return landing.has_point(at)): continue
+					for level: float in kit.levels_of(id).values():
+						if decks.any(func(deck: Array) -> bool: return deck[1] < level and (deck[0] as Rect2).has_point(past)): continue
+						_water_edges += 1
+						var held := false
+						# Along the line through the edge, from `reach` inside the water to
+						# `reach` past it, half a reach at a time.
+						for step in range(-2, 3):
+							var spot := Vector3(at.x + normal.x * reach * step * 0.5, level, at.y + normal.y * reach * step * 0.5)
+							if solids.any(func(box: AABB) -> bool: return box.grow(EDGE_MEET).has_point(spot)): held = true
+						if held: continue
+						var key := "%s %s %s" % [where, id, ["north", "south", "west", "east"][side]]
+						if not short.has(key):
+							# Named by the floor it stops short of, when it is a floor's edge, as KNOWN names it.
+							var beside: Array = decks.filter(func(deck: Array) -> bool: return (deck[0] as Rect2).grow(0.06).has_point(past))
+							short[key] = [0, at, level, "%s %s water edge" % [where.get_slice(" ", 0).get_slice("@", 0), beside[0][2] if not beside.is_empty() else id]]
+						short[key][0] += 1
+	for key: String in short:
+		_expect(false, short[key][3], "%s: the water's edge stops short of what holds it at %d spots, e.g. (%.2f, %.2f) at level %.2f: bare bed shows between the water and the stone (%s)" % [key, short[key][0], short[key][1].x, short[key][1].y, short[key][2], short[key][3]])
 
 ## Every boat rides its water by the float rule at every level its water
 ## stands at and all through its bob: its keel in the water, its floorboards

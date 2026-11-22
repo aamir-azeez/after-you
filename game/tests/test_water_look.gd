@@ -14,8 +14,10 @@ extends SceneTree
 ## - the clock moves only in advance() and holds under Reduce motion;
 ## - with the block's add-ons off, or no floor, rings or lamps, nothing is
 ##   built for them and nothing fails;
-## - every seabed style makes a material, and nothing in the simulation reads
-##   the look.
+## - every seabed style makes its own material of the seabed shader, drawn
+##   from the plan (its sheet carries no UVs, so it never repeats a tile), its
+##   detail following the quality as the water's does; nothing in the
+##   simulation reads the look.
 const TideCatalog = preload("res://core/journey/stage_catalog.gd")
 const JourneyCatalog = preload("res://core/journey/stage_catalog.gd")
 const World = preload("res://presentation/tide_world.gd")
@@ -89,6 +91,7 @@ func _tide(level: Dictionary) -> void:
 			if not bool(body.get("basin", false)) and WaterBodies.covered(middle.x, middle.z, waters.basin_rects()): mine = false
 			if not mine: outside += 1
 		_check(outside == 0, "%s's seabed lies under its own water and no basin's (%d)" % [id, outside])
+		_check(bed.mesh.surface_get_arrays(0)[Mesh.ARRAY_TEX_UV] == null, "%s's seabed carries no UVs: the shader draws it from the plan, no tile repeating" % id)
 	_check(look.bodies.sea.bed == null and _param(waters, "sea", &"floor_on") == 0.0, "The open sea switches its floor off: no seabed, its tint only")
 	# Depth and edges follow the level.
 	var harbour := "harbour"
@@ -157,9 +160,10 @@ func _tide(level: Dictionary) -> void:
 	world.apply_graphics_quality("low")
 	look.present()
 	_check(look.ring_spots().size() <= 4 and _param(waters, harbour, &"detail") == 0.0, "Low draws one ripple layer and at most four ring spots")
+	_check((look.bodies[harbour].bed.material_override as ShaderMaterial).get_shader_parameter(&"detail") == 0.0, "Low draws the seabed's bigger pebbles only")
 	world.apply_graphics_quality("balanced")
 	look.present()
-	_check(_param(waters, harbour, &"detail") == 1.0, "Balanced draws both ripple layers again")
+	_check(_param(waters, harbour, &"detail") == 1.0 and (look.bodies[harbour].bed.material_override as ShaderMaterial).get_shader_parameter(&"detail") == 1.0, "Balanced draws both ripple layers and every pebble again")
 	# The clock moves only with the world, never under Reduce motion.
 	var before := look.clock
 	waters.advance(0.5)
@@ -260,7 +264,9 @@ func _styles() -> void:
 	var seen := {}
 	for style: String in Looks.SEABEDS:
 		var material := WaterLook.bed_material(style)
-		_check(material.albedo_texture != null and material.albedo_texture.get_width() == 64, "Seabed style %s makes its tile" % style)
+		var stones := int(material.get_shader_parameter(&"stone_count"))
+		var density := float(material.get_shader_parameter(&"density"))
+		_check(material.shader == WaterLook.BED_SHADER and stones == (Looks.SEABEDS[style].stones as Array).size() and stones >= 1 and stones <= 5 and density > 0.0 and density <= 1.0, "Seabed style %s draws with the seabed shader, its pebbles in 1 to 5 colours" % style)
 		seen[material] = true
 	_check(seen.size() == Looks.SEABEDS.size(), "Each seabed style looks its own")
 	_check(Looks.SEABEDS.keys() == preload("res://content/dressing/prop_styles.gd").SLOTS.seabed.keys(), "The seabed look slot offers exactly the styles the water has")
