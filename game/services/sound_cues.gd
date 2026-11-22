@@ -112,6 +112,9 @@ const CUES := {
 	# may not work: a dull clunk, the bolt low and muffled.
 	"barrier_rattle": {"clip": WINCH, "range": Vector2(3.0, 6.0), "db": -9.0},
 	"control_locked": {"clip": BOLT, "range": Vector2(-8.0, -6.0), "db": -5.0},
+	# A pip teetering at a drop (water, a gap, the edge): the reaction pop, high
+	# and quiet, a little "whoa".
+	"spirit_teeter": {"clip": POP, "range": Vector2(5.0, 8.0), "db": -9.0},
 	# Fixed cues (soundscape play_fixed_cue): one pitch from the cue's name and
 	# a variant, never an engine event's, so a keepsake or a screen sounds the
 	# same every time and no turn's pitches move. No engine event has these names.

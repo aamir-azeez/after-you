@@ -1603,7 +1603,7 @@ const REDO_KEEP_TRYING := "Keep trying"
 const REDO_ASKED_FOR := "%s asked for a redo"
 const REDO_FIRST_TURN := "Your first turn"
 const REDO_NOT_NOW := "Not now"
-const REDO_PLAY_AGAIN := "Play my turn again"
+const REDO_PLAY_AGAIN := "Redo last turn"
 const REDO_KEEP := "Keep it as it is"
 const REDO_RETRY := "Retry request"
 const REDO_AGAIN_NOTE := "Your turn again"
@@ -2263,7 +2263,6 @@ const RELAY_PREVIEW_34409DD3D3AA := "Your identity changed. Before reopening thi
 # Relay chapter — finish
 const RELAY_PREVIEW_AFC92040F3DB := "You were here. I was here. We made this."
 # Relay chapter — show review
-const RELAY_PREVIEW_B9074234FC11 := "Watch your recorded turn before saving it. If you attempt again, your last checkpoint remains safe."
 # Relay chapter — show review
 const RELAY_PREVIEW_9DDEE52F0B85 := "Repeat the turn to make your contribution."
 # Relay chapter — show review
@@ -2284,7 +2283,6 @@ const RELAY_PREVIEW_8D42D9E99BAF := "You left a path. I carried it on."
 const RELAY_PREVIEW_FF18C2378950 := "Your shared chapter is confirmed in the room."
 # Relay chapter — show completed
 # Relay chapter — pause
-const RELAY_PREVIEW_50922961D853 := "This device retains your saved checkpoint and rehearsal."
 # Relay chapter — show save problem
 const RELAY_PREVIEW_761D2317CF80 := "\n\nThe latest recording is kept on this screen. Before leaving, try saving again to retain it."
 # Additional source scan; review surrounding UI flow
@@ -2342,7 +2340,6 @@ const ACTION_BUTTONS_C3D6912E5E40 := "Resume from a saved checkpoint."
 # Shared action buttons — back action; tooltip
 const ACTION_BUTTONS_09F37563336D := "Go back to the previous screen."
 # Shared action buttons — leave draft action; tooltip
-const ACTION_BUTTONS_D37398B29BC6 := "Close this screen. Your draft has been saved and will be retained."
 # Shared action buttons — retry save action; tooltip
 const ACTION_BUTTONS_DCBA5AB65E41 := "Retry saving the existing recording of this turn."
 # Shared action buttons — leave unsaved action; tooltip
@@ -3650,7 +3647,6 @@ const TEXT := {
 	"relay_preview.ae39b1e4a9f7": RELAY_PREVIEW_AE39B1E4A9F7,
 	"relay_preview.34409dd3d3aa": RELAY_PREVIEW_34409DD3D3AA,
 	"relay_preview.afc92040f3db": RELAY_PREVIEW_AFC92040F3DB,
-	"relay_preview.b9074234fc11": RELAY_PREVIEW_B9074234FC11,
 	"relay_preview.9ddee52f0b85": RELAY_PREVIEW_9DDEE52F0B85,
 	"relay_preview.93772d9a4da5": RELAY_PREVIEW_93772D9A4DA5,
 	"relay_preview.faf7dfd92132": RELAY_PREVIEW_FAF7DFD92132,
@@ -3660,7 +3656,6 @@ const TEXT := {
 	"relay_preview.da6ba2478fe5": RELAY_PREVIEW_DA6BA2478FE5,
 	"relay_preview.8d42d9e99baf": RELAY_PREVIEW_8D42D9E99BAF,
 	"relay_preview.ff18c2378950": RELAY_PREVIEW_FF18C2378950,
-	"relay_preview.50922961d853": RELAY_PREVIEW_50922961D853,
 	"relay_preview.761d2317cf80": RELAY_PREVIEW_761D2317CF80,
 	"beam_field.d1d0a898da7f": BEAM_FIELD_D1D0A898DA7F,
 	"beam_field.0a335806e9b1": BEAM_FIELD_0A335806E9B1,
@@ -3689,7 +3684,6 @@ const TEXT := {
 	"action_buttons.7b0d22bc0fec": ACTION_BUTTONS_7B0D22BC0FEC,
 	"action_buttons.c3d6912e5e40": ACTION_BUTTONS_C3D6912E5E40,
 	"action_buttons.09f37563336d": ACTION_BUTTONS_09F37563336D,
-	"action_buttons.d37398b29bc6": ACTION_BUTTONS_D37398B29BC6,
 	"action_buttons.dcba5ab65e41": ACTION_BUTTONS_DCBA5AB65E41,
 	"action_buttons.46c4ed81ff3a": ACTION_BUTTONS_46C4ED81FF3A,
 	"action_buttons.2c04aa881c37": ACTION_BUTTONS_2C04AA881C37,

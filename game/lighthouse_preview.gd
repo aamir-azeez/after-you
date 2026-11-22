@@ -153,7 +153,7 @@ func _begin_journal_load() -> void:
 	_loading_label = Label.new()
 	_loading_label.text = PlayerCopy.LIGHTHOUSE_PREVIEW_DA74C3A728FC
 	card.add_child(_loading_label)
-	card.add_child(controls.button_for("back", _leave))
+	controls.card_home(_leave)
 	# Only the worker owns this journal until its thread has been joined. In
 	# particular, a getter must not see load_data's partially populated state.
 	var started: Error = _loader.start(journey)
@@ -225,7 +225,7 @@ func _check_tester_access() -> void:
 	if mode not in ["loading", "save_error"]:
 		mode = "access_check"
 		var card := _card(PlayerCopy.LIGHTHOUSE_PREVIEW_95BCA9EBB0C2, PlayerCopy.LIGHTHOUSE_PREVIEW_F16A117F0B10)
-		card.add_child(controls.button_for("back", _leave))
+		controls.card_home(_leave)
 	var result: Dictionary = await _tester_access.load_cached(_api_base_url)
 	if generation != _tester_generation or not is_inside_tree(): return
 	_tester_checking = false
@@ -261,7 +261,7 @@ func _check_purchase_access() -> void:
 	if mode not in ["loading", "save_error"]:
 		mode = "access_check"
 		var card := _card(PlayerCopy.LIGHTHOUSE_PREVIEW_95BCA9EBB0C2, PlayerCopy.LIGHTHOUSE_PREVIEW_0F9E017C15F7)
-		card.add_child(controls.button_for("back", _leave))
+		controls.card_home(_leave)
 
 func _entitled(payload: Dictionary) -> bool:
 	return payload.get("schema_version") == 1 and _purchases.entitled_payload(payload) and not TesterSwitches.shared().full_journey_off()
@@ -303,7 +303,7 @@ func _show_access_hold(message: String) -> void:
 	mode = "access_hold"
 	var card := _card(PlayerCopy.LIGHTHOUSE_PREVIEW_EDEB09A271C8, message)
 	card.add_child(controls.button("Check purchase again", func(): _check_access(true)))
-	card.add_child(controls.button_for("back", _leave))
+	controls.card_home(_leave)
 
 func _require_access() -> bool:
 	if _access_granted: return true
@@ -368,7 +368,7 @@ func _show_ready() -> void:
 		card.add_child(controls.button("Re-record the earlier turn", func(): _confirm_checkpoint(int(journey.checkpoint().stage_index))))
 	if not history.is_empty() or not journey.archived_attempts().is_empty():
 		card.add_child(controls.button_for("replays", _watch_collection))
-	card.add_child(controls.button_for("back", _leave))
+	controls.card_home(_leave)
 
 func _reset_live(resume_draft: bool = false) -> bool:
 	if not _require_access(): return false
@@ -579,7 +579,7 @@ func _show_review() -> void:
 	accept.disabled = not can_save
 	card.add_child(accept)
 	card.add_child(controls.button_for("retry", _retry_review))
-	card.add_child(controls.button_for("leave_draft", _leave))
+	controls.card_home(_leave)
 
 ## From the review card, or (`paused_over`) from the pause card over its Preview.
 func _retry_review(paused_over: String = "") -> void:
@@ -624,7 +624,7 @@ func _accept() -> void:
 	card.add_child(controls.button_for("continue", _show_ready))
 	card.add_child(controls.button_for("replays", _watch_collection))
 	card.add_child(controls.button_for("retry", _choose_checkpoint))
-	card.add_child(controls.button_for("back", _leave))
+	controls.card_home(_leave)
 
 func _preview_turn() -> void:
 	_start_replay(review, prior, history)
@@ -723,7 +723,7 @@ func _show_collection() -> void:
 	var card := _card(PlayerCopy.LIGHTHOUSE_PREVIEW_7F3B08F42FED if finished else PlayerCopy.LIGHTHOUSE_PREVIEW_6814210D664E, PlayerCopy.LIGHTHOUSE_PREVIEW_E569853CE1C8 if finished else PlayerCopy.LIGHTHOUSE_PREVIEW_F30B72C714F1 % [pairs.size(), Journey.TOTAL_STAGES])
 	if not pairs.is_empty(): card.add_child(controls.button_for("replays", _watch_collection))
 	if not pairs.is_empty(): card.add_child(controls.button_for("retry", _choose_checkpoint))
-	card.add_child(controls.button_for("back", _leave))
+	controls.card_home(_leave)
 
 func presentation_state() -> Dictionary:
 	return _collection_snapshot.duplicate(true) if mode == "collection" else sim.snapshot() if sim != null else {}
@@ -773,7 +773,7 @@ func _show_paused(previous: String) -> void:
 		card.add_child(controls.button_for("resume", _continue_replay))
 		# A Preview from the review card keeps that card's Retry; its Cancel comes back here.
 		if _previewing_review(previous): card.add_child(controls.button_for("retry", _retry_review.bind(previous)))
-	card.add_child(controls.button_for("back", _leave))
+	controls.card_home(_leave)
 
 ## Watching this turn back from its review card (Preview), as against saved pairs.
 func _previewing_review(previous: String) -> bool:
@@ -789,7 +789,7 @@ func _show_error(text: String) -> void:
 	mode = "error"
 	var card := _card(PlayerCopy.LIGHTHOUSE_PREVIEW_CE5202BED332, text)
 	if _start_over_offered(): card.add_child(controls.button_for("start_over", _start_over))
-	card.add_child(controls.button_for("back", _leave))
+	controls.card_home(_leave)
 
 ## Start over on an @1 save that could not be verified, as relay_preview.gd's:
 ## the save moves aside whole (LighthouseJourney.start_over) and, with no @1

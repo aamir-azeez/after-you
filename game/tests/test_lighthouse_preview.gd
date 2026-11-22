@@ -91,11 +91,11 @@ func _run() -> void:
 	var completed_review: Dictionary = screen.review.duplicate(true)
 	var completed_tick: int = screen.sim.tick
 	var completed_bytes := FileAccess.get_file_as_bytes(path)
-	_find_button(screen.controls.overlay,"Retry").pressed.emit()
+	_find_button(screen.controls.overlay,"Try again").pressed.emit()
 	_check(screen.mode=="confirm_retry" and screen.sim.tick==completed_tick,"Successful Lighthouse B Retry asks before restarting")
 	_find_button(screen.controls.overlay,"Cancel").pressed.emit()
 	_check(screen.mode=="review" and screen.review==completed_review and FileAccess.get_file_as_bytes(path)==completed_bytes,"Lighthouse Retry Cancel preserves the successful draft")
-	_find_button(screen.controls.overlay,"Retry").pressed.emit()
+	_find_button(screen.controls.overlay,"Try again").pressed.emit()
 	screen._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
 	_check(screen.mode=="review" and screen.sim.tick==completed_tick,"Lighthouse native Back uses the same guarded Cancel route")
 	# Pause while watching the turn back (Preview): the review card's Retry is there too.
@@ -103,7 +103,7 @@ func _run() -> void:
 	screen._physics_process(1.0 / 30.0)
 	var preview_tick: int = screen.sim.tick
 	screen._pause()
-	var paused_retry := _find_button(screen.controls.overlay,"Retry")
+	var paused_retry := _find_button(screen.controls.overlay,"Try again")
 	_check(screen.mode=="paused" and paused_retry!=null,"Pausing a Lighthouse Preview offers Retry")
 	if paused_retry != null: paused_retry.pressed.emit()
 	_check(screen.mode=="confirm_retry" and screen.review==completed_review,"Retry from a paused Preview asks before dropping the successful turn")
@@ -132,7 +132,7 @@ func _run() -> void:
 	screen._watch_collection()
 	screen._physics_process(1.0 / 30.0)
 	screen._pause()
-	_check(screen.mode=="paused" and _find_button(screen.controls.overlay,"Retry")==null and _find_button(screen.controls.overlay,"Resume")!=null,"Pausing saved stages' replay offers no Retry: there is no turn to retry")
+	_check(screen.mode=="paused" and _find_button(screen.controls.overlay,"Try again")==null and _find_button(screen.controls.overlay,"Resume")!=null,"Pausing saved stages' replay offers no Retry: there is no turn to retry")
 	_find_button(screen.controls.overlay,"Resume").pressed.emit()
 	limit = 0
 	while screen.running and limit < 1300:

@@ -279,7 +279,7 @@ static func event_source(event: String, live_role: String) -> String:
 	return live_role + "|" + event
 
 ## The piece a named cause sounds from (island_world sound_anchors): its
-## kind of anchor. Rattles and locked controls sound from the pip that pushed.
+## kind of anchor. Rattles, locked controls and teeters sound from the pip that pushed.
 const ANCHOR_KINDS := {"lever": "control", "selector": "control", "route": "control", "water": "control",
 	"mirror": "mirror", "bridge_open": "bridge", "bridge_opened": "bridge", "closing": "bridge"}
 
@@ -291,7 +291,7 @@ static func source_anchor(source: String) -> String:
 	var head := cause.get_slice(":", 0)
 	var id := cause.get_slice(":", 1)
 	if ANCHOR_KINDS.has(head): return "%s:%s" % [ANCHOR_KINDS[head], id]
-	if head in ["rattle", "locked"]: return "spirit:" + cause.get_slice(":", 2)
+	if head in ["rattle", "locked", "teeter"]: return "spirit:" + cause.get_slice(":", 2)
 	if head in ["drowned", "fell"]: return "spirit:" + id
 	return "" if cause.is_empty() or cause.contains(":") else "spirit:" + cause
 

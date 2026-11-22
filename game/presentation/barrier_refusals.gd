@@ -15,6 +15,12 @@ extends RefCounted
 ## The world wiggles that barrier and bumps the spirit; the sound map plays a
 ## rattle or a clunk (services/chapter_sound_map.gd), named by the barrier, so
 ## a push sounds the same live, as the memory, on a retry and in a replay.
+## A step cut at a drop instead (water, a gap, a ledge down, the map's edge:
+## drop_off()) is a "refused" event of kind RouteBarriers.EDGE, id the floor
+## the pip stands on: the spirit teeters (SpiritVisual.play_teeter) with a
+## small pop, and nothing wiggles. It never holds input up: the engine already
+## stopped the step, and the pip walks on along the edge or away mid-wobble.
+## A wall, a higher floor, a prop or a ball that will not move is neither.
 ##
 ## Held back means the engine cut at least half of the step the stick asked
 ## for (it slides a spirit along an edge it walks into, so a slanted push still
@@ -39,11 +45,15 @@ const Runtime = preload("res://core/physical/runtime.gd")
 const CooperativeCatalog = preload("res://core/cooperative/stage_catalog.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const Index = preload("res://content/chapters/index.gd")
+const Navigation = preload("res://core/cooperative/navigation.gd")
 ## A spirit held back by barriers bumps again after this many ticks (1 s).
 const REPEAT_TICKS := 30
 ## Once it goes more than this many ticks (0.2 s) without being held back (it
 ## let go or walked off), its next bump comes at once.
 const RELEASE_TICKS := 6
+## A spirit held at a drop teeters again only after this many ticks (2 s), so
+## leaning on the stick at the water wobbles now and then, not all the time.
+const TEETER_REPEAT_TICKS := 60
 const STILL := {"x": 0, "z": 0, "action": false}
 
 var _definition: Dictionary = {}
@@ -57,8 +67,8 @@ var _memory_slot := ""
 var _stair_gates := true
 ## Each spirit's position after the last tick: slot -> Vector2i (cm).
 var _last: Dictionary = {}
-## Each spirit's last bump: slot -> {tick (the bump's), held (the last tick a
-## barrier held it back)}.
+## Each spirit's last bump or teeter: slot -> {tick (the bump's), held (the
+## last tick a barrier or a drop held it back), edge (a teeter)}.
 var _pushing: Dictionary = {}
 ## Who stands at each owned control now: control id -> slot.
 var _at_lock: Dictionary = {}
@@ -138,14 +148,55 @@ func _refused(slot: String, frame: Dictionary, player: Variant, state: Dictionar
 	var into := Vector2(cut).normalized()
 	var found := RouteBarriers.refusal(_view, state.get("bridges", {}), player, slot, into, Runtime.PLAYER_RADIUS, Runtime.MOVE_PER_TICK)
 	if not found.is_empty() and found.kind == RouteBarriers.STAIR and not _stair_gates: found = {}
-	if found.is_empty(): return {}
+	var edge := found.is_empty()
+	if edge:
+		if not drop_off(_view, state.get("bridges", {}), player, into, Runtime.PLAYER_RADIUS, Runtime.MOVE_PER_TICK): return {}
+		found = {"kind": RouteBarriers.EDGE, "id": str(player.get("surface_id", ""))}
 	var last: Variant = _pushing.get(slot)
-	var bumped := last is Dictionary and tick - int(last.held) <= RELEASE_TICKS and tick - int(last.tick) < REPEAT_TICKS
+	var repeat := TEETER_REPEAT_TICKS if edge else REPEAT_TICKS
+	var bumped := last is Dictionary and bool(last.edge) == edge and tick - int(last.held) <= RELEASE_TICKS and tick - int(last.tick) < repeat
 	if bumped:
 		last.held = tick
 		return {}
-	_pushing[slot] = {"tick": tick, "held": tick}
+	_pushing[slot] = {"tick": tick, "held": tick, "edge": edge}
 	return {"slot": slot, "kind": found.kind, "id": found.id, "push": into}
+
+## Whether what stops a step from `player` (cm) along `push` (a unit Vector2)
+## is a drop: walking out from the spirit's edge (its centre stops `radius`
+## short of it) up to one `step` past, the first ground that is not its own
+## floor's height is lower or none at all (water, a gap, a shut crossing, the
+## map's edge). A higher floor, a stair going up or an obstacle on its floor
+## there is a wall; ground at its height all the way (a prop, a ball) is
+## neither. Reads only stage data and `routes` (the snapshot's open
+## crossings), like RouteBarriers.refusal.
+static func drop_off(view: Dictionary, routes: Dictionary, player: Dictionary, push: Vector2, radius: int, step: int) -> bool:
+	var at := Vector2(float(player.x), float(player.z))
+	var height := int(player.get("height", 0))
+	for reach: int in [radius + 2, radius + int(step * 0.5), radius + step]:
+		var point := Vector2i((at + push * float(reach)).round())
+		var ground := _ground(view, routes, point, height, str(player.get("surface_id", "")))
+		if ground == 0: continue
+		return ground < 0
+	return false
+
+## At `point` (cm), against floor height `height`: 0 for ground at that
+## height, 1 for higher ground or an obstacle on floor `surface` (a wall), -1
+## for lower ground or none.
+static func _ground(view: Dictionary, routes: Dictionary, point: Vector2i, height: int, surface: String) -> int:
+	var found := -1
+	for obstacle: Dictionary in view.get("obstacles", []):
+		if str(obstacle.get("surface_id", "")) == surface and Navigation.inside(point, obstacle.rect_cm): return 1
+	for island: Dictionary in view.get("islands", []):
+		if Navigation.inside(point, island.rect_cm): found = maxi(found, _against(int(island.height_cm), height))
+	for bridge: Dictionary in view.get("bridges", []):
+		if bool(routes.get(str(bridge.id), false)) and Navigation.inside(point, bridge.rect_cm): found = maxi(found, _against(int(bridge.height_cm), height))
+	for stair: Dictionary in view.get("stairs", []):
+		if Navigation.inside(point, stair.rect_cm): found = maxi(found, _against(Navigation.stair_height(stair, point), height))
+	return found
+
+static func _against(ground: int, height: int) -> int:
+	if absi(ground - height) <= 2: return 0
+	return 1 if ground > height else -1
 
 ## The part (cm) of the step `frame` (quantized input) asked for that the
 ## engine cut, from `from` to `to` (a spirit's positions, cm), when it is at

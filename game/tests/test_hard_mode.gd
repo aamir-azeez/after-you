@@ -57,7 +57,7 @@ func _clear_runs() -> void:
 func _rules() -> void:
 	for id: String in ["retry", "try_again", "redo_self", "start_over", "redo", "redo_play", "redo_keep"]:
 		_check(not HardMode.offers(id), "A hard run never offers " + id)
-	for id: String in ["resume", "record", "save", "preview", "back", "continue", "pause", "leave_draft"]:
+	for id: String in ["resume", "record", "save", "preview", "back", "continue", "pause"]:
 		_check(HardMode.offers(id), "A hard run still offers " + id)
 	_check(not HardMode.slipped(1) and HardMode.slipped(2) and HardMode.slipped(9), "Only a second start of a turn ends the run")
 	_check(HardMode.failure({"valid": true, "snapshot": {"can_commit": true}}).is_empty(), "A turn that can be kept goes on")

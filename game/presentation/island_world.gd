@@ -1646,12 +1646,15 @@ func _marks_state(state: Dictionary) -> Dictionary:
 	return state
 
 ## Shows the snapshot on the route barriers; a new push into one (the
-## snapshot's "refused") bumps the spirit back.
+## snapshot's "refused") bumps the spirit back, and a step cut at a drop
+## (kind EDGE) makes it teeter over the edge.
 func _present_barriers(state: Dictionary) -> void:
 	route_barriers.set_reduced_motion(reduced_motion)
 	for event: Variant in route_barriers.present(state):
 		var slot := str(event.get("slot", "")) if event is Dictionary else ""
-		if actors.has(slot): actors[slot].play_bump(reduced_motion)
+		if not actors.has(slot): continue
+		if event.kind == RouteBarriers.EDGE: actors[slot].play_teeter(event.get("push", Vector2.ZERO), reduced_motion)
+		else: actors[slot].play_bump(reduced_motion)
 
 # Where the marks and tags go (kit/owner_mark.gd, kit/pair_tags.gd ask these).
 

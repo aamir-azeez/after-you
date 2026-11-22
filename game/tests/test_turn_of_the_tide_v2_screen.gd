@@ -120,9 +120,10 @@ func _run() -> void:
 	print("REVIEW CARD ", texts)
 	var title: Node = screen.find_child("EndingTitle", true, false)
 	_check(title is Label and (title as Label).text == PlayerCopy.JOURNEY_DROWNED_YOU and screen.find_child("EndingBand", true, false) != null, "The card's title is the line, in its band: " + PlayerCopy.JOURNEY_DROWNED_YOU)
-	for want: String in ["Retry", "Preview", PlayerCopy.REDO_PLAY_AGAIN, "Back"]:
+	for want: String in ["Try again", "Preview", PlayerCopy.REDO_PLAY_AGAIN]:
 		_check(texts.has(want), "The drowned turn's card offers " + want)
-	var retry := _button(screen, "Retry")
+	_check(not texts.has("Back") and screen.find_child("CardHome", true, false) is Button, "The drowned turn's card goes home from its Home square, with no Back row")
+	var retry := _button(screen, "Try again")
 	_check(retry != null and retry.get_meta("action_id", "") == "try_again", "Retry is the card's primary button")
 	_check(_button(screen, "Save turn") == null and not texts.has(PlayerCopy.RELAY_PREVIEW_93772D9A4DA5), "Save turn and the usual review title are not there")
 	var preview_row: Node = _button(screen, "Preview").get_parent() if _button(screen, "Preview") != null else null

@@ -74,7 +74,7 @@ func solo() -> bool:
 
 ## A solo tap lands only on the page it was drawn on (a turn ending's card is a review).
 func _solo_tap_open() -> bool:
-	return solo() and host.mode in ["ready", "complete", "review"] and not host.running and not host.backgrounded and not host._leaving
+	return solo() and host.mode in ["ready", "complete", "review", "paused"] and not host.running and not host.backgrounded and not host._leaving
 
 ## The friend's name as the room shows it ("A friend" when unknown).
 func partner() -> String:

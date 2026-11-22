@@ -18,16 +18,15 @@ const ICON_GAP := 10
 const DEFINITIONS := {
 	"record": {"label": "Record", "icon": "record", "primary": true, "hint": PlayerCopy.ACTION_BUTTONS_720AD17C8CC7},
 	"resume": {"label": "Resume", "icon": "play", "primary": true, "hint": PlayerCopy.ACTION_BUTTONS_B35F6908BD12},
-	"retry": {"label": "Retry", "icon": "retry", "primary": false, "hint": PlayerCopy.ACTION_BUTTONS_E434AB682F32},
+	"retry": {"label": "Try again", "icon": "retry", "primary": false, "hint": PlayerCopy.ACTION_BUTTONS_E434AB682F32},
 	"preview": {"label": "Preview", "icon": "play", "primary": false, "hint": PlayerCopy.ACTION_BUTTONS_7AD5ED12D806},
 	"save": {"label": "Save turn", "icon": "save", "primary": true, "hint": PlayerCopy.ACTION_BUTTONS_6FB275114778},
 	"finish": {"label": "Finish", "icon": "finish", "primary": false, "hint": PlayerCopy.ACTION_BUTTONS_7B0D22BC0FEC},
 	"pause": {"label": "Pause", "icon": "pause", "primary": false, "hint": "Pause the game."},
 	"continue": {"label": "Continue", "icon": "next", "primary": true, "hint": PlayerCopy.ACTION_BUTTONS_C3D6912E5E40},
 	"back": {"label": "Back", "icon": "back", "primary": false, "hint": PlayerCopy.ACTION_BUTTONS_09F37563336D},
-	"leave_draft": {"label": "Back", "icon": "back", "primary": false, "hint": PlayerCopy.ACTION_BUTTONS_D37398B29BC6},
 	# A turn ending's card (turn_endings.gd): trying again is the way on.
-	"try_again": {"label": "Retry", "icon": "retry", "primary": true, "hint": PlayerCopy.ACTION_BUTTONS_E434AB682F32},
+	"try_again": {"label": "Try again", "icon": "retry", "primary": true, "hint": PlayerCopy.ACTION_BUTTONS_E434AB682F32},
 	"retry_save": {"label": "Retry save", "icon": "retry", "primary": true, "hint": PlayerCopy.ACTION_BUTTONS_DCBA5AB65E41},
 	# A chapter save that could not be verified (relay_preview.gd _show_error).
 	"start_over": {"label": "Start over", "icon": "retry", "primary": true, "hint": PlayerCopy.START_OVER_HINT},
@@ -62,7 +61,7 @@ static func apply(button: Button, action_id: String) -> void:
 	button.set_meta("action_id", action_id)
 	button.add_theme_constant_override("h_separation", ICON_GAP)
 	button.add_theme_constant_override("icon_max_width", 22)
-	if action_id in ["back", "leave_draft", "leave_unsaved"]:
+	if action_id in ["back", "leave_unsaved"]:
 		ControlTheme.danger(button, ICONS.back)
 		button.add_theme_color_override("icon_normal_color", ControlTheme.DANGER_INK)
 		button.add_theme_color_override("icon_hover_color", ControlTheme.DANGER_INK)

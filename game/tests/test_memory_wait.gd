@@ -72,6 +72,7 @@ class ControlsStub extends CanvasLayer:
 	func hide_memory_wait() -> void: pass
 	func fast_forward_held() -> bool: return held
 	func dim_stick(_dim: bool) -> void: pass
+	func card_home(_action: Callable) -> Button: return null
 	func show_tries(_tries: int) -> void: pass
 
 ## The chapter screen with its save and turn check left out.
@@ -105,7 +106,7 @@ class Preview extends "res://relay_preview.gd":
 		actions[action_id] = callback
 		return button
 	func _add_safety_flag() -> void: pass
-	func _add_redo_action(_card: VBoxContainer) -> void: pass
+	func _add_redo_action(_card: VBoxContainer, _ids: Array = []) -> void: pass
 
 ## The solo Lighthouse screen with its save and finish left out.
 class LighthouseScreen extends "res://lighthouse_preview.gd":

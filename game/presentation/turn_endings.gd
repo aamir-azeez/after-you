@@ -9,14 +9,15 @@ extends RefCounted
 ##   water:  the badge's spirit sits half under water.
 ##   rows:   the card's buttons, row by row: shared action ids
 ##           (action_buttons.gd), and "redo" for the screen's redo actions.
+##           Its way home is the card's Home square, as on every card.
 ##   beat:   physics frames of the beat (badge and line over the dimmed world)
 ##           before the card; tapping skips it.
 ## Whether such a turn may be kept (a draft, a replay, an upload) is the
 ## rules' call (the simulation's keeps_draft()), not the card's.
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const KINDS := {
-	"drowned": {"badge": &"knocked_out", "water": true, "rows": [["try_again"], ["preview", "redo"], ["leave_draft"]], "beat": 30},
-	"fell": {"badge": &"dizzy", "water": true, "rows": [["try_again"], ["preview", "redo"], ["leave_draft"]], "beat": 30},
+	"drowned": {"badge": &"knocked_out", "water": true, "rows": [["try_again"], ["preview", "redo"]], "beat": 30},
+	"fell": {"badge": &"dizzy", "water": true, "rows": [["try_again"], ["preview", "redo"]], "beat": 30},
 }
 ## Each spirit's colour on a badge, as the world draws them.
 const SLOT_COLORS: Dictionary = preload("res://presentation/spirit_look.gd").SLOT_COLOR_NAMES

@@ -24,6 +24,9 @@ const TurnDots = preload("res://presentation/kit/turn_dots.gd")
 const PairChip = preload("res://presentation/kit/pair_chip.gd")
 const Icons = preload("res://presentation/kit/icons.gd")
 const SpiritLook = preload("res://presentation/spirit_look.gd")
+const HomeSquare = preload("res://presentation/kit/home_square.gd")
+## A card's Home square: as tall as the card's rows, so its touch target stays.
+const CARD_HOME_SIDE := 54.0
 const CREAM := Color("eceddb")
 const MUTED := Color("afc7bd")
 var settings: Dictionary = {}
@@ -55,6 +58,7 @@ var title_font: Font
 var modal_shade: ColorRect
 var modal_scroll: ScrollContainer
 var modal_stack: VBoxContainer
+var _card_title: Label
 ## Shown once the player has pinched or panned the chapter view, as on Home.
 var reset_view_button: Button
 ## "Waiting for Sam" and the memory still to play, under the chapter title.
@@ -654,10 +658,13 @@ func card(title: String, body: String) -> VBoxContainer:
 	heading_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	heading_label.custom_minimum_size.x = 550
 	stack.add_child(heading_label)
+	_card_title = heading_label
 	var paragraph := _label(body, 20)
 	paragraph.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	paragraph.add_theme_color_override("font_color", MUTED)
 	paragraph.custom_minimum_size.x = 550
+	# A card with only its title (pause, save) leaves no empty line under it.
+	paragraph.visible = not body.is_empty()
 	stack.add_child(paragraph)
 	_layout_card.call_deferred()
 	return stack
@@ -694,20 +701,38 @@ func _open_overlay() -> void:
 ## Report or block on the current card: the shared flag button (kit/icons.gd)
 ## at the card's top right, beside its title. Returns the button.
 func card_report(action: Callable) -> Button:
-	var title: Label = modal_stack.get_child(0)
-	var line := HBoxContainer.new()
+	var flag := Icons.report_button(action, PlayerCopy.REPORT_OR_BLOCK)
+	flag.name = "CardReport"
+	flag.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	_card_title_line().add_child(flag)
+	return flag
+
+## The current card's way home, in place of a Back row: the Home square
+## (kit/home_square.gd) at its top left, beside its title. `action` is what
+## Back did; Android Back and Escape still do it. Returns the button.
+func card_home(action: Callable) -> Button:
+	var square := HomeSquare.make(action, Vector2(CARD_HOME_SIDE, CARD_HOME_SIDE))
+	square.name = "CardHome"
+	square.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	var line := _card_title_line()
+	line.add_child(square)
+	line.move_child(square, 0)
+	return square
+
+## The current card's top line: its title, with Home before it and Report after.
+func _card_title_line() -> HBoxContainer:
+	var line := modal_stack.get_node_or_null("CardTitleLine") as HBoxContainer
+	if line != null: return line
+	line = HBoxContainer.new()
 	line.name = "CardTitleLine"
 	line.add_theme_constant_override("separation", 12)
 	modal_stack.add_child(line)
 	modal_stack.move_child(line, 0)
-	title.reparent(line, false)
-	title.custom_minimum_size.x = 0
-	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var flag := Icons.report_button(action, PlayerCopy.REPORT_OR_BLOCK)
-	flag.name = "CardReport"
-	flag.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-	line.add_child(flag)
-	return flag
+	_card_title.reparent(line, false)
+	_card_title.custom_minimum_size.x = 0
+	_card_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_card_title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	return line
 
 func _layout_card() -> void:
 	if not is_instance_valid(modal_scroll) or not is_instance_valid(modal_stack): return

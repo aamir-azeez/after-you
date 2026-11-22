@@ -541,7 +541,7 @@ func _show_journal_loading() -> void:
 	if online_session == null:
 		_loading_label = _label(PlayerCopy.LIGHTHOUSE_PREVIEW_DA74C3A728FC, 18)
 		card.add_child(_loading_label)
-	card.add_child(_action_button("back", _leave))
+	_card_home()
 
 ## Work the journal worker does first: the Lighthouse carries an unconverted
 ## solo @1 journey into @2 the first time @2 opens (lighthouse_migration.gd),
@@ -938,7 +938,7 @@ func _room_action_hooks() -> Dictionary:
 		"safety": {"run": _open_safety},
 		"room_options": {"widget": _add_room_options_button},
 		"your_rooms": {"run": _leave},
-		"back": {"run": _leave},
+		"back": {"widget": _add_card_home},
 	}
 	return _room_hooks
 
@@ -1628,9 +1628,10 @@ func _recent_photo_receipt() -> Dictionary:
 func _ordinary_redo_available() -> bool:
 	return online_session != null and journey != null
 
-## The redo rows on a card outside the room panel (pause, review).
-func _add_redo_action(card: VBoxContainer) -> void:
-	_add_redo_actions_to(card)
+## The redo rows on a card outside the room panel: the review card's, or
+## (`ids`) the pause card's, which adds Redo last turn as a turn ending's does.
+func _add_redo_action(card: VBoxContainer, ids: Array = RoomActions.REDO_ACTIONS) -> void:
+	_add_redo_actions_to(card, ids)
 
 ## The redo actions this room or journal offers now, into any row or column.
 func _add_redo_actions_to(parent: Container, ids: Array = RoomActions.REDO_ACTIONS) -> void:
@@ -1799,12 +1800,12 @@ func _restore_paused_draft() -> void:
 	_wait().show(sim.snapshot(), true)
 	running = false
 	mode = "paused"
-	var card := _card("Take your time.", PlayerCopy.RELAY_PREVIEW_50922961D853)
+	var card := _card("Take your time.", "")
 	card.add_child(_action_button("resume", _start_play))
 	card.add_child(_action_button("retry", _begin))
 	_add_safety_flag()
-	_add_redo_action(card)
-	card.add_child(_action_button("back", _leave))
+	_add_redo_action(card, RoomActions.TURN_REDO_ACTIONS)
+	_card_home()
 
 ## A refused redo or retry leaves the journey as it was, so its reason goes on
 ## the card the player is back on instead of a card with only Back.
@@ -2796,9 +2797,9 @@ func _show_review() -> void:
 	# Open turns: a pass is saved too, when its check says it may be the friend's memory.
 	var can_save := OpenTurns.keepable(verified, review)
 	if can_save: _start_prefetch()
-	var explanation: String = hard_flow.review_body(PlayerCopy.RELAY_PREVIEW_B9074234FC11)
+	var explanation: String = hard_flow.review_body()
 	if not can_save:
-		explanation += "\n\n" + PlayerCopy.from_canonical(str(verified.get("snapshot", {}).get("commit_reason", verified.get("error", PlayerCopy.RELAY_PREVIEW_9DDEE52F0B85))), online_session == null)
+		explanation += ("\n\n" if not explanation.is_empty() else "") + PlayerCopy.from_canonical(str(verified.get("snapshot", {}).get("commit_reason", verified.get("error", PlayerCopy.RELAY_PREVIEW_9DDEE52F0B85))), online_session == null)
 	var card := _card(PlayerCopy.RELAY_PREVIEW_93772D9A4DA5, explanation)
 	EndReactionScreen.attach_ending(_end_reaction_context(), card, review, true)
 	# Preview, Retry, then the cream Save turn and Back (owner, 2026-11-15).
@@ -2810,7 +2811,7 @@ func _show_review() -> void:
 	if online_session != null and not online_session.mutations_enabled():
 		card.add_child(_label(PlayerCopy.RELAY_PREVIEW_FAF7DFD92132,17))
 	_add_redo_action(card)
-	card.add_child(_action_button("leave_draft", _leave))
+	_card_home()
 
 
 ## A turn ending's card (turn_endings.gd) in place of the usual review: its
@@ -2845,13 +2846,14 @@ func _show_ending_card(ending: Dictionary) -> void:
 	card.add_child(band)
 	card.move_child(band, 0)
 	EndReactionScreen.attach_ending(_end_reaction_context(), card, review, not sim.has_method("keeps_draft") or sim.keeps_draft())
-	var actions := {"try_again": _retry_review, "preview": _preview_turn, "leave_draft": _leave}
+	_card_home()
+	var actions := {"try_again": _retry_review, "preview": _preview_turn}
 	for ids: Array in ending.rows:
 		var line := HBoxContainer.new()
 		line.add_theme_constant_override("separation", 10)
 		card.add_child(line)
 		for id: String in ids:
-			if id == "redo": _add_redo_actions_to(line, RoomActions.ENDING_REDO_ACTIONS)
+			if id == "redo": _add_redo_actions_to(line, RoomActions.TURN_REDO_ACTIONS)
 			elif actions.has(id): line.add_child(_action_button(id, actions[id]))
 		for button: Node in line.get_children():
 			if button is Control: (button as Control).size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -3576,7 +3578,7 @@ func _pause() -> void:
 func _show_paused(previous: String) -> void:
 	mode = "paused"
 	soundscape.stop_reunion()
-	var card := _card("Take your time.", PlayerCopy.RELAY_PREVIEW_50922961D853)
+	var card := _card("Take your time.", "")
 	if previous == "play":
 		card.add_child(_action_button("resume", _start_play))
 		card.add_child(_action_button("retry", _begin))
@@ -3593,8 +3595,8 @@ func _show_paused(previous: String) -> void:
 	else:
 		card.add_child(_action_button("continue", _show_ready))
 	_add_safety_flag()
-	if previous == "play": _add_redo_action(card)
-	card.add_child(_action_button("back", _leave))
+	if previous == "play": _add_redo_action(card, RoomActions.TURN_REDO_ACTIONS)
+	_card_home()
 
 ## Watching this turn back from its review card (Preview), as against a saved
 ## pair or replay: the turn is still this screen's to keep or retry.
@@ -3610,7 +3612,7 @@ func _show_error(message: String) -> void:
 	mode = "error"
 	var card := _card(PlayerCopy.LIGHTHOUSE_PREVIEW_CE5202BED332, message)
 	if _start_over_offered(): card.add_child(_action_button("start_over", _start_over))
-	card.add_child(_action_button("back", _leave))
+	_card_home()
 
 ## Start over, beside Back on a save that could not be verified: a solo
 ## journal (RelayJourney.can_start_over), or a room this phone holds read only
@@ -3901,6 +3903,16 @@ func _show_deferred_notes() -> void:
 	note.text = "\n".join(_deferred_notes)
 
 ## Report or block on the pause card: the flag at its top right, when this room offers it.
+## A card's way home (ChapterControls.card_home): the Home square at its top
+## left, leaving the chapter as Back did.
+func _card_home() -> Button:
+	return controls.card_home(_leave)
+
+## The room actions' Back on a card: the card's Home square, never a row.
+func _add_card_home(_parent: Container, _id: String, _facts: Callable, _look: Dictionary) -> Button:
+	_card_home()
+	return null
+
 func _add_safety_flag() -> void:
 	if RoomActions.applies("safety", _room_facts(), _room_state): controls.card_report(_room_action_handler("safety"))
 
