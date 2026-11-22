@@ -333,18 +333,20 @@ func _second_stage(level: Dictionary) -> void:
 	var kept_post: MeshInstance3D = world._memory_markers["wheel-step"].find_child("KeptPost", true, false)
 	_check(kept_post != null and (kept_post.mesh as BoxMesh).size.y >= 0.5 and world._memory_markers["wheel-step"].find_children("KeptEdge*", "", true, false).size() == 2, "A kept crossing shows a tall mooring post and gold edges")
 	_check(kept_post != null and kept_post.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "A kept crossing's post casts no shadow over its pennant")
-	# A kept low crossing keeps its pennant above the water that covers it.
+	# A kept low crossing's post is built tall enough for the highest water
+	# over it, and never changes size as the tide comes and goes.
 	var sand: Node3D = world._memory_markers["sand-1"]
 	var pennant: Node3D = sand.find_child("KeptPennant", true, false)
+	var sand_post: MeshInstance3D = sand.find_child("KeptPost", true, false)
+	var post_size: Vector3 = (sand_post.mesh as BoxMesh).size
 	for tide: String in ["low", "half", "high"]:
 		var risen := state.duplicate(true)
 		risen.controls.tide = tide
 		world.present(risen, true)
 		var level_y: float = HARBOUR_LEVELS[tide]
-		var post: Node3D = sand.find_child("KeptPost", true, false)
-		var top := post.global_position.y + 0.25 * post.scale.y
+		var top := sand_post.global_position.y + 0.5 * (sand_post.mesh as BoxMesh).size.y
 		_check(pennant.global_position.y - 0.11 > level_y and top >= level_y + World.MAST_CLEARANCE - 0.01, "At %s tide the sand crossing's pennant stays above the water (%.2f over %.2f)" % [tide, pennant.global_position.y, level_y])
-		if tide == "low": _check(is_equal_approx(post.scale.y, 1.0), "Over dry sand the post keeps its height")
+		_check(sand_post.scale.is_equal_approx(Vector3.ONE) and (sand_post.mesh as BoxMesh).size.is_equal_approx(post_size), "At %s tide the sand crossing's post keeps its size" % tide)
 	world.present(state, true)
 	_walls(world, level, 1)
 	for id: String in ["towpath", "punt-ferry", "sea-gate-in", "w-steps-low", "mill-steps", "mole-slip"]:
