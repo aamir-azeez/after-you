@@ -10,6 +10,7 @@ const Catalog = preload("res://core/lighthouse/stage_catalog.gd")
 const Simulation = preload("res://core/lighthouse/borrowed_light.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const Keepsakes = preload("res://services/home_keepsakes.gd")
+const AtomicFile = preload("res://services/atomic_file.gd")
 const PATH := "user://lighthouse-journey-v3.json"
 const MAX_SAVE_BYTES := 2097152
 const MAX_ARCHIVED_ATTEMPTS := 32
@@ -42,7 +43,7 @@ func load_data() -> void:
 	read_only = false
 	_state = _empty_state()
 	_checkpoint = Simulation.initial_checkpoint()
-	if ProjectSettings.globalize_path(_path).simplify_path() in [ProjectSettings.globalize_path(Storage.PATH).simplify_path(), ProjectSettings.globalize_path("user://relay-journey-v2.json").simplify_path()]:
+	if _wrong_path():
 		_hold(PlayerCopy.LIGHTHOUSE_JOURNEY_4C9D52BC9431)
 		return
 	# Check unfamiliar semantic envelopes before the transport chooses the
@@ -106,6 +107,28 @@ func load_data() -> void:
 	last_error = str(_storage.last_error)
 	if not unreadable.is_empty():
 		last_error = PlayerCopy.LIGHTHOUSE_JOURNEY_02EA99BBE9D2
+
+
+func _wrong_path() -> bool:
+	return ProjectSettings.globalize_path(_path).simplify_path() in [ProjectSettings.globalize_path(Storage.PATH).simplify_path(), ProjectSettings.globalize_path("user://relay-journey-v2.json").simplify_path()]
+
+
+## Start over on a held journal, as RelayJourney.start_over: every copy moves
+## aside whole and the journey opens fresh. lighthouse_preview.gd then opens
+## the current Lighthouse, since nothing of @1 is left to continue.
+func can_start_over() -> bool:
+	_ensure_loaded()
+	if not read_only or _wrong_path(): return false
+	return AtomicFile.read_candidates(_path).any(func(candidate: String) -> bool: return FileAccess.file_exists(candidate))
+
+
+func start_over() -> bool:
+	if not can_start_over(): return false
+	if not AtomicFile.set_aside(_path, AtomicFile.STARTED_OVER):
+		_hold(PlayerCopy.START_OVER_FAILED)
+		return false
+	load_data()
+	return not read_only
 
 
 func checkpoint() -> Dictionary:
