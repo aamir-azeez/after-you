@@ -55,7 +55,9 @@ static func source() -> Dictionary:
 		"item_spots": [
 			{"id": "seed-pedestal", "surface_id": "loft", "position_cm": [230, -90], "height_cm": LOFT, "radius_cm": 36, "solid": {"radius_cm": 28, "reach_cm": 20}},
 			{"id": "garden", "surface_id": "shore", "position_cm": [-300, 130], "height_cm": 0, "radius_cm": 48},
-			{"id": "landing", "surface_id": "shore", "position_cm": [-340, 0], "height_cm": 0, "radius_cm": 66}],
+			# The landing ring stands west of the planter, so its ticks clear it
+			# (tests/test_level_checker.gd, pieces drawn into each other).
+			{"id": "landing", "surface_id": "shore", "position_cm": [-370, -5], "height_cm": 0, "radius_cm": 66}],
 		"islands": [{"id": "shore", "rect_cm": [-600, -240, -120, 240], "height_cm": 0}, {"id": "loft", "rect_cm": [80, -240, 500, 240], "height_cm": LOFT}],
 		# The lift's two stops share @1's lift rectangle.
 		"bridges": [{"id": "lift-low", "rect_cm": [-120, -90, 80, 90], "from_surface": "shore", "to_surface": "loft", "height_cm": 0},

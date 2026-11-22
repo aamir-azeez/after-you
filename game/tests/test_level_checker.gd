@@ -95,8 +95,6 @@ const KNOWN := {
 	"first-steps@1 a-little-lift controls seed-pedestal and loft-bell": "published before pieces were judged as drawn (2026-11-21): the loft bell's frame stands beside the seed's pedestal on the loft",
 	"first-steps@1 a-place-to-grow controls seed-pedestal and loft-bell": "published before pieces were judged as drawn (2026-11-21): the loft bell's frame stands beside the seed's pedestal on the loft",
 	"the-wishing-well@1 back-for-you controls tower-step and reunion-bell": "published before pieces were judged as drawn (2026-11-21): the tower step stands under the reunion bell's frame",
-	"first-steps@2 a-place-to-grow controls garden and landing": "unreleased, found when pieces were first judged as drawn (2026-11-21): the landing's ticks reach the planter; its own branch moves them apart when it next re-lays the shore",
-	"turn-of-the-tide@3 set-the-tide controls stone-bar and harbour-bell": "unreleased, found when pieces were first judged as drawn (2026-11-21): the stone bar's knob leans toward the harbour bell's frame; its own branch moves them apart when it next re-lays the terrace",
 }
 ## Published one-pip spots the other pip can reach, each shown by the route
 ## barriers (a gate, a stair's chain, a zone's rope or a lock) rather than

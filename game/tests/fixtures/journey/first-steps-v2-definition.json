@@ -79,8 +79,8 @@
 			"height_cm": 0,
 			"id": "landing",
 			"position_cm": [
-				-340,
-				0
+				-370,
+				-5
 			],
 			"radius_cm": 66,
 			"surface_id": "shore"
