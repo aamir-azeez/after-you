@@ -240,11 +240,16 @@
 				"height_cm": 160,
 				"id": "lookout-bell",
 				"owner_slot": "p1",
+				"plate": true,
+				"plate_cm": [
+					59,
+					30
+				],
 				"position_cm": [
-					1160,
+					1172,
 					-96
 				],
-				"radius_cm": 28,
+				"radius_cm": 60,
 				"surface_id": "cliff"
 			},
 			"goal_policy": {
@@ -298,7 +303,7 @@
 			"receiver_action_ticks": 2,
 			"receiver_route_cm": [
 				[
-					1160,
+					1172,
 					-96
 				]
 			],
@@ -381,11 +386,16 @@
 				"height_cm": 160,
 				"id": "reunion-bell",
 				"owner_slot": "p0",
+				"plate": true,
+				"plate_cm": [
+					59,
+					30
+				],
 				"position_cm": [
-					1616,
+					1690,
 					16
 				],
-				"radius_cm": 28,
+				"radius_cm": 60,
 				"surface_id": "tower"
 			},
 			"goal_policy": {
@@ -412,7 +422,7 @@
 			"receiver_action_ticks": 2,
 			"receiver_route_cm": [
 				[
-					1616,
+					1690,
 					16
 				]
 			],

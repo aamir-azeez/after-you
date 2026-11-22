@@ -12,6 +12,7 @@ const OpenControls = preload("res://core/physical/open_controls.gd")
 const OpenTurns = preload("res://core/physical/open_turns.gd")
 const RecordingCodec = preload("res://core/v2/recording_codec.gd")
 const Solid = preload("res://core/solid_footprint.gd")
+const GoalPlate = preload("res://core/goal_plate.gd")
 const TICK_RATE := 30
 const MAX_TICKS := 900
 const MOVE_PER_TICK := 8
@@ -639,7 +640,7 @@ func _context_for(slot: String) -> Dictionary:
 		if (_open_controls() or lever.owner_slot == slot) and _near_entity(player, lever):
 			return _action("lever", "Pull lever", true, lever.id)
 	# Open turns: no bell; both pips standing at the goal finish the stage.
-	if role == "b" and stage.goal_policy.kind == "ring" and not _open_turns() and _near_entity(player, stage.goal):
+	if role == "b" and stage.goal_policy.kind == "ring" and not _open_turns() and _near_goal(player, slot):
 		return _action("ring", "Ring bell", true, stage.goal.id)
 	if stage.source_policy.kind == "offer_ball" and not _shared_ball() and slot == active_slot:
 		var ball: Dictionary = _mechanisms.props[stage.source_policy.prop_id]
@@ -729,7 +730,7 @@ func pass_turn() -> Dictionary:
 ## by the bell, or under the shared ball on a ball home cradle's floor.
 func _at_goal(slot: String) -> bool:
 	if stage.goal_policy.kind == "ball_home" and _shared_ball(): return str(_players[slot].surface_id) == str(stage.goal.surface_id)
-	return stage.goal_policy.kind == "ring" and _near_entity(_players[slot], stage.goal)
+	return stage.goal_policy.kind == "ring" and _near_goal(_players[slot], slot)
 
 ## The snapshot's objective_done: the objective, or under open turns in a
 ## later turn whether the live pip stands at the lit goal with the goal's own
@@ -959,6 +960,13 @@ static func _other(slot: String) -> String:
 ## Whether `player` is at `target` on its floor: within `radius`, or else
 ## within its reach (Solid.within_reach: a solid control's reach beside its
 ## footprint, any other spot's radius_cm).
+## Whether `slot`'s pip is at the stage's goal: inside its radius, or on its own
+## half of the plate when the goal counts one (core/goal_plate.gd).
+func _near_goal(player: Dictionary, slot: String) -> bool:
+	var goal: Dictionary = stage.goal
+	if not goal.get("plate", false): return _near_entity(player, goal)
+	return player.surface_id == goal.surface_id and GoalPlate.on_half(slot, Vector2i(int(goal.position_cm[0]), int(goal.position_cm[1])), Vector2i(goal.plate_cm[0], goal.plate_cm[1]), Vector2i(int(player.x), int(player.z)))
+
 static func _near_entity(player: Dictionary, target: Dictionary, radius: int = -1) -> bool:
 	if player.surface_id != target.surface_id: return false
 	if radius < 0: return Solid.within_reach(target, Vector2i(player.x,player.z), PLAYER_RADIUS)

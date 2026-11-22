@@ -78,7 +78,7 @@ static func source() -> Dictionary:
 
 ## Both start on the harbour; the bell is in the court.
 static func _borrowed_light() -> Dictionary:
-	var stage := _stage("borrowed-light", "p0", [40, -40])
+	var stage := _stage("borrowed-light", "p0", [90, -60])
 	stage.blocks = [
 		_pad("harbour-pad", [-800, 120], "harbour"),
 		{"block": "light", "bounds": BOUNDS,
@@ -86,12 +86,12 @@ static func _borrowed_light() -> Dictionary:
 			"mirrors": [_mirror("harbour-mirror", [-560, -100], "harbour", "backslash"), _mirror("court-mirror", [-60, 60], "court", "slash")],
 			"receivers": [_receiver("harbour-eye", [-560, -160]), _receiver("court-eye", [-60, -100])],
 			"routes": {"harbour-court": ["harbour-eye", "court-eye"]}},
-		_goal("court-bell", [40, -40], "court")]
+		_goal("court-bell", [90, -60], "court")]
 	return stage
 
 ## Both start at the court bell; the lens waits on the north isle.
 static func _missing_piece() -> Dictionary:
-	var stage := _stage("missing-piece", "p1", [-150, -50])
+	var stage := _stage("missing-piece", "p1", [-190, -50])
 	stage.item_starts = {LENS: "north-shelf"}
 	stage.blocks = [
 		_pad("court-pad", [110, 90], "court"),
@@ -101,7 +101,7 @@ static func _missing_piece() -> Dictionary:
 			"receivers": [_receiver("north-eye", [-50, -90]), _receiver("court-glow", [-240, 116])],
 			"routes": {"court-north": "north-eye"}},
 		{"block": "open_route", "routes": ["harbour-court"]},
-		_goal("lens-crest", [-150, -50], "court", {"signal_id": "court-glow"})]
+		_goal("lens-crest", [-190, -50], "court", {"signal_id": "court-glow"})]
 	return stage
 
 ## Both start by the lens's cradle; the promises are on the north and south isles.
@@ -121,7 +121,7 @@ static func _two_promises() -> Dictionary:
 
 ## Both start in the court; the bell is on the tower.
 static func _after_the_first_bell() -> Dictionary:
-	var stage := _stage("after-the-first-bell", "p1", [700, 80])
+	var stage := _stage("after-the-first-bell", "p1", [700, 100])
 	stage.blocks = [
 		_pad("path-pad", [-200, 450], "south"),
 		{"block": "light", "bounds": BOUNDS,
@@ -133,7 +133,7 @@ static func _after_the_first_bell() -> Dictionary:
 			"receivers": [_receiver("first-path", [56, 270]), _receiver("second-path", [56, 460]), _receiver("rest-eye", [260, 70]), _receiver("tower-path", [520, -70])],
 			"routes": {"court-rest": ["first-path", "rest-eye"], "rest-tower": ["second-path", "tower-path"]}},
 		{"block": "open_route", "routes": ["harbour-court", "court-north", "court-south"]},
-		_goal("tower-bell", [700, 80], "tower")]
+		_goal("tower-bell", [700, 100], "tower")]
 	return stage
 
 ## Both start at the tower bell; the lens rests in its cradle in the court.
@@ -154,7 +154,7 @@ static func _what_carried_you() -> Dictionary:
 
 ## Both start by the projector; the welcome is lit from Rest Rock and the beacon.
 static func _a_welcome_left_on() -> Dictionary:
-	var stage := _stage("a-welcome-left-on", "p1", [700, 80])
+	var stage := _stage("a-welcome-left-on", "p1", [700, 100])
 	stage.blocks = [
 		_pad("tower-pad", [800, 150], "tower"),
 		{"block": "light", "bounds": BOUNDS,
@@ -163,7 +163,7 @@ static func _a_welcome_left_on() -> Dictionary:
 			"mirrors": [_mirror("welcome-mirror", [290, -20], "rest-rock", "backslash"), _mirror("beacon-mirror", [650, -130], "tower", "backslash")],
 			"receivers": [_receiver("tower-eye", [480, -60]), _receiver("welcome-below", [290, 90]), _receiver("beacon", [800, -130])],
 			"routes": {"rest-tower": "tower-eye"}},
-		_goal("beacon-crest", [700, 80], "tower", {"all": [{"signal_id": "beacon"}, {"signal_id": "welcome-below"}]})]
+		_goal("beacon-crest", [700, 100], "tower", {"all": [{"signal_id": "beacon"}, {"signal_id": "welcome-below"}]})]
 	return stage
 
 static func _pad(id: String, at: Array, surface: String) -> Dictionary:
@@ -185,7 +185,7 @@ static func _in(spot: String) -> Dictionary:
 	return {"item_id": LENS, "spot_id": spot}
 
 static func _goal(id: String, at: Array, surface: String, when: Dictionary = {}) -> Dictionary:
-	var goal := {"block": "ring_bell", "id": id, "at": at, "surface": surface, "owner": "p1", "radius": 36}
+	var goal := {"block": "ring_bell", "id": id, "at": at, "surface": surface, "owner": "p1", "radius": 60, "plate": true}
 	if not when.is_empty(): goal["when"] = when
 	return goal
 

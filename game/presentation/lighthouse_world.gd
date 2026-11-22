@@ -147,6 +147,8 @@ func load_level(definition: Dictionary) -> void:
 	elif definition.has("goal"):
 		_build_bell(definition.goal)
 		_goal_piece.add_needs(definition, func(id: String) -> String: return _piece_style("carried_item", id))
+		# The goal with its plate, base and need sign is a big step of its own.
+		await _build_step()
 	for socket: Dictionary in definition.get("sockets", []):
 		_build_socket(socket)
 	for prop: Dictionary in definition.get("props", []):

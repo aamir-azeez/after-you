@@ -1,10 +1,10 @@
 {
 	"catch_assistance": true,
-	"checkpoint_hash": "c736af743ab100fd542ce1a64af7197af4adc9f30777a42f375e98b12e68d479",
+	"checkpoint_hash": "99d43fed6cfd196d9acf3364eb06a11251e92ed454f907a0c20972562408b427",
 	"completed": false,
-	"definition_hash": "257fcef497024f472119a964501f550a80d7c4b530f892afaad328ee0f7a9375",
+	"definition_hash": "4f2ba864b99cdbef8d8dc432b9a58fc37072acb61bd09427d768e61fba16366c",
 	"duration_ticks": 504,
-	"final_state_hash": "c3fe4ff41ff3ee1edbb19c4c6f4e650218e700b7f7e9a21a01c844799db3f826",
+	"final_state_hash": "860385181d9a33deccb78bb0d517459f0538d3eead80f888a1a2f2196417855c",
 	"handoff_hash": "672ec809b0f8e3f431747a627ce7b2f5beedf036f8d5f2cea1d129aa0ec72830",
 	"handoff_tick": 0,
 	"level_id": "the-falls",
@@ -13,15 +13,15 @@
 		"objective_complete": false,
 		"source_ready": true
 	},
-	"packed": "AQ0MAJwCAOe4AmQAAhkAEABkAgBLsAFkAAJLABacAALnACIAZAIAWKgDAADlzyvmhMRcxv7bcAX50E6BfIBWdk2pESr6kmndsXXhXi1kab91k8d4Ak5o7cZ/8BOwv4Q074xogDr5jdzr/xkfyjSw4FeU1jA3INec51Uu/WACzf+dQrTmh3LnnT+li4b3Bz79hRf+nC2Pi1RQS5/RMWSuS5gJZ0s6KAlAieuYEBhu5kPC+UCi8TlIkm1WfuZYff1qLJvWJpSRZBApM18WssA35yu3+8liKohhP6bVX9T9OpNJQZINeS7fO6+QN4Jmb7ySEFvNsg==",
+	"packed": "AQ4MZAACMgACANq4AmQAAhkAEABkAgBLsAFkAAJLABacAALnACIAZAIAWKYDAAC2HN5wbfqusADhUHWPaSme1NWAJJhf3SeBKClrb7+JySJ+MQaLtPLBFvPMz11lAYSMWO6RxAND9Per0WBdQu7OMPtWq1DzGT8vBQoP81017oTVuHyzwLBve2ZkI5uq+DG4qsbWiw5alwGv/hZmP0+BIuYYCketLb+eMCLQ68dozhKCLkkoI6AIIsXJOYHUwWFOlahIg9Qp4Hp9DFv3b6huSev0EiDmqCevRNNn7a3cuaA6Skal1ytFQz9wvsoGMkIw+JycMXaNPQ==",
 	"player_slot": "p0",
-	"recording_hash": "4bf039b7b2764386d65b4368b981863b34dd25807a9063c5495d35334dffe764",
+	"recording_hash": "e9403b8bfbcbb596a4602191db4c94badc9c959e101380c8b7d27d5fa0795033",
 	"role": "b",
 	"schema_version": 7,
 	"simulation_version": 20,
-	"source_recording_hash": "c7ff6671177f53d0d0f413bb63c4c763e26b79bc4b84c46dd47f24c8325debc2",
+	"source_recording_hash": "329c7dd0282d4c922ca17c54f6caec878d5a6535fbbc0a55abb6e366eec8a7f8",
 	"stage_id": "behind-the-falls",
 	"stage_version": 1,
-	"start_hash": "69af8a6b21089ebff55a9e1125404c43b5ac21bfee9a171882af3392f41918c0",
+	"start_hash": "6b4941a840f33810958f8244c619864ceb91b13bc78bdda0a4d4fe185ddcd2fe",
 	"tick_rate": 30
 }

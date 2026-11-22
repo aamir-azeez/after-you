@@ -52,6 +52,7 @@ const Models = preload("res://presentation/kit/models.gd")
 const PadKit = preload("res://presentation/kit/pieces/pad.gd")
 const Primitives = preload("res://presentation/kit/primitives.gd")
 const Squircle = preload("res://presentation/kit/squircle.gd")
+const GoalPlate = preload("res://core/goal_plate.gd")
 const GoalNeeds = preload("res://presentation/kit/goal_needs.gd")
 const SocketKit = preload("res://presentation/kit/pieces/socket.gd")
 const ClosingWarning = preload("res://presentation/kit/closing_warning.gd")
@@ -171,12 +172,12 @@ static func plate_half(radius_m: float, goal_style: String = "") -> float:
 
 ## The plate's whole squircle, half extents (x across both halves, z deep; m).
 static func plate_extent(radius_m: float, goal_style: String = "") -> Vector2:
-	var room := radius_m - (PLANTER_RIM + BASE_PAST if goal_style == "planter" else 0.0)
 	if radius_m >= GROWN_FROM:
-		# Two squares side by side, as big as the room's circle allows.
-		var unit := Vector2(2.0, 1.0)
-		var scale := room / _reach(unit)
-		return unit * scale
+		# Two regular plates side by side, as big as the goal's circle allows: whole
+		# centimetres from the radius alone (core/goal_plate.gd), the area a plate
+		# goal counts a pip on, a planter's soil and drum growing round it.
+		return Vector2(GoalPlate.half_cm(roundi(radius_m * 100.0))) / 100.0
+	var room := radius_m - (PLANTER_RIM + BASE_PAST if goal_style == "planter" else 0.0)
 	var half := PadKit.board_half(radius_m)
 	if goal_style == "planter": half = minf(half, room / sqrt(2.0))
 	return Vector2(half, half)
@@ -204,13 +205,14 @@ static func base_extent(radius_m: float, goal_style: String = "") -> Vector2:
 
 ## The radius of the goal's base, a planter's soil: the base squircle's reach.
 static func base_radius(radius_m: float, goal_style: String = "") -> float:
-	if goal_style == "planter": return radius_m - PLANTER_RIM
+	if goal_style == "planter": return radius_m if radius_m >= GROWN_FROM else radius_m - PLANTER_RIM
 	return maxf(radius_m, _reach(base_extent(radius_m, goal_style)))
 
 ## How far the goal's base reaches on its floor (m): its base, a planter's
 ## drum round its soil.
 static func outer_radius(goal_style: String, radius_m: float) -> float:
-	return radius_m if goal_style == "planter" else base_radius(radius_m)
+	if goal_style == "planter": return radius_m + PLANTER_RIM if radius_m >= GROWN_FROM else radius_m
+	return base_radius(radius_m)
 
 ## Whether a snapshot player (cm) stands over the half `pad` of this goal.
 func _over(pad: RefCounted, player: Variant) -> bool:
@@ -405,6 +407,7 @@ func _make_window(radius_m: float) -> void:
 ## The planter's soil, inside its drum, reaches past the plate's corners
 ## (plate_half); its ring lies over the drum's rim, where a garden's does.
 func _make_planter(radius_m: float) -> void:
-	bell = SocketKit.planter(root, radius_m, base_radius(radius_m, "planter"), PLANTER_DRUM)
-	ring = Parts.ring(radius_m, Parts.CREAM, Vector3(0, PLANTER_DRUM + 0.03, 0), root)
+	var drum := outer_radius("planter", radius_m)
+	bell = SocketKit.planter(root, drum, base_radius(radius_m, "planter"), PLANTER_DRUM)
+	ring = Parts.ring(drum, Parts.CREAM, Vector3(0, PLANTER_DRUM + 0.03, 0), root)
 	_light(Parts.GOLD, 4.0, Vector3(0, 0.8, 0))

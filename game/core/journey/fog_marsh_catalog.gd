@@ -132,7 +132,7 @@ static func _stage(id: String, first: String, goal: Array) -> Dictionary:
 		"gates": [], "entry_latch_routes": [], "source_policy": {"kind": "route_endpoint", "when": {}}, "receiver_route_cm": [goal.duplicate()], "receiver_action_ticks": 2}
 
 static func _goal(id: String, at: Array, surface: String, height: int, when: Dictionary) -> Dictionary:
-	return {"block": "ring_bell", "id": id, "at": at, "surface": surface, "owner": "p1", "height": height, "radius": 48, "when": when}
+	return {"block": "ring_bell", "id": id, "at": at, "surface": surface, "owner": "p1", "height": height, "radius": 60, "plate": true, "when": when}
 
 static func _thing(id: String, at: Array, surface: String, height: int) -> Dictionary:
 	return {"id": id, "at": at, "surface": surface, "owner": "p0", "height": height}

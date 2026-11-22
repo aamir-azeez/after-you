@@ -35,9 +35,9 @@ const CAPS := {"go-on-ahead": 10, "back-for-you": 10}
 const CLIFF := 160
 ## The lookout bell, and the ladder step a metre west of it, so the step's
 ## board and the bell's frame stand clear of each other.
-const LOOKOUT := [1160, -96]
+const LOOKOUT := [1172, -96]
 const LADDER_STEP := [1060, -96]
-const REUNION := [1616, 16]
+const REUNION := [1690, 16]
 ## The garden plank over the stream, and the stretch of it the crane's bucket
 ## sweeps: the bucket's own width either side of the crane's line, and a
 ## pip's half width more.
@@ -94,7 +94,7 @@ static func _go_on_ahead() -> Dictionary:
 		# The crane stands in the gap below the cliff edge, its bucket over the plank.
 		{"block": "swinging_bucket", "id": "well-crane", "pivot": [200, 40], "lane": {"surface": "garden-plank", "rect": BUCKET_LANE},
 			"brake": _step("brake-board", [200, -72], "cliff", CLIFF, 32)},
-		{"block": "ring_bell", "id": "lookout-bell", "at": LOOKOUT, "surface": "cliff", "owner": "p1", "height": CLIFF, "radius": 28}]
+		{"block": "ring_bell", "id": "lookout-bell", "at": LOOKOUT, "surface": "cliff", "owner": "p1", "height": CLIFF, "radius": 60, "plate": true}]
 	return stage
 
 ## Both start at the lookout bell; the reunion bell is on the tower.
@@ -110,7 +110,7 @@ static func _back_for_you() -> Dictionary:
 			{"route_id": "rope-walk-west", "when": {"any": [{"pad_id": "still-holding"}, fitted]}},
 			{"route_id": "rope-walk-east", "when": {"any": [{"pad_id": "still-holding"}, fitted]}},
 			{"route_id": "well-ladder", "when": fitted}]},
-		{"block": "ring_bell", "id": "reunion-bell", "at": REUNION, "surface": "tower", "owner": "p0", "height": CLIFF, "radius": 28}]
+		{"block": "ring_bell", "id": "reunion-bell", "at": REUNION, "surface": "tower", "owner": "p0", "height": CLIFF, "radius": 60, "plate": true}]
 	return stage
 
 static func _stage(id: String, first: String, goal: Array) -> Dictionary:

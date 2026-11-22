@@ -155,11 +155,16 @@
 				"height_cm": 0,
 				"id": "relay-bell",
 				"owner_slot": "p1",
+				"plate": true,
+				"plate_cm": [
+					59,
+					30
+				],
 				"position_cm": [
 					-60,
 					160
 				],
-				"radius_cm": 40,
+				"radius_cm": 60,
 				"surface_id": "relay"
 			},
 			"goal_policy": {
@@ -249,11 +254,16 @@
 				"height_cm": 0,
 				"id": "garden-lamp",
 				"owner_slot": "p1",
+				"plate": true,
+				"plate_cm": [
+					59,
+					30
+				],
 				"position_cm": [
 					720,
 					40
 				],
-				"radius_cm": 48,
+				"radius_cm": 60,
 				"surface_id": "east"
 			},
 			"goal_policy": {

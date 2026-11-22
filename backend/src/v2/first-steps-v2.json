@@ -136,11 +136,16 @@
 				"height_cm": 160,
 				"id": "loft-bell",
 				"owner_slot": "p1",
+				"plate": true,
+				"plate_cm": [
+					59,
+					30
+				],
 				"position_cm": [
 					400,
 					-40
 				],
-				"radius_cm": 36,
+				"radius_cm": 60,
 				"surface_id": "loft"
 			},
 			"goal_policy": {
@@ -233,11 +238,16 @@
 				"height_cm": 0,
 				"id": "garden-lamp",
 				"owner_slot": "p1",
+				"plate": true,
+				"plate_cm": [
+					59,
+					30
+				],
 				"position_cm": [
 					-450,
 					130
 				],
-				"radius_cm": 48,
+				"radius_cm": 60,
 				"surface_id": "shore"
 			},
 			"goal_policy": {

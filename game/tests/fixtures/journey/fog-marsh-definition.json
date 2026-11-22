@@ -448,7 +448,7 @@
 			"id": "catch-goal-pedestal",
 			"position_cm": [
 				6750,
-				-390
+				-377
 			],
 			"radius_cm": 36,
 			"solid": {
@@ -551,11 +551,16 @@
 				"height_cm": 0,
 				"id": "stream-goal",
 				"owner_slot": "p1",
+				"plate": true,
+				"plate_cm": [
+					59,
+					30
+				],
 				"position_cm": [
 					4125,
 					-420
 				],
-				"radius_cm": 48,
+				"radius_cm": 60,
 				"surface_id": "jetty"
 			},
 			"goal_policy": {
@@ -744,11 +749,16 @@
 				"height_cm": 0,
 				"id": "catch-goal",
 				"owner_slot": "p1",
+				"plate": true,
+				"plate_cm": [
+					59,
+					30
+				],
 				"position_cm": [
 					6750,
 					-490
 				],
-				"radius_cm": 48,
+				"radius_cm": 60,
 				"surface_id": "north"
 			},
 			"goal_policy": {
@@ -957,11 +967,16 @@
 				"height_cm": 192,
 				"id": "home-goal",
 				"owner_slot": "p1",
+				"plate": true,
+				"plate_cm": [
+					59,
+					30
+				],
 				"position_cm": [
 					11140,
 					-420
 				],
-				"radius_cm": 48,
+				"radius_cm": 60,
 				"surface_id": "jetty-3"
 			},
 			"goal_policy": {

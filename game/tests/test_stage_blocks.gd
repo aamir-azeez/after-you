@@ -136,7 +136,9 @@ func _check_pedestals() -> void:
 	plain.stages[0].blocks[1]["when"] = {"lever_id": "l"}
 	_check(Blocks.expand(plain).item_spots.size() == 1, "A goal that needs no item carried gets no pedestal")
 	# The sizes the placing assumes cover what the kits draw.
-	_check(GoalKit.drawn_radius("bell", 0.48, 2) <= float(Blocks.GOAL_DRAWN_CM) / 100.0 + 0.001, "A bell goal's drawn size is inside GOAL_DRAWN_CM (%s)" % [GoalKit.drawn_radius("bell", 0.48, 2)])
+	_check(GoalKit.drawn_radius("bell", 0.48) <= float(Blocks.GOAL_DRAWN_CM) / 100.0 + 0.001, "A bell goal's drawn size is inside GOAL_DRAWN_CM (%s)" % [GoalKit.drawn_radius("bell", 0.48)])
+	for style: String in ["bell", "harbour_lantern", "window", "walled_window", "crest", "planter"]:
+		_check(GoalKit.drawn_radius(style, 0.6) <= float(Blocks.PLATE_DRAWN_PAST_CM + 60) / 100.0 + 0.001, "A %s plate goal's drawn size is inside the radius plus PLATE_DRAWN_PAST_CM (%s)" % [style, GoalKit.drawn_radius(style, 0.6)])
 	_check(SocketKit.drawn_radius("pedestal", Blocks.PEDESTAL) <= float(Blocks.PEDESTAL_DRAWN_CM) / 100.0 + 0.001, "A pedestal's drawn size is inside PEDESTAL_DRAWN_CM (%s)" % [SocketKit.drawn_radius("pedestal", Blocks.PEDESTAL)])
 
 ## The published stage without what the blocks write, with the blocks added.

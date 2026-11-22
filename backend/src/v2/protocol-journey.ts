@@ -42,14 +42,14 @@ export const TURN_OF_THE_TIDE_V2_HASH = "8e29d35f0f968b3a4f056802794437787c10778
 export const LONG_WAY_HOME_V3_HASH = "a6320deb49d769a2eda26d1ff53594977599b20c99c103f9915ba170d527ec8d";
 export const TURN_OF_THE_TIDE_V3_HASH = "5a120bfca492578d7fb90ce3791b302b700f434c3340262fe3f81b4c649dcc35";
 export const CONSERVATORY_V2_HASH = "f72e035f86687403b8c5057266db33b4fa1211d2100bb5b021cc3678db83845f";
-export const FIRST_STEPS_V2_HASH = "0199c2dd8cd1caf0a3ed2f321cb9ca60b5aa47bda064f7287ee6f0f8a35fecfe";
-export const THE_FALLS_HASH = "257fcef497024f472119a964501f550a80d7c4b530f892afaad328ee0f7a9375";
-export const RELAY_ISLES_V3_HASH = "3dada19b365b4035a50e19a55b1d5e01dc8a3d1391987efe83755ba5bce42fce";
-export const WISHING_WELL_V2_HASH = "5badf350d8033e5d5b0f096fa7c445989793baaa52a327403d20ec6b6e6c87ba";
-export const FOG_MARSH_HASH = "d761534b5edd20d7564458ac902c125961ef9264c1407cc73296535fea564720";
-export const SLEEPING_LIGHTHOUSE_V3_HASH = "eacf9ea619842f9dacad39f42535e352b2b21a30b3c0dbf5e11d342c95effc7e";
+export const FIRST_STEPS_V2_HASH = "a6034e7ff5b9e947af75a005fbb199c8bc2adf0d2eac5648193ba8e51b652e03";
+export const THE_FALLS_HASH = "4f2ba864b99cdbef8d8dc432b9a58fc37072acb61bd09427d768e61fba16366c";
+export const RELAY_ISLES_V3_HASH = "37564dcbc8e104719834fd6f8d8deafed5aa9042b13077e757dc39975197a8d2";
+export const WISHING_WELL_V2_HASH = "95d03a094236a3205b4e73c971ada3939fd24d1ad2e45adefa19b1a347c8dc23";
+export const FOG_MARSH_HASH = "52596d302dcc58a8dceed5bf4b902aba5dde1fb029e6175bd75438222fb7c46f";
+export const SLEEPING_LIGHTHOUSE_V3_HASH = "45d39693d09221b66794ba9440b038e4a71a0d869370dfc186cab597fb9950d2";
 type Surface = { id: string; rect_cm: number[]; height_cm?: number; owner_slot?: string; axis?: string; from_height_cm?: number; to_height_cm?: number };
-export type Marker = { id: string; position_cm: number[]; surface_id: string; height_cm: number; radius_cm: number; owner_slot?: string };
+export type Marker = { id: string; position_cm: number[]; surface_id: string; height_cm: number; radius_cm: number; owner_slot?: string; plate?: boolean; plate_cm?: number[] };
 export type Predicate = { all?: Predicate[]; any?: Predicate[]; not?: Predicate; control_id?: string; value?: string; lever_id?: string; pad_id?: string; signal_id?: string; item_id?: string; carried?: boolean; spot_id?: string };
 type Control = Marker & { values: string[]; initial: string; kind?: string; optics?: LightStage["controls"][number]["optics"] };
 type Stage = { id: string; version: number; first_player_slot: string; turn_cap?: number; controls: Control[]; levers: Marker[]; pressure_pads: Marker[];
@@ -65,6 +65,16 @@ function need(value: unknown, code: string): asserts value { if (!value) throw n
 function near(player: Record<string, unknown>, marker: Marker): boolean {
   return player.surface_id === marker.surface_id && player.height === marker.height_cm &&
     (Number(player.x) - marker.position_cm[0]) ** 2 + (Number(player.z) - marker.position_cm[1]) ** 2 <= marker.radius_cm ** 2;
+}
+
+/** A pip at the stage goal: inside its radius, or on its own half (p0 west, p1 east) of the goal's squircle plate
+ * (|x/a|^4 + |z/b|^4 <= 1, whole centimetres, a and b in plate_cm) when the goal counts one (the client's core/goal_plate.gd). */
+function atGoal(player: Record<string, unknown>, goal: Marker, slot: string): boolean {
+  if (!goal.plate) return near(player, goal);
+  const dx = Number(player.x) - goal.position_cm[0], dz = Number(player.z) - goal.position_cm[1];
+  if (slot === "p0" ? dx > 0 : dx < 0) return false;
+  const a4 = BigInt(goal.plate_cm![0]) ** 4n, b4 = BigInt(goal.plate_cm![1]) ** 4n;
+  return player.surface_id === goal.surface_id && player.height === goal.height_cm && BigInt(dx) ** 4n * b4 + BigInt(dz) ** 4n * a4 <= a4 * b4;
 }
 
 /** A gate tree on an end state, as the client's Seven.predicate: all, any, not (rules 20),
@@ -177,9 +187,9 @@ export function journeyAdapter(definition: Definition, initial: ChapterCheckpoin
     if (piecesRules(definition.simulation_version)) need(!sunkTogether(stage, players), "checkpoint_surface_mismatch");
     if (openLimits) {
       // Open turns: the stage ends only with both pips in its goal area and its objective holding (open-turns.ts openStageEnds).
-      need(openStageEnds(slot => near(object(players[slot]), stage.goal), predicate(stage.goal_policy.when)), "checkpoint_goal_mismatch");
+      need(openStageEnds(slot => atGoal(object(players[slot]), stage.goal, slot), predicate(stage.goal_policy.when)), "checkpoint_goal_mismatch");
     } else {
-      need(near(receiver, stage.goal) && predicate(stage.goal_policy.when), "checkpoint_goal_mismatch");
+      need(atGoal(receiver, stage.goal, stage.first_player_slot === "p0" ? "p1" : "p0") && predicate(stage.goal_policy.when), "checkpoint_goal_mismatch");
       const policy = stage.source_policy;
       need(policy.kind === "choice_pad" ? policy.branches!.some(branch => predicate({ pad_id: branch.pad_id })) :
         predicate(policy.when) && (!policy.endpoint || near(source, policy.endpoint)), "checkpoint_source_position_mismatch");

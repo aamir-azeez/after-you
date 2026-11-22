@@ -4,6 +4,7 @@ extends "res://presentation/cooperative_world.gd"
 const LabelBubble = preload("res://presentation/kit/label_bubble.gd")
 const WaitHints = preload("res://presentation/wait_hints.gd")
 const Seven = preload("res://core/journey/seven_mechanisms.gd")
+const GoalNeeds = preload("res://presentation/kit/goal_needs.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const CarriedItems = preload("res://core/physical/carried_items.gd")
 const CarriedItemKit = preload("res://presentation/kit/pieces/carried_item.gd")
@@ -472,7 +473,7 @@ func _gather_scenery() -> void:
 ## A spirit's or a bubble's own mesh, which never hides a bubble for good.
 func _moves_with_play(node: Node) -> bool:
 	while node != null and node != terrain:
-		if node is LabelBubble or node in actors.values(): return true
+		if node is LabelBubble or node in actors.values() or node.has_meta(GoalNeeds.BUBBLE_CLEAR_META): return true
 		node = node.get_parent()
 	return false
 

@@ -42,7 +42,7 @@ const STYLES := {
 	# Fog Marsh: weathered boardwalk planks, every other one a shade darker,
 	# with butt joints staggered along them ("alt", "joints"), and a reedy mud bank.
 	"boardwalk": {"top": Color("c2a77f"), "trim": Color("8c7656"), "skirt": Color("7a6548"), "band": Color("5f4f3b"), "rock": Color("8a7d63"), "lines": "x", "line": Color("7f694b"), "spacing": 0.3,
-		"alt": Color("b0956c"), "joints": 1.1},
+		"alt": Color("b0956c"), "joints": 1.4},
 	"reed_bank": {"top": Color("aaa27e"), "trim": Color("8f8a64"), "skirt": Color("7f7a58"), "band": Color("6f6548"), "rock": Color("7f7660"), "lines": "", "worn": true},
 }
 

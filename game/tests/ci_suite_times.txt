@@ -129,6 +129,7 @@ github_access 9
 gl_warmup_coverage 29
 gl_warmup_coverage_journey 37
 goal_beacon 29
+goal_plate 5
 gone_room_release 9
 graphics_policy 6
 graphics_settings 8

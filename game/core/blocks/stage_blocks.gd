@@ -97,6 +97,7 @@ extends RefCounted
 ## {"item_id", "spot_id"} with the pan's own id as its spot.
 
 const Solid = preload("res://core/solid_footprint.gd")
+const GoalPlate = preload("res://core/goal_plate.gd")
 const COOPERATIVE := "cooperative"
 const JOURNEY := "journey"
 ## Default reach of each placed thing, cm.
@@ -112,6 +113,8 @@ const LEVEL_ARRAYS := ["drops", "access_zones", "item_spots"]
 const PEDESTAL := {"radius_cm": 36, "solid": {"radius_cm": 28, "reach_cm": 20}}
 const PEDESTAL_DRAWN_CM := 37
 const GOAL_DRAWN_CM := 55
+## A plate goal (core/goal_plate.gd) is drawn this far past its radius (cm): the base squircle's corners.
+const PLATE_DRAWN_PAST_CM := 8
 const PEDESTAL_GAP_CM := 8
 ## Drawn reach of what else stands on the floor (cm): a lever or selector (its knob
 ## swept up VIEW 60 cm), a pad or anything else flat.
@@ -344,6 +347,13 @@ static func _emit(level: Dictionary, stage: Dictionary, block: Dictionary, famil
 				_add(level, stage, "access_zones", {"id": block.lip.id, "rect_cm": block.lip.rect.duplicate(), "surface_id": block.from, "owner_slot": block.lip.owner})
 		"ring_bell":
 			stage["goal"] = _point(block, "bell", family)
+			# "plate": true counts a pip at the goal on its own half of the squircle plate
+			# (core/goal_plate.gd) instead of in the radius circle; the goal is big enough for it.
+			if block.get("plate", false):
+				assert(family == JOURNEY and int(stage.goal.radius_cm) >= GoalPlate.MIN_RADIUS_CM, "A plate goal is a journey goal %d cm across or more" % GoalPlate.MIN_RADIUS_CM)
+				stage.goal["plate"] = true
+				var plate := GoalPlate.half_cm(int(stage.goal.radius_cm))
+				stage.goal["plate_cm"] = [plate.x, plate.y]
 			stage["goal_policy"] = {"kind": "ring"}
 			if block.has("when"): stage.goal_policy["when"] = block.when.duplicate(true)
 		"fog_lantern":
@@ -577,10 +587,16 @@ static func _goal_pedestals(level: Dictionary, stage: Dictionary, blocks: Array,
 		index += 1
 	stage.goal_policy["when"] = _rested(stage.goal_policy.when, spots)
 
+## How far a goal is drawn from its centre (cm): GOAL_DRAWN_CM, or past its radius by
+## PLATE_DRAWN_PAST_CM for a plate goal (its big squircle base).
+static func _goal_drawn_cm(goal: Dictionary) -> int:
+	return maxi(GOAL_DRAWN_CM, int(goal.radius_cm) + PLATE_DRAWN_PAST_CM) if goal.get("plate", false) else GOAL_DRAWN_CM
+
 ## Where a pedestal for `goal` stands: PEDESTAL_DRAWN_CM + GOAL_DRAWN_CM + PEDESTAL_GAP_CM
 ## from its centre, straight in front when that floor has room, else the next place round
 ## it, then further out (the least crowded place when none is free). Whole cm.
 static func _pedestal_at(level: Dictionary, stage: Dictionary, goal: Dictionary) -> Array:
+	var drawn := _goal_drawn_cm(goal)
 	var centre := Vector2(float(goal.position_cm[0]), float(goal.position_cm[1]))
 	var surface := str(goal.surface_id)
 	var height := int(goal.get("height_cm", 0))
@@ -589,10 +605,10 @@ static func _pedestal_at(level: Dictionary, stage: Dictionary, goal: Dictionary)
 		if str(island.id) == surface: rect = island.rect_cm
 	var others := _bodies(level, stage, surface, height)
 	var crossings := _crossings(level, surface)
-	var best := Vector2i(roundi(centre.x), roundi(centre.y) + PEDESTAL_DRAWN_CM + GOAL_DRAWN_CM + PEDESTAL_GAP_CM)
+	var best := Vector2i(roundi(centre.x), roundi(centre.y) + PEDESTAL_DRAWN_CM + drawn + PEDESTAL_GAP_CM)
 	var best_room := -INF
 	for ring in range(4):
-		var radius := float(PEDESTAL_DRAWN_CM + GOAL_DRAWN_CM + PEDESTAL_GAP_CM + ring * RING_STEP_CM)
+		var radius := float(PEDESTAL_DRAWN_CM + drawn + PEDESTAL_GAP_CM + ring * RING_STEP_CM)
 		for turn: float in PEDESTAL_TURNS:
 			var at := Vector2i((centre + Vector2(sin(turn), cos(turn)) * radius).round())
 			var room := _room(at, rect, others, crossings)
@@ -632,7 +648,7 @@ static func _bodies(level: Dictionary, stage: Dictionary, surface: String, heigh
 		found.append({"from": at, "to": at, "radius": maxi(FLAT_DRAWN_CM, int(spot.get("radius_cm", 0)))})
 	var goal: Dictionary = stage.goal
 	var centre := Vector2(float(goal.position_cm[0]), float(goal.position_cm[1]))
-	found.append({"from": centre, "to": centre, "radius": GOAL_DRAWN_CM})
+	found.append({"from": centre, "to": centre, "radius": _goal_drawn_cm(goal)})
 	return found
 
 ## The rects of the crossings that reach `surface` (a pedestal never stands on one).

@@ -74,7 +74,7 @@ static func _relay() -> Dictionary:
 	stage.blocks = [
 		{"block": "hold_door", "pad": _plate("west-plate", [-500, -60], "west"), "routes": ["west-relay"]},
 		{"block": "hold_door", "pad": _plate("relay-plate", [140, -60], "relay"), "routes": ["west-relay"]},
-		{"block": "ring_bell", "id": "relay-bell", "at": BELL, "surface": "relay", "owner": "p1", "height": 0, "radius": 40, "style": "bell",
+		{"block": "ring_bell", "id": "relay-bell", "at": BELL, "surface": "relay", "owner": "p1", "height": 0, "radius": 60, "plate": true, "style": "bell",
 			"when": {"item_id": "seed", "spot_id": "relay-socket"}}]
 	return stage
 
@@ -87,7 +87,7 @@ static func _garden() -> Dictionary:
 		{"block": "crank_bridge", "pads": [
 			{"id": "relay-crank", "at": [-60, -130], "surface": "relay", "owner": "p0", "height": 0, "radius": 32},
 			{"id": "garden-crank", "at": [640, -60], "surface": "east", "owner": "p0", "height": 0, "radius": 32}], "routes": ["relay-east"]},
-		{"block": "ring_bell", "id": "garden-lamp", "at": LAMP, "surface": "east", "owner": "p1", "height": 0, "radius": 48, "style": "crest",
+		{"block": "ring_bell", "id": "garden-lamp", "at": LAMP, "surface": "east", "owner": "p1", "height": 0, "radius": 60, "plate": true, "style": "crest",
 			"when": {"item_id": "seed", "spot_id": "garden"}}]
 	return stage
 

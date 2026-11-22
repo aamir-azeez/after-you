@@ -244,11 +244,16 @@
 				"height_cm": 0,
 				"id": "court-bell",
 				"owner_slot": "p1",
-				"position_cm": [
-					40,
-					-40
+				"plate": true,
+				"plate_cm": [
+					59,
+					30
 				],
-				"radius_cm": 36,
+				"position_cm": [
+					90,
+					-60
+				],
+				"radius_cm": 60,
 				"surface_id": "court"
 			},
 			"goal_policy": {
@@ -345,8 +350,8 @@
 			"receiver_action_ticks": 2,
 			"receiver_route_cm": [
 				[
-					40,
-					-40
+					90,
+					-60
 				]
 			],
 			"source_policy": {
@@ -397,11 +402,16 @@
 				"height_cm": 0,
 				"id": "lens-crest",
 				"owner_slot": "p1",
+				"plate": true,
+				"plate_cm": [
+					59,
+					30
+				],
 				"position_cm": [
-					-150,
+					-190,
 					-50
 				],
-				"radius_cm": 36,
+				"radius_cm": 60,
 				"surface_id": "court"
 			},
 			"goal_policy": {
@@ -499,7 +509,7 @@
 			"receiver_action_ticks": 2,
 			"receiver_route_cm": [
 				[
-					-150,
+					-190,
 					-50
 				]
 			],
@@ -584,11 +594,16 @@
 				"height_cm": 0,
 				"id": "promise-crest",
 				"owner_slot": "p1",
+				"plate": true,
+				"plate_cm": [
+					59,
+					30
+				],
 				"position_cm": [
 					60,
 					-60
 				],
-				"radius_cm": 36,
+				"radius_cm": 60,
 				"surface_id": "court"
 			},
 			"goal_policy": {
@@ -856,11 +871,16 @@
 				"height_cm": 0,
 				"id": "tower-bell",
 				"owner_slot": "p1",
+				"plate": true,
+				"plate_cm": [
+					59,
+					30
+				],
 				"position_cm": [
 					700,
-					80
+					100
 				],
-				"radius_cm": 36,
+				"radius_cm": 60,
 				"surface_id": "tower"
 			},
 			"goal_policy": {
@@ -992,7 +1012,7 @@
 			"receiver_route_cm": [
 				[
 					700,
-					80
+					100
 				]
 			],
 			"source_policy": {
@@ -1048,11 +1068,16 @@
 				"height_cm": 0,
 				"id": "projector-crest",
 				"owner_slot": "p1",
+				"plate": true,
+				"plate_cm": [
+					59,
+					30
+				],
 				"position_cm": [
 					720,
 					-90
 				],
-				"radius_cm": 36,
+				"radius_cm": 60,
 				"surface_id": "tower"
 			},
 			"goal_policy": {
@@ -1262,11 +1287,16 @@
 				"height_cm": 0,
 				"id": "beacon-crest",
 				"owner_slot": "p1",
+				"plate": true,
+				"plate_cm": [
+					59,
+					30
+				],
 				"position_cm": [
 					700,
-					80
+					100
 				],
-				"radius_cm": 36,
+				"radius_cm": 60,
 				"surface_id": "tower"
 			},
 			"goal_policy": {
@@ -1399,7 +1429,7 @@
 			"receiver_route_cm": [
 				[
 					700,
-					80
+					100
 				]
 			],
 			"source_policy": {

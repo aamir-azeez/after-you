@@ -425,7 +425,7 @@
 			"id": "foot-goal-pedestal",
 			"position_cm": [
 				1688,
-				-306
+				-293
 			],
 			"radius_cm": 36,
 			"solid": {
@@ -439,7 +439,7 @@
 			"id": "mill-goal-pedestal",
 			"position_cm": [
 				5120,
-				-390
+				-377
 			],
 			"radius_cm": 36,
 			"solid": {
@@ -453,7 +453,7 @@
 			"id": "behind-goal-pedestal",
 			"position_cm": [
 				9590,
-				-320
+				-307
 			],
 			"radius_cm": 36,
 			"solid": {
@@ -467,7 +467,7 @@
 			"id": "stones-goal-pedestal",
 			"position_cm": [
 				13025,
-				-110
+				-97
 			],
 			"radius_cm": 36,
 			"solid": {
@@ -553,11 +553,16 @@
 				"height_cm": 120,
 				"id": "foot-goal",
 				"owner_slot": "p1",
+				"plate": true,
+				"plate_cm": [
+					59,
+					30
+				],
 				"position_cm": [
 					1688,
 					-406
 				],
-				"radius_cm": 48,
+				"radius_cm": 60,
 				"surface_id": "ledge"
 			},
 			"goal_policy": {
@@ -668,11 +673,16 @@
 				"height_cm": 440,
 				"id": "mill-goal",
 				"owner_slot": "p1",
+				"plate": true,
+				"plate_cm": [
+					59,
+					30
+				],
 				"position_cm": [
 					5120,
 					-490
 				],
-				"radius_cm": 48,
+				"radius_cm": 60,
 				"surface_id": "loft"
 			},
 			"goal_policy": {
@@ -787,11 +797,16 @@
 				"height_cm": 810,
 				"id": "behind-goal",
 				"owner_slot": "p1",
+				"plate": true,
+				"plate_cm": [
+					59,
+					30
+				],
 				"position_cm": [
 					9590,
 					-420
 				],
-				"radius_cm": 48,
+				"radius_cm": 60,
 				"surface_id": "etop"
 			},
 			"goal_policy": {
@@ -958,11 +973,16 @@
 				"height_cm": 940,
 				"id": "stones-goal",
 				"owner_slot": "p1",
+				"plate": true,
+				"plate_cm": [
+					59,
+					30
+				],
 				"position_cm": [
 					13025,
 					-210
 				],
-				"radius_cm": 48,
+				"radius_cm": 60,
 				"surface_id": "far"
 			},
 			"goal_policy": {

@@ -68,7 +68,7 @@ static func source() -> Dictionary:
 ## Both start on the shore; the bell is on the loft.
 static func _lift() -> Dictionary:
 	var stage := _stage("a-little-lift", "p0", BELL)
-	stage.blocks = [_weight_lift(), {"block": "ring_bell", "id": "loft-bell", "at": BELL, "surface": "loft", "owner": "p1", "height": LOFT, "radius": 36}]
+	stage.blocks = [_weight_lift(), {"block": "ring_bell", "id": "loft-bell", "at": BELL, "surface": "loft", "owner": "p1", "height": LOFT, "radius": 60, "plate": true}]
 	return stage
 
 ## Both start at the loft bell; the garden lamp is on the shore.
@@ -77,7 +77,7 @@ static func _garden() -> Dictionary:
 	stage.item_starts = {"seed": "seed-pedestal"}
 	# @1's throw: from the marked edge of the loft to the ring on the shore.
 	stage.throws = [{"id": "seed-throw", "mark": {"position_cm": [140, -90], "surface_id": "loft", "height_cm": LOFT, "radius_cm": 30}, "to": "landing", "flight_ticks": 90, "catch_cm": 90}]
-	stage.blocks = [_weight_lift(), {"block": "ring_bell", "id": "garden-lamp", "at": LAMP, "surface": "shore", "owner": "p1", "height": 0, "radius": 48,
+	stage.blocks = [_weight_lift(), {"block": "ring_bell", "id": "garden-lamp", "at": LAMP, "surface": "shore", "owner": "p1", "height": 0, "radius": 60, "plate": true,
 		"when": {"item_id": "seed", "spot_id": "garden"}}]
 	return stage
 

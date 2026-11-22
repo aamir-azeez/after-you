@@ -23,6 +23,8 @@ extends RefCounted
 ## (pure, on the snapshot's mechanisms) and never feeds back. The sign hangs
 ## above walkable height, so it is no step-over obstacle and adds nothing to
 ## the goal's drawn footprint (kit/pieces/goal.gd drawn_radius).
+## Set on every mesh of the sign: the journey placement does not count it as scenery.
+const BUBBLE_CLEAR_META := &"bubble_clear"
 const Parts = preload("res://presentation/kit/pieces/parts.gd")
 const Seven = preload("res://core/journey/seven_mechanisms.gd")
 const CarriedItemKit = preload("res://presentation/kit/pieces/carried_item.gd")
@@ -110,6 +112,9 @@ func build(stage: Dictionary, root: Node3D, at: Vector3, post: bool, item_style:
 		var long := Parts.box(Vector3(0.22, 0.02, 0.04), TICK, Vector3(0.05, 0.01, 0.0), tick)
 		long.rotation.y = PI / 4.0
 		needs.append({"term": term, "disc": disc, "icon": holder, "tick": tick, "met": false})
+	# A bubble's placement ignores the sign (journey_world.gd _gather_scenery): it hangs
+	# overhead and must not push a bubble over a spirit. Tagged parts stay unfolded.
+	for part: Node in sign.find_children("*", "MeshInstance3D", true, false): part.set_meta(BUBBLE_CLEAR_META, true)
 
 ## Lights each need's token while `state` meets it; nothing when unchanged.
 func present(state: Dictionary) -> void:
