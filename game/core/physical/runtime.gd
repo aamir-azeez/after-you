@@ -404,7 +404,7 @@ func _try_move(delta: Vector2i, cells: Dictionary, routes: Dictionary, slot: Str
 	var x := int(previous.x) + delta.x
 	var z := int(previous.z) + delta.y
 	var position := Navigation.at(level, routes, _mechanisms.levers, previous, x, z, slot, PLAYER_RADIUS, true, cells)
-	if position.is_empty() or _in_solid(position): return false
+	if position.is_empty() or _in_solid(position) or not _may_step(previous, position): return false
 	var pushed: Variant = _pushes(previous, x, z, int(position.height), delta, slot, slot == active_slot or _shared_ball(), cells)
 	if pushed == null: return false
 	for id: String in pushed: _mechanisms.props[id] = pushed[id]
@@ -448,6 +448,11 @@ func _holds_ball(route_id: String) -> bool:
 ## Whether rules `simulation_version` play the shared ball (SHARED_BALL_RULES).
 func _shared_ball() -> bool:
 	return simulation_version in SHARED_BALL_RULES
+
+## Whether a pip may step from `previous` to `position` (a facade's own
+## floors that move: the journey's platforms). Always, here.
+func _may_step(_previous: Dictionary, _position: Dictionary) -> bool:
+	return true
 
 ## Whether `position` stands in a solid spot on its own floor.
 func _in_solid(position: Dictionary) -> bool:

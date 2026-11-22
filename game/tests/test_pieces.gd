@@ -9,6 +9,11 @@ extends SceneTree
 ##   stilts; one on the top pan brings it down; stops never close slowly;
 ## - the rope raft: the friend's replay pulls and carries the live pip over
 ##   the water;
+## - boarding a deck (core/journey/simulation.gd _may_step) on first-steps@2's
+##   lift: raised to the top and let down for a moment, its deck is still a
+##   storey up, so the pip on the shore cannot board until the deck is within
+##   a step (Navigation.STEP_CM) of the shore; at its stop it boards as ever,
+##   and a rider stays on until the deck reaches the loft;
 ## - the replay rides too, in the one world: on the lift as it rises it rides
 ##   up, on the raft as the live pip pulls it crosses the water, and a live pip
 ##   and the replay on one lift ride up together, whoever winds it; a third
@@ -40,6 +45,8 @@ const LevelGraph = preload("res://tests/level_graph.gd")
 const RideWitness = preload("res://tests/ride_witness.gd")
 const Proof = preload("res://core/physical/two_pair_proof.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const FirstStepsV2 = preload("res://core/journey/first_steps_v2_catalog.gd")
+const Navigation = preload("res://core/cooperative/navigation.gd")
 const SERVER_FIXTURES := "res://tests/fixtures/memory_rides/"
 var checks := 0
 var failures := 0
@@ -55,6 +62,7 @@ func _run() -> void:
 	_fog_lantern()
 	_weight_lift()
 	_raft()
+	_boarding()
 	_memory_rides()
 	_ride_witness()
 	_ladder()
@@ -131,6 +139,7 @@ func _weight_lift() -> void:
 		if b._players.p1.surface_id == "lift-high": rode = true
 		if rode or b.finished: break
 	_check(rode and int(b._players.p1.height) == 96 and int(b._players.p1.x) == 450 and b._drowned.is_empty(), "The replay weighs the pan and the live pip rides the lift up: %s" % [b._players.p1])
+	_arrive(b)
 	_walk(b, [600, 200])
 	_check(b._players.p1.surface_id == "stilts", "And steps off onto the stilts")
 	_walk(b, [850, 50])
@@ -160,8 +169,91 @@ func _raft() -> void:
 		if b._players.p1.surface_id == "raft-south": rode = true
 		if rode or b.finished: break
 	_check(rode and int(b._players.p1.z) == 660 and "rode:raft" in b._events, "The replay's pull carries the live pip over the water: %s" % [b._players.p1])
+	_arrive(b)
 	_walk(b, [200, 800])
 	_check(b._players.p1.surface_id == "isle", "And it steps off onto the isle")
+
+## first-steps@2's lift. Turn 1: orange starts on the power spot, so the lift
+## stands at the loft; it steps off for a moment and back (the lift turns down
+## and up again), later steps off for good, and comes back once teal is aboard.
+## Turn 2: teal walks east from the shore into the lift every tick.
+func _boarding() -> void:
+	var fs := FirstStepsV2.definition()
+	var checkpoint := Catalog.initial_checkpoint(fs)
+	checkpoint.players.p0 = _at(-300, -130, "shore", 0)
+	checkpoint.players.p1 = _at(-150, 0, "shore", 0)
+	var a := _fs_sim(fs, checkpoint)
+	_check(bool(a._routes["lift-high"]) and a._decks.is_empty(), "Orange on the power spot: the lift stands at the loft")
+	var north := {"move_z": -1.0}
+	var south := {"move_z": 1.0}
+	var lowered := -1
+	var lowest := FirstStepsV2.LOFT
+	for input: Dictionary in _inputs([[6, north], [6, south]]):
+		a.step(input)
+		if lowered < 0 and bool(a._routes["lift-low"]): lowered = int(a.tick)
+		lowest = mini(lowest, _deck_height(a))
+	_check(lowered > 0 and bool(a._routes["lift-high"]) and lowest < FirstStepsV2.LOFT and lowest > FirstStepsV2.LOFT - 20, "A moment off the spot turns the lift down, and back on it turns up again before its deck gets far (lowest %d cm)" % lowest)
+	_idle(a, 80 - int(a.tick))
+	for input: Dictionary in _inputs([[10, north]]): a.step(input)
+	_idle(a, 200 - int(a.tick))
+	for input: Dictionary in _inputs([[10, south]]): a.step(input)
+	_idle(a, 300 - int(a.tick))
+	var b := _fs_sim(fs, checkpoint, _json(a.export_recording()))
+	var boarded := -1
+	var down_at := -1
+	var early := ""
+	var off_at := -1
+	var lift_up := -1
+	for tick in range(300):
+		var was_low := bool(b._routes["lift-low"])
+		b.step({"move_x": 1.0})
+		if boarded < 0 and bool(b._routes["lift-low"]) and not was_low: down_at = int(b.tick)
+		var surface := str(b._players.p1.surface_id)
+		var deck := _deck_height(b)
+		if boarded < 0 and surface.begins_with("lift-"):
+			boarded = int(b.tick)
+			if absi(deck) > Navigation.STEP_CM: early = "boarded with the deck at %d cm" % deck
+		if boarded > 0 and lift_up < 0 and surface == "lift-high": lift_up = int(b.tick)
+		if surface == "loft":
+			off_at = int(b.tick)
+			if absi(deck - FirstStepsV2.LOFT) > Navigation.STEP_CM: early = "stepped off with the deck at %d cm" % deck
+			break
+	_check(early.is_empty() and down_at > lowered and boarded >= down_at + 59, "Teal never boards the lowered lift while its deck is a storey up, only once it is down (boarded at tick %d, the lift turned down for good at %d; %s)" % [boarded, down_at, early])
+	_check(lift_up > boarded and off_at >= lift_up + 59 and b._decks.is_empty(), "Riding up, teal stays on the deck until it reaches the loft (up at tick %d, off at %d)" % [lift_up, off_at])
+	# At its stop the lift is boarded at once.
+	checkpoint.players.p0 = _at(-420, -130, "shore", 0)
+	var c := _fs_sim(fs, checkpoint)
+	var d := _fs_sim(fs, checkpoint, _json(_idle_record(c, 30)))
+	for _step in range(6): d.step({"move_x": 1.0})
+	_check(str(d._players.p1.surface_id) == "lift-low" and d._decks.is_empty(), "With the lift resting at the shore, teal steps straight on: %s" % [d._players.p1])
+
+## A first-steps@2 turn from `checkpoint`: the first with no `prior`, else the second.
+func _fs_sim(fs: Dictionary, checkpoint: Dictionary, prior: Dictionary = {}) -> Simulation:
+	var sim := Simulation.new()
+	sim.simulation_version = OpenControls.PIECES_RULES_VERSION
+	sim._reset_trusted(fs, "a-little-lift", checkpoint, prior, "a" if prior.is_empty() else "b")
+	return sim
+
+## [[ticks, input], ...] as one input a tick.
+static func _inputs(spans: Array) -> Array:
+	var all: Array = []
+	for span: Array in spans:
+		for _tick in range(int(span[0])): all.append(span[1])
+	return all
+
+static func _idle_record(sim: Simulation, ticks: int) -> Dictionary:
+	_idle(sim, ticks)
+	return sim.export_recording()
+
+## The height (cm) of the deck of the stage's first platform, where it is this tick.
+static func _deck_height(sim: Simulation) -> int:
+	var entry: Array = sim._platforms[0]
+	var at: Dictionary = entry[1].filter(func(stop: Dictionary) -> bool: return bool(sim._routes.get(stop.id, false)))[0]
+	return int(sim._deck_now(entry, at)[2])
+
+## Stands still until every deck has reached its stop.
+static func _arrive(sim: Simulation) -> void:
+	while not sim._decks.is_empty() and not sim.finished: sim.step({})
 
 ## The friend's replay rides too (core/journey/simulation.gd _move_platforms).
 func _memory_rides() -> void:

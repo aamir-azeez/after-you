@@ -60,10 +60,16 @@ var _optics: Dictionary = {"segments":[],"signals":{}}
 var _route_defs: Array = []
 var _gate_plan: Array = []
 ## The pieces rules (core/physical/pieces_rules.gd), fixed at reset: the stage's
-## platforms as [platform, [stop bridges]], every stop id, the sinking stones,
-## and each pip's surface as the tick began (who stepped onto a stone last).
+## platforms as [platform, [stop bridges], whether it is a lift], every stop id
+## with its platform's place in that list, the sinking stones, and each pip's
+## surface as the tick began (who stepped onto a stone last).
 var _platforms: Array = []
 var _stops: Dictionary = {}
+## The pieces rules: each deck still on its way to the stop its platform
+## stands at, by platform id: {"from": [x, z, height] cm where it set off,
+## "done": ticks travelled, "ticks": the whole way} (PiecesRules.deck_ticks).
+## A deck at its stop has none.
+var _decks: Dictionary = {}
 var _sinking: Array = []
 var _surfaces_before: Dictionary = {}
 
@@ -135,6 +141,7 @@ func _reset_mechanics() -> void:
 	_optics = {"segments":[],"signals":{}}
 	_platforms = []
 	_stops = {}
+	_decks = {}
 	_sinking = []
 	_surfaces_before = {}
 	if _pieces_rules():
@@ -144,13 +151,18 @@ func _reset_mechanics() -> void:
 			var stops: Array = []
 			for id: Variant in platform.stops:
 				stops.append(bridges[str(id)])
-				_stops[str(id)] = true
-			_platforms.append([platform, stops])
+				_stops[str(id)] = _platforms.size()
+			_platforms.append([platform, stops, stops.all(func(stop: Dictionary) -> bool: return stop.rect_cm == stops[0].rect_cm)])
 		for id: Variant in stage.get("sinking", []): _sinking.append(str(id))
 
-## The pieces rules: each pip's surface as the tick began (who stepped onto a stone last).
+## The pieces rules: each pip's surface as the tick began (who stepped onto a
+## stone last), and each travelling deck a tick further along.
 func _before_moves() -> void:
-	if _pieces_rules(): _surfaces_before = {"p0": str(_players.p0.surface_id), "p1": str(_players.p1.surface_id)}
+	if not _pieces_rules(): return
+	_surfaces_before = {"p0": str(_players.p0.surface_id), "p1": str(_players.p1.surface_id)}
+	for id: String in _decks.keys():
+		_decks[id].done = int(_decks[id].done) + 1
+		if int(_decks[id].done) >= int(_decks[id].ticks): _decks.erase(id)
 
 func _advance_source() -> void:
 	super._advance_source()
@@ -179,7 +191,8 @@ func _refresh_routes() -> void:
 ## The pieces rules: each platform stands at the one stop whose gate holds,
 ## or where it stood when none or several do (its first stop at the start).
 ## When it moves, every pip on the old stop rides along to the same spot on
-## the new one, both pips alike, and so does every item put down on it.
+## the new one, both pips alike, and so does every item put down on it, while
+## the deck sets off from wherever it is (_decks).
 func _move_platforms(was: Dictionary) -> void:
 	for entry: Array in _platforms:
 		var stops: Array = entry[1]
@@ -190,6 +203,10 @@ func _move_platforms(was: Dictionary) -> void:
 		var at: Dictionary = holding[0] if holding.size() == 1 else before if not before.is_empty() else holding[0] if not holding.is_empty() else stops[0]
 		for stop: Dictionary in stops: _routes[stop.id] = stop.id == at.id
 		if before.is_empty() or before.id == at.id: continue
+		var from := _deck_now(entry, before)
+		var ticks := PiecesRules.deck_ticks(from, _corner(at), bool(entry[2]))
+		if ticks > 0: _decks[str(entry[0].id)] = {"from": from, "done": 0, "ticks": ticks}
+		else: _decks.erase(str(entry[0].id))
 		var rode := false
 		for slot: String in ["p0", "p1"]:
 			if str(_players[slot].surface_id) != str(before.id): continue
@@ -201,6 +218,37 @@ func _move_platforms(was: Dictionary) -> void:
 			_mechanisms.items[id] = _shifted(item, before, at)
 			rode = true
 		if rode: _events.append("rode:" + str(entry[0].id))
+
+## Where the deck of platform `entry` stands now, [x, z, height] cm of its
+## corner: on its way to stop `at` (the stop it stands at), or there.
+func _deck_now(entry: Array, at: Dictionary) -> Array:
+	var deck: Dictionary = _decks.get(str(entry[0].id), {})
+	return _corner(at) if deck.is_empty() else PiecesRules.deck_at(deck.from, _corner(at), int(deck.done), int(deck.ticks))
+
+static func _corner(stop: Dictionary) -> Array:
+	return [int(stop.rect_cm[0]), int(stop.rect_cm[1]), int(stop.height_cm)]
+
+## The pieces rules: a pip steps between a platform's stop and anything else
+## only while the deck stands within a step (Navigation.STEP_CM, as at any
+## ledge) of the stop and of the floor it steps from or to, measured from
+## where the deck is this tick. So riders stay on until it gets there, and no
+## pip boards a deck still on its way, the live pip and the friend's replay
+## alike.
+func _may_step(previous: Dictionary, position: Dictionary) -> bool:
+	var left := str(previous.surface_id)
+	var reached := str(position.surface_id)
+	if _platforms.is_empty() or left == reached: return true
+	return _deck_meets(left, int(position.height)) and _deck_meets(reached, int(previous.height))
+
+## Whether `surface`, when it is a platform's stop, has its deck there, within a
+## step of `height`.
+func _deck_meets(surface: String, height: int) -> bool:
+	if not _stops.has(surface): return true
+	var entry: Array = _platforms[int(_stops[surface])]
+	var stop: Dictionary = entry[1].filter(func(each: Dictionary) -> bool: return str(each.id) == surface)[0]
+	var deck := _deck_now(entry, stop)
+	var corner := _corner(stop)
+	return absi(int(deck[0]) - int(corner[0])) <= Navigation.STEP_CM and absi(int(deck[1]) - int(corner[1])) <= Navigation.STEP_CM and absi(int(deck[2]) - height) <= Navigation.STEP_CM
 
 ## `player` (a pip, or an item resting loose) moved from platform stop `from`
 ## to the same spot on stop `to`.
@@ -445,14 +493,17 @@ func _state_body() -> Dictionary:
 	if _tide_rules():
 		value["closing"]=_closing.duplicate()
 		value["drowned"]=_drowned.duplicate()
-	# The pieces rules: a stage with throws hashes what is in flight.
+	# The pieces rules: a stage with throws hashes what is in flight, and one
+	# with a deck on its way hashes the deck.
 	if not _throws.is_empty(): value["flights"]=_flights.duplicate(true)
+	if not _decks.is_empty(): value["decks"]=_decks.duplicate(true)
 	return value
 
 ## Open turns: the journey's own world values (runtime.gd save_world): entry
 ## latches, the closing crossings as ticks left, who drowned, each item's
-## last leg and what flies. The ready branch, holds and surfaces are a first
-## turn's own part or a tick's, so they stay out.
+## last leg, what flies and each deck on its way (none while every deck
+## stands at its stop, as before decks travelled). The ready branch, holds and
+## surfaces are a first turn's own part or a tick's, so they stay out.
 func _save_extra(world: Dictionary) -> void:
 	world["entry_latches"] = _sorted_latches()
 	var closing: Dictionary = {}
@@ -461,6 +512,7 @@ func _save_extra(world: Dictionary) -> void:
 	world["drowned"] = _drowned.duplicate()
 	world["legs_taken"] = _legs_taken.duplicate()
 	world["flights"] = _flights.duplicate(true)
+	if not _decks.is_empty(): world["decks"] = _decks.duplicate(true)
 
 func _load_extra(world: Dictionary) -> void:
 	_entry_latches = {}
@@ -470,6 +522,7 @@ func _load_extra(world: Dictionary) -> void:
 	_drowned = world.drowned.duplicate()
 	_legs_taken = world.legs_taken.duplicate()
 	_flights = world.flights.duplicate(true)
+	_decks = world.get("decks", {}).duplicate(true)
 
 func _sorted_latches() -> Array:
 	var result:=_entry_latches.keys()
