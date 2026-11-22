@@ -1652,7 +1652,7 @@ const FIRST_STEPS_LIFT_HINT_A := "The lift goes up while someone stands on a spo
 const FIRST_STEPS_LIFT_HINT_B := "Ride up, then stand on the loft's spot to bring your friend up too. Meet at the bell."
 const FIRST_STEPS_GROW_TITLE := "A Place to Grow"
 const FIRST_STEPS_GROW_HINT_A := "Take the seed from beside the pedestal. Throw it from the marked edge, or ride the lift down with it."
-const FIRST_STEPS_GROW_HINT_B := "Put the seed in the garden and meet by its lamp."
+const FIRST_STEPS_GROW_HINT_B := "Put the seed in the garden and meet beside it."
 # relay-isles@3 (open turns, the shared rules). Its title, summary and stage
 # titles are relay-isles@2's; the completion and hints are drafts awaiting the owner.
 const RELAY_ISLES_TITLE := "The Relay Isles"
