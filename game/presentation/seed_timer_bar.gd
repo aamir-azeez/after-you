@@ -50,6 +50,15 @@ var race_ratio := -1.0
 var _race_pip: Control
 const MARK_TICK := Color(0.93, 0.93, 0.86, 0.55)
 const MARK_GAP := 3.0
+## Open turns: where the friend's replay ends in this turn, as a fraction of
+## it (-1 for none), in the friend's pip colour: a small notch pointing up at
+## the track from below, so it never meets the ghost race's tick and pip
+## above. Hollow while the replay plays, filled once it has ended.
+var replay_ratio := -1.0
+var replay_color := Color.WHITE
+var replay_passed := false
+const NOTCH_GAP := 1.0
+const NOTCH_SIZE := Vector2(9.0, 6.5)
 
 func _init() -> void:
 	step = 0.01
@@ -111,6 +120,37 @@ func clear_race_mark() -> void:
 	race_ratio = -1.0
 	queue_redraw()
 
+## Shows the friend's replay ending at `ratio` of the turn in `color`;
+## `passed` once it has. Unchanged values redraw nothing.
+func set_replay_mark(ratio: float, color: Color, passed: bool) -> void:
+	var at := clampf(ratio, 0.0, 1.0)
+	if is_equal_approx(at, replay_ratio) and color == replay_color and passed == replay_passed: return
+	replay_ratio = at
+	replay_color = color
+	replay_passed = passed
+	queue_redraw()
+
+func clear_replay_mark() -> void:
+	if replay_ratio < 0.0: return
+	replay_ratio = -1.0
+	replay_passed = false
+	queue_redraw()
+
+## The notch's box under the track (empty when there is none).
+func replay_mark_rect() -> Rect2:
+	if replay_ratio < 0.0: return Rect2()
+	var top := TRACK_CENTRE + TRACK_HEIGHT * 0.5 + NOTCH_GAP
+	return Rect2(track_x(replay_ratio) - NOTCH_SIZE.x * 0.5, top, NOTCH_SIZE.x, NOTCH_SIZE.y)
+
+## The ghost race's tick and its pip, for keeping clear of them (none: empty).
+func race_mark_rects() -> Array[Rect2]:
+	var rects: Array[Rect2] = []
+	if race_ratio < 0.0: return rects
+	var x := track_x(race_ratio)
+	rects.append(Rect2(x - 1.0, TRACK_CENTRE - TRACK_HEIGHT * 0.5 - MARK_GAP, 2.0, TRACK_HEIGHT + MARK_GAP))
+	if is_instance_valid(_race_pip): rects.append(Rect2(_race_pip.position, _race_pip.size))
+	return rects
+
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_RESIZED: _place_race_pip()
 
@@ -156,6 +196,7 @@ func _draw() -> void:
 	if race_ratio >= 0.0:
 		var mark_x := track_x(race_ratio)
 		draw_line(Vector2(mark_x, track.position.y - MARK_GAP), Vector2(mark_x, track.end.y), MARK_TICK, 1.5, true)
+	if replay_ratio >= 0.0: _draw_replay_notch()
 	# Before the first tick the seed alone marks the start; no gold peeks behind it.
 	if edge > low + 0.5:
 		draw_style_box(_style("fill"), Rect2(track.position, Vector2(maxf(TRACK_HEIGHT, edge - track.position.x), TRACK_HEIGHT)))
@@ -168,6 +209,13 @@ func _draw() -> void:
 	draw_set_transform(Vector2(edge, TRACK_CENTRE), angle)
 	draw_texture_rect(SEED_TEXTURE, body, false)
 	draw_set_transform(Vector2.ZERO)
+
+func _draw_replay_notch() -> void:
+	var box := replay_mark_rect()
+	var points := PackedVector2Array([Vector2(box.get_center().x, box.position.y), Vector2(box.end.x, box.end.y), Vector2(box.position.x, box.end.y)])
+	draw_colored_polygon(points, replay_color if replay_passed else TRACK)
+	points.append(points[0])
+	draw_polyline(points, replay_color, 1.5, true)
 
 ## A two-leaf sprout standing on the end of the track, where the turn ends.
 func _draw_sprout(base: Vector2) -> void:
