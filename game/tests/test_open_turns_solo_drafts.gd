@@ -87,7 +87,8 @@ func _play_turn(journey: Journey, recorded: Dictionary, reopen: bool) -> String:
 			var again := Journey.new(journey._path, null, journey.chapter_key())
 			again.load_data()
 			if again.draft().is_empty() or again.read_only: return "the saved draft did not reopen: " + again.last_error
-	if saves == 0: return "no periodic draft was saved"
+	# A turn shorter than one draft period (a first pip ending turn 1 at once) saves none.
+	if saves == 0 and frames.size() > 30: return "no periodic draft was saved"
 	# A pause saves at once, on the main thread.
 	if not journey.save_live_draft(live): return "the paused draft failed: " + journey.last_error
 	# A first turn ends once it may be saved; a pass hands the stage on.
@@ -145,7 +146,10 @@ func _failed_periodic_recovers(chapter: String) -> void:
 	var journey := _journey(chapter, "recover")
 	_check(journey.accept_recording(turns[0]) and journey.accept_recording(turns[1]), chapter + ": turn 1 and a pass are saved (%s)" % journey.last_error)
 	var live: RefCounted = journey.create_live_simulation(false)
-	for t in range(60): live.step({"move_x": 0.5, "move_z": 0.2, "interact": false})
+	# Still inside the friend's replay: at most 60 ticks, ending before it does.
+	var steps := mini(60, int(live.replay_ticks()) - 1)
+	_check(steps > 0, chapter + ": turn 3 watches a replay (%d ticks)" % int(live.replay_ticks()))
+	for t in range(steps): live.step({"move_x": 0.5, "move_z": 0.2, "interact": false})
 	for lost: Variant in [{"ok": false, "error": "disk full"}, null]:
 		journey._draft_writer = Thread.new()
 		journey._draft_writer.start(func() -> Variant: return lost)
@@ -156,7 +160,7 @@ func _failed_periodic_recovers(chapter: String) -> void:
 		_check(journey.save_live_draft(live), chapter + ": a pause after a failed periodic write still saves (%s)" % journey.last_error)
 	var reopened := _journey(chapter, "recover")
 	var kept: Dictionary = reopened.draft()
-	_check(int(kept.get("duration_ticks", 0)) == 60 and not reopened.read_only, chapter + ": the journal holds the latest draft (%d ticks, %s)" % [int(kept.get("duration_ticks", 0)), reopened.last_error])
+	_check(int(kept.get("duration_ticks", 0)) == steps and not reopened.read_only, chapter + ": the journal holds the latest draft (%d ticks, %s)" % [int(kept.get("duration_ticks", 0)), reopened.last_error])
 	# The draft is a turn still inside its memory: it checks, but is no pass.
 	_check(not journey.accept_recording(live.export_recording()) and journey.passes().size() == 1, chapter + ": a turn still inside its memory is not saved as a pass")
 

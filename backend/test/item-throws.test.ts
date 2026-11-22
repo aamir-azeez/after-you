@@ -16,7 +16,7 @@ import bundled from "../src/v2/first-steps-v2.json";
 import bundledInitial from "../src/v2/first-steps-v2-initial.json";
 
 /**
- * Throws and solid item spots (rules 16, src/v2/protocol-items.ts; the phone's rules are
+ * Throws and solid item spots (rules 20, src/v2/protocol-items.ts; the phone's rules are
  * game/core/physical/carried_items.gd) on first-steps@2 (game/tests/test_first_steps_v2.gd writes
  * the fixtures): the seed is thrown from the loft, caught on the shore and planted. The server takes
  * every turn and both closing checkpoints, never a checkpoint with the seed in the air, and refuses a
@@ -32,11 +32,11 @@ const lift = [liftA, liftB, liftC] as unknown as ChapterRecording[];
 const grow = [growA, growB, growC] as unknown as ChapterRecording[];
 
 describe("item throws", () => {
-  it("bundles the phone's definition, with a throw and a solid pedestal, on rules 16", async () => {
+  it("bundles the phone's definition, with a throw and a solid pedestal, on rules 20", async () => {
     expect(bundled).toEqual(definition);
     expect(bundledInitial).toEqual(initial);
     expect(await digest(canonicalJson(definition))).toBe(FIRST_STEPS_V2_HASH);
-    expect(firstStepsV2.simulation_version).toBe(16);
+    expect(firstStepsV2.simulation_version).toBe(20);
     expect((definition as Json).stages[1].throws[0]).toMatchObject({ id: "seed-throw", to: "landing" });
     expect((definition as Json).item_spots[0]).toMatchObject({ id: "seed-pedestal", solid: { radius_cm: 28, reach_cm: 20 } });
   });

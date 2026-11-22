@@ -1,9 +1,9 @@
 {
 	"a_recording_hash": "",
 	"b_recording_hash": "",
-	"checkpoint_hash": "037c2a7ca78e6aa5bacdeacfc6da543b5e833bdb9297cb4f85a4a0d1faec4797",
+	"checkpoint_hash": "da8d93287337a918c8f2d972e741a000315f7ce79159ae7ab5fd5e0a243f3a6b",
 	"completed_stage_id": "",
-	"definition_hash": "30ff6b4e95e79dbadb6c4928c6bc80c1fb4a5b4f495e649f0087912c56a42bb9",
+	"definition_hash": "e78124ca25a0e9a9617211bfcc430bd9a0ee7586bf874ee9bb159db8a20ce84e",
 	"level_id": "relay-isles",
 	"level_version": 3,
 	"mechanisms": {

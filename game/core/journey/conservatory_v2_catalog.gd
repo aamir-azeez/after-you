@@ -4,8 +4,8 @@ extends RefCounted
 ## shares a record with an earlier version, its controls carry no owner, and a
 ## stage passes back and forth until both pips end a turn in its lit garden, up to its cap.
 ## Its words are the descriptor's copy and stage_copy, never the
-## definition's. Its turns are development limits, 120 seconds every turn, to explore while
-## the owner records; the release step sets the owner's numbers (scripts/chapter_turn_limits.py).
+## definition's. Its turns are the fallback until the owner plays it: twice the longest carry-over witness turn, at least 60 s
+## (60 s every turn; scripts/chapter_turn_limits.py --suggested).
 ##
 ## A Light Above: with open controls the second spirit could turn the court's
 ## two forks itself, light the top steps and finish alone. So the forks stand
@@ -54,7 +54,7 @@ static func definition() -> Dictionary:
 	var level: Dictionary = Earlier.definition().duplicate(true)
 	level.version = 2
 	OpenTurns.pin(level, CAPS)
-	level.turn_limits = {"a_ticks":3600,"b_ticks":3600}
+	level.turn_limits = {"a_ticks":1800,"b_ticks":1800}
 	OpenControls.open_crossings(level, OWNED)
 	for field: String in WORDS:
 		level.erase(field)

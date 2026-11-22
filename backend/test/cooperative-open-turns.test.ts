@@ -47,7 +47,7 @@ const WELL: Stage[] = [{ turns: [wellAheadA, wellAheadB, wellAheadC, wellAheadD,
 
 describe("cooperative open turns", () => {
   it("takes the Wishing Well@2 witness: every turn and each stage's closing checkpoint", async () => {
-    expect(wishingWellV2.simulation_version).toBe(14);
+    expect(wishingWellV2.simulation_version).toBe(18);
     expect(wishingWellV2.open_turns?.caps).toEqual([10, 20]);
     expect(wishingWellV2.max_branches).toBe(7);
     await playsThrough(wishingWellV2, WELL);

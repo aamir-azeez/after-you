@@ -430,7 +430,7 @@
 	"premium": false,
 	"props": [],
 	"schema_version": 7,
-	"simulation_version": 16,
+	"simulation_version": 20,
 	"stages": [
 		{
 			"ball_pads": [],
@@ -1135,8 +1135,8 @@
 		}
 	},
 	"turn_limits": {
-		"a_ticks": 3600,
-		"b_ticks": 3600
+		"a_ticks": 2850,
+		"b_ticks": 2850
 	},
 	"version": 1
 }

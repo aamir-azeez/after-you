@@ -31,8 +31,10 @@ const HOST := "HHHHHHHHHHHHHHHHHHHHHH"
 const GUEST := "GGGGGGGGGGGGGGGGGGGGGG"
 const ROOM := "RRRRRRRRRRRRRRRRRRRRRR"
 const ROOT := "user://open-turn-fingerprints-test"
-## Repeats of each stage's first two routes before its closing route: 3 gives seven turns a stage.
+## Rounds of two turns a stage before its closing route: 3 gives seven turns a stage.
 const ROUNDS := 3
+## How long each pip stands in a pass before the witness routes (_stage_steps).
+const WAIT := 20
 var checks := 0
 var failures := 0
 
@@ -82,12 +84,16 @@ func _wipe() -> void:
 	OpenTurnStore.erase_owner(GUEST, ROOT)
 	OpenTurnStore.erase_owner("FFFFFFFFFFFFFFFFFFFFFF", ROOT)
 
-## Each stage's routes with its first two repeated ROUNDS times before the closing one.
+## Each stage's three witness routes after (ROUNDS - 1) * 2 passes where each pip
+## only stands for WAIT ticks. Equal passes leave the shared timeline as the
+## witness's own (carry-over turns, core/physical/open_turns.gd): the first
+## route then starts with no replay beside it, the second hands off at its tick
+## 0, and the third at the first route's length, as in the witness.
 static func _stage_steps(stage_id: String) -> Array:
 	var turns: Array = Witness.routes(TIDE)[stage_id].turns
 	var steps: Array = []
-	for _round in range(ROUNDS): steps.append_array([turns[0], turns[1]])
-	steps.append(turns[2])
+	for _pass in range((ROUNDS - 1) * 2): steps.append([["wait", WAIT]])
+	steps.append_array([turns[0], turns[1], turns[2]])
 	return steps
 
 ## One turn on `phone`'s live engine, as the room screen plays it; {} when it cannot.
