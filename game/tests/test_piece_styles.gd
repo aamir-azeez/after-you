@@ -500,7 +500,7 @@ func _check_goal_missing(holder: Node3D) -> void:
 	goal.present(alone, false, false)
 	_check(red.call(goal.pads.p1.rim) > 0.0 and red.call(goal.pads.p1.rim) < lit and red.call(token) < lit, "They blink on the closing warning's beat")
 	goal.present(alone, false, true)
-	_check(is_equal_approx(red.call(goal.pads.p1.rim), Goal.ClosingWarning.STEADY) and is_equal_approx(red.call(token), Goal.ClosingWarning.STEADY), "Reduce motion holds the red steady")
+	_check(is_equal_approx(red.call(goal.pads.p1.rim), Goal.MISSING_STEADY) and is_equal_approx(red.call(token), Goal.MISSING_STEADY), "Reduce motion holds the red steady")
 	var both := {"tick": 0, "players": {"p0": at.call("p0"), "p1": at.call("p1")}, "mechanisms": waiting}
 	goal.present(both, false, false)
 	_check(red.call(goal.pads.p1.rim) == 0.0 and red.call(token) > 0.0, "Its pip there, a half stops blinking; the token still waits")
