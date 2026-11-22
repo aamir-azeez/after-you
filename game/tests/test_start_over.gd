@@ -61,7 +61,7 @@ func _relay_card() -> void:
 	_check(app.mode == "error" and app.journey.read_only and str(app.journey.last_error).ends_with(PlayerCopy.LIGHTHOUSE_JOURNEY_3277AC1A21BD), "An unsupported journal holds the chapter on its error card (%s)" % app.journey.last_error)
 	var start_over := _find_action(app.controls.overlay, "start_over")
 	_check(start_over != null and not start_over.disabled and start_over.text == "Start over", "The error card offers Start over")
-	_check(_find_action(app.controls.overlay, "back") != null, "Back stays beside it")
+	_check(app.controls.overlay.find_child("CardHome", true, false) is Button and _find_action(app.controls.overlay, "back") == null, "Home sits at the card's top left in place of Back")
 	if start_over == null:
 		viewport.queue_free()
 		await _settle()

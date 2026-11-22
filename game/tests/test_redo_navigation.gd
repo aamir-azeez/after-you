@@ -79,6 +79,14 @@ func _run() -> void:
 		preview._close_safety()
 	await _settle()
 	_check(preview.mode=="ready" and preview._room_state_current(),"Closing the request panel returns to the ready panel")
+	# A paused turn's card offers Ask for a redo too, as the ready card does.
+	preview._begin()
+	preview.advance_input({"move_x":0.0,"move_z":0.0,"interact":false})
+	preview._pause()
+	await _settle()
+	_check(preview.mode=="paused" and _find_button(preview.overlay,"Ask for a redo")!=null,"The pause card offers Ask for a redo, as the ready card does")
+	preview._show_ready()
+	await _settle()
 	preview._open_redo()
 	await _settle()
 	var screen: CanvasLayer=preview._redo_screen

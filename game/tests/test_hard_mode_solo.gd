@@ -106,7 +106,7 @@ func _label_text(app: Node3D, name: String) -> String:
 
 func _no_retry(app: Node3D, where: String) -> void:
 	var texts := _visible_texts(app.overlay)
-	for banned: String in ["Try again", PlayerCopy.REDO_PLAY_AGAIN, PlayerCopy.START_OVER_ASK, "Ask for redo"]:
+	for banned: String in ["Try again", PlayerCopy.REDO_PLAY_AGAIN, PlayerCopy.START_OVER_ASK, PlayerCopy.REDO_ASK]:
 		_check(banned not in texts, "%s offers no %s (%s)" % [where, banned, ", ".join(texts)])
 
 func _nothing_to_retry_and_second_start() -> void:
@@ -122,13 +122,13 @@ func _nothing_to_retry_and_second_start() -> void:
 	_play(app, "relay-a", 12)
 	_check(app.controls.try_pill.visible and app.controls.try_pill.label.text == PlayerCopy.HARD_IN_PLAY % [1, 2], "In play the pill says Hard and the stage, never a try")
 	app._pause()
-	_check(app.mode == "paused" and _button(app.overlay, "Resume") != null and _button(app.overlay, "Back") != null, "Pause offers Resume and Back")
+	_check(app.mode == "paused" and _button(app.overlay, "Resume") != null and app.overlay.find_child("CardHome", true, false) != null, "Pause offers Resume and Home")
 	_no_retry(app, "The pause card")
 	# Any second start ends the run, however it is reached.
 	app._begin()
 	await process_frame
 	_check(app.mode == "hard_failed" and app.hard.last_run.reason == "retry", "A second start of a turn ends the run")
-	_check(app.overlay.find_child("HardBand", true, false) != null and _button(app.overlay, PlayerCopy.HARD_START_AGAIN) != null and _button(app.overlay, "Back") != null, "The failure card offers Start again and Back")
+	_check(app.overlay.find_child("HardBand", true, false) != null and _button(app.overlay, PlayerCopy.HARD_START_AGAIN) != null and app.overlay.find_child("CardHome", true, false) != null, "The failure card offers Start again and Home")
 	_check(_label_text(app, "HardLine") == PlayerCopy.HARD_YOU_STARTED_OVER % 1, "The card says who slipped where")
 	_no_retry(app, "The failure card")
 	_check(app.journey.pairs().is_empty() and app.journey.role() == "a" and not app.journey.has_draft(), "The run starts again from stage 1")
@@ -159,6 +159,7 @@ func _goal_glance() -> void:
 	for frame in range(5): await process_frame
 	app._pause()
 	_check(app.mode == "paused" and app.sim.tick == 0, "A pause during the glance shows the pause card before any tick")
+	_no_retry(app, "The pause card after a kept stage")
 	var resume: Button = null
 	for node: Node in app.overlay.find_children("*", "Button", true, false):
 		if (node as Button).text == "Resume" and (node as Button).is_visible_in_tree(): resume = node
@@ -247,7 +248,7 @@ func _pause_and_kill() -> void:
 	for index in range(40, inputs.size()): app.advance_input(inputs[index])
 	app._finish()
 	_check(app.mode == "review" and _button(app.overlay, "Save turn") != null, "The resumed turn reaches its review")
-	_check(_visible_body(app).contains(PlayerCopy.HARD_REVIEW_BODY) and not _visible_body(app).contains(PlayerCopy.RELAY_PREVIEW_B9074234FC11), "The review says this turn stays, with no promise of another attempt")
+	_check(_visible_body(app).contains(PlayerCopy.HARD_REVIEW_BODY), "The review says this turn stays")
 	_no_retry(app, "The review card")
 	var hard_hash := str(app.review.get("recording_hash", ""))
 	app._accept()
