@@ -30,6 +30,8 @@ const OBJECTIVE_OUTCOMES := ["placed_relay", "planted_seed", "reached_loft"]
 ## How close (metres) a dozing spirit must be to its goal to lean on it.
 const LEAN_REACH := 1.6
 const SpiritVisual = preload("res://presentation/spirit_visual.gd")
+## The live pip's own presses buzz the phone lightly (control_feels.gd).
+const ControlFeels = preload("res://presentation/control_feels.gd")
 const TICK_RATE := 30.0
 ## Hold to fast-forward plays up to this many ordinary ticks per physics tick.
 const FAST_FORWARD_TICKS := 4
@@ -67,6 +69,7 @@ var _holding := false
 var _live_key := ""
 var _memory_key := ""
 var _last_state: Dictionary = {}
+var _feels := ControlFeels.new()
 ## The seed as the live spirit last carried it (the snapshot's own "seed"),
 ## shown in its hands while the goal is held; {} in a chapter without a seed.
 var _carried_seed: Dictionary = {}
@@ -134,6 +137,7 @@ func begin(role: String, prior_ticks: int, carried: bool = false) -> void:
 	skipping = false
 	_ended_early = false
 	_early_tick = -1
+	_feels.reset()
 	if is_instance_valid(soundscape) and soundscape.has_method("drop_held_cues"): soundscape.drop_held_cues()
 	_release_world()
 
@@ -212,7 +216,9 @@ func ring_pending() -> bool:
 	return _arrived and _holding
 
 ## One simulated tick, shown and heard. `sounds` is {cues, sources} from the
-## chapter's sound map. Returns the state as the world should show it.
+## chapter's sound map. Returns the state as the world should show it. A live
+## tick shown as it happens buzzes for the live pip's own presses, once the
+## world shows it (control_feels.gd).
 func step(state: Dictionary, sounds: Dictionary, live_play: bool, immediate: bool = false) -> Dictionary:
 	var hold := _observe(state, sounds)
 	if is_instance_valid(soundscape):
@@ -221,12 +227,15 @@ func step(state: Dictionary, sounds: Dictionary, live_play: bool, immediate: boo
 		else: soundscape.consume_turn_events(sounds.get("cues", []), sounds.get("sources", []), live_play, hold)
 	var shown := shown_state(state)
 	_show(shown, immediate)
+	var buzz := _feels.tick(state, world, sounds, live_play and not immediate and not _watching)
+	if not buzz.is_empty() and is_instance_valid(soundscape) and soundscape.has_method("haptic"): soundscape.haptic(int(buzz.ms), float(buzz.amplitude))
 	return shown
 
 ## One tick stepped without being shown (a resumed draft, a skip): cue
 ## identities still advance, and a press made in the wait is still held.
 func step_silently(state: Dictionary, sounds: Dictionary) -> void:
 	var hold := _observe(state, sounds)
+	_feels.tick(state, world, sounds, false)
 	if not is_instance_valid(soundscape): return
 	if hold.is_empty(): soundscape.note_turn_events(sounds.get("cues", []), sounds.get("sources", []))
 	else: soundscape.note_turn_events(sounds.get("cues", []), sounds.get("sources", []), hold)

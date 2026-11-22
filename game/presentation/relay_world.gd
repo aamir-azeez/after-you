@@ -2,7 +2,8 @@ extends "res://presentation/island_world.gd"
 ## A view of the v2 surface graph. Walkability and checkpoint state stay in core.
 ## Floors, the plates (pads in the style they resolve to), the crossings (the
 ## bridge kit), the scenery and the seed's throw all come from island_world's
-## shared build; this world adds the relay nest and the garden planter. Its
+## shared build; this world adds the relay nest, and the garden planter as its
+## goal piece (island_world _build_goal), a pad per pip, lit once planted. Its
 ## camera follows the live spirit, and its barriers, marks and tags stand, as
 ## every scrolling chapter's do.
 
@@ -17,6 +18,7 @@ func load_level(definition: Dictionary) -> void:
 	current_level = definition
 	displayed_stage_id = ""
 	pad_pieces.clear()
+	goal_pieces.clear()
 	if is_instance_valid(terrain):
 		remove_child(terrain)
 		terrain.queue_free()
@@ -40,17 +42,20 @@ func load_level(definition: Dictionary) -> void:
 	await _build_island_ground(definition)
 	for item: Dictionary in definition.sockets:
 		var at := point(item.position_cm)
-		var socket := Node3D.new()
-		socket.name = str(item.id)
-		socket.position = at
-		terrain.add_child(socket)
+		var socket: Node3D
 		if item.get("kind", "") == "garden":
+			# The planting finds the planter by the socket's name.
+			socket = _build_goal(str(item.id), at, float(item.radius_cm) / 100.0).root
+			socket.name = str(item.id)
 			garden = socket
-			goal_ring = SocketKit.garden(socket, 0.42, TEAL)
 			_create_garden(SocketKit.PLANTER + 0.02)
 			# Relay's garden socket has no gate or lift condition in simulation.
 			_present_garden(true, false, true)
 		else:
+			socket = Node3D.new()
+			socket.name = str(item.id)
+			socket.position = at
+			terrain.add_child(socket)
 			SocketKit.relay(socket)
 		socket_visuals[item.id] = socket
 		await _build_step()
@@ -94,6 +99,8 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 		pad_pieces[bridge.plate_id].set_held(bool(state.bridges.get(bridge.id, false)), immediate or reduced_motion)
 	_present_seed(state.seed, immediate)
 	var garden_complete := bool(state.get("complete", false)) and str(state.get("stage_id", "")) == str(current_level.stages[-1].id)
+	for piece: RefCounted in goal_pieces.values(): piece.set_lit(garden_complete, immediate or reduced_motion)
+	_present_goal_pips(state.players, immediate or reduced_motion)
 	_present_garden(true, garden_complete, immediate)
 	_present_stage_marks(state)
 	_present_follow(state, immediate)

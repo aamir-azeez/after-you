@@ -91,9 +91,9 @@ static func _garden() -> Dictionary:
 			"when": {"item_id": "seed", "spot_id": "garden"}}]
 	return stage
 
-## A plate @2's way: a stand spot either pip holds the bridge from.
+## A plate @2's way: a pad either pip holds the bridge from.
 static func _plate(id: String, at: Array, surface: String) -> Dictionary:
-	return {"id": id, "at": at, "surface": surface, "owner": "p0", "height": 0, "radius": 32, "style": "stand_spot"}
+	return {"id": id, "at": at, "surface": surface, "owner": "p0", "height": 0, "radius": 32}
 
 static func _stage(id: String, first: String, goal: Array) -> Dictionary:
 	return {"id": id, "version": 1, "first_player_slot": first, "kind": "route_endpoint", "controls": [], "levers": [], "pressure_pads": [], "ball_pads": [],

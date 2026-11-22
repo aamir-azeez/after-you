@@ -29,8 +29,8 @@ const Registry = preload("res://services/chapter_registry.gd")
 const LabelBubble = preload("res://presentation/kit/label_bubble.gd")
 const JourneyWorld = preload("res://presentation/journey_world.gd")
 const ChapterIndex = preload("res://content/chapters/index.gd")
-const StandSpot = preload("res://presentation/kit/stand_spot.gd")
-const SpotChecks = preload("res://tests/stand_spot_checks.gd")
+const PadKit = preload("res://presentation/kit/pieces/pad.gd")
+const SpotChecks = preload("res://tests/pad_checks.gd")
 const Seven = preload("res://core/journey/seven_mechanisms.gd")
 const STAIRS := ["w-steps-low", "w-steps-high", "mill-steps", "mill-ladder", "east-steps", "boathouse-steps", "rock-steps-low", "rock-steps-high"]
 var checks := 0
@@ -45,7 +45,6 @@ func _run() -> void:
 	await _first_stage(level)
 	_memory_camera(level)
 	await _second_stage(level)
-	await _plain_pads(level)
 	_dressing(level)
 	_keepsakes()
 	_sound(level)
@@ -77,7 +76,7 @@ func _first_stage(level: Dictionary) -> void:
 		var height: float = float(route.height_cm) / 100.0 if stone.is_empty() or not stone.down else world._stone_target(stone)
 		_check(world._decks.has(route.id) and (stone.is_empty() or world._decks[route.id].visible) and is_equal_approx(world._decks[route.id].position.y, height), "Crossing deck stands at its height (a stone that is down just under its water), not on the ground: " + str(route.id))
 	for pad: Dictionary in level.stages[0].pressure_pads:
-		_check(absf(world._physical_pads[pad.id].global_position.y - 0.96 - StandSpot.RIM_LIFT) < 0.01, "A waiting-step pad sits on its raised step: " + str(pad.id))
+		_check(absf(world._physical_pads[pad.id].global_position.y - 0.96 - PadKit.BOARD_RIM) < 0.01, "A waiting-step pad sits on its raised step: " + str(pad.id))
 	for problem: String in SpotChecks.shapes(world, level.stages[0]) + SpotChecks.beacon_rings(world, level.stages[0]): _check(false, problem)
 	_check(SpotChecks.held(world, level.stages[0], state).is_empty(), "No step's spot shows held while nobody stands on it")
 	# The gauges explain every tide crossing and the sea gate wears its owner's gates: only the locks hang a pulley post, on the terrace.
@@ -299,7 +298,7 @@ func _second_stage(level: Dictionary) -> void:
 	world.present(state, true)
 	_check(world._lever_pieces["boom-chain"].shown() == 0.0, "Let go in the snapshot, a look is let go")
 	for id: String in ["boom-post-pad", "gate-post-pad", "punt-post-pad"]:
-		_check(absf(world._physical_pads[id].global_position.y - 0.48 - StandSpot.RIM_LIFT) < 0.01, "A post pad sits on its raised post: " + id)
+		_check(absf(world._physical_pads[id].global_position.y - 0.48 - PadKit.BOARD_RIM) < 0.01, "A post pad sits on its raised post: " + id)
 	for problem: String in SpotChecks.shapes(world, level.stages[1]) + SpotChecks.beacon_rings(world, level.stages[1]) + SpotChecks.held(world, level.stages[1], state): _check(false, problem)
 	_check(world._wheels.size() == 3 and world._wheels.has("tide") and world._wheels.has("chamber") and world._wheels.has("basin"), "Tide, chamber and sea get hand wheels; the lock stays two-way")
 	for id: String in world._journey_switches:
@@ -773,25 +772,6 @@ func _memory_camera(level: Dictionary) -> void:
 	_check(is_equal_approx(world._camera_center().x, -3.0), "After the wait the camera follows the live spirit again")
 	world.free()
 
-## A pad pinned "plain" keeps the shared plain look (a dark disc and a ring
-## centred on its radius): the spots are this chapter's dressing's pick, and
-## a pin wins over it.
-func _plain_pads(level: Dictionary) -> void:
-	var world: Node3D = World.new()
-	var descriptor: Dictionary = ChapterIndex.data(KEY).duplicate(true)
-	for pad: Dictionary in level.stages[0].pressure_pads: descriptor.piece_styles[pad.id] = "plain"
-	world.descriptor_override = descriptor
-	root.add_child(world)
-	world.reduced_motion = true
-	world.set_process(false)
-	world.load_level(level)
-	world.show_stage(level.stages[0])
-	_check(world.pad_pieces.values().all(func(piece: RefCounted) -> bool: return piece.spot == null) and world.terrain.find_children("StandSpot*", "", true, false).is_empty(), "Pinned plain, no pad wears a stand spot")
-	for pad: Dictionary in level.stages[0].pressure_pads:
-		var ring := (world._physical_pads[pad.id] as MeshInstance3D).mesh as TorusMesh
-		_check(ring != null and is_equal_approx(ring.outer_radius, float(pad.radius_cm) / 100.0 + 0.025), "Pinned plain, a pad keeps its plain ring: " + str(pad.id))
-	world.queue_free()
-	await process_frame
 
 ## Turn of the Tide@3's slipway also needs someone on the wheel step: over
 ## dry ground its ramp stays raised, a crossing plainly shut, until the pad is

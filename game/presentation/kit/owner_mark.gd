@@ -14,9 +14,8 @@ extends RefCounted
 ## control (_pair_control_anchor) and of a stair's foot (_mark_stair), says
 ## which goals carry a mark (_marks_goal) and which crossings
 ## (_marks_route_owner), and names scenery to keep clear of (keep_clear,
-## _pair_keep_clear). A mark the world draws itself (a bucket's, a stand
-## spot's) goes through mark() or record() before build(), and build() then
-## leaves that control alone. Each world keeps one of these (cooperative_world's
+## _pair_keep_clear). A mark the world draws itself (a bucket's) goes
+## through mark() before build(), and build() then leaves that control alone. Each world keeps one of these (cooperative_world's
 ## owner_marks) and starts it over with each stage.
 ##
 ## Heights: a mark's top stays under a spirit's ground shadow
@@ -75,8 +74,6 @@ const KINDS := {
 	&"route_end": {"reach": 0.18, "lift": ROUTE_LIFT},
 	## Along an owned zone's middle (zone()); tops 2 cm up, under a shadow.
 	&"zone": {"reach": 0.0, "lift": 0.011},
-	## A stand spot's own small mark (kit/stand_spot.gd builds it with spot()).
-	&"spot": {"reach": 0.0, "lift": 0.0},
 }
 ## A zone's marks: the first this far in from its west edge, then one every
 ## ZONE_STEP_CM. Its edge strip runs a centimetre short of the zone's ends, so
@@ -95,7 +92,7 @@ const MOVE_RINGS := 14
 ## Marks of different owners never merge; they keep apart.
 const MERGE := 0.36
 ## Kinds a mark that sits on its own control or region: never moved.
-const ON_ITS_OWN := [&"pad", &"bucket", &"endpoint", &"zone", &"spot"]
+const ON_ITS_OWN := [&"pad", &"bucket", &"endpoint", &"zone"]
 
 ## The world whose terrain the marks lie on.
 var _world: Node3D
@@ -305,8 +302,7 @@ func _zone(slot: String, id: String, rect_cm: Array, floor_y: float, parent: Nod
 	var edge := Primitives.cached_box(Vector3(float(rect_cm[2] - rect_cm[0]) / 100.0 - 0.01, ZONE_EDGE.y, ZONE_EDGE.z))
 	_made.append(Primitives.mesh_node(edge, Primitives.shared_material(color(slot)), Vector3(float(rect_cm[0] + rect_cm[2]) / 200.0, floor_y + ZONE_EDGE_LIFT, float(rect_cm[1]) / 100.0), parent))
 
-## Records a mark another kit piece drew itself (a stand spot's), for placed();
-## build() then leaves `id` be.
+## Records a mark placed at `at` in `parent`, for placed().
 func record(slot: String, kind: StringName, id: String, at: Vector3, parent: Node3D, clash: Array = []) -> void:
 	_placed.append({"slot": slot, "kind": kind, "id": id, "at": on_floor(_world, at, parent), "clash": clash})
 	_nodes.append(null)
@@ -332,25 +328,6 @@ static func shape(slot: String, at: Vector3, parent: Node3D) -> MeshInstance3D:
 static func diamond(box: Mesh, look: Material, at: Vector3, parent: Node3D) -> MeshInstance3D:
 	var node := Primitives.mesh_node(box, look, at, parent)
 	node.rotation.y = PI / 4.0
-	return node
-
-## A stand spot's mark (kit/stand_spot.gd), `room` metres of disc around its
-## centre at most, `thickness` tall, its top at `top`: the diamond `side`
-## across at most, or the ring `ring_outer` across with a `ring_tube` tube.
-static func spot(slot: String, room: float, side: float, ring_outer: float, ring_tube: float, thickness: float, top: float, look: Material, parent: Node3D) -> MeshInstance3D:
-	var at := Vector3(0, top - thickness * 0.5, 0)
-	if slot == "p0":
-		# A diamond reaches its side times 0.7072 from its centre.
-		var fit := minf(side, room / 0.7072)
-		return diamond(Primitives.cached_shape(Primitives.box_mesh(Vector3(fit, thickness, fit))), look, at, parent)
-	var ring := TorusMesh.new()
-	ring.outer_radius = minf(ring_outer, room)
-	ring.inner_radius = ring.outer_radius - ring_tube
-	ring.rings = 24
-	ring.ring_segments = 8
-	var node := Primitives.mesh_node(Primitives.cached_shape(ring), look, at, parent)
-	# A flat ring: the torus's tube is as tall as it is wide.
-	node.scale.y = thickness / ring_tube
 	return node
 
 ## `at` in `parent`'s space, in the space of `world`'s terrain it stands on.

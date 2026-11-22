@@ -35,6 +35,8 @@ const WalkReach = preload("res://presentation/kit/walk_reach.gd")
 ## A piece's style (content/dressing/piece_styles.gd) and the pad kit.
 const PieceStyles = preload("res://content/dressing/piece_styles.gd")
 const PadKit = preload("res://presentation/kit/pieces/pad.gd")
+## Every stage goal's look, two pip pads and all (kit/pieces/goal.gd).
+const GoalPiece = preload("res://presentation/kit/pieces/goal.gd")
 ## A crossing that rises as it opens and sinks as it shuts (kit/pieces/bridge.gd).
 const BridgeKit = preload("res://presentation/kit/pieces/bridge.gd")
 ## Each family's floors, crossings and spots (services/level_layout.gd).
@@ -1081,6 +1083,8 @@ var _fold_job: Dictionary = {}
 func _static_keep() -> Array:
 	var keep: Array = [garden] + route_barriers.moving_nodes()
 	for piece: RefCounted in pad_pieces.values(): keep += piece.moving_parts()
+	# A goal's parts that light, press or swing stay whole.
+	for piece: RefCounted in goal_pieces.values(): keep += piece.moving_parts()
 	if not _marks_fold(): keep += owner_marks.made() + pair_tags.made()
 	return keep
 
@@ -1189,6 +1193,8 @@ func _process(delta: float) -> void:
 	for piece: RefCounted in crossing_pieces.values():
 		if piece.moving(): piece.advance(delta)
 	for piece: RefCounted in pad_pieces.values():
+		if piece.moving(): piece.advance(delta)
+	for piece: RefCounted in goal_pieces.values():
 		if piece.moving(): piece.advance(delta)
 	if route_barriers.moving(): route_barriers.advance(delta)
 	_advance_garden_bloom(delta)
@@ -1615,15 +1621,11 @@ func _clear_stage_marks() -> void:
 ## stands: the barriers, then what the world adds beside them
 ## (_build_barrier_extras), then the marks and the tags, which keep clear of
 ## all of it. `tag_view` is the plan the marks and tags read where it differs.
-## A stand spot pad already wears its owner's mark (kit/stand_spot.gd); a pad
-## either pip holds (open controls) has no owner to mark.
+## A pad either pip holds (open controls) has no owner to mark.
 func _build_stage_marks(view: Dictionary, tag_view: Dictionary = {}) -> void:
 	route_barriers.build(view)
 	_build_barrier_extras()
 	var tagged := view if tag_view.is_empty() else tag_view
-	for pad: Dictionary in tagged.get("pressure_pads", []):
-		var piece: Variant = pad_pieces.get(str(pad.id))
-		if piece != null and piece.spot != null and pad.has("owner_slot"): owner_marks.record(str(pad.get("owner_slot", "")), &"spot", str(pad.id), piece.spot.mark.position, piece.spot)
 	owner_marks.build(tagged)
 	pair_tags.prepare(tagged)
 
@@ -1723,6 +1725,9 @@ func _pair_gate_anchors(route: Dictionary) -> Array:
 var pad_pieces: Dictionary = {}
 ## The crossing pieces by id (_build_crossings), for present() to open.
 var crossing_pieces: Dictionary = {}
+## Every goal piece the shown stage draws (_build_goal), by goal id: a world
+## draws each of its goals through the goal kit, never a look of its own.
+var goal_pieces: Dictionary = {}
 
 ## What every island world builds from its definition and dressing alone: the
 ## chapter's dressing, its floors (_build_floors), its pads (_build_pads), its
@@ -1868,8 +1873,37 @@ func _build_pads(pads: Array) -> void:
 
 ## A pad in its style (piece_styles.gd "pad", kit/pieces/pad.gd) in its pip's colour.
 func _build_pad(pad: Dictionary, at: Vector3) -> Variant:
-	var style := PieceStyles.style("pad", str(pad.id), ChapterIndex.data(_chapter_key()), dressing)
-	return PadKit.build(style, at, float(pad.radius_cm) / 100.0, terrain, {"owner": str(pad.get("owner_slot", "")), "id": str(pad.id)})
+	return PadKit.build(_piece_style("pad", str(pad.id)), at, float(pad.radius_cm) / 100.0, terrain, {"owner": str(pad.get("owner_slot", "")), "id": str(pad.id)})
+
+## Goal `id` in its style (piece_styles.gd "goal", kit/pieces/goal.gd) at
+## `at` (terrain space, on its floor), `radius_m` across.
+func _build_goal(id: String, at: Vector3, radius_m: float) -> RefCounted:
+	var piece: RefCounted = GoalPiece.build(_piece_style("goal", id), at, radius_m, terrain)
+	goal_pieces[id] = piece
+	return piece
+
+## Presses each goal's pad its own pip stands on in `players` (the snapshot's).
+func _present_goal_pips(players: Dictionary, immediate: bool) -> void:
+	for piece: RefCounted in goal_pieces.values(): piece.present_pips(players, immediate)
+
+## A piece's style here (content/dressing/piece_styles.gd); a world with its
+## own descriptor pins asks with them.
+func _piece_style(slot: String, id: String) -> String:
+	return PieceStyles.style(slot, id, ChapterIndex.data(_chapter_key()), dressing)
+
+## A piece's style, for what reads it beside the world (control_feels.gd).
+func piece_style(slot: String, id: String) -> String:
+	return _piece_style(slot, id)
+
+## Each pad and each goal's two: {id, at (its floor point, terrain space, m),
+## radius (m), held (as shown)}, for the control haptics (control_feels.gd).
+func pad_spots() -> Array:
+	var spots: Array = []
+	for id: Variant in pad_pieces:
+		var piece: RefCounted = pad_pieces[id]
+		spots.append({"id": str(id), "at": piece.at, "radius": piece.radius, "held": piece.held()})
+	for piece: RefCounted in goal_pieces.values(): spots.append_array(piece.pad_spots())
+	return spots
 
 ## A placed thing's spot on its floor (its walking height), in metres.
 func _at(value: Dictionary) -> Vector3:

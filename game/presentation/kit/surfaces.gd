@@ -189,7 +189,7 @@ const DECAL_TOP := TRIM_TOP + 0.006
 ## tops), and a butt joint across each light plank every "joints" metres,
 ## staggered plank to plank, level with the seams. Each stops short of the
 ## seams and trims, so no face meets theirs. A joint over a dark plank would
-## rise to the height of the pieces laid on the floor (a stand spot's disc).
+## rise to the height of the pieces laid on the floor (an ownership mark).
 const PLANK_TOP := 0.010
 const JOINT_TOP := 0.006
 

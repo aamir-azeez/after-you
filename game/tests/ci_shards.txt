@@ -63,6 +63,7 @@ connectivity 3
 conservatory_v2 2
 conservatory_v2_world 1
 contact_shadows 2
+control_feels 1
 cooperative 1
 cooperative_admission 1
 cooperative_integration 2

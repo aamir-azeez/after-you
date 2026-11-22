@@ -215,9 +215,9 @@ func _build_goal_beacon(view: Dictionary) -> void:
 		var slot := str(view.first_player_slot) if role == "a" else ("p0" if str(view.first_player_slot) == "p1" else "p1")
 		spots[role] = GoalBeacon.spots_of(view, role).map(func(entity: Dictionary) -> Dictionary:
 			var spot := {"at": _at(entity), "surface": str(entity.get("surface_id", "")), "slot": str(entity.get("owner_slot", slot))}
-			# On a stand spot the beacon's ring breathes inside the spot; a seat
-			# on the spot leaves it no room, and the spot and seat mark it.
-			if _wears_stand_spot(view, entity):
+			# On a pad the beacon's ring breathes on the pad's board, inside its
+			# rim; a seat on the pad leaves it no room, and the pad and seat mark it.
+			if _is_pad(view, entity):
 				spot["inside"] = float(entity.radius_cm) / 100.0
 				if _seated(str(entity.id)): spot["ring"] = false
 			return spot)
@@ -541,21 +541,18 @@ func _floor_against_far_side(r: Array, top: float, along_x: bool) -> bool:
 		if not along_x and o[1] < r[3] and o[3] > r[1] and o[2] <= r[0] and o[2] >= r[0] - 40: return true
 	return false
 
-## Whether `entity` is one of the stage's pressure pads drawn as a stand spot.
-func _wears_stand_spot(view: Dictionary, entity: Dictionary) -> bool:
-	for pad: Dictionary in view.get("pressure_pads", []):
-		if pad.id == entity.get("id"): return _piece_style("pad", str(pad.id)) == "stand_spot"
-	return false
+## Whether `entity` is one of the stage's pressure pads.
+func _is_pad(view: Dictionary, entity: Dictionary) -> bool:
+	return view.get("pressure_pads", []).any(func(pad: Dictionary) -> bool: return pad.id == entity.get("id"))
 
 ## Whether a seat prop stands on pad `pad_id` (journey_world's "seats").
 func _seated(_pad_id: String) -> bool:
 	return false
 
-## A pressure pad or a ball pad (heavy, always plain) in its style
-## (kit/pieces/pad.gd), in pad_pieces (island_world's), whose stand spots
-## record their owner's marks with the stage's (_build_stage_marks).
+## A pressure pad or a ball pad (heavy, always a gold board) in its style
+## (kit/pieces/pad.gd), in pad_pieces (island_world's).
 func _build_physical_pad(pad: Dictionary, heavy: bool) -> void:
-	var style := "plain" if heavy else _piece_style("pad", str(pad.id))
+	var style := PadPiece.DEFAULT_STYLE if heavy else _piece_style("pad", str(pad.id))
 	var piece: RefCounted = PadPiece.build(style, _at(pad), float(pad.radius_cm) / 100.0, terrain, {"owner": str(pad.get("owner_slot", "")), "heavy": heavy, "id": str(pad.id)})
 	pad_pieces[pad.id] = piece
 	_physical_pads[pad.id] = piece.rim

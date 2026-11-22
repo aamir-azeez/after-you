@@ -6,10 +6,9 @@ const BEAM_HEIGHT := 1.12
 const LIGHT_COLOR := Parts.LIGHT
 const SLEEP_COLOR := Color("536979")
 const StageCatalog = preload("res://core/lighthouse/stage_catalog.gd")
-## The goal kit; a piece's style comes from island_world's PieceStyles.
-const GoalPiece = preload("res://presentation/kit/pieces/goal.gd")
 ## A held or toggled crossing's deck rolls up on its near bank while shut.
 const BridgeRoll = preload("res://presentation/kit/pieces/bridge_roll.gd")
+## The kit bell, for an earlier stage's rung bell left resting (present_history).
 const Bell = preload("res://presentation/kit/pieces/bell.gd")
 ## Two lights, two receivers or two mirrors this close (cm) overlap: their
 ## widest tops reach 22 cm from their centres at the same heights, so they
@@ -112,6 +111,7 @@ func load_level(definition: Dictionary) -> void:
 	plate = null
 	_pad_ring = null
 	_goal_piece = null
+	goal_pieces.clear()
 	_bell = null
 	_bell_ring = null
 	_court_light = null
@@ -146,6 +146,7 @@ func load_level(definition: Dictionary) -> void:
 		_build_beacon(definition.goal, definition.optics.receivers)
 	elif definition.has("goal"):
 		_build_bell(definition.goal)
+		_goal_piece.add_needs(definition, func(id: String) -> String: return _piece_style("carried_item", id))
 	for socket: Dictionary in definition.get("sockets", []):
 		_build_socket(socket)
 	for prop: Dictionary in definition.get("props", []):
@@ -576,7 +577,7 @@ func _build_selector(control: Dictionary) -> void:
 
 ## The goal in its style (kit/pieces/goal.gd), at its exact centre and radius.
 func _build_bell(goal: Dictionary) -> void:
-	_goal_piece = GoalPiece.build(_piece_style("goal", str(goal.get("id", ""))), point(goal.position_cm), float(goal.radius_cm) / 100.0, terrain)
+	_goal_piece = _build_goal(str(goal.get("id", "")), point(goal.position_cm), float(goal.radius_cm) / 100.0)
 	_bell = _goal_piece.bell
 	_bell_ring = _goal_piece.ring
 	_court_light = _goal_piece.light
@@ -830,7 +831,10 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	_wake = bool(state.objective_done)
 	_present_follow(state, immediate)
 	_present_celebration(immediate)
-	if _goal_piece != null and is_instance_valid(_bell): _goal_piece.set_lit(_wake, immediate or reduced_motion)
+	if _goal_piece != null and is_instance_valid(_bell):
+		_goal_piece.set_lit(GoalPiece.lit(state), immediate or reduced_motion)
+		_goal_piece.present_pips(state.get("players", {}), immediate or reduced_motion)
+		_goal_piece.needs.present(state)
 	_present_beams(state.optics.segments)
 	_face_hands(state, immediate)
 
@@ -979,13 +983,10 @@ func _static_keep() -> Array:
 	# A rolled deck grows and its roll runs across as the crossing opens.
 	for piece: RefCounted in crossing_pieces.values(): keep.append_array(piece.moving_parts())
 	keep.append_array(_beam_roots)
-	# The goal's parts that light or swing (a window's shutters) stay whole.
-	if _goal_piece != null: keep.append_array(_goal_piece.moving_parts())
 	return keep
 
 func _process(delta: float) -> void:
 	super._process(delta)
-	if _goal_piece != null and _goal_piece.moving(): _goal_piece.advance(delta)
 	_follow_lenses()
 
 func _idle_card_frame() -> void:

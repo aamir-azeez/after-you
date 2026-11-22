@@ -13,7 +13,6 @@ const DATA := {
 	"cables": V1.DATA.cables,
 	"lever": V1.DATA.lever,
 	"selector": V1.DATA.selector,
-	"pad": V1.DATA.pad,
 	"goal": V1.DATA.goal,
 	"lift": V1.DATA.lift,
 	"deck": V1.DATA.deck,

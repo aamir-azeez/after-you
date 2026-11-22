@@ -100,7 +100,7 @@ func _test_relay_socket_readiness() -> void:
 	var state: Dictionary = simulation.snapshot()
 	var before := Canonical.digest(state)
 	world.present(state, true)
-	_check(world.garden_state == "ready" and world.goal_ring.visible and not state.bridges["relay-east"],
+	_check(world.garden_state == "ready" and not world.goal_pieces.garden.bell.get_meta("lit") and not state.bridges["relay-east"],
 		"Relay's ungated socket is ready even when its separate approach bridge is closed")
 	_check(not state.has("gate_open") and not state.has("lift_ready") and Canonical.digest(state) == before,
 		"Relay readiness does not invent or add legacy gate and lift fields")
@@ -115,7 +115,7 @@ func _test_relay_socket_readiness() -> void:
 	if final_complete.valid:
 		var final_before := Canonical.digest(final_complete.snapshot)
 		world.present(final_complete.snapshot, true)
-		_check(world.garden_state == "completed" and _flowers_at(world, 1.0) and Canonical.digest(final_complete.snapshot) == final_before,
+		_check(world.garden_state == "completed" and world.goal_pieces.garden.bell.get_meta("lit") and _flowers_at(world, 1.0) and Canonical.digest(final_complete.snapshot) == final_before,
 			"Only the actual final Relay completion blooms the garden, without changing its proof")
 	world.load_level(level)
 	world.present(state, true)

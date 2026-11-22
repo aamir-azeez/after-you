@@ -19,6 +19,8 @@ const DATA := {
 	"thumbnail": "res://assets/chapter_thumbnails/first-steps.png",
 	# Scenery and piece looks: a cottage garden with a timber rope lift.
 	"dressing": "res://content/dressing/first_steps.gd",
+	# The garden socket is its last stage's goal, drawn as the goal kit's planter.
+	"piece_styles": {"garden": "planter"},
 	"turn_intro": [PlayerCopy.RELAY_PREVIEW_9A01DAC077E3, PlayerCopy.RELAY_PREVIEW_4238BDD23E08],
 	"keepsakes": [
 		{"stage_id": "a-little-lift", "title": "A Little Lift"},
