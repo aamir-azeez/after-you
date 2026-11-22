@@ -419,6 +419,62 @@
 				-574
 			],
 			"surface_id": "etop"
+		},
+		{
+			"height_cm": 120,
+			"id": "foot-goal-pedestal",
+			"position_cm": [
+				1688,
+				-306
+			],
+			"radius_cm": 36,
+			"solid": {
+				"radius_cm": 28,
+				"reach_cm": 20
+			},
+			"surface_id": "ledge"
+		},
+		{
+			"height_cm": 440,
+			"id": "mill-goal-pedestal",
+			"position_cm": [
+				5120,
+				-390
+			],
+			"radius_cm": 36,
+			"solid": {
+				"radius_cm": 28,
+				"reach_cm": 20
+			},
+			"surface_id": "loft"
+		},
+		{
+			"height_cm": 810,
+			"id": "behind-goal-pedestal",
+			"position_cm": [
+				9590,
+				-320
+			],
+			"radius_cm": 36,
+			"solid": {
+				"radius_cm": 28,
+				"reach_cm": 20
+			},
+			"surface_id": "etop"
+		},
+		{
+			"height_cm": 940,
+			"id": "stones-goal-pedestal",
+			"position_cm": [
+				13025,
+				-110
+			],
+			"radius_cm": 36,
+			"solid": {
+				"radius_cm": 28,
+				"reach_cm": 20
+			},
+			"surface_id": "far"
 		}
 	],
 	"items": [
@@ -507,8 +563,8 @@
 			"goal_policy": {
 				"kind": "ring",
 				"when": {
-					"carried": true,
-					"item_id": "pipsport"
+					"item_id": "pipsport",
+					"spot_id": "foot-goal-pedestal"
 				}
 			},
 			"id": "foot-of-the-falls",
@@ -622,8 +678,8 @@
 			"goal_policy": {
 				"kind": "ring",
 				"when": {
-					"carried": true,
-					"item_id": "pipsport"
+					"item_id": "pipsport",
+					"spot_id": "mill-goal-pedestal"
 				}
 			},
 			"id": "the-old-mill",
@@ -741,8 +797,8 @@
 			"goal_policy": {
 				"kind": "ring",
 				"when": {
-					"carried": true,
-					"item_id": "pipsport"
+					"item_id": "pipsport",
+					"spot_id": "behind-goal-pedestal"
 				}
 			},
 			"id": "behind-the-falls",
@@ -912,8 +968,8 @@
 			"goal_policy": {
 				"kind": "ring",
 				"when": {
-					"carried": true,
-					"item_id": "pipsport"
+					"item_id": "pipsport",
+					"spot_id": "stones-goal-pedestal"
 				}
 			},
 			"id": "the-last-stones",

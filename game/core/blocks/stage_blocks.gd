@@ -36,7 +36,14 @@ extends RefCounted
 ##                            "lip": {"id", "rect", "owner"} lets only that
 ##                            spirit onto its edge
 ##   ring_bell           C J  the stage's goal: a bell "id" at "at" for
-##                            "owner"; "when" (J) holds it until then
+##                            "owner"; "when" (J) holds it until then. A when
+##                            that asks for an item carried ({"item_id",
+##                            "carried": true}) is never written that way (owner,
+##                            2026-11-22): the goal gets a pedestal item spot
+##                            in front of it and the need becomes the item
+##                            resting there (goal_pedestals, _goal_pedestals).
+##                            "pedestal": [x, z] nudges the spot when the auto
+##                            place does not fit (listed in ADDING-A-CHAPTER.md)
 ##   raw                 C J  appends its own arrays as written: the escape
 ##                            hatch for one-off wiring between blocks
 ## The new pieces (J, rules 20, core/physical/pieces_rules.gd; the level pins
@@ -95,7 +102,26 @@ const JOURNEY := "journey"
 ## Default reach of each placed thing, cm.
 const RADIUS := {"pad": 32, "lever": 28, "selector": 28, "mirror": 28, "bell": 28, "ball_pad": 36}
 ## Level arrays a block may append to; everything else is the stage's.
-const LEVEL_ARRAYS := ["drops", "access_zones"]
+const LEVEL_ARRAYS := ["drops", "access_zones", "item_spots"]
+## A goal's pedestal (the shared item spot a goal that needs an item gets, in the
+## solid look First Steps' pedestal has): its spot radius, its solid drum and the
+## reach a pip puts down from beside it (cm). Its cap is drawn PEDESTAL_DRAWN_CM
+## from its centre and a goal (bell frame, plate and need tokens) GOAL_DRAWN_CM
+## (kit/pieces/socket.gd, kit/pieces/goal.gd: test_goal_pedestal checks both), so the
+## spot stands PEDESTAL_GAP_CM past both, in front of the goal (+z, toward the camera).
+const PEDESTAL := {"radius_cm": 36, "solid": {"radius_cm": 28, "reach_cm": 20}}
+const PEDESTAL_DRAWN_CM := 37
+const GOAL_DRAWN_CM := 55
+const PEDESTAL_GAP_CM := 8
+## Drawn reach of what else stands on the floor (cm): a lever or selector (its knob
+## swept up VIEW 60 cm), a pad or anything else flat.
+const LEVER_DRAWN_CM := 30
+const FLAT_DRAWN_CM := 50
+const VIEW := Vector2(-3.0, -10.0) / 13.0
+## Where the pedestal is tried round its goal, from straight in front, each turn
+## (radians from +z, alternating sides); then the ring grows by RING_STEP_CM.
+const PEDESTAL_TURNS := [0.0, 0.5, -0.5, 1.0, -1.0, 1.5, -1.5, 2.2, -2.2, 3.1416]
+const RING_STEP_CM := 24
 ## What each block must name.
 const NEEDS := {
 	"pad": ["id", "at", "surface", "owner"], "lever": ["id", "at", "surface", "owner"],
@@ -135,6 +161,7 @@ static func expand(source: Dictionary) -> Dictionary:
 		stage.erase("blocks")
 		for block: Dictionary in blocks:
 			if _missing(block, family).is_empty(): _emit(level, stage, block, family)
+		_goal_pedestals(level, stage, blocks, family)
 	return Solid.with_hands(level)
 
 ## "cooperative" for the schema-6 physical rules, "journey" for schema 7.
@@ -500,3 +527,119 @@ static func _terms(when: Dictionary, ids: Array) -> void:
 	if when.get("not") is Dictionary: _terms(when["not"], ids)
 	for field: String in ["pad_id", "lever_id", "control_id"]:
 		if when.has(field): ids.append(str(when[field]))
+
+## {item id: item spot id} of the pedestals a goal `goal_id` with this `when` gets:
+## one for each item it asks carried, the first named "<goal id>-pedestal".
+static func goal_pedestals(goal_id: String, when: Variant) -> Dictionary:
+	var items: Array = []
+	_carried(when, items)
+	var found: Dictionary = {}
+	for index in range(items.size()):
+		found[items[index]] = "%s-pedestal%s" % [goal_id, "" if index == 0 else "-%d" % (index + 1)]
+	return found
+
+static func _carried(when: Variant, items: Array) -> void:
+	if when is Dictionary:
+		if when.has("item_id") and when.get("carried", false) == true:
+			if str(when.item_id) not in items: items.append(str(when.item_id))
+		for key: Variant in when: _carried(when[key], items)
+	elif when is Array:
+		for part: Variant in when: _carried(part, items)
+
+## `when` with every carried item term turned into the item resting at its pedestal.
+static func _rested(when: Variant, spots: Dictionary) -> Variant:
+	if when is Dictionary:
+		if when.has("item_id") and when.get("carried", false) == true and spots.has(str(when.item_id)):
+			return {"item_id": str(when.item_id), "spot_id": spots[str(when.item_id)]}
+		var result: Dictionary = {}
+		for key: Variant in when: result[key] = _rested(when[key], spots)
+		return result
+	if when is Array: return when.map(func(part: Variant) -> Variant: return _rested(part, spots))
+	return when
+
+## A stage's goal that asks for a carried item (a pip holding it while it stands at
+## the goal) gets a pedestal item spot in front of it instead and asks for the item
+## resting there. Placed after the stage's other blocks, so it clears them all.
+static func _goal_pedestals(level: Dictionary, stage: Dictionary, blocks: Array, family: String) -> void:
+	if family != JOURNEY or not stage.get("goal") is Dictionary or not stage.get("goal_policy") is Dictionary: return
+	var goal: Dictionary = stage.goal
+	var spots := goal_pedestals(str(goal.id), stage.goal_policy.get("when", {}))
+	if spots.is_empty(): return
+	var nudges: Array = []
+	for block: Dictionary in blocks:
+		if str(block.get("block", "")) == "ring_bell" and str(block.get("id", "")) == str(goal.id) and block.get("pedestal") is Array: nudges = block.pedestal
+	var index := 0
+	for item: Variant in spots:
+		var at: Array = nudges if index == 0 and nudges.size() == 2 else _pedestal_at(level, stage, goal)
+		var spot := PEDESTAL.duplicate(true)
+		spot.merge({"id": spots[item], "surface_id": goal.surface_id, "position_cm": at, "height_cm": int(goal.get("height_cm", 0))})
+		_add(level, stage, "item_spots", spot)
+		index += 1
+	stage.goal_policy["when"] = _rested(stage.goal_policy.when, spots)
+
+## Where a pedestal for `goal` stands: PEDESTAL_DRAWN_CM + GOAL_DRAWN_CM + PEDESTAL_GAP_CM
+## from its centre, straight in front when that floor has room, else the next place round
+## it, then further out (the least crowded place when none is free). Whole cm.
+static func _pedestal_at(level: Dictionary, stage: Dictionary, goal: Dictionary) -> Array:
+	var centre := Vector2(float(goal.position_cm[0]), float(goal.position_cm[1]))
+	var surface := str(goal.surface_id)
+	var height := int(goal.get("height_cm", 0))
+	var rect: Array = []
+	for island: Dictionary in level.get("islands", []):
+		if str(island.id) == surface: rect = island.rect_cm
+	var others := _bodies(level, stage, surface, height)
+	var crossings := _crossings(level, surface)
+	var best := Vector2i(roundi(centre.x), roundi(centre.y) + PEDESTAL_DRAWN_CM + GOAL_DRAWN_CM + PEDESTAL_GAP_CM)
+	var best_room := -INF
+	for ring in range(4):
+		var radius := float(PEDESTAL_DRAWN_CM + GOAL_DRAWN_CM + PEDESTAL_GAP_CM + ring * RING_STEP_CM)
+		for turn: float in PEDESTAL_TURNS:
+			var at := Vector2i((centre + Vector2(sin(turn), cos(turn)) * radius).round())
+			var room := _room(at, rect, others, crossings)
+			if room >= 0.0: return [at.x, at.y]
+			if room > best_room:
+				best_room = room
+				best = at
+	return [best.x, best.y]
+
+## How much room a pedestal at `at` has (cm, negative when it stands in something or
+## its floor has no room to walk round it: the rule hand controls use, Solid.fits).
+static func _room(spot: Vector2i, rect: Array, others: Array, crossings: Array) -> float:
+	if rect.size() == 4 and not Solid.fits({"position_cm": [spot.x, spot.y]}, rect, PEDESTAL.solid, Solid.BODY_CM): return -9999.0
+	var at := Vector2(spot)
+	var room := INF
+	for body: Dictionary in others:
+		var apart: float = Geometry2D.get_closest_point_to_segment(at, body.from, body.to).distance_to(at)
+		room = minf(room, apart - float(body.radius) - float(PEDESTAL_DRAWN_CM + PEDESTAL_GAP_CM))
+	for crossing: Rect2 in crossings:
+		var gap := maxf(maxf(crossing.position.x - at.x, at.x - crossing.end.x), maxf(crossing.position.y - at.y, at.y - crossing.end.y))
+		room = minf(room, gap - float(PEDESTAL_DRAWN_CM))
+	return room
+
+## What stands on `surface` at `height` that a pedestal keeps clear of: {from, to, radius}
+## (a lever's knob is swept up the camera's view).
+static func _bodies(level: Dictionary, stage: Dictionary, surface: String, height: int) -> Array:
+	var found: Array = []
+	for field: String in ["levers", "controls", "pressure_pads", "ball_pads"]:
+		for thing: Dictionary in stage.get(field, []):
+			if str(thing.get("surface_id", "")) != surface or absi(int(thing.get("height_cm", 0)) - height) > 1: continue
+			var at := Vector2(float(thing.position_cm[0]), float(thing.position_cm[1]))
+			var tall := field in ["levers", "controls"]
+			found.append({"from": at, "to": at + VIEW * 60.0 if tall else at, "radius": LEVER_DRAWN_CM if tall else maxi(FLAT_DRAWN_CM, int(thing.get("radius_cm", 0)))})
+	for spot: Dictionary in level.get("item_spots", []):
+		if str(spot.get("surface_id", "")) != surface or absi(int(spot.get("height_cm", 0)) - height) > 1: continue
+		var at := Vector2(float(spot.position_cm[0]), float(spot.position_cm[1]))
+		found.append({"from": at, "to": at, "radius": maxi(FLAT_DRAWN_CM, int(spot.get("radius_cm", 0)))})
+	var goal: Dictionary = stage.goal
+	var centre := Vector2(float(goal.position_cm[0]), float(goal.position_cm[1]))
+	found.append({"from": centre, "to": centre, "radius": GOAL_DRAWN_CM})
+	return found
+
+## The rects of the crossings that reach `surface` (a pedestal never stands on one).
+static func _crossings(level: Dictionary, surface: String) -> Array:
+	var found: Array = []
+	for route: Dictionary in level.get("bridges", []) + level.get("stairs", []):
+		if str(route.get("from_surface", "")) != surface and str(route.get("to_surface", "")) != surface: continue
+		var r: Array = route.rect_cm
+		found.append(Rect2(float(r[0]), float(r[1]), float(r[2] - r[0]), float(r[3] - r[1])))
+	return found

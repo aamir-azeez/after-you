@@ -38,7 +38,8 @@ const ROOT := "user://open-turns-arrival-test"
 ## out) or "" (the witness as it is).
 const CASES := [
 	{"chapter": "the-falls@1", "arrive": "friend_first", "waits": [[3, 8, 600]], "tail": 2},
-	{"chapter": "the-falls@1", "arrive": "live_first", "waits": [[2, 4, 900]]},
+	# The friend's replay puts the pipsport on the pedestal, then waits before it walks to the goal; the live pip comes later still.
+	{"chapter": "the-falls@1", "arrive": "live_first", "waits": [[2, 10, 900], [3, 9, 600]]},
 	{"chapter": "fog-marsh@1", "arrive": "friend_first", "waits": [[2, 4, 300]], "tail": 2},
 	{"chapter": "fog-marsh@1", "arrive": "live_first", "waits": [[1, 5, 900]]},
 	{"chapter": "fog-marsh@1", "arrive": "dark", "drop": [[2, 2]]},
