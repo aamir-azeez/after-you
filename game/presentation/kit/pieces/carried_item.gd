@@ -189,8 +189,8 @@ func rest(at: Vector3, parent: Node3D, floating: bool, flying: bool = false, imm
 	if posed: _shown = true
 	else: place(Vector3(at.x, Floats.keel(style, at.y), at.z) if floating else at)
 	# Set down it has its shadow again, where it now rests; afloat, the water's
-	# rings show it.
-	ContactShadows.set_off(root, floating)
+	# rings show it, and in a throw's flight it has none.
+	ContactShadows.set_off(root, floating or flying)
 	ContactShadows.touch()
 
 ## Where it rests now (a deck it rests on moves it), a handoff aside.
