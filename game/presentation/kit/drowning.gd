@@ -1,6 +1,6 @@
 extends RefCounted
-## World kit: a drowning on any water world (presentation/water_world.gd
-## hosts one; every water level uses it, never a copy). The snapshot's
+## World kit: a drowning or a fall on any chapter world (presentation/
+## cooperative_world.gd hosts one for every world; never a copy). The snapshot's
 ## "drowned": {slot, route} (the journey rules: a crossing shut under a pip,
 ## or a sinking stone pushed under) sends that spirit under the water of the
 ## body its crossing stands in, with the knocked-out face; a ring spreads and
@@ -10,7 +10,14 @@ extends RefCounted
 ## its water left standing tall) shows the same way through the same path: the
 ## spirit wobbles at the stone's edge, drops in front of it to bob half in the
 ## water below with a small splash and a bump, dizzy. A snapshot without
-## either (a retry, a replay seeking back) puts it all away again. Live play,
+## either (a retry, a replay seeking back) puts it all away again. A fall into
+## the sky (the drowned record with "sky": a pip whose floor went from under it
+## away from any water, core/physical/runtime.gd _keep_footing) is a fall away:
+## the pip startles and wobbles where it stood, then tumbles down under the
+## island with a little spin, shrinking and fading out of view, and a soft
+## puff of the kit's cream blooms where it went. Reduce motion skips the
+## wobble and the tumble: the pip fades out where it stood, the puff still.
+## Live play,
 ## the memory and a replay show the same, because it reads only the snapshot.
 ## Presentation only.
 const SpiritLook = preload("res://presentation/spirit_look.gd")
@@ -34,6 +41,25 @@ const WOBBLE_TILT := 0.32
 const WOBBLE_RATE := 26.0
 const FALL_OUT := 0.34
 const FALL_SINK := 0.14
+## A fall away into the sky (s, m, radians): the startled wobble and its hop,
+## then the tumble: how long, how far it drops (easing in, as a fall does),
+## how far it drifts toward the camera, how far it rolls end over end and
+## turns round, and the share of the tumble, at its end, it fades over.
+## Reduce motion fades it in place over AWAY_FADE.
+const AWAY_WOBBLE := 0.45
+const AWAY_HOP := 0.07
+const AWAY_TUMBLE := 1.15
+const AWAY_DROP := 3.2
+const AWAY_OUT := 0.45
+const AWAY_ROLL := 3.4
+const AWAY_TURN := 1.6
+const AWAY_FADE_SHARE := 0.35
+const AWAY_FADE := 0.3
+## The puff where it went: [x offset, y offset, z offset, radius] in metres,
+## fixed so every replay blooms alike; it grows this much over its life (s).
+const PUFF := [[0.0, 0.0, 0.0, 0.11], [0.12, 0.04, 0.03, 0.08], [-0.11, 0.05, -0.02, 0.085], [0.04, 0.11, -0.06, 0.07], [-0.05, -0.06, 0.07, 0.075]]
+const PUFF_GROW := 1.8
+const PUFF_LIFE := 0.6
 
 var _world: Node3D
 ## Built once on the first drowning of a stage and reused.
@@ -51,6 +77,12 @@ var _fell := false
 var _top := Vector3.ZERO
 var _landing := Vector3.ZERO
 var _landed := false
+## A fall away into the sky: whether the spirit shown falls away, the puff's
+## balls (built once a stage), and each faded part's own see-through amount
+## before it, to give back.
+var _away := false
+var puff: Array[MeshInstance3D] = []
+var _faded: Dictionary = {}
 
 func _init(world: Node3D) -> void:
 	_world = world
@@ -61,6 +93,7 @@ func forget() -> void:
 	if not slot.is_empty(): clear()
 	ring = null
 	bubbles.clear()
+	puff.clear()
 
 ## Each snapshot: its "drowned" ({} for none).
 func show(drowned: Dictionary) -> void:
@@ -70,6 +103,10 @@ func show(drowned: Dictionary) -> void:
 		return
 	var drowning := str(drowned.slot)
 	_world.camera_focus = drowning
+	# A world with no water to go into shows any loss as a fall away.
+	if drowned.has("sky") or not "waters" in _world:
+		_show_fall_away(drowning)
+		return
 	var surface := _surface_of(str(drowned.get("route", "")), drowning)
 	if drowned.has("fell"):
 		_show_fall(drowning, surface)
@@ -114,6 +151,75 @@ func _show_fall(falling: String, surface: float) -> void:
 	if _world.reduced_motion and not _landed: _land()
 	_world.actor_targets[falling] = _landing if _landed else _top
 
+## A fall away: it starts where its snapshot has it, startled; advance plays
+## the rest (a fade in place under Reduce motion).
+func _show_fall_away(falling: String) -> void:
+	if slot == falling and _away:
+		_place_away()
+		return
+	if not slot.is_empty(): clear()
+	slot = falling
+	_away = true
+	_age = 0.0
+	_top = _world.actor_targets[falling]
+	var spirit: Node3D = _world.actors[falling]
+	if spirit.pose() == &"doze": spirit.set_pose(&"rest", {}, true)
+	spirit.set_expression(SpiritLook.SURPRISED, _world.reduced_motion)
+	_faded.clear()
+	for part: Node in spirit.find_children("*", "GeometryInstance3D", true, false):
+		_faded[part] = (part as GeometryInstance3D).transparency
+	if puff.is_empty() or not is_instance_valid(puff[0]):
+		puff.clear()
+		for spec: Array in PUFF:
+			var ball: MeshInstance3D = _world.sphere(float(spec[3]), Color(Parts.CREAM, 0.8), Vector3.ZERO, _world.terrain)
+			ball.name = "FallPuff"
+			ball.visible = false
+			puff.append(ball)
+	_place_away()
+
+## The falling spirit and its puff at `_age` into the fall: the wobble, then
+## the tumble (or the fade in place under Reduce motion). The spirit is drawn
+## where its target is, so the world's easing adds nothing.
+func _place_away() -> void:
+	var spirit: Node3D = _world.actors[slot]
+	var at := _top
+	var fade := 0.0
+	var size := 1.0
+	var reduced: bool = _world.reduced_motion
+	if reduced:
+		fade = clampf(_age / AWAY_FADE, 0.0, 1.0)
+		spirit.rotation = Vector3.ZERO
+	elif _age < AWAY_WOBBLE:
+		var share := _age / AWAY_WOBBLE
+		at.y += AWAY_HOP * sin(PI * share)
+		spirit.rotation = Vector3(0.0, 0.0, sin(_age * WOBBLE_RATE) * WOBBLE_TILT * (1.0 - share))
+	else:
+		var share := clampf((_age - AWAY_WOBBLE) / AWAY_TUMBLE, 0.0, 1.0)
+		at += Vector3(0.0, -AWAY_DROP * share * share, AWAY_OUT * share)
+		spirit.rotation = Vector3(AWAY_ROLL * share * share, AWAY_TURN * share, 0.0)
+		size = 1.0 - 0.85 * share * share
+		fade = clampf((share - (1.0 - AWAY_FADE_SHARE)) / AWAY_FADE_SHARE, 0.0, 1.0)
+	spirit.scale = Vector3.ONE * maxf(size, 0.01)
+	spirit.position = at
+	_world.actor_targets[slot] = at
+	for part: Variant in _faded:
+		if is_instance_valid(part): (part as GeometryInstance3D).transparency = maxf(float(_faded[part]), fade)
+	# The puff blooms as the pip fades out, where it is then.
+	var since := _age - (AWAY_FADE if reduced else AWAY_WOBBLE + AWAY_TUMBLE * (1.0 - AWAY_FADE_SHARE * 0.5))
+	for index in range(puff.size()):
+		var ball := puff[index]
+		var spec: Array = PUFF[index]
+		ball.visible = since >= 0.0 and (reduced or since < PUFF_LIFE)
+		if not ball.visible: continue
+		var bloom := 1.0 if reduced else clampf(since / PUFF_LIFE, 0.0, 1.0)
+		ball.position = at + Vector3(float(spec[0]), float(spec[1]) + 0.15, float(spec[2])) * (1.0 + bloom)
+		ball.scale = Vector3.ONE * (1.0 + PUFF_GROW * bloom)
+		ball.transparency = 0.4 if reduced else bloom
+
+## Whether spirit `role` is falling away now: the kit draws it, nothing carries it.
+func falling_away(role: String) -> bool:
+	return _away and slot == role
+
 func _land() -> void:
 	_landed = true
 	var spirit: Node3D = _world.actors[slot]
@@ -138,10 +244,16 @@ func _splash(at: Vector3) -> void:
 	ring.scale = Vector3.ONE
 	ring.visible = true
 
-## Each frame the world animates (never under Reduce motion): the ring
-## spreads and the bubbles climb; a falling spirit wobbles, then lands.
+## Each frame: the ring spreads and the bubbles climb; a falling spirit
+## wobbles, then lands; a spirit falling away wobbles, tumbles and is gone in a
+## puff. Under Reduce motion only a fall away moves on (its fade).
 func advance(delta: float) -> void:
-	if slot.is_empty() or not is_instance_valid(ring): return
+	if slot.is_empty(): return
+	if _away:
+		_age += maxf(delta, 0.0)
+		_place_away()
+		return
+	if _world.reduced_motion or not is_instance_valid(ring): return
 	_age += maxf(delta, 0.0)
 	if _fell and not _landed:
 		var spirit: Node3D = _world.actors[slot]
@@ -157,8 +269,17 @@ func clear() -> void:
 	if actors.has(slot):
 		actors[slot].set_expression(SpiritLook.NORMAL, true)
 		(actors[slot] as Node3D).rotation.z = 0.0
+		if _away:
+			(actors[slot] as Node3D).rotation = Vector3.ZERO
+			(actors[slot] as Node3D).scale = Vector3.ONE
+	for part: Variant in _faded:
+		if is_instance_valid(part): (part as GeometryInstance3D).transparency = float(_faded[part])
+	_faded.clear()
+	for ball: MeshInstance3D in puff:
+		if is_instance_valid(ball): ball.visible = false
 	if _world.camera_focus == slot: _world.camera_focus = ""
 	slot = ""
+	_away = false
 	_fell = false
 	_landed = false
 	if is_instance_valid(ring): ring.visible = false
@@ -169,6 +290,7 @@ func moving_nodes() -> Array:
 	var nodes: Array = []
 	if is_instance_valid(ring): nodes.append(ring)
 	nodes.append_array(bubbles)
+	nodes.append_array(puff)
 	return nodes
 
 ## Each bubble climbs BUBBLE_RISE above the water and starts again, from its

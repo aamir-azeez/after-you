@@ -14,6 +14,8 @@ const SelectorPiece = preload("res://presentation/kit/pieces/selector.gd")
 const PulleyPiece = preload("res://presentation/kit/pieces/pulley.gd")
 ## The new pieces' looks (rules 16): decks, platforms, ladders and fog.
 const NewPieces = preload("res://presentation/kit/new_pieces.gd")
+const Drowning = preload("res://presentation/kit/drowning.gd")
+const ClosingWarning = preload("res://presentation/kit/closing_warning.gd")
 ## The opening glance at the goal (glance_at_goal): this long easing there and
 ## looking, then this long easing back to the spirit.
 const GLANCE_TO := 1.6
@@ -57,6 +59,12 @@ var _floors: Dictionary = {}
 var _rode: Dictionary = {}
 ## How far inside a deck's edge (m) a pip that stepped off it waits (_carry).
 const DECK_EDGE := 0.2
+## A drowning or a fall, shown from the snapshot (kit/drowning.gd): the one
+## every chapter world shows.
+var drowning := Drowning.new(self)
+## A closing crossing's flashing rim (kit/closing_warning.gd): the one every
+## chapter world shows.
+var closing_warning := ClosingWarning.new(self)
 
 func load_level(definition: Dictionary) -> void:
 	chapter_definition = definition.duplicate(true)
@@ -71,6 +79,8 @@ func show_stage(stage: Dictionary) -> void:
 	if view.is_empty(): return
 	displayed_stage_id = stage_id
 	_completion_view = false
+	drowning.forget()
+	closing_warning.forget()
 	_goal_beacon = null
 	_glance_left = 0.0
 	_physical_pads.clear()
@@ -261,6 +271,8 @@ func _static_keep() -> Array:
 	for piece: RefCounted in _lever_pieces.values(): keep.append_array(piece.moving_parts())
 	for piece: RefCounted in _pulleys.values(): keep.append_array(piece.moving_parts())
 	if new_pieces != null: keep.append_array(new_pieces.moving_nodes())
+	keep.append_array(drowning.moving_nodes())
+	keep.append_array(closing_warning.moving_nodes())
 	return keep
 
 func _configure_shared_view(view: Dictionary) -> void:
@@ -710,6 +722,13 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	if is_instance_valid(_goal_beacon): _goal_beacon.present(state)
 	if new_pieces != null: new_pieces.present(state, immediate or reduced_motion)
 	if immediate: _snap_follow()
+	closing_warning.show(state.get("route_progress", {}).get("closing", {}))
+	_present_drowned(state)
+
+## Who drowned or fell, from the snapshot (kit/drowning.gd). The water world
+## shows it once its water stands.
+func _present_drowned(state: Dictionary) -> void:
+	drowning.show(state.get("drowned", {}))
 
 func _should_cutaway(raised: Node3D, state: Dictionary) -> bool:
 	return _uses_lower_cutaway() and _below_raised(raised,state.players[_active_player])
@@ -728,6 +747,7 @@ func _advance_carriers(delta: float) -> void:
 ## that stop; one that stepped off before its deck got there waits on it until
 ## it is (ride_off).
 func _carry(role: String, actor: Node3D) -> Vector3:
+	if drowning.falling_away(role): return Vector3.ZERO
 	var deck: Array = new_pieces.ride(str(_floors.get(role, ""))) if new_pieces != null else []
 	var was: Array = _rode.get(role, [])
 	var riding := not was.is_empty() and is_instance_valid(was[0])
@@ -751,6 +771,7 @@ func _carry(role: String, actor: Node3D) -> Vector3:
 	return target - (actor_targets[role] as Vector3)
 
 func _advance_camera(delta: float) -> void:
+	drowning.advance(delta)
 	if new_pieces != null and not reduced_motion: new_pieces.drift(time)
 	if new_pieces != null and actors.has(_active_player): new_pieces.follow((actors[_active_player] as Node3D).global_position + Vector3(0, 0.25, 0))
 	if new_pieces != null: new_pieces.advance_cover(delta, time)

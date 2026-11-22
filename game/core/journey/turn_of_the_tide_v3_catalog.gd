@@ -35,10 +35,15 @@ const LINE := {"position_cm": [1024, -448]}
 ## The basin valve stands 80 cm east of @2's spot, so its dial no longer
 ## stands over the gate bar and its lamp on the catwalk behind it.
 const BASIN := {"position_cm": [-232, -64]}
+## A closing crossing keeps its floor for the one grace every open turns level
+## plays (core/physical/runtime.gd CLOSING_GRACE_TICKS, which the engine reads),
+## not @2's longer 45 ticks.
+const CLOSING_TICKS := 25
 
 static func definition() -> Dictionary:
 	var level: Dictionary = Earlier.definition().duplicate(true)
 	level.version = 3
+	level.closing_ticks = CLOSING_TICKS
 	OpenTurns.pin(level, CAPS)
 	level.turn_limits = {"a_ticks":1800,"b_ticks":1800}
 	OpenControls.open_crossings(level, OWNED)
