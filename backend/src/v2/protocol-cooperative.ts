@@ -2,7 +2,7 @@ import { checkRoutesAndLevers, openPhysicalRecording, physicalRecording, physica
 import { ApiError, HASH_PATTERN, canonicalJson, digest, integer, object } from "../protocol";
 import { boundedValue, exact, MAX_CHECKPOINT_BYTES } from "./protocol-relay";
 import { comfortRules, openControls, openTurns, sharedBall, type ChapterAdapter, type ChapterCheckpoint, type ChapterRecording } from "./chapter-types";
-import { OPEN_CHECKPOINT_KEYS, OPEN_CHECKPOINT_SCHEMA, openAccepted, openBallProblem, openStageEnds, openTurnsProblem } from "./open-turns";
+import { openAccepted, openBallProblem, openCheckpointShape, openStageEnds, openTurnsProblem } from "./open-turns";
 import highDefinition from "./high-and-low.json";
 import highInitial from "./high-and-low-initial.json";
 import rollingDefinition from "./rolling-home.json";
@@ -127,14 +127,15 @@ export function adapter(definition: Definition, initial: ChapterCheckpoint, defi
   async function openCheckpoint(value: unknown, previous: ChapterCheckpoint, all: readonly ChapterRecording[]): Promise<ChapterCheckpoint> {
     const { open, limits } = opened!;
     boundedValue(value, limits.checkpoint_bytes, limits.checkpoint_values);
-    const c = object(value); exact(c, OPEN_CHECKPOINT_KEYS); catalog(c);
+    const shape = openCheckpointShape(open);
+    const c = object(value); exact(c, shape.keys); catalog(c);
     const index = previous.stage_index + 1, stage = definition.stages[index - 1];
-    need(c.schema_version === OPEN_CHECKPOINT_SCHEMA && c.stage_index === index && stage && c.completed_stage_id === stage.id && c.next_stage_id === (definition.stages[index]?.id ?? ""), "checkpoint_stage_mismatch");
+    need(c.schema_version === shape.schema && c.stage_index === index && stage && c.completed_stage_id === stage.id && c.next_stage_id === (definition.stages[index]?.id ?? ""), "checkpoint_stage_mismatch");
     need(all.every(turn => turn.simulation_version === pinned) && all[0].role === "a" && all.slice(1).every(turn => turn.role === "b") &&
       all.every((turn, i) => openAccepted(turn) && (i === 0 || turn.completed === (i === all.length - 1))), "checkpoint_recording_mismatch");
     need(c.previous_checkpoint_hash === previous.checkpoint_hash && all.every((turn, i) => turn.checkpoint_hash === previous.checkpoint_hash && turn.stage_id === stage.id &&
       (i === 0 || turn.source_recording_hash === all[i - 1].recording_hash)), "checkpoint_source_mismatch");
-    const problem = openTurnsProblem(open, index - 1, stage.first_player_slot, all, c.turn_hashes);
+    const problem = openTurnsProblem(open, index - 1, stage, previous, all, c);
     need(!problem, problem);
     const mechanisms = object(c.mechanisms), prior = object(object(previous).mechanisms); exact(mechanisms, ["latched_bridges", "props", "levers"]);
     const { routes } = checkRoutesAndLevers(mechanisms, prior, definition.stages, index);

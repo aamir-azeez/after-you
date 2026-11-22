@@ -19,11 +19,13 @@ import slackEnd from "../../game/tests/fixtures/journey/turn-of-the-tide-v3-slac
 /**
  * Open turns fingerprints at their widest (v2/open-turns.ts): a five stage open turns chapter (Turn of the Tide@3's two
  * stages, repeated) whose every turn is the rules' longest, ten minutes, with a new stick every tick. Nothing nests, so
- * every row, body and archive stays as small at the fifth stage as at the first. The chapter exists only in this file.
+ * every row, body and archive stays as small at the fifth stage as at the first. The chapter exists only in this file,
+ * and so does its carry-over twin (rules 19, FIVE_CARRY), whose turns each add a hand-off tick and two hashes.
  */
 type Rec = Record<string, any>;
 type Account = { player_id: string; device_token: string };
 const FIVE = vi.hoisted(() => ({ level_id: "turn-of-the-tide", level_version: 99, definition_hash: "e".repeat(64) }));
+const FIVE_CARRY = vi.hoisted(() => ({ level_id: "turn-of-the-tide", level_version: 97, definition_hash: "f".repeat(64) }));
 vi.mock("../src/v2/chapters", async original => {
   const actual = await original<typeof import("../src/v2/chapters")>();
   const { journeyAdapter } = await import("../src/v2/protocol-journey");
@@ -34,18 +36,21 @@ vi.mock("../src/v2/chapters", async original => {
   definition.turn_limits = { a_ticks: 18_000, b_ticks: 18_000 };
   definition.stages = [set, slack, { ...structuredClone(set), id: "set-the-tide-2" }, { ...structuredClone(slack), id: "slack-water-2" }, { ...structuredClone(set), id: "set-the-tide-3" }]
     .map(stage => ({ ...stage, turn_cap: 20 }));
-  const { checkpoint_hash: _old, proof, ...body } = { ...structuredClone((await import("../src/v2/turn-of-the-tide-v3-initial.json")).default), level_version: FIVE.level_version, definition_hash: FIVE.definition_hash } as Rec; void _old;
-  const five = journeyAdapter(definition as never, { ...body, checkpoint_hash: await hash(canonical(body)), proof } as never, FIVE.definition_hash);
-  const is = (value: unknown) => value !== null && typeof value === "object" && (value as Rec).level_id === FIVE.level_id && (value as Rec).level_version === FIVE.level_version && (value as Rec).definition_hash === FIVE.definition_hash;
-  return { ...actual, CHAPTERS: [...actual.CHAPTERS, { adapter: five, flag: "" }],
-    chapter: (value: unknown) => is(value) ? five : actual.chapter(value),
-    chapterKey: (value: unknown) => is(value) ? { ...five.key } : actual.chapterKey(value),
-    chapterFlag: (entry: unknown) => entry === five ? "" : actual.chapterFlag(entry as never),
-    creatable: (entry: unknown, e: Env) => entry === five || actual.creatable(entry as never, e) };
+  const made = async (key: typeof FIVE, rules: number) => {
+    const { checkpoint_hash: _old, proof, ...body } = { ...structuredClone((await import("../src/v2/turn-of-the-tide-v3-initial.json")).default), level_version: key.level_version, definition_hash: key.definition_hash } as Rec; void _old;
+    return journeyAdapter({ ...definition, version: key.level_version, simulation_version: rules } as never, { ...body, checkpoint_hash: await hash(canonical(body)), proof } as never, key.definition_hash);
+  };
+  const five = await made(FIVE, 15), carried = await made(FIVE_CARRY, 19), ours = [five, carried];
+  const find = (value: unknown) => value !== null && typeof value === "object" ? ours.find(entry => entry.key.level_id === (value as Rec).level_id && entry.key.level_version === (value as Rec).level_version && entry.key.definition_hash === (value as Rec).definition_hash) : undefined;
+  return { ...actual, CHAPTERS: [...actual.CHAPTERS, ...ours.map(adapter => ({ adapter, flag: "" }))],
+    chapter: (value: unknown) => find(value) ?? actual.chapter(value),
+    chapterKey: (value: unknown) => find(value) ? { ...find(value)!.key } : actual.chapterKey(value),
+    chapterFlag: (entry: unknown) => ours.includes(entry as never) ? "" : actual.chapterFlag(entry as never),
+    creatable: (entry: unknown, e: Env) => ours.includes(entry as never) || actual.creatable(entry as never, e) };
 });
 
 const FLAGS = { NOTIFICATIONS_ENABLED: "false" };
-const NEW_CLIENT = [2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+const NEW_CLIENT = [2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 19];
 const TICKS = MAX_OPEN_TURN_TICKS;
 /** The widest packed turn: a new stick every tick, every check (the server never replays, so stand-in hashes). */
 const widestPacked = (ticks: number) => packRecording(Array.from({ length: ticks }, (_, i) => ({ ticks: 1, x: i % 2 ? -100 : 100, z: -100, action: i % 3 === 0 })),
@@ -66,20 +71,30 @@ async function sealed(body: Rec): Promise<Rec> { const { checkpoint_hash: _old, 
 
 /** Turn `n` of stage `index`, ten minutes long, over `memory` (none for turn 1), closing the stage or not. */
 /** `ticks`: shorter turns for the run a phone posts (a board takes runs up to its proof bound); never assisted, so the run can rank. */
-async function turn(index: number, n: number, checkpointHash: string, memory: Rec | null, closes: boolean, ticks = TICKS): Promise<Rec> {
+/** `carry`: the carry-over twin's turn in a stage pip `carry.first` starts, after `carry.turns` (its hand-off from them, with stand-in world hashes). */
+async function turn(index: number, n: number, checkpointHash: string, memory: Rec | null, closes: boolean, ticks = TICKS, carry?: { first: string; turns: Rec[] }): Promise<Rec> {
   const stage = stages()[index], fixture = (index % 2 ? slackA : setA) as Rec;
   const { actions: _a, replay_checks: _c, recording_hash: _h, ...header } = structuredClone(fixture); void _a; void _c; void _h;
   const body = { ...header, level_version: FIVE.level_version, definition_hash: FIVE.definition_hash, stage_id: stage.id, checkpoint_hash: checkpointHash,
     role: n === 1 ? "a" : "b", player_slot: turnSlot(stage.first_player_slot, n), duration_ticks: ticks, source_recording_hash: memory ? memory.recording_hash : "", catch_assistance: false,
-    completed: n > 1 && closes, outcome: { source_ready: true, objective_complete: n > 1 && closes }, final_state_hash: (await digest(`${index}-${n}`)), packed: ticks === TICKS ? PACKED : widestPacked(ticks) };
+    completed: n > 1 && closes, outcome: { source_ready: true, objective_complete: n > 1 && closes }, final_state_hash: (await digest(`${index}-${n}`)), packed: ticks === TICKS ? PACKED : widestPacked(ticks),
+    ...(carry ? await handoff(index, n, ticks, carry) : {}) };
   return { ...body, recording_hash: await digest(canonicalJson(body)) };
 }
+/** A carry-over turn's own fields: its key and pip, and its hand-off after `turns` (the length of the turn under its memory, less the memory's hand-off). */
+async function handoff(index: number, n: number, ticks: number, carry: { first: string; turns: Rec[] }): Promise<Rec> {
+  const memory = carry.turns.at(-1), before = carry.turns.at(-2), start = memory?.handoff_hash ?? await digest(`start ${index}`);
+  return { level_version: FIVE_CARRY.level_version, definition_hash: FIVE_CARRY.definition_hash, simulation_version: 19, player_slot: turnSlot(carry.first, n),
+    handoff_tick: before ? before.duration_ticks - memory!.handoff_tick : 0, start_hash: start, handoff_hash: n === 1 ? start : await digest(`world ${index} ${n} ${ticks}`) };
+}
 /** The flat checkpoint closing stage `index`: the fixture's end, both pips at its goal, this stage's controls and levers over the ones before. */
-async function closing(index: number, previous: Rec, turns: Rec[]): Promise<Rec> {
+async function closing(index: number, previous: Rec, turns: Rec[], carry = false): Promise<Rec> {
   const stage = stages()[index], { proof: _p, a_recording_hash: _a, b_recording_hash: _b, ...end } = structuredClone((index % 2 ? slackEnd : setEnd) as Rec); void _p; void _a; void _b;
   const own = (values: Rec, ids: string[]) => Object.fromEntries(Object.entries(values).filter(([id]) => ids.includes(id)));
-  const goal = end.players[turns[0].player_slot === "p0" ? "p1" : "p0"];
-  return sealed({ ...end, schema_version: 8, level_version: FIVE.level_version, definition_hash: FIVE.definition_hash, stage_index: index + 1, completed_stage_id: stage.id,
+  // Both pips where the fixture's goal pip ended (on carry-over turns a stage may start with either pip).
+  const goal = end.players[(index % 2 ? slackA : setA).player_slot === "p0" ? "p1" : "p0"];
+  return sealed({ ...end, schema_version: carry ? 9 : 8, ...(carry ? { next_first_slot: turns.at(-1)!.player_slot === "p0" ? "p1" : "p0" } : {}),
+    level_version: carry ? FIVE_CARRY.level_version : FIVE.level_version, definition_hash: carry ? FIVE_CARRY.definition_hash : FIVE.definition_hash, stage_index: index + 1, completed_stage_id: stage.id,
     next_stage_id: stages()[index + 1]?.id ?? "", previous_checkpoint_hash: previous.checkpoint_hash, turn_hashes: turns.map(t => t.recording_hash), players: { p0: { ...goal }, p1: { ...goal } },
     mechanisms: { ...end.mechanisms, controls: { ...previous.mechanisms.controls, ...own(end.mechanisms.controls, stage.controls.map((c: Rec) => c.id)) },
       levers: { ...previous.mechanisms.levers, ...own(end.mechanisms.levers, stage.levers.map((l: Rec) => l.id)) } } });
@@ -95,19 +110,21 @@ const stored = (roomId: string) => runInDurableObject(env.ROOMS_V2.getByName(roo
 afterEach(async () => { await reset(); vi.restoreAllMocks(); });
 
 describe("open turns fingerprints at their widest", () => {
-  it("plays five stages of ten minute turns with every row, body and archive inside its bound, one room request a turn", async () => {
-    const host = await account(), guest = await account(), limits = chapter(FIVE).limits!;
-    const made = await json<RoomSnapshotV2>(call("/v2/rooms", "POST", host, { ...FIVE, idempotency_key: crypto.randomUUID() }));
+  it.each([["open turns", FIVE], ["carry-over turns", FIVE_CARRY]] as const)("plays five stages of ten minute turns with every row, body and archive inside its bound, one room request a turn (%s)", async (rules, KEY) => {
+    const carry = KEY === FIVE_CARRY, host = await account(), guest = await account(), limits = chapter(KEY).limits!;
+    // Carry-over fingerprints are three fields wider, under the same bounds (open-turns.ts PACKED_HEADER_BYTES).
+    expect(limits).toEqual(chapter(FIVE).limits);
+    const made = await json<RoomSnapshotV2>(call("/v2/rooms", "POST", host, { ...KEY, idempotency_key: crypto.randomUUID() }));
     let room = await json<RoomSnapshotV2>(call("/v2/rooms/join", "POST", guest, { invite_code: made.invite_code, supported_simulation_versions: NEW_CLIENT }));
     const who = (slot: string) => slot === "p0" ? host : guest, partner = (player: Account) => player === host ? guest : host;
     const plan = [6, 5, 4, 3, 3], widest = { body: 0, reply: 0, row: 0, pair: 0, room: 0 };
     const written = { first: [] as number[], pass: [] as number[], closing: [] as number[], acknowledging_poll: [] as number[], quiet_poll: [] as number[] };
     let checkpoint = room.checkpoint as Rec;
     for (const [index, count] of plan.entries()) {
-      const turns: Rec[] = [];
+      const turns: Rec[] = [], first = carry ? (checkpoint.next_first_slot ?? "p0") : stages()[index].first_player_slot;
       for (let n = 1; n <= count; n++) {
-        const closes = n === count, recording = await turn(index, n, checkpoint.checkpoint_hash, turns.at(-1) ?? null, closes);
-        const next = closes ? await closing(index, checkpoint, [...turns, recording]) : undefined;
+        const closes = n === count, recording = await turn(index, n, checkpoint.checkpoint_hash, turns.at(-1) ?? null, closes, TICKS, carry ? { first, turns } : undefined);
+        const next = closes ? await closing(index, checkpoint, [...turns, recording], carry) : undefined;
         const body = { base_revision: room.revision, branch: room.branch, idempotency_key: crypto.randomUUID(), recording, ...(next ? { checkpoint: next } : {}) };
         const counting = countingEnv(withConfig({ ...env, ...FLAGS }));
         const sent = await meterRows({ room: env.ROOMS_V2.getByName(room.room_id) }, async () => {
@@ -155,12 +172,14 @@ describe("open turns fingerprints at their widest", () => {
     const exported = await env.ROOMS_V2.getByName(room.room_id).exportSnapshot("d".repeat(40));
     expect(exported.ok).toBe(true);
     expect(await env.ROOMS_V2.get(env.ROOMS_V2.newUniqueId()).restoreSnapshot((exported as { value: string }).value, room.room_id)).toMatchObject({ ok: true });
-    console.log("open turns fingerprints, five stages of 18,000 tick turns:", JSON.stringify({ widest, archive_bytes: archiveBytes, snapshot_bytes: (exported as { value: string }).value.length, rows_written: written }));
+    console.log(rules + " fingerprints, five stages of 18,000 tick turns:", JSON.stringify({ widest, archive_bytes: archiveBytes, snapshot_bytes: (exported as { value: string }).value.length, rows_written: written }));
     // Rows written: a pass and a closing turn add one (the turn before becomes its fingerprint); the acknowledging poll writes one; any other poll none.
     expect(Math.max(...written.pass)).toBeLessThanOrEqual(Math.max(...written.first) + 4);
     // (The last stage's polls also arm the finished room's replay clock, so only the stages in play are counted.)
     expect(written.acknowledging_poll.slice(0, -1).every(rows => rows === 1)).toBe(true);
     expect(written.quiet_poll.slice(0, -1).every(rows => rows === 0)).toBe(true);
+    // Every stage's first pip is the one that did not close the stage before, so the plan's stages start p0, p0, p1, p1, p0.
+    if (carry) expect(room.checkpoint).toMatchObject({ schema_version: 9, next_first_slot: "p1" });
   }, 180_000);
   it("takes an open turns run a phone posts from its own copy only when it is exactly the room's, and posts it again harmlessly", async () => {
     const host = await account(), guest = await account(), BOARDS = { features: ["LEADERBOARDS"] }, TICKS_POSTED = 300;

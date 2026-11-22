@@ -155,8 +155,13 @@ export function validateTransfer(input: unknown): ReplayTransfer {
     // Open turns (open-turns.ts) name later turns c, d ...; a turn's letter says whose it was.
     const t = object(item); exact(t, ["turn_id", "player_id", "accepted_revision", "recording_hash"]); text(t.turn_id, selected.open_turns ? OPEN_TURN_ID_PATTERN : /^t(?:[0-9]|[12][0-9]|3[01])-[0-7]-[ab]$/); need(hash(t.recording_hash));
     const [branch, index] = (t.turn_id as string).slice(1).split("-"); need(Number(branch) <= Number(r.branch) && Number(index) < stages);
-    need(t.player_id === (turnSlot(selected.stages[Number(index)].first_player_slot, turnNumber(t.turn_id as string)) === "p0" ? r.host_id : r.guest_id)); integer(t.accepted_revision, 1, Number(r.revision));
+    // Carry-over turns take a stage's first pip from the checkpoint before it: there each turn alternates from its stage's turn 1 (below).
+    need(selected.open_turns?.carry ? t.player_id === r.host_id || t.player_id === r.guest_id :
+      t.player_id === (turnSlot(selected.stages[Number(index)].first_player_slot, turnNumber(t.turn_id as string)) === "p0" ? r.host_id : r.guest_id)); integer(t.accepted_revision, 1, Number(r.revision));
     need(!turns.has(t.turn_id as string)); turns.set(t.turn_id as string, t);
+  }
+  if (selected.open_turns?.carry) for (const [id, t] of turns) {
+    const first = turns.get(`${id.slice(0, -1)}a`); need(first && (t.player_id === first.player_id) === (turnNumber(id) % 2 === 1));
   }
   const pairs = new Map<string, Record<string, unknown>>();
   for (const item of m.pairs) {
