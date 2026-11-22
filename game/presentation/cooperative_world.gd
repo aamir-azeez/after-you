@@ -225,10 +225,14 @@ func _build_goal_beacon(view: Dictionary) -> void:
 		spots[role] = GoalBeacon.spots_of(view, role).map(func(entity: Dictionary) -> Dictionary:
 			var spot := {"at": _at(entity), "surface": str(entity.get("surface_id", "")), "slot": str(entity.get("owner_slot", slot))}
 			# On a pad the beacon's ring breathes on the pad's board, inside its
-			# rim; a seat on the pad leaves it no room, and the pad and seat mark it.
+			# outline; a seat on the pad leaves it no room, and the pad and seat mark it.
 			if _is_pad(view, entity):
-				spot["inside"] = float(entity.radius_cm) / 100.0
+				spot["inside"] = PadPiece.rim_inside(_piece_style("pad", str(entity.id)), float(entity.radius_cm) / 100.0)
 				if _seated(str(entity.id)): spot["ring"] = false
+			# At the goal it lies on the floor round the goal's disc, which the
+			# plate fills (kit/pieces/goal.gd).
+			elif role == "b" and _goal_piece != null:
+				spot["around"] = GoalPiece.outer_radius(_goal_piece.style, float(entity.radius_cm) / 100.0)
 			return spot)
 	_goal_beacon = GoalBeacon.new()
 	_goal_beacon.guide = guide

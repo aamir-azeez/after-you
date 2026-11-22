@@ -382,11 +382,21 @@ static func _dispatch(ids: Array, variant: String) -> void:
 		if item.is_empty() or (variant == "friend" and not item.friend_available): continue
 		_merge_mark(_unclaimed, id, {variant: true})
 
+## The places `count` finished stages of `chapter` earn, a place a stage in
+## order. A level can have more stages than places (The Falls, Fog Marsh), and
+## its places all earned is the level marked done (chapter_completion.gd), so
+## its last place waits for its last stage.
 static func _prefix_places(chapter: String, count: int) -> Array[String]:
-	var places := Catalog.chapter_places(chapter)
+	return earned_places(Catalog.chapter_places(chapter), Registry.definition(chapter).get("stages", []).size(), count)
+
+## Of a level's `places` (in stage order) on `stages` stages, those `count`
+## finished stages earn; all of them only once the last stage is finished.
+static func earned_places(places: Array, stages: int, count: int) -> Array[String]:
+	stages = maxi(places.size(), stages)
 	var result: Array[String] = []
-	if count < 0 or count > places.size(): return result
-	for index in range(count): result.append(places[index])
+	if count < 0 or count > stages: return result
+	var earned := mini(count, places.size() if count >= stages else places.size() - 1)
+	for index in range(earned): result.append(str(places[index]))
 	return result
 
 ## Every earned mark, for cloud save: {place_id: {"solo": bool, "friend": bool}}.

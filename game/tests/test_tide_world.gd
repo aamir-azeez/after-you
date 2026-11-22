@@ -675,7 +675,7 @@ func _lifted_clear(world: Node3D, label: String) -> void:
 		marks["knob " + id] = Rect2(knob - Vector2.ONE * 0.09, Vector2.ONE * 0.18)
 	for id: String in world._physical_pads:
 		var pad := world._physical_pads[id] as MeshInstance3D
-		var radius: float = (pad.mesh as TorusMesh).outer_radius
+		var radius: float = maxf(pad.get_aabb().end.x, pad.get_aabb().end.z)
 		var at := LabelBubble.plane_point(pad.global_position)
 		marks["pad " + id] = Rect2(at - Vector2(radius, radius * 0.8), Vector2(radius * 2.0, radius * 1.6))
 	_check(world.scenery_backstop <= 0.0, "%s: the shared placement already clears the harbour's scenery (the backstop climbed %.2f m)" % [label, world.scenery_backstop])

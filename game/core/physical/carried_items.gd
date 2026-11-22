@@ -15,7 +15,10 @@ extends RefCounted
 ##       "radius_cm"?}]: named places an item rests (a post box, a stamp desk,
 ##       a hook) or floats ("surface_id": "": out on the water, out of reach).
 ##   a bridge or stair with "hands": true (a ladder, a rope bridge): it needs
-##       both hands, so a pip carrying an item never steps onto it.
+##       both hands. A pip that steps onto it carrying an item drops the item
+##       at its foot (dropped_at) and the turn ends, as a drowning does
+##       (core/journey/simulation.gd _drop_on_hands); the level graph and the
+##       design solver treat it as a dead end.
 ## Each stage (optional):
 ##   "item_starts": {item id: spot id, "p0"/"p1" or "away"}: where the item is
 ##       when the stage starts; otherwise where the stage before left it.
@@ -59,7 +62,7 @@ extends RefCounted
 ## The friend's replay presses through this same code by its recorded inputs,
 ## in the one world (runtime.gd), p0 first on a tick both press: its take finds
 ## nothing if the live pip took the item first, its give finds no one out of
-## reach, and loaded it never steps onto a "hands" crossing.
+## reach, and loaded it drops its item on a "hands" crossing, as the live pip does.
 ## Limits: a float ("carry": false) opens crossings through gates
 ## ({"item_id", "spot_id"}); carrying a pip or an item is a platform's job
 ## (pieces_rules.gd), not the current's. An item on a platform weighs no pan:
@@ -182,12 +185,44 @@ static func held_by(items: Dictionary, slot: String) -> String:
 		if str(items[id].holder) == slot: return str(id)
 	return ""
 
+## The id of the item `stage` wants resting at item spot `spot_id` (a goal's
+## or pad's {"item_id", "spot_id"} term anywhere in its rules), or "".
+static func wanted(stage: Dictionary, spot_id: String) -> String:
+	return _wanted(stage, spot_id)
+
+static func _wanted(value: Variant, spot_id: String) -> String:
+	if value is Dictionary:
+		if value.has("item_id") and str(value.get("spot_id", "")) == spot_id and not spot_id.is_empty(): return str(value.item_id)
+		for key: Variant in value:
+			if str(key) in ["item_spots", "items", "stages"]: continue
+			var found := _wanted(value[key], spot_id)
+			if not found.is_empty(): return found
+	elif value is Array:
+		for entry: Variant in value:
+			var found := _wanted(entry, spot_id)
+			if not found.is_empty(): return found
+	return ""
+
 ## The ids of `level`'s crossings that need both hands.
 static func hands_routes(level: Dictionary) -> Dictionary:
 	var found: Dictionary = {}
 	for route: Dictionary in level.get("bridges", []) + level.get("stairs", []):
 		if bool(route.get("hands", false)): found[str(route.id)] = true
 	return found
+
+## Where an item dropped by `player` on "hands" crossing `route_id` lands:
+## loose (no holder, no spot) at the crossing's end nearest the pip, on floor
+## `from` (the floor the pip stepped on from; the crossing's from_surface when
+## "") at that end's height.
+static func dropped_at(level: Dictionary, route_id: String, player: Dictionary, from: String) -> Dictionary:
+	for route: Dictionary in level.get("bridges", []) + level.get("stairs", []):
+		if str(route.id) != route_id: continue
+		var ends := route_ends(route)
+		var at := Vector2i(int(player.x), int(player.z))
+		var end: Dictionary = ends[0] if at.distance_squared_to(Vector2i(int(ends[0].x), int(ends[0].z))) <= at.distance_squared_to(Vector2i(int(ends[1].x), int(ends[1].z))) else ends[1]
+		if from.is_empty() or from == route_id: from = str(route.get("from_surface", ""))
+		return {"holder": "", "spot": "", "x": int(end.x), "z": int(end.z), "height": int(end.height), "surface_id": from}
+	return {"holder": "", "spot": "", "x": int(player.x), "z": int(player.z), "height": int(player.get("height", 0)), "surface_id": str(player.surface_id)}
 
 ## A crossing's two ends as [{"x", "z", "height"}]: a stair's foot and head
 ## along its axis, a bridge's ends along its longer side.

@@ -4,6 +4,7 @@ import { checkRoutesAndLevers, checkTurnBounds, openPhysicalRecording, physicalR
 import { openTurns, piecesRules, tideRules as tideRulesVersion, type ChapterAdapter, type ChapterCheckpoint, type ChapterRecording } from "./chapter-types";
 import { OPEN_CHECKPOINT_KEYS, OPEN_CHECKPOINT_SCHEMA, openAccepted, openStageEnds, openTurnsProblem } from "./open-turns";
 import { checkItemDefinition, checkItems, declaresItems, isItemTerm, itemHolds, type ItemDefinition } from "./protocol-items";
+import { lightSignals, type LightStage } from "./light-pieces";
 import conservatoryDefinition from "./conservatory.json";
 import conservatoryInitial from "./conservatory-initial.json";
 import homeDefinition from "./long-way-home.json";
@@ -28,6 +29,8 @@ import fogMarshDefinition from "./fog-marsh.json";
 import fogMarshInitial from "./fog-marsh-initial.json";
 import relayIslesV3Definition from "./relay-isles-v3.json";
 import relayIslesV3Initial from "./relay-isles-v3-initial.json";
+import sleepingLighthouseV3Definition from "./sleeping-lighthouse-v3.json";
+import sleepingLighthouseV3Initial from "./sleeping-lighthouse-v3-initial.json";
 import wellV2Definition from "./the-wishing-well-v2.json";
 import wellV2Initial from "./the-wishing-well-v2-initial.json";
 
@@ -43,15 +46,18 @@ export const FIRST_STEPS_V2_HASH = "0199c2dd8cd1caf0a3ed2f321cb9ca60b5aa47bda064
 export const THE_FALLS_HASH = "04bb186a63543d697f77aa42eb0d831e3e6e0d1a3754247531dad45769753ac4";
 export const RELAY_ISLES_V3_HASH = "3dada19b365b4035a50e19a55b1d5e01dc8a3d1391987efe83755ba5bce42fce";
 export const WISHING_WELL_V2_HASH = "f100cedde0f65539106040ebf52a2c498815c53a6828bb56a1ff57ace73063ac";
-export const FOG_MARSH_HASH = "e7ddc8b6d35402c9e788e5a77ac8c1c4206bebea36130573b5e9d1179b892220";
+export const FOG_MARSH_HASH = "d761534b5edd20d7564458ac902c125961ef9264c1407cc73296535fea564720";
+export const SLEEPING_LIGHTHOUSE_V3_HASH = "eacf9ea619842f9dacad39f42535e352b2b21a30b3c0dbf5e11d342c95effc7e";
 type Surface = { id: string; rect_cm: number[]; height_cm?: number; owner_slot?: string; axis?: string; from_height_cm?: number; to_height_cm?: number };
 export type Marker = { id: string; position_cm: number[]; surface_id: string; height_cm: number; radius_cm: number; owner_slot?: string };
 export type Predicate = { all?: Predicate[]; any?: Predicate[]; not?: Predicate; control_id?: string; value?: string; lever_id?: string; pad_id?: string; signal_id?: string; item_id?: string; carried?: boolean; spot_id?: string };
-type Control = Marker & { values: string[]; initial: string };
+type Control = Marker & { values: string[]; initial: string; kind?: string; optics?: LightStage["controls"][number]["optics"] };
 type Stage = { id: string; version: number; first_player_slot: string; turn_cap?: number; controls: Control[]; levers: Marker[]; pressure_pads: Marker[];
   gates: { route_id: string; when?: Predicate }[]; entry_latch_routes: string[]; goal: Marker; goal_policy: { kind?: string; when?: Predicate };
   /** Rules 20 (chapter-types.ts PIECES_RULES): stones that hold one pip; platform stops are plain gated crossings. */
   sinking?: string[];
+  /** Light pieces (light-pieces.ts): the stage's light and the lamps lit only while a when holds. */
+  optical_field?: LightStage["optical_field"]; lit_when?: Record<string, Predicate>;
   source_policy: { kind: string; when?: Predicate; endpoint?: Marker; branches?: { pad_id: string }[] } };
 type Definition = { id: string; version: number; simulation_version: number; premium: boolean; islands: Surface[]; bridges: Surface[]; stairs: Surface[]; stages: Stage[]; turn_limits?: TurnLimits };
 const CHECKPOINT_KEYS = ["schema_version", "level_id", "level_version", "definition_hash", "stage_index", "completed_stage_id", "next_stage_id", "players", "mechanisms", "previous_checkpoint_hash", "a_recording_hash", "b_recording_hash", "checkpoint_hash", "proof"];
@@ -59,16 +65,6 @@ function need(value: unknown, code: string): asserts value { if (!value) throw n
 function near(player: Record<string, unknown>, marker: Marker): boolean {
   return player.surface_id === marker.surface_id && player.height === marker.height_cm &&
     (Number(player.x) - marker.position_cm[0]) ** 2 + (Number(player.z) - marker.position_cm[1]) ** 2 <= marker.radius_cm ** 2;
-}
-
-/** These two pinned circuits have a unique alignment for each required light.
- * This is an envelope sanity check, not a second ray/physics simulator. Native
- * replay remains required to establish every control action and entry latch. */
-function signals(controls: Record<string, unknown>): Record<string, boolean> {
-  return { "high-light": controls["court-fork"] === "slash" && controls["high-return"] === "slash" && controls["preserved-turn"] === "backslash",
-    "garden-light": controls["gallery-fork"] === "backslash" && controls["garden-return"] === "slash",
-    "crossing-light": controls["lower-fork"] === "backslash" && controls["crossing-return"] === "slash",
-    "second-light": controls["final-mirror"] === "slash" };
 }
 
 /** A gate tree on an end state, as the client's Seven.predicate: all, any, not (rules 20),
@@ -173,7 +169,9 @@ export function journeyAdapter(definition: Definition, initial: ChapterCheckpoin
         (surface.to_height_cm! - surface.from_height_cm) * (coordinate - surface.rect_cm[axis]) / (surface.rect_cm[axis + 2] - surface.rect_cm[axis]));
       need(height === expectedHeight, "checkpoint_surface_mismatch");
     }
-    const source = object(players[stage.first_player_slot]), receiver = object(players[stage.first_player_slot === "p0" ? "p1" : "p0"]), light = signals(controls);
+    const source = object(players[stage.first_player_slot]), receiver = object(players[stage.first_player_slot === "p0" ? "p1" : "p0"]);
+    // The stage's light on the end state (light-pieces.ts): a lamp's lit_when reads no signal.
+    const light = lightSignals(stage, controls, when => gateHolds(when as Predicate, { controls, levers, light: {}, players, stage, open, items }));
     const predicate = (value: Predicate = {}): boolean => gateHolds(value, { controls, levers, light, players, stage, open, items });
     for (const id of stubs) need(stage.gates.some(gate => gate.route_id === id && predicate(gate.when)), "checkpoint_surface_mismatch");
     if (piecesRules(definition.simulation_version)) need(!sunkTogether(stage, players), "checkpoint_surface_mismatch");
@@ -231,6 +229,9 @@ export const fogMarsh = journeyAdapter(fogMarshDefinition, fogMarshInitial, FOG_
 /** Open turns with the new pieces (20): the Relay Isles on the journey rules, the seed a carried item on a solid
  * pedestal, placed in a solid nest and thrown over the garden's rope bridge. relay-isles@2 keeps its own adapter. Unreleased. */
 export const relayIslesV3 = journeyAdapter(relayIslesV3Definition as Definition, relayIslesV3Initial, RELAY_ISLES_V3_HASH);
+/** Open turns with the new pieces and light pieces (20): the six Lighthouse stages on the journey rules, its bridges held by
+ * light (light-pieces.ts), its lens a carried item thrown to Rest Rock. Seven branches, as every open chapter. Unreleased. */
+export const sleepingLighthouseV3 = journeyAdapter(sleepingLighthouseV3Definition as unknown as Definition, sleepingLighthouseV3Initial, SLEEPING_LIGHTHOUSE_V3_HASH, 7);
 /** Open turns with the new pieces (20): the Wishing Well on the journey rules, shorter walks, the old crane's swinging bucket
  * over the garden plank with its brake board, and the winch handle thrown up from the well. the-wishing-well@1 keeps its
  * cooperative adapter. Unreleased. */

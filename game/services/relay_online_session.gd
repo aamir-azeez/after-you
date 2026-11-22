@@ -23,6 +23,7 @@ const ShareCodes = preload("res://services/share_codes.gd")
 const RoomStages = preload("res://services/room_stages.gd")
 const Typed = preload("res://services/typed_values.gd")
 const OpenTurns = preload("res://core/physical/open_turns.gd")
+const OpenTurnStore = preload("res://services/open_turn_store.gd")
 const DisplayNames = preload("res://services/display_names.gd")
 const PollenWallet = preload("res://services/pollen_wallet.gd")
 const PollenGrant = preload("res://services/pollen_grant.gd")
@@ -1242,21 +1243,19 @@ func local_photo_key(room: String, turn: String, recording_hash: String) -> Stri
 func replay_photo_turns(index: int, pair: Dictionary) -> Array:
 	if not _ready() or coordinator == null:
 		return []
-	var room: Dictionary = coordinator.snapshot()
 	var pairs: Array = chapter_pairs()
-	if index < 0 or index >= pairs.size() or not Typed.same(pair, pairs[index]) or index >= room.get("completed_pair_ids", []).size():
+	if index < 0 or index >= pairs.size() or not Typed.same(pair, pairs[index]):
+		return []
+	return photo_turns(coordinator.snapshot(), index, pair, _owner)
+
+## The turns whose photos a replay of completed stage `index` of `room` shows (OpenTurnStore.photo_turns).
+static func photo_turns(room: Dictionary, index: int, pair: Dictionary, owner: String) -> Array:
+	if index < 0 or index >= room.get("completed_pair_ids", []).size():
 		return []
 	var pair_id: String = room.completed_pair_ids[index]
 	if not PhotoController._turn("t" + pair_id.substr(1) + "-a") or int(pair_id.get_slice("-", 1)) != index:
 		return []
-	var result: Array = []
-	# Open turns: the closing turn's id has its number's letter (b with no passes).
-	var closing := OpenTurns.turn_id(int(pair_id.substr(1).get_slice("-", 0)), index, 2 + pair.get("passes", []).size())
-	for role: String in ["a", "b"]:
-		var recording: Dictionary = pair[role]
-		var player: String = str(room.host_id if recording.player_slot == "p0" else room.guest_id)
-		result.append({"room_id": room.room_id, "turn_id": "t" + pair_id.substr(1) + "-a" if role == "a" else closing, "recording_hash": recording.recording_hash, "owner_player_id": player, "own": player == _owner, "role": role, "player_slot": recording.player_slot})
-	return result
+	return OpenTurnStore.photo_turns(room, pair_id, pair, owner)
 
 func _call(method: int, path: String, body: Dictionary = {}, headers: PackedStringArray = PackedStringArray(), caller_still: Callable = Callable()) -> Dictionary:
 	if not _ready() or _busy or _api.player_id != _owner or str(_api.device_token).is_empty():

@@ -63,6 +63,7 @@ const OPENINGS := ["bridge_opened", "bridge_open"]
 const PAD_SLACK := 0.02
 const PAD_HEIGHT := 0.3
 const SoundCues = preload("res://services/sound_cues.gd")
+const PadKit = preload("res://presentation/kit/pieces/pad.gd")
 
 ## The pads the live pip stood on held, and the levers, at the last tick.
 var _on_pads: Dictionary = {}
@@ -126,7 +127,7 @@ func _pads_under(me: Dictionary, world: Object) -> Dictionary:
 	var at := Vector3(float(me.get("x", 0)), float(me.get("height", 0)), float(me.get("z", 0))) / 100.0
 	for pad: Dictionary in world.pad_spots():
 		var spot: Vector3 = pad.at
-		if bool(pad.held) and absf(at.y - spot.y) <= PAD_HEIGHT and Vector2(at.x - spot.x, at.z - spot.z).length() <= float(pad.radius) + PAD_SLACK: on[str(pad.id)] = true
+		if bool(pad.held) and PadKit.covers(spot, float(pad.radius), pad.get("half", Vector2.ZERO), at, PAD_SLACK, PAD_HEIGHT): on[str(pad.id)] = true
 	return on
 
 ## Lever ids whose state changed since the last tick, in snapshot order.

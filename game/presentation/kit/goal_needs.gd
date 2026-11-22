@@ -3,10 +3,12 @@ extends RefCounted
 ## goal.gd). A stage's goal may ask more than both pips standing at it (its
 ## goal_policy "when", core/journey/seven_mechanisms.gd predicate): an item
 ## carried or set down, a lever pulled (a lantern lit), a switch set, a light
-## reaching its receiver, a pad held. Each such need gets a small token in a
-## row at the goal's front, between the pips' pads: a dim slate disc with the
-## need's own icon on it, the disc lit while the need is met. So a pip at the
-## goal sees what is still missing, with no words.
+## reaching its receiver, a pad held. Each such need gets a big token in a
+## row on the plate's middle line at its front edge, clear of where the pips
+## stand: a dim slate drum standing up through the plate's seam with the
+## need's own icon on it, the drum lit while the need is met (and red while a
+## pip waits on the plate without it, kit/pieces/goal.gd present_missing). So
+## a pip at the goal sees what is still missing, with no words, at phone size.
 ##
 ## Needs come from the definition alone: "all" is read as its parts, each a
 ## need; anything else ("any", "not", a leaf) is one need, met exactly when
@@ -22,13 +24,14 @@ const CarriedItemKit = preload("res://presentation/kit/pieces/carried_item.gd")
 ## Need kind (the term's key) -> icon.
 const ICONS := {"item_id": "item", "lever_id": "lamp", "signal_id": "lamp", "control_id": "dial", "pad_id": "ring"}
 const DEFAULT_ICON := "stone"
-## The token: its disc's radius and height, the gap between tokens, how far
-## in front of the goal's centre the row stands (a share of its radius), and
-## how small an item's own model stands on it.
-const TOKEN := 0.07
-const TOKEN_HEIGHT := 0.02
-const GAP := 0.17
-const FRONT := 0.6
+## The token: its drum's radius and how far it stands over the plate, the
+## gap between tokens' centres, how big its icon is drawn (the icons below
+## are sized for a token ICON_BASE across; an item's own model keeps its
+## size, low enough to step past), and how small an item's model stands on it.
+const TOKEN := 0.1
+const TOKEN_HEIGHT := 0.012
+const GAP := 0.22
+const ICON_BASE := 0.07
 const ITEM_SCALE := 0.6
 const SLATE := Color("6b7480")
 
@@ -54,19 +57,32 @@ static func icon(term: Dictionary) -> String:
 		if term.has(key): return ICONS[key]
 	return DEFAULT_ICON
 
-## Builds a token per need of `stage`'s goal under `root` (the goal's root,
-## `radius_m` across, its disc's top at `top`); `item_style` names an item's
-## style (Callable(id) -> String).
-func build(stage: Dictionary, root: Node3D, radius_m: float, top: float, item_style: Callable) -> void:
+## How far from the goal's centre a row of `count` tokens reaches, at the
+## front edge of a plate `plate_half` across (m; 0 for none): the goal's
+## drawn radius (kit/pieces/goal.gd) covers it.
+static func reach(plate_half: float, count: int) -> float:
+	if count <= 0: return 0.0
+	return Vector2(GAP * float(count - 1) * 0.5, plate_half).length() + TOKEN
+
+## Builds a token per need of `stage`'s goal under `root` (the goal's root):
+## the row centred on `front` (the floor it stands on), each drum standing
+## `rise` up to the plate's top and TOKEN_HEIGHT over it; `item_style` names
+## an item's style (Callable(id) -> String).
+func build(stage: Dictionary, root: Node3D, front: Vector3, rise: float, item_style: Callable) -> void:
 	_stage = stage
 	_open = stage.get("pressure_pads", []).any(func(pad: Dictionary) -> bool: return str(pad.get("owner_slot", "")).is_empty())
 	var list := terms(stage.get("goal_policy", {}).get("when", {}))
 	for index in range(list.size()):
 		var term: Dictionary = list[index]
-		var at := Vector3((float(index) - float(list.size() - 1) * 0.5) * GAP, top, radius_m * FRONT)
-		var disc := Parts.disc(TOKEN, TOKEN_HEIGHT, SLATE, at + Vector3(0, TOKEN_HEIGHT * 0.5, 0), root, -1.0, 16)
+		var at := front + Vector3((float(index) - float(list.size() - 1) * 0.5) * GAP, 0, 0)
+		var disc := Parts.disc(TOKEN, rise + TOKEN_HEIGHT, SLATE, at + Vector3(0, (rise + TOKEN_HEIGHT) * 0.5, 0), root, -1.0, 16)
 		disc.name = "GoalNeed"
-		_icon(icon(term), term, at + Vector3(0, TOKEN_HEIGHT, 0), root, item_style)
+		var holder := Node3D.new()
+		holder.name = "GoalNeedIcon"
+		holder.position = at + Vector3(0, rise + TOKEN_HEIGHT, 0)
+		holder.scale = Vector3.ONE * (1.0 if icon(term) == "item" else TOKEN / ICON_BASE)
+		root.add_child(holder)
+		_icon(icon(term), term, Vector3.ZERO, holder, item_style)
 		needs.append({"term": term, "disc": disc, "met": false})
 
 ## Lights each need's token while `state` meets it; nothing when unchanged.
@@ -99,7 +115,7 @@ func _icon(kind: String, term: Dictionary, at: Vector3, root: Node3D, item_style
 				Parts.sphere(0.035, Parts.GOLD, at + Vector3(0, 0.035, 0), root)
 				return
 			var item: RefCounted = CarriedItemKit.build(look, at, root, {"id": "need-" + id})
-			item.root.scale = Vector3.ONE * ITEM_SCALE
+			item.root.scale = Vector3.ONE * _item_scale(item.root, at.y)
 		"lamp":
 			Parts.box(Vector3(0.02, 0.06, 0.02), Parts.TIMBER_DARK, at + Vector3(0, 0.03, 0), root)
 			Parts.sphere(0.035, Parts.LIGHT, at + Vector3(0, 0.08, 0), root)
@@ -110,3 +126,25 @@ func _icon(kind: String, term: Dictionary, at: Vector3, root: Node3D, item_style
 			Parts.torus(0.04, 0.008, Parts.CREAM, at + Vector3(0, 0.008, 0), root)
 		_:
 			Parts.disc(0.03, 0.03, Parts.CREAM, at + Vector3(0, 0.015, 0), root, 0.022, 6)
+
+## ITEM_SCALE, or smaller for an item a pip at the goal would stand in: a part
+## both wider than the kit's small stand and rising past its step-on height
+## over the goal's floor (kit/prop_rules.gd stands_in), such as a lens on its
+## edge, shrinks until it is no wider than that stand. `floor_top` is how high
+## the item's root stands over the goal's floor (m).
+static func _item_scale(item: Node3D, floor_top: float) -> float:
+	var rules: GDScript = load("res://presentation/kit/prop_rules.gd")
+	var scale := ITEM_SCALE
+	for mesh: Node in item.find_children("*", "MeshInstance3D", true, false):
+		var shape: Mesh = (mesh as MeshInstance3D).mesh
+		if shape == null: continue
+		var placed := Transform3D.IDENTITY
+		var node: Node = mesh
+		while node != item:
+			placed = (node as Node3D).transform * placed
+			node = node.get_parent()
+		var box: AABB = placed * shape.get_aabb()
+		var width := maxf(box.size.x, box.size.z)
+		if floor_top + box.end.y * ITEM_SCALE > float(rules.STEP_ON) and width * ITEM_SCALE > float(rules.SMALL_STAND):
+			scale = minf(scale, float(rules.SMALL_STAND) * 0.95 / width)
+	return scale

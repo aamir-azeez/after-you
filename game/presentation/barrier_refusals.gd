@@ -60,9 +60,13 @@ var _definition: Dictionary = {}
 var _stage_id := ""
 var _view: Dictionary = {}
 var _layout: Dictionary = {}
-## The memory's input per tick (quantized), and its slot ("" in a first turn).
+## The memory's input per tick (quantized), its slot ("" in a first turn) and,
+## on carry-over turns, the tick of the memory's turn this one started at
+## (its hand-off, core/physical/open_turns.gd): the memory's own clock runs that
+## far ahead of the turn's.
 var _memory_frames: Array = []
 var _memory_slot := ""
+var _memory_from := 0
 ## Whether a closed stair counts as a barrier (the descriptor's "stair_gates").
 var _stair_gates := true
 ## Each spirit's position after the last tick: slot -> Vector2i (cm).
@@ -85,6 +89,7 @@ func begin(chapter_key: String, definition: Dictionary, state: Dictionary, prior
 	_stage_id = ""
 	_memory_frames = []
 	_memory_slot = ""
+	_memory_from = 0
 	_last.clear()
 	_pushing.clear()
 	_at_lock.clear()
@@ -94,7 +99,11 @@ func begin(chapter_key: String, definition: Dictionary, state: Dictionary, prior
 	_stair_gates = bool(Index.data(chapter_key).get("stair_gates", true))
 	_stage(str(state.get("stage_id", "")))
 	if str(state.get("role", "")) == "b" and prior is Dictionary:
-		_memory_slot = str(state.get("first_player_slot", ""))
+		# The friend's pip: under open turns either pip may be the live one, so the
+		# memory is the other pip, whoever played the stage's first turn.
+		var active := str(state.get("active_slot", ""))
+		_memory_slot = str(prior.get("player_slot", "")) if str(prior.get("player_slot", "")) not in ["", active] else ("p1" if active == "p0" else "p0") if not active.is_empty() else str(state.get("first_player_slot", ""))
+		_memory_from = maxi(0, int(state.get("handoff_tick", 0)))
 		for input: Dictionary in Runtime.expand_recording_inputs(prior): _memory_frames.append(Runtime.quantize_input(input))
 	_remember(state)
 	for lock: Dictionary in _layout.get("locks", []):
@@ -116,7 +125,8 @@ func annotate(state: Dictionary, input: Dictionary = {}) -> Dictionary:
 	var tick := int(state.get("tick", 0))
 	var frames := {str(state.get("active_slot", "")): Runtime.quantize_input(input)}
 	if not _memory_slot.is_empty():
-		frames[_memory_slot] = _memory_frames[tick - 1] if tick - 1 >= 0 and tick - 1 < _memory_frames.size() else STILL
+		var at := tick - 1 + _memory_from
+		frames[_memory_slot] = _memory_frames[at] if at >= 0 and at < _memory_frames.size() else STILL
 	var players: Dictionary = state.players
 	var refused: Array = []
 	for slot: String in frames:

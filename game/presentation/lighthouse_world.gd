@@ -167,7 +167,7 @@ func load_level(definition: Dictionary) -> void:
 		actor_targets[slot] = spirit.position
 		_badges[slot] = Badges.make(spirit)
 		await _build_step()
-	if definition.stage_id == "borrowed-light":
+	if definition.stage_id == "borrowed-light" and _native(definition):
 		_view_center = Vector3(-3.8, 0.1, 0)
 		_view_size = 7.5
 	else:
@@ -191,6 +191,11 @@ func load_level(definition: Dictionary) -> void:
 	await _build_step()
 	show_keepsake_landmark(str(definition.get("stage_id", "")))
 	_frame_camera()
+
+## Whether `stage` is one of the Lighthouse's own stages (core/lighthouse,
+## schema 3), not a journey stage that shares its id (sleeping-lighthouse@3).
+static func _native(stage: Dictionary) -> bool:
+	return int(stage.get("schema_version", 0)) == 3
 
 ## The registry-style key this world's dressing is filed under.
 func _chapter_key() -> String:
@@ -569,7 +574,7 @@ func _piece_style(slot: String, id: String) -> String:
 
 func _build_receiver_cable(receiver: Dictionary, bridges: Array) -> void:
 	var route: Array[Vector3] = []
-	if current_level.stage_id == "borrowed-light":
+	if current_level.stage_id == "borrowed-light" and _native(current_level):
 		route = [Vector3(-5.6, 0.045, -1.6), Vector3(-4.75, 0.045, -1.6), Vector3(-4.75, 0.045, -0.47)]
 	else:
 		for bridge_definition: Dictionary in bridges:
@@ -803,8 +808,7 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	_present_celebration(immediate)
 	if _goal_piece != null and is_instance_valid(_bell):
 		_goal_piece.set_lit(GoalPiece.lit(state), immediate or reduced_motion)
-		_goal_piece.present_pips(state.get("players", {}), immediate or reduced_motion)
-		_goal_piece.needs.present(state)
+		_goal_piece.present(state, immediate or reduced_motion, reduced_motion)
 	_present_beams(state.optics.segments)
 	_face_hands(state, immediate)
 

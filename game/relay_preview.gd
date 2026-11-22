@@ -1993,6 +1993,8 @@ func _start_watch() -> bool:
 	_watch = {"live": sim, "stage": str(shown.stage_id)}
 	sim = replay
 	_begin_sound_turn()
+	# The friend's reactions show as their turn plays, each on its tick.
+	_begin_run_reactions(false, watched, turns[-2])
 	_refusals.begin(chapter_key, definition, sim.snapshot(), turns[-2])
 	if str(shown.stage_id) != journey.stage_id(): _present_stage_history(_simulation.stage_by_id(definition, str(shown.stage_id)), shown.checkpoint)
 	_wait().reduced_motion = bool(settings.get("reduced_motion", false))
@@ -2027,6 +2029,7 @@ func _advance_watch(_input: Dictionary) -> void:
 	if mode != "watch" or bool(sim.get("finished")) or not memory_wait.waiting(): return
 	var state: Dictionary = sim.step(memory_wait.playback_input())
 	_watch_state = _wait().step(state, _sounds_of(state), false)
+	_run_player().step(int(state.tick))
 
 ## The playback is over: this turn's own live simulation, built at the
 ## hand-off, takes over in that same world. The friend's pip becomes the
@@ -2039,6 +2042,7 @@ func _hand_off() -> void:
 	if stage_changed: _present_stage_history(_simulation.stage_by_id(definition, journey.stage_id()), journey.checkpoint())
 	_begin_sound_turn()
 	_begin_memory_wait(journey.role(), journey.prior_recording(), true)
+	_begin_run_reactions(true, {}, journey.prior_recording())
 	_wait().show(sim.snapshot(), stage_changed)
 	_start_play()
 	_glance_at_goal()
@@ -2349,7 +2353,7 @@ func _begin_drown_beat() -> void:
 	action_pressed = false
 	if not _persist_draft("review"): return
 	mode = "drowning"
-	_ending = TurnEndings.of(sim.snapshot(), online_session == null)
+	_ending = TurnEndings.of(sim.snapshot(), online_session == null, world)
 	_drown_frames = DROWN_BEAT_FRAMES + int(_ending.get("beat", 0))
 	_update_hud(sim.snapshot())
 
@@ -2735,7 +2739,9 @@ func _begin_run_reactions(live: bool, recording: Dictionary, source: Variant) ->
 	var store := RunReactionStore.new()
 	if not live: player.play(recording, _track_of(store, recording))
 	if source is Dictionary and not source.is_empty():
-		player.play(source, _track_of(store, source), PlayerCopy.RUN_REACTIONS_MEMORY if live and online_session != null else "")
+		# Carry-over turns: the friend's turn goes on from where this one took it over.
+		var handoff: int = int(sim.get("handoff_tick")) if live and sim.get("handoff_tick") != null else int(recording.get(OpenTurns.HANDOFF_TICK, 0))
+		player.play(source, _track_of(store, source), PlayerCopy.RUN_REACTIONS_MEMORY if live and online_session != null else "", handoff)
 	if is_instance_valid(run_reactions): run_reactions.color = str(SpiritLook.SLOT_COLOR_NAMES.get(player.live_slot, "peach"))
 
 ## A recording's track: kept on this phone, or the finished turn's own while it waits to be saved.
@@ -2790,7 +2796,7 @@ func _show_review() -> void:
 	var verified: Dictionary = _verify_review()
 	# A hard run ends on a turn it cannot keep (presentation/hard_run_flow.gd).
 	if hard_flow.verdict(verified, review): return
-	var ending := TurnEndings.of(verified.get("snapshot", {}), online_session == null)
+	var ending := TurnEndings.of(verified.get("snapshot", {}), online_session == null, world)
 	if not ending.is_empty():
 		_show_ending_card(ending)
 		return
@@ -2854,6 +2860,7 @@ func _show_ending_card(ending: Dictionary) -> void:
 		card.add_child(line)
 		for id: String in ids:
 			if id == "redo": _add_redo_actions_to(line, RoomActions.TURN_REDO_ACTIONS)
+			elif id == "start_over": _add_redo_actions_to(line, RoomActions.START_OVER_ACTIONS)
 			elif actions.has(id): line.add_child(_action_button(id, actions[id]))
 		for button: Node in line.get_children():
 			if button is Control: (button as Control).size_flags_horizontal = Control.SIZE_EXPAND_FILL

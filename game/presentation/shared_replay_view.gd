@@ -321,8 +321,9 @@ func _start_part() -> void:
 	# Both turns' reactions made during the run, at their ticks (a chapter's recordings name their spirit).
 	run_player.begin()
 	var tracks := RunReactionStore.new()
-	for recording: Variant in [watched, memory]:
-		if recording is Dictionary: run_player.play(recording, tracks.track(str(recording.get("recording_hash", ""))))
+	run_player.play(watched, tracks.track(str(watched.get("recording_hash", ""))))
+	# Carry-over turns: the friend's turn goes on from where this one took it over.
+	run_player.play(memory, tracks.track(str(memory.get("recording_hash", ""))), "", int(watched.get(OpenTurns.HANDOFF_TICK, 0)))
 	cursor = 0
 	_tick_time = 0.0
 	memory_wait.show(sim.snapshot(), true)

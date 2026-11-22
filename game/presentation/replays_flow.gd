@@ -46,6 +46,7 @@ const SoloReplayVisibility = preload("res://services/solo_replay_visibility.gd")
 const HardMode = preload("res://services/hard_mode.gd")
 const HardReplays = preload("res://presentation/hard_replays.gd")
 const Typed = preload("res://services/typed_values.gd")
+const OpenTurns = preload("res://core/physical/open_turns.gd")
 const TurnTries = preload("res://services/turn_tries.gd")
 const TryPill = preload("res://presentation/try_pill.gd")
 const EndReactionStore = preload("res://services/end_reaction_store.gd")
@@ -640,15 +641,23 @@ func _part_line(first: Control, turns: Array) -> Control:
 	for pill: Control in pills: line.add_child(pill)
 	return line
 
-## A solo part's turns: both are this player's, first and second.
+## A solo part's turns, all this player's: first and second, or under open
+## turns every turn of the stage (OpenTurns.pair_turns), each in the colour of
+## the spirit that played it.
 static func _solo_turns(row: Dictionary) -> Array:
 	var pair: Variant = row.get("pair")
 	if not pair is Dictionary: return []
-	# Each turn in its spirit's colour: the stage's first slot plays first.
-	var first := Typed.as_dict(pair.get("a"))
-	var slot := _first_slot(str(row.get("chapter_key","")), str(first.get("stage_id","")))
-	var other := "p1" if slot == "p0" else "p0"
-	return [[PlayerCopy.TRY_FIRST_TURN, str(first.get("recording_hash","")), SLOT_COLORS.get(slot,"peach"), true], [PlayerCopy.TRY_SECOND_TURN, str(Typed.as_dict(pair.get("b")).get("recording_hash","")), SLOT_COLORS.get(other,"mint"), true]]
+	var turns := OpenTurns.pair_turns(pair)
+	# A turn kept before turns named their spirit: the stage's first slot plays first.
+	var slot := _first_slot(str(row.get("chapter_key","")), str(Typed.as_dict(turns[0]).get("stage_id","")))
+	var result: Array = []
+	for index in range(turns.size()):
+		var turn := Typed.as_dict(turns[index])
+		var own := str(turn.get("player_slot",""))
+		var label: String = (PlayerCopy.TRY_FIRST_TURN if index == 0 else PlayerCopy.TRY_SECOND_TURN) if turns.size() == 2 else PlayerCopy.TRY_TURN % (index + 1)
+		result.append([label, str(turn.get("recording_hash","")), SLOT_COLORS.get(own if own in ["p0","p1"] else slot,"peach"), true])
+		slot = "p1" if slot == "p0" else "p0"
+	return result
 
 ## Each chapter's first slot by stage id, worked out once per chapter: bundled
 ## definitions never change while the game runs.
@@ -674,16 +683,31 @@ static func _first_slot(chapter_key: String, stage_id: String) -> String:
 ## a part with a count to show looks up its room and chapter.
 func _shared_turns(row: Dictionary) -> Array:
 	var a_hash := str(row.get("a_hash","")); var b_hash := str(row.get("b_hash",""))
+	# Open turns: the row names every turn's hash and spirit (SharedReplayCollection.summary).
+	var played: Array = row.get("turns") if row.get("turns") is Array else []
+	var hashes: Array = played.map(func(turn: Variant) -> String: return str(turn[0]) if turn is Array and turn.size() == 2 else "") if not played.is_empty() else [a_hash, b_hash]
 	if _turn_tries == null: _turn_tries = TurnTries.new()
 	if _faces == null: _faces = EndReactionStore.new()
-	if _turn_tries.tries(a_hash) < 1 and _turn_tries.tries(b_hash) < 1 and _faces.kept(a_hash).is_empty() and _faces.kept(b_hash).is_empty(): return []
+	if hashes.all(func(turn_hash: String) -> bool: return _turn_tries.tries(turn_hash) < 1 and _faces.kept(turn_hash).is_empty()): return []
 	var room := _current_shared_room()
 	if room.get("family") != "chapter": return []
+	var you_host: bool = str(room.get("host_id","")) == str(host._relay_identity().player_id)
+	var friend := FriendNicknames.sentence_start(_room_partner_name(room))
+	if not played.is_empty(): return _slot_owners(played, you_host, friend)
 	var slots := _stage_slots(str(room.get("chapter_key","")))
 	var index := int(row.get("stage_index",-1))
 	if index < 0 or index >= slots.size(): return []
-	var you_host: bool = str(room.get("host_id","")) == str(host._relay_identity().player_id)
-	return _turn_owners(slots[index], you_host, FriendNicknames.sentence_start(_room_partner_name(room)), a_hash, b_hash)
+	return _turn_owners(slots[index], you_host, friend, a_hash, b_hash)
+
+## Each of a stage's turns ([recording hash, spirit slot]) named by who played
+## it: the host plays p0, the guest p1.
+static func _slot_owners(played: Array, you_host: bool, friend: String) -> Array:
+	var result: Array = []
+	for turn: Variant in played:
+		if not turn is Array or turn.size() != 2 or str(turn[1]) not in ["p0","p1"]: return []
+		var yours := (str(turn[1]) == "p0") == you_host
+		result.append([PlayerCopy.TRY_YOU if yours else friend, str(turn[0]), SLOT_COLORS[str(turn[1])], yours])
+	return result
 
 ## The stage's first turn is the host's when its first slot is p0, the
 ## guest's when it is p1; the second turn is the other player's.

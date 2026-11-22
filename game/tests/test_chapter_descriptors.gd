@@ -316,11 +316,15 @@ func _wait_hints(key: String, data: Dictionary, level: Dictionary) -> void:
 	var swings: Dictionary = {}
 	for stage: Dictionary in level.stages:
 		for swing: Dictionary in stage.get("swings", []): swings[str(swing.id)] = true
+	# A current leg's start spot takes a "current" style (the bucket hoist).
+	var currents: Dictionary = {}
+	for stage: Dictionary in level.stages:
+		for leg: Dictionary in stage.get("current_legs", []): currents[str(leg.get("from", ""))] = true
 	var styles := preload("res://content/dressing/prop_styles.gd")
 	for id: String in data.piece_styles:
 		var style := str(data.piece_styles[id])
 		var suits := (levers.has(id) and styles.has_style("lever", style)) or (selectors.has(id) and styles.has_style("selector", style)) or (pads.has(id) and styles.has_style("pad", style)) or (goals.has(id) and styles.has_style("goal", style)) or (items.has(id) and styles.has_style("carried_item", style)) or (spots.has(id) and styles.has_style("item_spot", style))
-		suits = suits or (bridges.has(id) and styles.has_style("deck", style)) or (stairs.has(id) and styles.has_style("ladder", style)) or (swings.has(id) and styles.has_style("swing", style))
+		suits = suits or (bridges.has(id) and styles.has_style("deck", style)) or (stairs.has(id) and styles.has_style("ladder", style)) or (swings.has(id) and styles.has_style("swing", style)) or (currents.has(id) and styles.has_style("current", style))
 		_check(suits, "Piece style %s of %s suits its piece: %s" % [id, key, style])
 	# Turn of the Tide's water wheels are valves: no three- or four-way
 	# selector there is left with a plain lever.

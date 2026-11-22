@@ -5,8 +5,9 @@ extends RefCounted
 ##
 ## A turn on stage k in role a or b races the raced run's own stage k turn of
 ## the same role, re-simulated from that run's own stage set-up (its previous
-## checkpoint) and inputs, with its turn a as the memory of a turn b, exactly
-## as the shared replay viewer plays it (presentation/shared_replay_view.gd).
+## checkpoint) and inputs, its closing turn over the turns before it (under
+## open turns its passes too: OpenTurns.closing_memory), exactly as the shared
+## replay viewer plays it (presentation/shared_replay_view.gd).
 ## The sim is deterministic at 30 ticks a second, so the track is the same on
 ## every phone and every try; the live turn reads it by its own tick, so pause,
 ## backgrounding, retries and fast-forward stay in step for free. Each of the
@@ -21,6 +22,7 @@ extends RefCounted
 ## (rules it does not have, a stage or role it lacks): the race goes on with no ghost.
 const Registry = preload("res://services/chapter_registry.gd")
 const RecordingCodec = preload("res://core/v2/recording_codec.gd")
+const OpenTurns = preload("res://core/physical/open_turns.gd")
 ## A turn is never longer than this (the longest chapter turn, with room to spare).
 const MAX_TICKS := 30 * 60 * 10
 
@@ -33,8 +35,8 @@ static func build(chapter_key: String, pair: Dictionary, role: String) -> Dictio
 	if engine == null or slot.is_empty(): return {}
 	var sim: RefCounted = engine.new()
 	var start := Registry.previous_checkpoint(chapter_key, pair.checkpoint)
-	var prior: Dictionary = pair.a if role == "b" and pair.get("a") is Dictionary else {}
-	if not Registry.reset_simulation(sim, chapter_key, Registry.definition(chapter_key), str(recording.get("stage_id", "")), start, prior, role, recording): return {}
+	var memory: Dictionary = OpenTurns.closing_memory(pair) if role == "b" and pair.get("a") is Dictionary else {"prior": {}, "chain": []}
+	if not Registry.reset_simulation(sim, chapter_key, Registry.definition(chapter_key), str(recording.get("stage_id", "")), start, memory.prior, role, recording, memory.chain): return {}
 	# As every replay plays a turn: with the Forgiving catches its player had (shared_replay_view.gd).
 	sim.catch_assistance = bool(recording.get("catch_assistance", true))
 	var frames: Array = engine.expand_recording_inputs(recording)

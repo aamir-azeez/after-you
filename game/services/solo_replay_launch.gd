@@ -6,6 +6,7 @@ extends RefCounted
 ## another chapter or room.
 const AtomicFile = preload("res://services/atomic_file.gd")
 const Typed = preload("res://services/typed_values.gd")
+const OpenTurns = preload("res://core/physical/open_turns.gd")
 const PATH := "user://solo-replay-playback.json"
 const MAX_BYTES := 2097152
 static var _requested := false
@@ -63,7 +64,8 @@ static func _read(path: String, rules: Dictionary) -> Dictionary:
 	if not pairs is Array or pairs.size() != int(stage_index) + 1 or pairs.size() > stage_ids.size() or pairs.is_empty(): return failed
 	for index in range(pairs.size()):
 		var pair: Variant = pairs[index]
-		if not pair is Dictionary or pair.size() != 2 or not pair.get("a") is Dictionary or not pair.get("b") is Dictionary: return failed
+		# A pair is {a, b}, or under open turns {a, b, passes}: the shape a journal keeps.
+		if not OpenTurns.record_valid(pair): return failed
 		var expected := str(stage_ids[index])
 		if expected.is_empty() or not Typed.equal(pair.a.get("role"), "a") or not Typed.equal(pair.b.get("role"), "b") or not Typed.equal(pair.a.get("stage_id"), expected) or not Typed.equal(pair.b.get("stage_id"), expected): return failed
 	var pairs_valid: Callable = rules.get("pairs_valid", Callable())

@@ -433,9 +433,14 @@
 			"height_cm": 192,
 			"id": "desk",
 			"position_cm": [
-				11110,
-				574
+				11160,
+				540
 			],
+			"radius_cm": 68,
+			"solid": {
+				"radius_cm": 36,
+				"reach_cm": 20
+			},
 			"surface_id": "office"
 		}
 	],

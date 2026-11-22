@@ -8,7 +8,7 @@ extends SceneTree
 ##   spirit's carry point as the seed and the lens are; put down, it rests at its
 ##   place; a float rests on the water by the float rule (kit/floats.gd): its
 ##   keel its draft under the surface, its deck clear of it;
-## - the both-hands ladder wears rungs, so a carrier's stop has its cause;
+## - the both-hands ladder wears rungs, so a carrier's drop there has its cause;
 ## - the current's legs are bright while their wheel shows their value;
 ## - set down on a pad (a pan, a board, a floor button), the item rests on top
 ##   of it, sunk with it while held, never hidden inside it; every pad style
@@ -36,9 +36,11 @@ func _run() -> void:
 		var piece: RefCounted = CarriedItemKit.build(style, Vector3.ZERO, holder, {"id": style, "world": holder})
 		_check(piece.style == style and _meshes(piece.root) > 0 and piece.moving_parts() == [piece.root], "Carried item %s builds and keeps its root moving" % style)
 	_check(CarriedItemKit.build("teapot", Vector3.ZERO, holder).style == "parcel", "An unknown item style builds the parcel")
-	for style: String in Styles.SLOTS.current:
+	_check(CurrentKit.MARKS.all(func(style: String) -> bool: return style in Styles.SLOTS.current) and Styles.SLOTS.current.has("bucket"), "The current slot offers the marks styles and the hoist")
+	for style: String in CurrentKit.MARKS:
 		var piece: RefCounted = CurrentKit.build(style, [{"from": Vector3.ZERO, "to": Vector3(2, 0, 0), "control_id": "c", "value": "v"}], holder)
 		_check(piece.style == style and piece.moving_parts().size() == 2 and _meshes(piece.root) == 2 and (piece.moving_parts()[0].get_child(0) as MeshInstance3D).mesh.get_faces().size() >= 6 * 36, "Current %s lays its marks in a bright row and a faint one, one mesh a row" % style)
+	_hoist(holder)
 	for style: String in PadKit.STYLES:
 		for held: bool in [false, true]:
 			var pad: RefCounted = PadKit.build(style, Vector3(1, 0.5, 2), 0.3, holder)
@@ -109,6 +111,52 @@ func _world() -> void:
 		_check(board != null and pieces.pipsport.root.visible and is_equal_approx(y, floor_y + board.top()) and y > floor_y + 0.02, "Set down on the board%s, the pipsport rests on top of it (%.3f over the floor)" % [" held" if pressed else "", y - floor_y])
 	world.queue_free()
 	await process_frame
+
+## The hoist: a bucket at the leg's start goes up off it, across and down onto
+## the end while its wheel shows the leg's value (snapped on an immediate
+## present, run on at its own speed otherwise), back down when the wheel
+## turns, and an item in it rides on its floor; one already at the end when
+## the leg starts to run waits there until the bucket arrives.
+func _hoist(holder: Node3D) -> void:
+	var start := Vector3(1, 0, 1)
+	var end := Vector3(1.4, 1.2, -3)
+	var piece: RefCounted = CurrentKit.build("bucket", [{"from": start, "to": end, "control_id": "pool", "value": "HIGH", "from_id": "bucket", "to_id": "bucket-top"}], holder)
+	var bucket: Node3D = piece._legs[0].bucket
+	_check(piece.style == "bucket" and piece.moving_parts().size() == 3 and bucket.position.is_equal_approx(start) and not piece.moving(), "The hoist builds its trolley, rope and bucket as its moving parts, the bucket at the start")
+	_check(piece.carry("pipsport", "bucket") is Vector3 and (piece.carry("pipsport", "bucket") as Vector3).is_equal_approx(start + Vector3(0, CurrentKit.SEAT, 0)), "An item resting at the start sits on the bucket's floor")
+	piece.present({"controls": {"pool": "HIGH"}}, true)
+	_check(bucket.position.is_equal_approx(end) and not piece.moving(), "Presented at once with the wheel right, the bucket stands at the end")
+	piece.present({"controls": {"pool": "LOW"}})
+	_check(piece.moving() and bucket.position.is_equal_approx(end), "Turned back, it starts down from where it stood")
+	piece.advance(0.02)
+	_check(bucket.position.x == end.x and bucket.position.y > end.y + 0.01 and bucket.position.y <= end.y + CurrentKit.TRAVEL_OVER + 0.001, "It lifts off the end first, over the higher floor")
+	for _frame in range(600):
+		if not piece.moving(): break
+		piece.advance(1.0 / 60.0)
+	_check(bucket.position.is_equal_approx(start) and not piece.moving(), "Then it runs back across and sets down at the start")
+	var line := float(piece._legs[0].line)
+	var rope: Node3D = piece._legs[0].rope
+	_check(is_equal_approx(rope.position.y + rope.scale.y / 2.0, line - CurrentKit.HOOK) and is_equal_approx(rope.position.y - rope.scale.y / 2.0, start.y + CurrentKit.BAIL_TOP), "Its rope runs from the trolley's hook down to the bail")
+	piece.carry("pipsport", "bucket")
+	piece.present({"controls": {"pool": "HIGH"}})
+	var midway := false
+	for _frame in range(600):
+		if not piece.moving(): break
+		piece.advance(1.0 / 60.0)
+		var seat: Variant = piece.carry("pipsport", "bucket-top")
+		midway = midway or (seat is Vector3 and (seat as Vector3).y > start.y + 0.5 and (seat as Vector3).z < start.z - 0.5)
+	_check(midway and (piece.carry("pipsport", "bucket-top") as Vector3).is_equal_approx(end + Vector3(0, CurrentKit.SEAT, 0)), "Sent up with an item in it, the item rides the bucket all the way to the end")
+	piece.present({"controls": {"pool": "LOW"}}, true)
+	_check(piece.carry("pipsport", "bucket-top") == null, "Back down, the item stays on the floor at the end")
+	piece.present({"controls": {"pool": "HIGH"}})
+	_check(piece.carry("pipsport", "bucket-top") == null, "An item already at the end waits there while the bucket comes up")
+	var board: RefCounted = CurrentKit.build("bucket", [{"from": start, "to": end, "control_id": "", "value": "", "when": {"pad_id": "winding-board"}}], holder, Callable(), {"pressure_pads": [{"id": "winding-board", "surface_id": "deck", "position_cm": [0, 0], "height_cm": 0, "radius_cm": 32, "owner_slot": ""}]})
+	var standing := {"p0": {"x": 0, "z": 0, "height": 0, "surface_id": "deck"}, "p1": {"x": 500, "z": 500, "height": 0, "surface_id": "deck"}}
+	board.present({"controls": {}, "players": standing, "mechanisms": {"controls": {}, "levers": {}, "items": {}}}, true)
+	_check((board._legs[0].bucket as Node3D).position.is_equal_approx(end), "A leg wound from a board runs while someone stands on it")
+	standing.p0.x = 300
+	board.present({"controls": {}, "players": standing, "mechanisms": {"controls": {}, "levers": {}, "items": {}}}, true)
+	_check((board._legs[0].bucket as Node3D).position.is_equal_approx(start), "and its bucket goes back down once they step off")
 
 func _walk(sim: RefCounted, target: Array) -> void:
 	for axis: String in ["x", "z"]:

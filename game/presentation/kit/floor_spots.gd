@@ -13,8 +13,9 @@ extends RefCounted
 ## least, with what it runs into, so callers and tests can name the clash.
 ##
 ## Things to avoid and taken spots are plain data: {rect} or {centre, radius},
-## an optional y (only things within 0.3 m of a spot's floor count) and `what`
-## (named in a clash). Presentation only: nothing here feeds the simulation.
+## an optional y (only things within 0.3 m of a spot's floor count) or above
+## (a walkable top: only spots lower than it count, tops()) and `what` (named
+## in a clash). Presentation only: nothing here feeds the simulation.
 
 ## A floor's edge trims and strips run this far in from its rectangle.
 const FLOOR_INSET := 0.045
@@ -26,6 +27,25 @@ static func floors_of(view: Dictionary) -> Array:
 	var found: Array = []
 	for island: Dictionary in view.get("islands", []): found.append({"rect": rect_of(island.rect_cm), "y": float(island.get("height_cm", 0)) / 100.0, "id": str(island.id), "crossing": false})
 	for route: Dictionary in view.get("bridges", []): found.append({"rect": rect_of(route.rect_cm), "y": float(route.get("height_cm", route.get("from_height_cm", 0))) / 100.0, "id": str(route.id), "crossing": true})
+	return found
+
+## Where a floor or crossing of `view` lies over a lower one, as things a
+## spot under it keeps clear of: {rect (the overlap), above (the top's highest
+## height, either end of a deck that lowers or rises), what}. A flat thing
+## under a walkable top is hidden where a pip walks over it; clash() counts
+## one only over a spot lower than it. A stage with no floor over another
+## adds nothing to check.
+static func tops(view: Dictionary) -> Array:
+	var all: Array = []
+	for list: String in ["islands", "bridges"]:
+		for space: Dictionary in view.get(list, []):
+			var heights: Array = ["height_cm", "from_height_cm", "to_height_cm"].filter(func(key: String) -> bool: return space.has(key)).map(func(key: String) -> float: return float(space[key]) / 100.0)
+			if heights.is_empty(): heights = [0.0]
+			all.append({"rect": rect_of(space.rect_cm), "above": heights.max(), "low": heights.min(), "what": "%s %s over it" % ["floor" if list == "islands" else "crossing", space.get("id", "")]})
+	var found: Array = []
+	for top: Dictionary in all:
+		for under: Dictionary in all:
+			if float(under.low) < float(top.above) - 0.06 and (under.rect as Rect2).intersects(top.rect): found.append({"rect": (under.rect as Rect2).intersection(top.rect), "above": top.above, "what": top.what})
 	return found
 
 ## The stage's own fixed things a spot keeps clear of: stairs (and their
@@ -96,7 +116,7 @@ static func find(spec: Dictionary, floors: Array, things: Array, taken: Array) -
 		var at: Vector3 = ends[end]
 		# Only what lies within reach of this place can meet a spot found from it.
 		var reach := maxf(size.x, size.y) + step * float(rings) + 0.6
-		var close := things.filter(func(thing: Dictionary) -> bool: return near(thing, flat(at), reach))
+		var close := things.filter(func(thing: Dictionary) -> bool: return near(thing, flat(at), reach) and not (thing.has("above") and float(thing.above) < at.y + 0.06 - SAME_FLOOR))
 		var close_taken := taken.filter(func(thing: Dictionary) -> bool: return near(thing, flat(at), reach))
 		# Islands at its height, and a crossing only when asked and its place is
 		# on it: a spot never lies on a crossing that may not be there.
@@ -129,7 +149,8 @@ static func clash(rect: Rect2, y: float, home: Array, things: Array, taken: Arra
 	var wide := rect.grow(gap)
 	for thing: Dictionary in things + taken:
 		if thing.has("y") and absf(float(thing.y) - y) > SAME_FLOOR: continue
-		if hits(wide, thing): found.append(str(thing.what))
+		if thing.has("above") and float(thing.above) < y + 0.06: continue
+		if hits(rect if thing.has("above") else wide, thing): found.append(str(thing.what))
 	return found
 
 ## Whether `rect` meets `thing` ({rect} or {centre, radius}).

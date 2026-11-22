@@ -196,6 +196,8 @@ const REDO_ACTIONS := ["redo", "redo_status", "redo_retry"]
 ## A turn stopped before it was kept (the pause card, a turn ending's card)
 ## adds them too, and Redo last turn: the turn before it may be what has to change.
 const TURN_REDO_ACTIONS := REDO_ACTIONS + ["redo_self"]
+## A stage whose last turn ended unfinished (turn_endings.gd "last_turn") offers Start over too.
+const START_OVER_ACTIONS := ["start_over", "start_over_status"]
 
 ## The wide panel's state for a room screen, "ready" or "waiting".
 static func panel_state(screen: String, fact: Callable) -> String:

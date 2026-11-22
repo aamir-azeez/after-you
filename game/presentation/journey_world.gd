@@ -8,8 +8,10 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const CarriedItems = preload("res://core/physical/carried_items.gd")
 const CarriedItemKit = preload("res://presentation/kit/pieces/carried_item.gd")
 const CurrentKit = preload("res://presentation/kit/pieces/current.gd")
+const HandsSigns = preload("res://presentation/kit/hands_signs.gd")
 const ItemParts = preload("res://presentation/kit/pieces/parts.gd")
 const Solid = preload("res://core/solid_footprint.gd")
+const LightPieces = preload("res://core/physical/light_pieces.gd")
 ## The soft honey dashes round a crossing a wait hint names.
 const HINT_DASH := Color("f2d39b")
 ## A selector's bubble body stands as if its tail ended here, just over the
@@ -102,6 +104,14 @@ var _item_pieces: Dictionary = {}
 ## stop's deck (kit/new_pieces.gd ride).
 var _item_decks: Dictionary = {}
 var _current_piece: RefCounted
+## The both-hands signs at the feet of the stage's ladders and rope bridges.
+var hands_signs := HandsSigns.new()
+## Light pieces (core/physical/light_pieces.gd): the ring of each item spot in
+## the "cradle" style a lamp's lit_when names, by spot id, lit while a lens
+## rests there, and the cables from each lamp's light pads and cradles (lamp id
+## -> cables), lit while the lamp shines.
+var _cradles: Dictionary = {}
+var _lamp_cables: Dictionary = {}
 
 func show_stage(stage: Dictionary) -> void:
 	if str(stage.get("id", "")) == displayed_stage_id: return
@@ -116,8 +126,12 @@ func show_stage(stage: Dictionary) -> void:
 	for piece: RefCounted in _item_pieces.values():
 		if piece.throw_look != null: drop_throw_look(piece.throw_look)
 	_item_pieces.clear()
+	_spot_outlines.clear()
 	_item_decks.clear()
 	_current_piece = null
+	hands_signs = HandsSigns.new()
+	_cradles.clear()
+	_lamp_cables.clear()
 	_shown_stage = stage
 	_stage_built = false
 	# Before the build awaits: a present meanwhile reads this stage's crossings.
@@ -126,6 +140,7 @@ func show_stage(stage: Dictionary) -> void:
 	_build_seats(stage)
 	await _build_step()
 	await _build_items(stage)
+	_build_light(stage)
 	_stage_built = true
 	_build_wait_marks()
 	_sort_bubbles()
@@ -254,6 +269,12 @@ func _idle_card_frame() -> void:
 ## After the spirits have moved: a carried item follows its carrier's head, a
 ## float bobs (not with Reduce motion), a pick-up or set-down eases on.
 func _advance_items(delta: float) -> void:
+	# A hoist's bucket runs on first, and an item in it rides along.
+	if _current_piece != null and _current_piece.moving():
+		_current_piece.advance(delta)
+		for id: String in _item_pieces:
+			var seat: Variant = _current_piece.seat(id)
+			if seat is Vector3: _item_pieces[id].place(seat)
 	for piece: RefCounted in _item_pieces.values():
 		piece.reduced_motion = reduced_motion
 		if piece.moving(): piece.advance(delta)
@@ -543,6 +564,8 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	_placement_due = true
 	var visual := state.duplicate()
 	visual["mirrors"] = state.get("controls",{}).duplicate()
+	# A mirror a selector steers turns as the light runs (light_pieces.gd).
+	if str(_shown_stage.get("id","")) == str(state.get("stage_id","")): visual.mirrors.merge(LightPieces.orientations(_shown_stage,state.get("controls",{})),false)
 	visual["emitter_powered"] = not state.get("optics",{}).get("segments",[]).is_empty()
 	# Detach the one nested dictionary this adapter extends. Every other
 	# snapshot branch is consumed without mutation by the physical renderer.
@@ -562,6 +585,8 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	if is_instance_valid(_waiting_ring): _glow(_waiting_ring,CREAM,0.6 if state.get("can_commit",false) and not OpenTurns.pinned(chapter_definition) else 0.0)
 	_present_seats(state, immediate)
 	_present_items(state, immediate)
+	hands_signs.present(state)
+	_present_light(state)
 	if _wait_hints_on and _wait_hints.update(state): _show_wait_marks()
 	# What a world sets after this (its own levers and wheels) is read by the
 	# next pass, not by the one an immediate present already ran.
@@ -746,6 +771,84 @@ func _present_seats(state: Dictionary, immediate: bool) -> void:
 				if pose != SpiritVisual.SpiritIdle.DOZE: actor.set_pose(SpiritVisual.SpiritIdle.SIT, seat.params, immediate)
 			elif pose == SpiritVisual.SpiritIdle.SIT: actor.set_pose(SpiritVisual.SpiritIdle.REST, {}, true)
 
+# --- Light pieces (core/physical/light_pieces.gd) ---
+
+## The stage's light beyond its mirror controls (lighthouse_world draws those,
+## its lamps and receivers): each optical mirror no hand turns (a selector
+## steers it, or it stands fixed), and a cable from each lamp's light pad and
+## item spot (its cradle: _build_items draws it in its item_spot style) to the
+## lamp's foot where they share a floor. Plain scenery: the snapshot lights it.
+func _build_light(stage: Dictionary) -> void:
+	var field: Dictionary = stage.get("optical_field", {})
+	if field.is_empty(): return
+	var turned: Dictionary = {}
+	for control: Dictionary in stage.get("controls", []):
+		if str(control.get("kind", "")) == "mirror": turned[str(control.id)] = true
+	var set := LightPieces.orientations(stage, {})
+	for mirror: Dictionary in field.get("mirrors", []):
+		if turned.has(str(mirror.id)): continue
+		var pivot := _mirror_body(point(mirror.position_cm), _control_base_height(mirror), terrain, false)
+		pivot.rotation.y = PI / 4.0 if set.get(str(mirror.id), "") == "slash" else -PI / 4.0
+		_mirror_nodes[str(mirror.id)] = pivot
+	var lit: Dictionary = stage.get("lit_when", {})
+	for id: String in lit:
+		var lamp: Dictionary = {}
+		for emitter: Dictionary in field.get("emitters", []):
+			if str(emitter.id) == id: lamp = emitter
+		if lamp.is_empty(): continue
+		var foot := point(lamp.position_cm) + Vector3(0, _control_base_height(lamp) + LIGHT_LINK_LIFT, 0)
+		var cables: Array[MeshInstance3D] = []
+		var powers: Array = []
+		_lamp_powers(lit[id], powers)
+		for power: Dictionary in powers:
+			var at := Vector3.INF
+			if power.has("pad_id"):
+				for pad: Dictionary in stage.get("pressure_pads", []):
+					if str(pad.id) == str(power.pad_id): at = _at(pad)
+			else:
+				var spot := CarriedItems.spot(chapter_definition, str(power.spot_id))
+				if spot.is_empty(): continue
+				at = _at(spot)
+				var built := terrain.get_node_or_null("ItemSpot_" + str(spot.id))
+				var ring: Node = built.find_child("CradleRing", false, false) if built != null else null
+				if ring is MeshInstance3D: _cradles[str(spot.id)] = ring
+			if at == Vector3.INF: continue
+			var start := at + Vector3(0, LIGHT_LINK_LIFT, 0)
+			var elbow := Vector3(foot.x, start.y, start.z)
+			if not _shares_floor(start, elbow) or not _shares_floor(elbow, foot): continue
+			for leg: Array in [[start, elbow], [elbow, foot]]:
+				if (leg[0] as Vector3).distance_to(leg[1]) > 0.01: cables.append(_floor_cable(leg[0], leg[1], 0.025, LIGHT_LINK))
+		_lamp_cables[id] = cables
+
+## A cable's lift off its floor (clear of a throw landing's ticks it may
+## cross, kit/pieces/socket.gd landing()), and its colour while its lamp is
+## dark (m).
+const LIGHT_LINK_LIFT := 0.04
+const LIGHT_LINK := Color("8a8f86")
+
+## What powers a lamp in its lit_when: each light pad ({"pad_id"}) and each
+## cradle ({"spot_id"} of an item term), appended to `found`.
+static func _lamp_powers(when: Dictionary, found: Array) -> void:
+	if when.has("pad_id"): found.append({"pad_id": str(when.pad_id)})
+	if CarriedItems.is_term(when) and when.has("spot_id"): found.append({"spot_id": str(when.spot_id)})
+	for key: String in ["all", "any"]:
+		for child: Variant in when.get(key, []):
+			if child is Dictionary: _lamp_powers(child, found)
+
+## Each cradle glows while its lens rests there, each lamp's cables while it shines.
+func _present_light(state: Dictionary) -> void:
+	if _cradles.is_empty() and _lamp_cables.is_empty(): return
+	var items: Dictionary = state.get("mechanisms", {}).get("items", {})
+	for id: String in _cradles:
+		var resting := false
+		for item: Dictionary in items.values():
+			if str(item.get("holder", "")).is_empty() and str(item.get("spot", "")) == id: resting = true
+		_glow(_cradles[id], LIGHT_COLOR, 1.0 if resting else 0.0)
+	var shining: Dictionary = {}
+	for segment: Dictionary in state.get("optics", {}).get("segments", []): shining[str(segment.get("emitter_id", ""))] = true
+	for id: String in _lamp_cables:
+		for cable: MeshInstance3D in _lamp_cables[id]: _glow(cable, LIGHT_COLOR if shining.has(id) else LIGHT_LINK, 0.7 if shining.has(id) else 0.0)
+
 # --- Rules 20: carried items, floats, currents and both-hands crossings ---
 
 ## Every item of the level in its style (a pin by id, else the dressing's
@@ -753,7 +856,8 @@ func _present_seats(state: Dictionary, immediate: bool) -> void:
 ## item spot in its "item_spot" style (a pedestal, a planter, a nest or none:
 ## kit/pieces/socket.gd item_spot), the stage's current legs, and the rungs
 ## that mark a crossing needing both hands (core/physical/carried_items.gd): a
-## carrier stops at a ladder. A rope bridge (kit/pieces/deck.gd) needs no rungs.
+## carrier that steps on drops what it carries. A rope bridge (kit/pieces/
+## deck.gd) needs no rungs. Each foot gets its two hands sign (kit/hands_signs.gd).
 func _build_items(stage: Dictionary) -> void:
 	var view: Dictionary = CooperativeCatalog.stage_definition(chapter_definition, str(stage.get("id", "")))
 	if view.get("items", []).is_empty(): return
@@ -764,12 +868,14 @@ func _build_items(stage: Dictionary) -> void:
 		root.name = "ItemSpot_" + str(spot.id)
 		root.position = _at(spot)
 		terrain.add_child(root)
-		SocketKit.item_spot(look, root, spot)
+		var wanted := CarriedItems.wanted(view, str(spot.id))
+		var wanted_style := "" if wanted.is_empty() else _item_style(wanted)
+		var outline := SocketKit.item_spot(look, root, spot, wanted_style)
+		if outline != null: _spot_outlines[str(spot.id)] = outline
 	var start: Dictionary = CarriedItems.initial(view)
 	for item: Dictionary in view.items:
 		var id := str(item.id)
-		var pin := PieceStyles.pinned_style("carried_item", id, _descriptor())
-		var look := pin if not pin.is_empty() else _piece_style("carried_item", id) if CarriedItems.carriable(item) else "raft"
+		var look := _item_style(id)
 		var at := _item_point(start.get(id, {})) if str(start.get(id, {}).get("holder", "")).is_empty() else Vector3.ZERO
 		_item_pieces[id] = CarriedItemKit.build(look, at, terrain, {"id": id})
 		# Where it can be thrown it flies with the one throw look, at its own size.
@@ -781,9 +887,14 @@ func _build_items(stage: Dictionary) -> void:
 		await _build_step()
 	var legs: Array = []
 	for leg: Dictionary in view.get("current_legs", []):
-		legs.append({"from": _item_point(CarriedItems.at_spot(CarriedItems.spot(view, str(leg.from)))), "to": _item_point(CarriedItems.at_spot(CarriedItems.spot(view, str(leg.to)))), "control_id": str(leg.get("control_id", "")), "value": str(leg.get("value", ""))})
+		var from_spot: Dictionary = CarriedItems.spot(view, str(leg.from))
+		legs.append({"from": _item_point(CarriedItems.at_spot(from_spot)), "to": _item_point(CarriedItems.at_spot(CarriedItems.spot(view, str(leg.to)))), "control_id": str(leg.get("control_id", "")), "value": str(leg.get("value", "")),
+			"from_id": str(leg.from), "to_id": str(leg.to), "when": leg.get("when", {}), "stop": leg.get("stop", {}), "radius": float(from_spot.get("radius_cm", CarriedItems.SPOT_RADIUS_CM)) / 100.0})
 	if not legs.is_empty():
-		_current_piece = CurrentKit.build(_piece_style("current", str(view.current_legs[0].get("control_id", ""))), legs, terrain, _current_water.bind(view))
+		# A pin by the first leg's start spot (a hoist's bucket), else by its wheel.
+		var first: Dictionary = view.current_legs[0]
+		var look := PieceStyles.pinned_style("current", str(first.from), _descriptor())
+		_current_piece = CurrentKit.build(look if not look.is_empty() else _piece_style("current", str(first.get("control_id", ""))), legs, terrain, _current_water.bind(view), view)
 		_ride_current(legs)
 	await _build_step()
 	var hands := CarriedItems.hands_routes(view)
@@ -794,6 +905,10 @@ func _build_items(stage: Dictionary) -> void:
 		if hands.has(str(route.id)) and not rope:
 			_ladder_rungs(route)
 			await _build_step()
+	# Each foot's two hands sign, shown while a carrier stands near it.
+	for bubble: LabelBubble in hands_signs.build(view, terrain):
+		if not reduced_motion: bubble.set_bob(true)
+		_bubbles.append(bubble)
 	# A throw's mark is a cream ring where the thrower stands, unless it lies
 	# wholly inside a pad, which is then the throw spot and draws it
 	# (LevelLayout.mark_pad); its landing the seed landing's ring of ticks the
@@ -808,6 +923,16 @@ func _build_items(stage: Dictionary) -> void:
 		landing.position = _at(target)
 		terrain.add_child(landing)
 		SocketKit.landing(landing, float(target.get("radius_cm", CarriedItems.SPOT_RADIUS_CM)) / 100.0)
+
+## What crossing `id` needing both hands looks like, as the dropped card
+## names it (PlayerCopy.HANDS_CROSSING_NAMES): a one way stair's ladder is a
+## "rope_ladder" or the "wheel" (kit/pieces/rope_ladder.gd), a rope deck a
+## "rope_bridge", and anything else with rungs a "ladder".
+func hands_crossing(id: String) -> String:
+	for stair: Dictionary in chapter_definition.get("stairs", []):
+		if str(stair.id) == id and stair.has("one_way"): return "wheel" if _piece_style("ladder", id) == "wheel" else "rope_ladder"
+	if new_pieces != null and chapter_definition.get("bridges", []).any(func(route: Dictionary) -> bool: return str(route.id) == id) and new_pieces.deck_style(id) == "rope": return "rope_bridge"
+	return "ladder"
 
 ## The node drawing item `id` (over its carrier's head or where it rests), or
 ## null: an ending scene hides it while its own stands in for it.
@@ -880,6 +1005,17 @@ func _ladder_rungs(route: Dictionary) -> void:
 			var post := Vector3(float(end.x) / 100.0, float(end.height) / 100.0 + 0.2, middle + side * (across / 2.0 - RUNG_POST_IN)) if axis == 0 else Vector3(middle + side * (across / 2.0 - RUNG_POST_IN), float(end.height) / 100.0 + 0.2, float(end.z) / 100.0)
 			ItemParts.box(Vector3(0.04, 0.4, 0.04), ItemParts.TIMBER, post, terrain)
 
+## Item `id`'s look: a pin by id, else the dressing's "carried_item" pick; a
+## float nobody carries is a raft unless pinned.
+func _item_style(id: String) -> String:
+	var pin := PieceStyles.pinned_style("carried_item", id, _descriptor())
+	if not pin.is_empty(): return pin
+	return _piece_style("carried_item", id) if CarriedItems.carriable(CarriedItems.item(chapter_definition, id)) else "raft"
+
+## Item spot id -> the dotted outline of the item it wants (socket.gd outline),
+## shown only while nothing rests there.
+var _spot_outlines: Dictionary = {}
+
 ## Each item where the snapshot has it: held over its holder's head the way a
 ## seed or a lens is, resting at its place, or bobbing on the water; the
 ## current's legs lit by their wheels. A pip that lets an item go throws it
@@ -887,6 +1023,8 @@ func _ladder_rungs(route: Dictionary) -> void:
 func _present_items(state: Dictionary, immediate: bool = false) -> void:
 	if _item_pieces.is_empty(): return
 	var items: Dictionary = state.get("mechanisms", {}).get("items", {})
+	# First the current, so an item resting in a hoist's bucket rides it.
+	if _current_piece != null: _current_piece.present(state, immediate)
 	for id: String in _item_pieces:
 		var item_state: Dictionary = items.get(id, {})
 		_item_decks.erase(id)
@@ -905,10 +1043,14 @@ func _present_items(state: Dictionary, immediate: bool = false) -> void:
 				else: piece.holder.play_carry_release()
 			piece.rest(_item_point(item_state), terrain, str(item_state.surface_id).is_empty() and not flying, flying, immediate)
 			if new_pieces != null and not new_pieces.ride(str(item_state.surface_id)).is_empty(): _item_decks[id] = [_item_point(item_state), str(item_state.surface_id)]
+		# In a hoist's bucket: on its floor, riding with it.
+		var seat: Variant = _current_piece.carry(id, str(item_state.spot) if holder.is_empty() else "", immediate) if _current_piece != null else null
+		if seat is Vector3: piece.place(seat)
 		# Resting in a solid spot (a winch, a nest) it sits fitted; anywhere else as it lies.
 		piece.fit(holder.is_empty() and Solid.solids(chapter_definition.get("item_spots", [])).any(func(spot: Dictionary) -> bool: return str(spot.id) == str(item_state.spot)))
+	for spot_id: String in _spot_outlines:
+		_spot_outlines[spot_id].visible = not items.values().any(func(held: Dictionary) -> bool: return str(held.holder).is_empty() and str(held.spot) == spot_id)
 	_ride_items()
-	if _current_piece != null: _current_piece.set_controls(state.get("controls", {}))
 
 ## The platforms move first, then the items resting on their decks with them.
 func _advance_carriers(delta: float) -> void:

@@ -13,6 +13,7 @@ const Index = preload("res://content/chapters/index.gd")
 const Lever = preload("res://presentation/kit/pieces/lever.gd")
 const Selector = preload("res://presentation/kit/pieces/selector.gd")
 const Pad = preload("res://presentation/kit/pieces/pad.gd")
+const PadChecks = preload("res://tests/pad_checks.gd")
 const Goal = preload("res://presentation/kit/pieces/goal.gd")
 const Lift = preload("res://presentation/kit/pieces/lift.gd")
 const Pulley = preload("res://presentation/kit/pieces/pulley.gd")
@@ -102,8 +103,7 @@ func _check_every_style(holder: Node3D) -> void:
 	for style: String in Styles.SLOTS.pad:
 		var piece: RefCounted = Pad.build(style, AT, 0.32, holder, {"owner": "p0", "id": "step"})
 		_check(piece.style == style and piece.rim is MeshInstance3D and piece.moving_parts().has(piece.rim), "Pad %s keeps the rim its world lights" % style)
-		var ring := piece.rim.mesh as TorusMesh
-		_check(is_equal_approx(ring.outer_radius, 0.32 + 0.025) and piece.at == AT and is_equal_approx(piece.radius, 0.32), "Pad %s's rim is drawn at its radius" % style)
+		_check(PadChecks.outline_fits(piece) and piece.at == AT and is_equal_approx(piece.radius, 0.32), "Pad %s's outline is drawn at its radius: a board's square, a pan's round" % style)
 	_check(Styles.DEFAULT_PICKS.pad == Pad.DEFAULT_STYLE and Pad.DEFAULT_STYLE == "board", "Every pad is the board that presses down unless a block names a crank board or a pan")
 	_check(Pad.build("pan", AT, 0.36, holder, {"heavy": true}).style == "board", "A ball pad is always a board")
 	# The board's top never sinks to the floor, even at the bottom of a press's
@@ -429,8 +429,14 @@ func _check_goal_pads(holder: Node3D) -> void:
 		_check(goal.pads.size() == 2 and goal.moving_parts().has(goal.pads.p0.rim), "Goal %s stands two pads and keeps them moving" % style)
 		for slot: String in Goal.PAD_SLOTS:
 			var pad: RefCounted = goal.pads[slot]
-			_check(Vector2(pad.at.x, pad.at.z).length() + pad.radius <= 0.48 and (pad.rim.material_override as StandardMaterial3D).albedo_color == Parts.owner_color(slot), "Goal %s's %s pad lies inside the goal in its pip's colour" % [style, slot])
+			# The two halves tile one plate a pad board the goal's size, west then east.
+			var west := -1.0 if slot == "p0" else 1.0
+			var tiles: bool = pad.half_size.is_equal_approx(Goal.pad_half(0.48, style)) and (style == "planter" or is_equal_approx(pad.half_size.y, Pad.board_half(0.48))) and is_equal_approx(pad.at.x, west * pad.half_size.x) and is_zero_approx(pad.at.z)
+			_check(tiles and (pad.rim.material_override as StandardMaterial3D).albedo_color == Parts.owner_color(slot), "Goal %s's %s half is its own half of the plate in its pip's colour" % [style, slot])
+			_check(Vector2(pad.half_size.x * 2.0, pad.half_size.y).length() <= Goal.base_radius(0.48, style) and Goal.drawn_radius(style, 0.48) >= Goal.outer_radius(style, 0.48), "Goal %s's plate lies on its disc (a planter's soil), inside what it draws" % style)
 			_check(pad.at.y + Pad.BOARD_TOP - Pad.BOARD_SINK - Pad.DIP * 1.05 > float(Goal.DISC_TOPS[style]), "Goal %s's %s pad, pressed, stays above the goal's disc" % [style, slot])
+			_check(PadChecks.outline_fits(pad), "Goal %s's %s half draws its own square-cornered outline" % [style, slot])
+	_check(PadChecks.outline_fits(Pad.build("board", AT, 0.06, holder)) and PadChecks.outline_fits(Pad.build("board", AT, 0.4, holder, {"size": Vector2(0.3, 0.6)})), "A small board and a long one draw their outlines inside their edges")
 	var goal: RefCounted = Goal.build("bell", Vector3.ZERO, 0.48, holder)
 	var on_pad := func(slot: String) -> Dictionary:
 		var at: Vector3 = goal.pads[slot].at * 100.0
@@ -467,6 +473,49 @@ func _check_goal_pads(holder: Node3D) -> void:
 	var on_other := {"players": {"p0": on_pad.call("p1"), "p1": away}}
 	goal.present_pips(on_other.players, true)
 	_check(not goal.pads.p0.held() and not goal.pads.p1.held(), "A pip on its friend's pad presses neither")
+	_check_goal_missing(holder)
+
+## While a pip stands on the goal's plate and the goal is not lit, what is
+## still missing (the empty half, an unmet need's token) blinks red on the
+## closing warning's beat, steady under Reduce motion; done or nobody on the
+## plate, no red.
+func _check_goal_missing(holder: Node3D) -> void:
+	var goal: RefCounted = Goal.build("crest", Vector3.ZERO, 0.28, holder)
+	goal.add_needs({"goal_policy": {"kind": "ring", "when": {"item_id": "pipsport", "carried": true}}}, func(_id: String) -> String: return "pipsport")
+	var token: MeshInstance3D = goal.needs.needs[0].disc
+	var red := func(node: MeshInstance3D) -> float:
+		var look := node.material_override as StandardMaterial3D
+		return look.emission_energy_multiplier if look.emission_enabled and look.emission == Parts.MISSING else 0.0
+	var at := func(slot: String) -> Dictionary:
+		var spot: Vector3 = goal.pads[slot].at * 100.0
+		return {"x": spot.x + 3.0, "z": spot.z - 20.0, "height": 0}
+	var away := {"x": 400, "z": 0, "height": 0}
+	var waiting := {"items": {"pipsport": {"holder": "", "spot": "post"}}, "levers": {}, "controls": {}}
+	var alone := {"tick": 0, "players": {"p0": at.call("p0"), "p1": away}, "mechanisms": waiting}
+	goal.set_lit(false)
+	goal.present(alone, false, false)
+	var lit: float = red.call(goal.pads.p1.rim)
+	_check(goal.missing() and lit > 0.0 and red.call(token) == lit and red.call(goal.pads.p0.rim) == 0.0 and goal.pads.p0.held(), "One pip on its half: the empty half and the unmet token blink red, its own half lit")
+	alone.tick = Goal.ClosingWarning.BLINK
+	goal.present(alone, false, false)
+	_check(red.call(goal.pads.p1.rim) > 0.0 and red.call(goal.pads.p1.rim) < lit and red.call(token) < lit, "They blink on the closing warning's beat")
+	goal.present(alone, false, true)
+	_check(is_equal_approx(red.call(goal.pads.p1.rim), Goal.ClosingWarning.STEADY) and is_equal_approx(red.call(token), Goal.ClosingWarning.STEADY), "Reduce motion holds the red steady")
+	var both := {"tick": 0, "players": {"p0": at.call("p0"), "p1": at.call("p1")}, "mechanisms": waiting}
+	goal.present(both, false, false)
+	_check(red.call(goal.pads.p1.rim) == 0.0 and red.call(token) > 0.0, "Its pip there, a half stops blinking; the token still waits")
+	var carried := {"tick": 0, "players": {"p0": at.call("p0"), "p1": at.call("p1")}, "mechanisms": {"items": {"pipsport": {"holder": "p1", "spot": ""}}, "levers": {}, "controls": {}}, "objective_done": true, "complete": true}
+	goal.set_lit(Goal.lit(carried))
+	goal.present(carried, false, false)
+	_check(not goal.missing() and red.call(goal.pads.p0.rim) == 0.0 and red.call(goal.pads.p1.rim) == 0.0 and red.call(token) == 0.0 and goal.needs.all_met(), "All done: nothing blinks red")
+	goal.set_lit(false)
+	goal.present({"tick": 0, "players": {"p0": away, "p1": away}, "mechanisms": waiting}, false, false)
+	_check(not goal.missing() and red.call(goal.pads.p1.rim) == 0.0 and red.call(token) == 0.0, "Nobody on the plate: no red")
+	# The token stands big on the plate's middle line at its front edge, clear of
+	# where a pip stands in the middle of its half.
+	var spot: Vector3 = token.position
+	var clear := Vector2(spot.x - goal.pads.p0.at.x, spot.z).length() >= Goal.GoalNeeds.TOKEN + 0.12
+	_check(Goal.GoalNeeds.TOKEN >= 0.1 and is_zero_approx(spot.x) and is_equal_approx(spot.z, Goal.plate_half(0.28)) and clear and Goal.drawn_radius("crest", 0.28, 2) >= Goal.GoalNeeds.reach(Goal.plate_half(0.28), 2), "The need token stands big at the plate's front edge, clear of the pips' spots")
 
 func _pose(node: Node3D) -> Array:
 	var pose: Array = []
