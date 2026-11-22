@@ -31,6 +31,8 @@ const DROP_FALL_CM := 2 * Runtime.MOVE_PER_TICK
 ## lies down: heard as the crossing's own cues when it is seen to move.
 const RampRules = preload("res://presentation/kit/ramp_rules.gd")
 const BigChange = preload("res://presentation/kit/big_change.gd")
+## The refusal kinds (a teeter at a drop sounds unlike a barrier's rattle).
+const RouteBarriers = preload("res://presentation/kit/route_barriers.gd")
 
 ## Cues for the physical and journey chapters' own events.
 const PHYSICAL := {
@@ -141,7 +143,10 @@ static func cues(chapter_key: String, state: Dictionary, seen: Dictionary = {}) 
 	# (a or b), so the memory's pushes keep the pitches of its own turn.
 	var first := str(state.get("first_player_slot", ""))
 	for event: Variant in refused:
-		if event is Dictionary: _add(out, "barrier_rattle", "rattle:%s:%s|rattle" % [str(event.get("id", "")), "a" if str(event.get("slot", "")) == first else "b"])
+		if not event is Dictionary: continue
+		var turn := "a" if str(event.get("slot", "")) == first else "b"
+		if event.get("kind") == RouteBarriers.EDGE: _add(out, "spirit_teeter", "teeter:%s:%s|teeter" % [str(event.get("id", "")), turn])
+		else: _add(out, "barrier_rattle", "rattle:%s:%s|rattle" % [str(event.get("id", "")), turn])
 	for event: Variant in locked:
 		if event is Dictionary: _add(out, "control_locked", "locked:%s:%s|locked" % [str(event.get("id", "")), "a" if str(event.get("slot", "")) == first else "b"])
 	# Crossings the water just covered go under with the water's own sound.
