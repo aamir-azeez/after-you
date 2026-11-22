@@ -143,7 +143,7 @@
 		}
 	],
 	"schema_version": 6,
-	"simulation_version": 17,
+	"simulation_version": 21,
 	"stages": [
 		{
 			"ball_pads": [
@@ -427,8 +427,8 @@
 	},
 	"title": "A House for Two",
 	"turn_limits": {
-		"a_ticks": 3600,
-		"b_ticks": 3600
+		"a_ticks": 1800,
+		"b_ticks": 1800
 	},
 	"version": 2
 }

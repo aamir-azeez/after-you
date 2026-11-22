@@ -165,6 +165,19 @@ export function carryFits(turn: ChapterRecording, memory: ChapterRecording | nul
   const handoff = handoffTick(memory, beforeMemory);
   return turn.start_hash === memory.handoff_hash && turn.handoff_tick === handoff && (turn.completed || turn.duration_ticks >= memory.duration_ticks - handoff);
 }
+/**
+ * Run time (2026-11-21): each carry-over turn's share of its stage's length on the shared timeline, so a stage counts
+ * once, S(last) + L(last), however its turns overlapped. Turn k adds (S(k) + L(k)) - (S(k-1) + L(k-1)), with
+ * S(1) = S(2) = 0 and S(k) = S(k-2) + L(k-2); a closing turn that drops the rest of the friend's replay may add less
+ * than nothing. The client's OpenTurns.timeline_shares is the same.
+ */
+export function timelineShares(lengths: readonly number[]): number[] {
+  const starts: number[] = [];
+  return lengths.map((length, index) => {
+    starts.push(index < 2 ? 0 : starts[index - 2] + lengths[index - 2]);
+    return starts[index] + length - (index === 0 ? 0 : starts[index - 1] + lengths[index - 1]);
+  });
+}
 /** Turn `turn`'s id on `branch` and stage `stage`. */
 export function turnId(branch: number, stage: number, turn: number): string {
   return `t${branch}-${stage}-${TURN_LETTERS[turn - 1]}`;

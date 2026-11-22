@@ -43,6 +43,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--root", default=str(ROOT), help="the repository (default: this one)")
     parser.add_argument("--in-place", action="store_true", help="run in the repository's own imported game/ instead of a temporary copy")
     parser.add_argument("--keep", action="store_true", help="keep the temporary copy")
+    parser.add_argument("--with", dest="also", default="", help="other chapters re-pinned in the same change, comma separated (chapter_fixtures.py --with)")
     args = parser.parse_args(argv)
     if (args.a_seconds is None) != (args.b_seconds is None) or (args.suggested and args.a_seconds is not None):
         parser.error("give both --a-seconds and --b-seconds, or --suggested, or neither to only report")
@@ -76,7 +77,7 @@ def main(argv: list[str]) -> int:
             if args.suggested:
                 a, b, _ = rules.suggest(*recordings.longest(report), open_stages)
             relative, catalog = turn_limits_edit(chapter, a, b)
-            changes, notes = chapter_fixtures.plan(game, chapter, {relative: catalog})
+            changes, notes = chapter_fixtures.plan(game, chapter, {relative: catalog}, chapter_fixtures.also_keys(args.also))
             lines = chapter_fixtures.apply(root, chapter, changes, notes)
     except ToolError as error:
         print(f"chapter_turn_limits.py: {error}", file=sys.stderr)

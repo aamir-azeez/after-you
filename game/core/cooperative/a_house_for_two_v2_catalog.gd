@@ -4,9 +4,9 @@ extends RefCounted
 ## ball to 17, runtime.gd _shared_ball), so it never shares a record with an
 ## earlier version, its controls carry no owner, either pip pushes the ball in
 ## any turn, live or as a memory, and a stage passes back and forth until both
-## pips end a turn at its bell, up to its cap. Its turns are development
-## limits, 120 seconds every turn, to explore while the owner records; the
-## release step sets the owner's numbers (scripts/chapter_turn_limits.py). Its
+## pips end a turn at its bell, up to its cap. Its turns are the fallback
+## until the owner plays it: twice the longest carry-over witness turn, at
+## least 60 s (60 s every turn; scripts/chapter_turn_limits.py --suggested). Its
 ## in-play hints are @1's own (the cooperative family's stage_hud is authored).
 ##
 ## The ball is still the idea; only what open play needs changed. Open the
@@ -34,7 +34,7 @@ static func definition() -> Dictionary:
 	var level: Dictionary = Earlier.definition().duplicate(true)
 	level.version = 2
 	OpenTurns.pin(level, CAPS)
-	level.turn_limits = {"a_ticks": 3600, "b_ticks": 3600}
+	level.turn_limits = {"a_ticks":1800,"b_ticks":1800}
 	OpenControls.open_crossings(level, OWNED)
 	var house: Dictionary = level.stages[0]
 	house.pressure_pads = [WORKSHOP_STEP.duplicate(true)]

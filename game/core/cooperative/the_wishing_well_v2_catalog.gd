@@ -3,9 +3,9 @@ extends RefCounted
 ## open turns (core/physical/open_turns.gd: 14 after the comfort alias 9), so
 ## it never shares a record with an earlier version, its controls carry no
 ## owner, and a stage passes back and forth until both pips end a turn at its
-## bell, up to its cap. Its turn limits are the development ones
-## (content/chapters/index.gd DEVELOPMENT_TURN_LIMITS, the same for every
-## turn) until play sets them (scripts/chapter_turn_limits.py). A cooperative
+## bell, up to its cap. Its turns are the fallback until the owner plays it:
+## twice the longest carry-over witness turn, at least 60 s (60 s every turn;
+## scripts/chapter_turn_limits.py --suggested). A cooperative
 ## chapter's in-play hints are its stages' own (the family's stage_hud is
 ## authored), so they stay in the definition.
 ##
@@ -38,7 +38,7 @@ static func definition() -> Dictionary:
 	var level: Dictionary = Earlier.definition().duplicate(true)
 	level.version = 2
 	OpenTurns.pin(level, CAPS)
-	level.turn_limits = {"a_ticks":2730,"b_ticks":2730}
+	level.turn_limits = {"a_ticks":1800,"b_ticks":1800}
 	OpenControls.open_crossings(level, OWNED)
 	level.erase("access_zones")
 	var ahead: Dictionary = level.stages[0]

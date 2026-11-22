@@ -33,7 +33,7 @@ extends RefCounted
 ## No player words here: the title and hints are the descriptor's copy and
 ## stage_copy, so changing them never changes the definition hash.
 ## The turn limits are the fallback until the owner plays it: twice the
-## longest witness turn on the climb, at least 60 s (120 s every turn;
+## longest carry-over witness turn on the climb, at least 60 s (95 s every turn;
 ## scripts/chapter_turn_limits.py --suggested).
 
 const StageBlocks = preload("res://core/blocks/stage_blocks.gd")
@@ -47,7 +47,7 @@ static func definition() -> Dictionary:
 
 static func source() -> Dictionary:
 	return {"schema_version": 7, "simulation_version": 9, "id": "the-falls", "version": 1, "premium": false, "closing_ticks": 30,
-		"turn_limits": {"a_ticks":3600,"b_ticks":3600},
+		"turn_limits": {"a_ticks":2850,"b_ticks":2850},
 		"starts": {"p0": {"position_cm": [390, -280], "height_cm": 120, "surface_id": "mill"}, "p1": {"position_cm": [390, 280], "height_cm": 0, "surface_id": "beach"}},
 		"props": [], "drops": [],
 		"items": [{"id": "pipsport", "at": "post"}],

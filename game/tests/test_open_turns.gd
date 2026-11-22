@@ -180,6 +180,8 @@ func _timeline() -> void:
 		var chained := true
 		for turn in range(1, 5): chained = chained and OpenTurns.replay_ticks(lengths, turn) == OpenTurns.handoff_tick(lengths, turn + 1)
 		_check(chained, "Each turn's replay ends where the next turn takes over (%s)" % str(lengths))
+	# Run time: each turn adds what it lengthens the timeline by, so a stage counts S(last) + L(last) once.
+	_check(OpenTurns.timeline_shares([8, 40, 70, 45]) == [8, 32, 38, 7] and OpenTurns.timeline_shares([8, 40, 70, 20]) == [8, 32, 38, -18], "A stage's run time is its timeline's length: 85 s, or 60 s when turn 4 finishes before the replay ends")
 	var falls := [8, 40, 70]
 	_check(OpenTurns.long_enough(falls, 4, 38, false) and not OpenTurns.long_enough(falls, 4, 37, false) and OpenTurns.long_enough(falls, 4, 5, true) and OpenTurns.long_enough([], 1, 1, false), "A pass waits out the replay; a finished turn and turn 1 need not")
 	_check(OpenTurns.first_slot({"stage_index": 0}) == "p0" and OpenTurns.first_slot({OpenTurns.NEXT_FIRST_SLOT: "p1"}) == "p1", "The host starts a level; the checkpoint names who starts each later stage")

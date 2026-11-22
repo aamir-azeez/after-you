@@ -1,24 +1,27 @@
 {
 	"catch_assistance": true,
-	"checkpoint_hash": "9138dff3f0adb6cdba9f9b3a66efd5479b066edce10da1ce873a929f57d1ea42",
+	"checkpoint_hash": "7c60c8f5303b9b95fd3089c7e9683c90f7bdb4f0dd98f33fca531611bccf4853",
 	"completed": false,
-	"definition_hash": "f5852fc8095aded1df95e7aef067a2e095891f5ecd72a4d197a7e48ecd16abca",
+	"definition_hash": "7110c1c5eaad0e0a04985fcf5efbae21a2e9fc20155e5595eabc7f11d2f999dd",
 	"duration_ticks": 120,
-	"final_state_hash": "0bf5f4cc6459c862e8a13dfe2938521f6a0967e7a0c9d9f0e7fe6f4bca8cffde",
+	"final_state_hash": "48f0ad8d6525eca4198a61644e752549cb6bf4a66bb57a8ecbc2f42ab79f771e",
+	"handoff_hash": "99144db19e5bc7fb0c0a3ce54c2c20094e8a25ae43da2cfe3a9a00b64e14d0f5",
+	"handoff_tick": 0,
 	"level_id": "rolling-home",
 	"level_version": 2,
 	"outcome": {
 		"objective_complete": false,
 		"source_ready": true
 	},
-	"packed": "AQMInAAgAJzIAQAADbEi3RZKQHenJYpXriB9aNezOXom/UXE",
+	"packed": "AQMInAAgAJzIAQAAZgejPOZy7FGJ0IipG2gAbUWgWf7LorY3",
 	"player_slot": "p0",
-	"recording_hash": "62f18b37e403380f40766accc7e69707c69ae0fa7e2f0236d79c53c0d6d6551d",
+	"recording_hash": "e5733ea3b7d0e72b488470a5c18091fae6a4cb5cd6fa62631adbe8d20b55c830",
 	"role": "a",
 	"schema_version": 6,
-	"simulation_version": 17,
+	"simulation_version": 21,
 	"source_recording_hash": "",
 	"stage_id": "weight-of-a-friend",
 	"stage_version": 1,
+	"start_hash": "99144db19e5bc7fb0c0a3ce54c2c20094e8a25ae43da2cfe3a9a00b64e14d0f5",
 	"tick_rate": 30
 }

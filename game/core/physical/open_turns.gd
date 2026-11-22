@@ -143,6 +143,18 @@ static func start_tick(lengths: Array, turn: int) -> int:
 	for k in range(turn - 2, 0, -2): start += int(lengths[k - 1])
 	return start
 
+## Run time (2026-11-21): each turn's share of its stage's length on the shared
+## timeline, so a stage counts once, S(last) + L(last), however its turns
+## overlapped: turn k adds (S(k) + L(k)) - (S(k-1) + L(k-1)). A closing turn
+## that drops the rest of the friend's replay may add less than nothing. The
+## server's open-turns.ts timelineShares is the same.
+static func timeline_shares(lengths: Array) -> Array:
+	var shares := []
+	for k in range(1, lengths.size() + 1):
+		var before := 0 if k == 1 else start_tick(lengths, k - 1) + int(lengths[k - 2])
+		shares.append(start_tick(lengths, k) + int(lengths[k - 1]) - before)
+	return shares
+
 ## H(turn): how many ticks into turn - 1 turn `turn` takes over, S(k) - S(k-1).
 ## 0 for turns 1 and 2 (turn 2 hands off at tick 0 of turn 1).
 static func handoff_tick(lengths: Array, turn: int) -> int:

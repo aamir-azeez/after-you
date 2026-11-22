@@ -1,24 +1,27 @@
 {
 	"catch_assistance": true,
-	"checkpoint_hash": "6294c0524513466a77f68cd3059757ba361c8ee9094e6afd68c0769428f9ee1c",
+	"checkpoint_hash": "c86ea1e79fd9332340a7787204f11c79c753bd01a092b79e12c4f141c1676f9f",
 	"completed": false,
-	"definition_hash": "9018b7e3323cc1f66fc7d4f292b419e7834d31bb5811b20672ddbc79ac79df38",
+	"definition_hash": "7c5fd9dd9e58c5f67c9ceb35f35b9ab2e2fcbcbbc63fa79653530437bf8710d9",
 	"duration_ticks": 545,
-	"final_state_hash": "5ea4e6ba986b005d22380bc4ec4e164d96776bde37a25c1b64f3d037cb117e7b",
+	"final_state_hash": "fa0e7b4b8a609b30daf9bd65809fb4ece97d58e4a8c4523da9079bf6c23c7d81",
+	"handoff_hash": "612ba1acb3438da056f81b059708ed3153714f629ebd3f4bc039680f7070064b",
+	"handoff_tick": 0,
 	"level_id": "a-house-for-two",
 	"level_version": 2,
 	"outcome": {
 		"objective_complete": false,
 		"source_ready": true
 	},
-	"packed": "AQsEnAAsAGQCADICAAADAAAQnAAKAGQCADIkZABIAJyEBwAAiBHN9J1RoOD4Zy2+wettHewljKsXgqsF+qpHDFGb9wHIKSa533WgRVKmlG/30ildlkTpjpbz2YtFlT7kIiDUutyCOwdgPg93w3B9S9+zWO6BJ8QsgOed/N+5148sU8iIZPogiRxPbjqQWo2e7zrFEA0h3mByBQRlHQRHsAOu12q1JsEW5ikFI9bq3yd+UNtNsR1uWnRuq620LwIA3VCLsXVTpPNZpcdK4eRU3AIoWqBAmcsIdehoFya+K/E1bIMRtqQK5Rwikx9mtMSW9ZDQXumArtXurgZO",
+	"packed": "AQsEnAAsAGQCADICAAADAAAQnAAKAGQCADIkZABIAJyEBwAAAkA4TmgMfLFKZmIiHtBW5LwLFp1zzYz57wioLti8CihI94v9IQ3nm/QK9ZMoRJn6Guxd5i1ZBbF89edkfwFL4q+0SA9T7MYUAhsMc5NgsD5OQLdS3Y/sjm3NF3Qsqk0K74sDu04HzS062GYy47efrqLVw7pcMSd2AAR/WRblwQMKy0ZkqtCmSp2otl2/Q+Cu5kfrSWUKZXVgildRn+EKC4c5klDQ7a5sob3+zcDJ9eoZxBMIPPqZ+8rnqrso4QIYFAA0AcIFbFzyfSEPx8ulkkSkELYqgP93",
 	"player_slot": "p1",
-	"recording_hash": "edee24d3944081749af768db6c5785782fd6caf37492b9d5b814750ae7eec2a9",
+	"recording_hash": "03feb27670e55e71775a5ba90dbea116e88043f7194922da0bb4cdaccc4305a6",
 	"role": "a",
 	"schema_version": 6,
-	"simulation_version": 17,
+	"simulation_version": 21,
 	"source_recording_hash": "",
 	"stage_id": "the-room-below",
 	"stage_version": 1,
+	"start_hash": "612ba1acb3438da056f81b059708ed3153714f629ebd3f4bc039680f7070064b",
 	"tick_rate": 30
 }

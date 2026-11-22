@@ -1,9 +1,9 @@
 {
 	"a_recording_hash": "",
 	"b_recording_hash": "",
-	"checkpoint_hash": "735ff21f54921b093a5cad7ebaa8932e25afe8e9ee397c0a4fa64cac314f2979",
+	"checkpoint_hash": "03de40078d838609ceca3eabc4e16f17e3b9960b58ff9d945df2b757c8c73380",
 	"completed_stage_id": "",
-	"definition_hash": "9018b7e3323cc1f66fc7d4f292b419e7834d31bb5811b20672ddbc79ac79df38",
+	"definition_hash": "7c5fd9dd9e58c5f67c9ceb35f35b9ab2e2fcbcbbc63fa79653530437bf8710d9",
 	"level_id": "a-house-for-two",
 	"level_version": 2,
 	"mechanisms": {

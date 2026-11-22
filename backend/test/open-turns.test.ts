@@ -6,7 +6,7 @@ import { canonicalJson, digest } from "../src/protocol";
 import { chapter, checkpointV2, initialCheckpoint } from "../src/v2/protocol";
 import { CHAPTERS } from "../src/v2/chapters";
 import { MAX_ROW_BYTES, MAX_REPLAY_ARCHIVE_BYTES } from "../src/v2/row-bound";
-import { CARRY_RECORD_KEYS, DEFAULT_TURN_CAP, MAX_OPEN_TURN_TICKS, OPEN_CHECKPOINT_KEYS, OPEN_TURN_ID_PATTERN, PACKED_RECORDING_VALUES, carryFits, fingerprint, handoffTick, isFingerprint, mustFinish, openCheckpointShape, openAccepted, openTurnLimits, packedRecordingBytes, recordingBytes, turnId, turnNumber, turnSlot } from "../src/v2/open-turns";
+import { CARRY_RECORD_KEYS, DEFAULT_TURN_CAP, MAX_OPEN_TURN_TICKS, OPEN_CHECKPOINT_KEYS, OPEN_TURN_ID_PATTERN, PACKED_RECORDING_VALUES, carryFits, fingerprint, handoffTick, isFingerprint, mustFinish, openCheckpointShape, openAccepted, openTurnLimits, packedRecordingBytes, recordingBytes, timelineShares, turnId, turnNumber, turnSlot } from "../src/v2/open-turns";
 import { MAX_PACKED_CHARS, checkTicks, packRecording, unpackRecording } from "../src/v2/recording-codec";
 import { conservatoryV2, firstStepsV2, fogMarsh, longWayHomeV2, longWayHomeV3, relayIslesV3, theFalls, turnOfTheTideV2, turnOfTheTideV3 } from "../src/v2/protocol-journey";
 import { highAndLowV2, houseForTwoV2, rollingHomeV2, wishingWellV2 } from "../src/v2/protocol-cooperative";
@@ -786,6 +786,13 @@ describe("carry-over turns", () => {
     expect(adapter.open_turns!.carry).toBe(false);
     expect(openCheckpointShape(carry().open_turns!)).toEqual({ schema: 9, keys: [...OPEN_CHECKPOINT_KEYS.slice(0, -1), "next_first_slot", "checkpoint_hash"] });
     expect(CARRY_RECORD_KEYS).toEqual(["handoff_tick", "start_hash", "handoff_hash"]);
+  });
+
+  it("counts a run's carry-over turns by what each adds to the shared timeline", () => {
+    // The design's Falls stage 1: S(4) = 40 s, so the stage lasts 40 + 45 = 85 s, or 60 s when turn 4 closes it at 20 s.
+    expect(timelineShares([8, 40, 70, 45])).toEqual([8, 32, 38, 7]);
+    expect(timelineShares([8, 40, 70, 20])).toEqual([8, 32, 38, -18]);
+    expect(timelineShares([30])).toEqual([30]);
   });
 
   it("works each hand-off out from the turn before and the one under it, as the timeline says", () => {

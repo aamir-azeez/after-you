@@ -102,16 +102,19 @@ def _run_writers(game: Game, chapter: Chapter, staged: dict[str, bytes]) -> tupl
     return changes, written, sorted(bakes.glob(f"{key}-*.json"))
 
 
-def plan(game: Game, chapter: Chapter, staged: dict[str, bytes] | None = None) -> tuple[dict[str, bytes], list[str]]:
+def plan(game: Game, chapter: Chapter, staged: dict[str, bytes] | None = None, also: tuple[str, ...] = ()) -> tuple[dict[str, bytes], list[str]]:
     """Runs the writers in `game` with `staged` ({repository path: bytes}, such as
     new routes or a new catalog) in place, and returns ({repository path: new
-    bytes}, notes). The repository is left as it was; apply() writes."""
+    bytes}, notes). `also`: other chapters regenerated in the same change (a
+    rules change that re-pins several at once), whose manifest rows may move
+    too; only this chapter's row is written, theirs by their own runs. The
+    repository is left as it was; apply() writes."""
     root, key = chapter.root, chapter.key
     staged = dict(staged or {})
     old = manifest(root)
     changes, written, baked = _run_writers(game, chapter, staged)
     changes.update(staged)
-    moved = sorted(other for other, earlier in old["chapters"].items() if other != key and written["chapters"].get(other) != earlier)
+    moved = sorted(other for other, earlier in old["chapters"].items() if other != key and other not in also and written["chapters"].get(other) != earlier)
     if moved:
         raise ToolError(f"{key}: the manifest rows of {', '.join(moved)} would change too; only {key}'s row may (see test_chapter_manifest)")
     row = written["chapters"][key]
@@ -159,6 +162,11 @@ def plan(game: Game, chapter: Chapter, staged: dict[str, bytes] | None = None) -
     return changes, notes
 
 
+def also_keys(text: str) -> tuple[str, ...]:
+    """The --with list: chapter keys, comma separated."""
+    return tuple(key.strip() for key in text.split(",") if key.strip())
+
+
 def apply(root: Path, chapter: Chapter, changes: dict[str, bytes], notes: list[str]) -> list[str]:
     """Writes the planned changes (refused for a released chapter) and returns what to print."""
     if chapter.released and changes:
@@ -171,8 +179,8 @@ def apply(root: Path, chapter: Chapter, changes: dict[str, bytes], notes: list[s
     return lines + notes
 
 
-def refresh(game: Game, chapter: Chapter) -> list[str]:
-    changes, notes = plan(game, chapter)
+def refresh(game: Game, chapter: Chapter, also: tuple[str, ...] = ()) -> list[str]:
+    changes, notes = plan(game, chapter, also=also)
     return apply(chapter.root, chapter, changes, notes)
 
 
@@ -183,12 +191,13 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--root", default=str(ROOT), help="the repository (default: this one)")
     parser.add_argument("--in-place", action="store_true", help="run in the repository's own imported game/ instead of a temporary copy")
     parser.add_argument("--keep", action="store_true", help="keep the temporary copy")
+    parser.add_argument("--with", dest="also", default="", help="other chapters re-pinned in the same change, comma separated: their manifest rows may move too (each is written by its own run)")
     args = parser.parse_args(argv)
     root = Path(args.root).resolve()
     try:
         chapter = Chapter(root, args.key)
         with Game(binary(args.godot), root / "game", args.in_place, args.keep) as game:
-            lines = refresh(game, chapter)
+            lines = refresh(game, chapter, also_keys(args.also))
     except ToolError as error:
         print(f"chapter_fixtures.py: {error}", file=sys.stderr)
         return 1

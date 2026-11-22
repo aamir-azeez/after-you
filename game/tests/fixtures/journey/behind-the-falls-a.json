@@ -1,24 +1,27 @@
 {
 	"catch_assistance": true,
-	"checkpoint_hash": "18cc2e8d9cfe0d4936c6a795d860c824b58705bb52b546a2815ee901d2cb0fb5",
+	"checkpoint_hash": "88cefa5e5f6514c3c6d6fa564d4f4fa73277ec2e3e8350d286220113bd354bc4",
 	"completed": false,
-	"definition_hash": "31c50a815a1a8c70a62c67234854ed36cbeb4044c871da0ca5bac49058cf7f8b",
+	"definition_hash": "0b20289f54496c03e2123b9eb2ae455a897c9c317e8cfcea84f623b79a583245",
 	"duration_ticks": 504,
-	"final_state_hash": "c4fa16a29bd5bdf86c9de7b39afa49ec43e8fc75648a6aa6a8aa72d0cbeb528c",
+	"final_state_hash": "f93f14bc2794010d978b3c70f676470e0f08b31c9acb50dd1c8c6fccc270c03a",
+	"handoff_hash": "7bac4f0cdc33e1b5e6328b1d67bbd60d82fa09fd2160f8a30d69b0ab011cd88d",
+	"handoff_tick": 0,
 	"level_id": "the-falls",
 	"level_version": 1,
 	"outcome": {
 		"objective_complete": false,
 		"source_ready": true
 	},
-	"packed": "AQoCANqkAmQAAlgA5AEAZAIAAAMAANIBAJwCAOeKAmQAAiYADBFnaDxQ8Vp298J+Mui00/sA9aB2uja/XXrFuEPEL+sIXKDHz5bC6NwbR4V7CAeKhmv1lMkYlZ5TmTiJEJj5sMCPO/fje98D1OTixlMSEhudZetkLPJ0QQ6WU5D2fNvICYYeo/Fd+Kte36bQW+AQ3b5M6DN0cZ9+PHnuqdwXk8yYy5RPC28VAWD2wDNbCa2r5iATFGKSd1pp25AO9H4ldJJ6qPUZ4h1Nyc1gC8bWSniG/xCnGRI/gfZlMMHeEmuW1h4e5BxSKsg=",
+	"packed": "AQoCANqkAmQAAlgA5AEAZAIAAAMAANIBAJwCAOeKAmQAAiYAb1oHbvxbm1ZNxBcCOb6qxJ9YMQCPEUvAzE2sbIW8kamuRrva+2FupszIIo7flJdybptMvfa3JmdFIePjnDuOvPz74eEZuXZBw/fdAeqGn/s7yN3Qnz89sOx1+SyDK1Dx6A5ubRQcgDuOB91mxURggVsOngb6mMCnDWxz2MiDBu4P4sPMUrecd22O9E/Z43lEWWt8gzXB9TZUeB3MKfGMq4TmQhXpp4koxsCrfBllv3cMvkxieJY3dH6/ZieV4GJoxn3CIiCHcu4=",
 	"player_slot": "p1",
-	"recording_hash": "01e68c7687176d1796d35514cfca4ae1580eabb68e7607fd54ae365a4d3911c6",
+	"recording_hash": "ec6f1c79e6eb091a84f29e0218a049e1d3ef9148011e4340e17580fc1ed484fc",
 	"role": "a",
 	"schema_version": 7,
-	"simulation_version": 16,
+	"simulation_version": 20,
 	"source_recording_hash": "",
 	"stage_id": "behind-the-falls",
 	"stage_version": 1,
+	"start_hash": "7bac4f0cdc33e1b5e6328b1d67bbd60d82fa09fd2160f8a30d69b0ab011cd88d",
 	"tick_rate": 30
 }

@@ -1,6 +1,7 @@
 import { canonicalJson, digest, isObject } from "../protocol";
 import { chapter } from "../v2/chapters";
 import { nestedProof } from "../v2/checkpoint-chain";
+import { timelineShares } from "../v2/open-turns";
 import type { ChapterKey } from "../v2/chapter-types";
 import type { CheckpointV2, RecordingV2 } from "../v2/protocol";
 import type { EncodedProof } from "./proofs";
@@ -62,9 +63,12 @@ export function walkRun(checkpoint: CheckpointV2): { ticks: number; assisted: bo
       if (turn.catch_assistance !== false) assisted = true;
       if (simulation === -1) simulation = turn.simulation_version;
       if (turn.simulation_version !== simulation) mixed = true;
-      ticks += turn.duration_ticks;
     }
-    turns.unshift(...proof.turns.map(turn => turn.duration_ticks));
+    // Carry-over turns overlap on one shared timeline: each turn counts only the time it adds to it (timelineShares).
+    const lengths = proof.turns.map(turn => turn.duration_ticks);
+    const shares = proof.turns.every(turn => Object.hasOwn(turn, "handoff_tick")) ? timelineShares(lengths) : lengths;
+    for (const share of shares) ticks += share;
+    turns.unshift(...shares);
     current = proof.previous;
   }
   return current.stage_index === 0 && Number.isSafeInteger(ticks) ? { ticks, assisted, simulation_version: simulation, mixed, turns } : null;
