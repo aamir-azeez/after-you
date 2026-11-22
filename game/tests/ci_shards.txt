@@ -436,6 +436,7 @@ the_falls 2
 the_falls_world 2
 the_wishing_well_v2 3
 the_wishing_well_v2_world 3
+throw_look 2
 tide_world 3
 toast 1
 touch_scrolling 1
