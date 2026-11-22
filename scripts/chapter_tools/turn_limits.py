@@ -89,10 +89,9 @@ class Rules:
         if not found:
             raise ToolError(f"{codec.as_posix()} no longer declares its check spacing; update scripts/chapter_tools/turn_limits.py")
         self.check_every, self.full_check_every, self.short_hash_bytes, self.full_hash_bytes = (int(group) for group in found.groups())
-        # Every family's open turns adapter sizes them in protocol-physical-recording.ts openPhysicalRecording. Carry-over
-        # turns (rules 18 to 21) only pass their flag through: their hand-off fields sit inside PACKED_HEADER_BYTES, so
-        # every rule set's open turns size the same.
-        if "openTurnLimits(definition.stages, packedRecordingBytes(turns?.b_ticks ?? 1200), maxBranches, carry)" not in recording.read_text(encoding="utf-8"):
+        # Every family's open turns adapter sizes them in protocol-physical-recording.ts openPhysicalRecording. The
+        # hand-off fields sit inside PACKED_HEADER_BYTES, so every rule set's open turns size the same.
+        if "openTurnLimits(definition.stages, packedRecordingBytes(turns?.b_ticks ?? 1200), maxBranches)" not in recording.read_text(encoding="utf-8"):
             raise ToolError(f"{recording.as_posix()} changed how it sizes open turns; update scripts/chapter_tools/turn_limits.py")
         source = open_turns.read_text(encoding="utf-8")
         # The formula mirrored by open_fits(); any change to it must change this file too.

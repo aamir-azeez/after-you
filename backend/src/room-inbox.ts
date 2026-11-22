@@ -104,8 +104,8 @@ export function relayInboxProjection(storage: DurableObjectStorage, player: stri
     const selected = chapter({ level_id: row.level_id, level_version: row.level_version, definition_hash: row.definition_hash });
     const stage = selected.stages[row.stage_index];
     if (stage) {
-      // Carry-over turns (v2/open-turns.ts firstSlot): a later stage's checkpoint names its first pip; a packed one is unpacked only then.
-      const firstPip = firstSlot(selected.open_turns, stage, selected.open_turns?.carry && row.stage_index > 0 ? nextFirst(row) : null);
+      // Open turns (v2/open-turns.ts firstSlot): a later stage's checkpoint names its first pip; a packed one is unpacked only then.
+      const firstPip = firstSlot(selected.open_turns, stage, selected.open_turns && row.stage_index > 0 ? nextFirst(row) : null);
       const first = firstPip === "p0" ? row.host_id : row.guest_id;
       const second = firstPip === "p0" ? row.guest_id : row.host_id;
       // Open turns (v2/open-turns.ts): each pass hands the next turn back across, so an odd count of passes is the first player's.

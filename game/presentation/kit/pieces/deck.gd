@@ -6,7 +6,7 @@ extends RefCounted
 ## the world shows while the crossing is open and hides while it is shut, so
 ## the open deck is the visible cause either way:
 ##
-##   "rope": a rope bridge (rules 16's crank_bridge block). Thin slats that sag
+##   "rope": a rope bridge (rules 20's crank_bridge block). Thin slats that sag
 ##       a little in the middle on two foot ropes, a rope handrail each side on
 ##       posts at both ends. Wound in (shut), nothing spans the gap: the posts
 ##       stand (rope_ends()) and the slats lie wound round a log at the gap's

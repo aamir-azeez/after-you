@@ -4,12 +4,11 @@ import { MAX_REPLAY_ARCHIVE_BYTES, MAX_ROOM_PAIRS, MAX_ROOM_TURNS, MAX_ROW_BYTES
 import { checkBytes, checkTicks, isPacked } from "./recording-codec";
 
 /**
- * Open turns: the open turns rules (14 and 15, chapter-types.ts OPEN_TURNS_RULES, open controls with open turns) play a stage in as many
- * turns as it takes. Turn 1 is a first turn as before (role "a"); every later turn (role "b") plays from the stage's
- * checkpoint with the other pip's latest turn as its memory, chained by `source_recording_hash`. Odd turns are the
- * stage's first player's, even turns the other's. A turn that ends with both players at the goal (its light holding)
- * closes the stage (completed, with its checkpoint); any other later turn is a pass (not completed, no checkpoint) and
- * play goes to the other pip. A turn lasts at least as long as its memory.
+ * Open turns: the open turns rules (18 to 21, chapter-types.ts OPEN_TURNS_RULES, open controls with open turns) play a stage in as many
+ * turns as it takes. Turn 1 is a first turn as before (role "a"); every later turn (role "b") plays over the other pip's
+ * latest turn as its memory, chained by `source_recording_hash`. Odd turns are the stage's first player's, even turns the
+ * other's. A turn that ends with both players at the goal (its light holding) closes the stage (completed, with its
+ * checkpoint); any other later turn is a pass (not completed, no checkpoint) and play goes to the other pip.
  *
  * Fingerprints (owner, 2026-11-16; claude-20261011/open-turns-fingerprints/WIRE.md): the server keeps only the newest
  * turn in full. A checkpoint names its stage's turns by hash (`turn_hashes`) and nests nothing. Turn k becomes its
@@ -28,8 +27,7 @@ import { checkBytes, checkTicks, isPacked } from "./recording-codec";
  * Turn ids keep a letter for the turn's number, so the first two keep today's ids: t<branch>-<stage>-a, -b, -c ...
  * This file is the one place these rules live on the server; core/physical/open_turns.gd mirrors them on the phone.
  *
- * Carry-over turns (rules 18 to 21, owner 2026-11-21; claude-20261011/carry-over-turns/design.md): a stage is one
- * timeline. Turn k starts from turn k-1's world at its hand-off tick H(k) and plays beside the rest of it, M(k) ticks.
+ * Carry-over turns (owner 2026-11-21; claude-20261011/carry-over-turns/design.md): a stage is one timeline. Turn k starts from turn k-1's world at its hand-off tick H(k) and plays beside the rest of it, M(k) ticks.
  * The server never simulates: each turn names its start world's hash, its hand-off tick and the world hash at the tick
  * the next turn takes over, and the server checks that these chain (carryFits), string compares and sums over header
  * fields it already holds. A stage's first pip comes from the checkpoint before it (next_first_slot, schema 9), so turns
@@ -48,13 +46,11 @@ export const TURN_LETTERS = "abcdefghijklmnopqrst";
 /** Every turn id a room can hold: published rooms only ever use a and b. */
 export const OPEN_TURN_ID_PATTERN = /^t(?:[0-9]|[12][0-9]|3[01])-[0-7]-[a-t]$/;
 /** Checkpoints of open turns name every turn of their stage (turn_hashes) and nest nothing; published checkpoints stay schema 7. */
-export const OPEN_CHECKPOINT_SCHEMA = 8;
-/** An open turns checkpoint's keys: every turn of the stage by hash, in order, in place of the a and b hashes; no proof nests in it. */
-export const OPEN_CHECKPOINT_KEYS = ["schema_version", "level_id", "level_version", "definition_hash", "stage_index", "completed_stage_id", "next_stage_id", "players", "mechanisms", "previous_checkpoint_hash", "turn_hashes", "checkpoint_hash"];
-/** Carry-over turns: schema 8's keys plus next_first_slot, the pip that plays the next stage's first turn. */
-export const CARRY_CHECKPOINT_SCHEMA = 9;
-export const CARRY_CHECKPOINT_KEYS = [...OPEN_CHECKPOINT_KEYS.slice(0, -1), "next_first_slot", "checkpoint_hash"];
-/** Carry-over turns: the header fields every turn adds (chapter-types.ts ChapterRecording), all under its recording_hash. */
+export const OPEN_CHECKPOINT_SCHEMA = 9;
+/** An open turns checkpoint's keys: every turn of the stage by hash, in order, in place of the a and b hashes, and the pip
+ * that plays the next stage's first turn (next_first_slot); no proof nests in it. */
+export const OPEN_CHECKPOINT_KEYS = ["schema_version", "level_id", "level_version", "definition_hash", "stage_index", "completed_stage_id", "next_stage_id", "players", "mechanisms", "previous_checkpoint_hash", "turn_hashes", "next_first_slot", "checkpoint_hash"];
+/** The header fields every open turn adds (chapter-types.ts ChapterRecording), all under its recording_hash. */
 export const CARRY_RECORD_KEYS = ["handoff_tick", "start_hash", "handoff_hash"];
 /** Open turns chapters keep seven branches, so their widest replay archive fits (openTurnLimits). */
 export const OPEN_TURNS_BRANCHES = 7;
@@ -71,8 +67,6 @@ export type OpenTurns = {
   readonly recording_bytes: number;
   /** The branches (attempts) the chapter keeps, so every row a room holds fits its archive (openTurnLimits). */
   readonly branches: number;
-  /** Carry-over turns (rules 18 to 21): turns chain by hand-off (carryFits) and each stage's first pip is the checkpoint's. */
-  readonly carry: boolean;
 };
 
 /** A stage's turn cap, as its definition declares it: a whole number from 2 to 20 (open_turns.gd cap_valid). Throws at module load on a bad value. */
@@ -108,12 +102,12 @@ const MAX_WORKER_BODY_BYTES = 1_250_000;
  *   MAX_REPLAY_ARCHIVE_BYTES, so the room snapshot and the replay archive fit.
  * The chapter keeps as many of `maxBranches` as fit. Throws at module load when even one branch cannot.
  */
-export function openTurnLimits(stages: readonly { turn_cap?: unknown }[], recordingBytes: number, maxBranches: number, carry = false): OpenTurns {
+export function openTurnLimits(stages: readonly { turn_cap?: unknown }[], recordingBytes: number, maxBranches: number): OpenTurns {
   const caps = stages.map(stageTurnCap);
   if (recordingBytes + ENVELOPE_BYTES > MAX_ROW_BYTES || recordingBytes + CHECKPOINT_BYTES + ENVELOPE_BYTES > MAX_WORKER_BODY_BYTES) throw new Error("open turns outgrow the room row bound");
   const held = MAX_ROOM_TURNS * (PACKED_HEADER_BYTES + ENVELOPE_BYTES) + MAX_ROOM_PAIRS * (2 * PACKED_HEADER_BYTES + CHECKPOINT_BYTES + ENVELOPE_BYTES);
   for (let branches = maxBranches; branches >= 1; branches--) {
-    if (held + branches * 2 * recordingBytes <= MAX_REPLAY_ARCHIVE_BYTES) return Object.freeze({ caps: Object.freeze(caps), recording_bytes: recordingBytes, branches, carry });
+    if (held + branches * 2 * recordingBytes <= MAX_REPLAY_ARCHIVE_BYTES) return Object.freeze({ caps: Object.freeze(caps), recording_bytes: recordingBytes, branches });
   }
   throw new Error("open turns outgrow the room row bound");
 }
@@ -136,17 +130,17 @@ export function turnSlot(first: string, turn: number): Slot {
   return (turn % 2 === 1) === (first === "p0") ? "p0" : "p1";
 }
 /**
- * The pip that plays a stage's turn 1. Carry-over turns: the checkpoint before the stage names it (next_first_slot), and
- * the first stage's, whose checkpoint names none, is the host's (p0). Earlier rules: the definition's first_player_slot.
+ * The pip that plays a stage's turn 1. Open turns: the checkpoint before the stage names it (next_first_slot), and the
+ * first stage's, whose checkpoint names none, is the host's (p0). Published rules: the definition's first_player_slot.
  */
 export function firstSlot(open: OpenTurns | undefined, stage: { first_player_slot: string }, checkpoint: { next_first_slot?: unknown } | null | undefined): Slot {
-  if (open?.carry) return checkpoint?.next_first_slot === "p1" ? "p1" : "p0";
+  if (open) return checkpoint?.next_first_slot === "p1" ? "p1" : "p0";
   return stage.first_player_slot === "p1" ? "p1" : "p0";
 }
 /** The other pip. */
 export function otherSlot(slot: string): Slot { return slot === "p0" ? "p1" : "p0"; }
 /**
- * Carry-over turns: the tick of `memory` (turn k-1) at which turn k takes over, H(k) = S(k) - S(k-1). Turns 1 and 2 hand
+ * The tick of `memory` (turn k-1) at which turn k takes over, H(k) = S(k) - S(k-1). Turns 1 and 2 hand
  * off at 0; from turn 3 on it is the rest of turn k-2 that played beside turn k-1, M(k-1) = L(k-2) - H(k-1).
  * `beforeMemory` is turn k-2, or null for turn 2.
  */
@@ -166,7 +160,7 @@ export function carryFits(turn: ChapterRecording, memory: ChapterRecording | nul
   return turn.start_hash === memory.handoff_hash && turn.handoff_tick === handoff && (turn.completed || turn.duration_ticks >= memory.duration_ticks - handoff);
 }
 /**
- * Run time (2026-11-21): each carry-over turn's share of its stage's length on the shared timeline, so a stage counts
+ * Run time (2026-11-21): each open turn's share of its stage's length on the shared timeline, so a stage counts
  * once, S(last) + L(last), however its turns overlapped. Turn k adds (S(k) + L(k)) - (S(k-1) + L(k-1)), with
  * S(1) = S(2) = 0 and S(k) = S(k-2) + L(k-2); a closing turn that drops the rest of the friend's replay may add less
  * than nothing. The client's OpenTurns.timeline_shares is the same.
@@ -198,22 +192,17 @@ export function recordingBytes(recording: ChapterRecording): number {
 export function mustFinish(open: OpenTurns, stage: number, turn: number): boolean {
   return turn >= 2 && turn >= open.caps[stage];
 }
-/** The schema and keys of an open turns chapter's checkpoints: 8, or 9 with next_first_slot on carry-over turns. */
-export function openCheckpointShape(open: OpenTurns): { schema: number; keys: readonly string[] } {
-  return open.carry ? { schema: CARRY_CHECKPOINT_SCHEMA, keys: CARRY_CHECKPOINT_KEYS } : { schema: OPEN_CHECKPOINT_SCHEMA, keys: OPEN_CHECKPOINT_KEYS };
-}
 /**
  * Why a closing checkpoint `c`'s turns (`all`: the first, the passes, the closing turn) break open turns, or "": past
- * the stage's cap, a turn not the next pip's or shorter than its memory, or turn_hashes not naming them in order.
- * Carry-over turns: the first pip is `previous`'s next_first_slot (firstSlot), the turns chain by hand-off (carryFits),
- * and `c` names the pip that did not close the stage to start the next. Every family's adapter asks it; the turns are
- * stored rows, usually fingerprints, so only header fields are read.
+ * the stage's cap, a turn not the next pip's (the first is `previous`'s next_first_slot, firstSlot) or not chained by
+ * hand-off (carryFits), `c` not naming the pip that did not close the stage to start the next, or turn_hashes not
+ * naming the turns in order. Every family's adapter asks it; the turns are stored rows, usually fingerprints, so only
+ * header fields are read.
  */
 export function openTurnsProblem(open: OpenTurns, stageIndex: number, stage: { first_player_slot: string }, previous: ChapterCheckpoint, all: readonly ChapterRecording[], c: Record<string, unknown>): string {
   const first = firstSlot(open, stage, previous);
-  if (all.length > open.caps[stageIndex] || !all.every((turn, i) => turn.player_slot === turnSlot(first, i + 1) &&
-    (open.carry ? carryFits(turn, all[i - 1] ?? null, all[i - 2] ?? null) : i === 0 || turn.duration_ticks >= all[i - 1].duration_ticks))) return "checkpoint_recording_mismatch";
-  if (open.carry && c.next_first_slot !== otherSlot(all[all.length - 1].player_slot)) return "checkpoint_recording_mismatch";
+  if (all.length > open.caps[stageIndex] || !all.every((turn, i) => turn.player_slot === turnSlot(first, i + 1) && carryFits(turn, all[i - 1] ?? null, all[i - 2] ?? null))) return "checkpoint_recording_mismatch";
+  if (c.next_first_slot !== otherSlot(all[all.length - 1].player_slot)) return "checkpoint_recording_mismatch";
   return canonicalJson(c.turn_hashes) === canonicalJson(all.map(turn => turn.recording_hash)) ? "" : "checkpoint_source_mismatch";
 }
 /**
@@ -225,7 +214,7 @@ export function openStageEnds(atGoal: (slot: Slot) => boolean, objective: boolea
   return objective && atGoal("p0") && atGoal("p1");
 }
 /**
- * The shared ball (rules 17, chapter-types.ts sharedBall): why a closing checkpoint's balls break it, or "". Each is
+ * The shared ball (rules 21, chapter-types.ts sharedBall): why a closing checkpoint's balls break it, or "". Each is
  * held by nobody and either free or fitted: fitted as it was before (a fitted ball never moves again), or into this
  * stage's own cradle (a ball home goal), exactly at its centre. A ball home stage needs its ball in; the players'
  * places are openStageEnds's. `onFloor` checks each ball's fields and that it rests on a floor it may (a crossing only

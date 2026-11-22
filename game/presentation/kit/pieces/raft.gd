@@ -1,5 +1,5 @@
 extends "res://presentation/kit/pieces/piece.gd"
-## World kit: a rope raft (rules 16's rope_raft block), in one of its styles
+## World kit: a rope raft (rules 20's rope_raft block), in one of its styles
 ## (content/dressing/prop_styles.gd "raft"; piece_styles.gd picks which, by
 ## the platform's id).
 ##

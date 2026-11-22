@@ -1,5 +1,5 @@
 extends RefCounted
-## A small witness level for rules 16's carried items and currents
+## A small witness level for rules 20's carried items and currents
 ## (core/physical/carried_items.gd). Never registered: tests/test_carried_items.gd
 ## plays it through the journey engine with this script as its catalog, and
 ## tests/test_carried_items_checker.gd runs the level graph over it.

@@ -1,7 +1,7 @@
 extends RefCounted
 ## Integer support queries shared by walkers and pushable props. Height changes
 ## require an authored stair or drop; overlapping islands never act as ladders.
-## A stair with "one_way": "up" (rules 16's pull-up rope ladder,
+## A stair with "one_way": "up" (rules 20's pull-up rope ladder,
 ## core/physical/pieces_rules.gd) carries a walker only upward: a step whose
 ## centre would come down it is refused. No published stair has the field.
 ##

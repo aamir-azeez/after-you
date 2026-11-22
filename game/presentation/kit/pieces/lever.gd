@@ -12,7 +12,7 @@ extends "res://presentation/kit/pieces/piece.gd"
 ##   "bolt": a sliding bolt. A round iron bolt with a knob lies in two staples
 ##       on a timber block. Pulled, it slides home into the iron catch; let go,
 ##       it draws back.
-##   "lantern": the fog lantern pump (rules 16's fog_lantern block). A lantern
+##   "lantern": the fog lantern pump (rules 20's fog_lantern block). A lantern
 ##       hangs from the arm of a timber post over a squat iron pump; pulled,
 ##       the pump handle comes down and the lantern glows, let go it goes dark.
 ##       The world clears the fog round a lit one (kit/fog.gd).

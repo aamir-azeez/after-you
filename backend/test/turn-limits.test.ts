@@ -28,7 +28,7 @@ describe("declared turn limits", () => {
   });
 
   it("may be equal on the open turns rules only, where every turn has the same limit", () => {
-    for (const version of [14, 15]) {
+    for (const version of [18, 19]) {
       expect(turnLimits({ simulation_version: version, turn_limits: { a_ticks: 2730, b_ticks: 2730 } })).toEqual({ a_ticks: 2730, b_ticks: 2730 });
       expect(() => turnLimits({ simulation_version: version, turn_limits: { a_ticks: 2730, b_ticks: 2700 } })).toThrow("invalid turn_limits");
     }

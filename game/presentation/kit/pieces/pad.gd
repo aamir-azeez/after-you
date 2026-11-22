@@ -8,7 +8,7 @@ extends "res://presentation/kit/pieces/piece.gd"
 ##       lights, in the owner's colour. Held, it sinks a little into the floor.
 ##   "crank_board": the board with a windlass beside it (a crank board that
 ##       keeps a rope bridge tight): its drum turns over while held.
-##   "pan": a weight lift's pan (rules 16's weight_lift block): a wide brass
+##   "pan": a weight lift's pan (rules 20's weight_lift block): a wide brass
 ##       dish on a timber cradle, nothing over it (a pip stands in it). Held
 ##       (something heavy in it), it sinks down its cradle.
 ##

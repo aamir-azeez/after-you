@@ -12,7 +12,7 @@ const LeverPiece = preload("res://presentation/kit/pieces/lever.gd")
 const SelectorPiece = preload("res://presentation/kit/pieces/selector.gd")
 ## The pulley post by a missing crossing, in its style (_hang_pulleys).
 const PulleyPiece = preload("res://presentation/kit/pieces/pulley.gd")
-## The new pieces' looks (rules 16): decks, platforms, ladders and fog.
+## The new pieces' looks (rules 20): decks, platforms, ladders and fog.
 const NewPieces = preload("res://presentation/kit/new_pieces.gd")
 const Deck = preload("res://presentation/kit/pieces/deck.gd")
 const Drowning = preload("res://presentation/kit/drowning.gd")
@@ -494,7 +494,7 @@ func _lay_deck(definition: Dictionary, deck: Node3D, width: float, depth: float,
 	else: super._lay_deck(definition, deck, width, depth, across_x, low, high)
 
 func _build_stair(stair: Dictionary) -> void:
-	# A one way stair is a pull-up rope ladder (rules 16).
+	# A one way stair is a pull-up rope ladder (rules 20).
 	if stair.has("one_way") and new_pieces != null:
 		new_pieces.build_ladder(stair)
 		return

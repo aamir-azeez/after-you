@@ -1,5 +1,5 @@
 extends RefCounted
-## The new pieces' witness level (rules 16, core/physical/pieces_rules.gd),
+## The new pieces' witness level (rules 20, core/physical/pieces_rules.gd),
 ## written with their blocks (core/blocks/stage_blocks.gd). Two small stages,
 ## all heights 0 or 96 cm:
 ##   "marsh": a landing and the stilts above it, joined by a weight lift (a pan

@@ -428,7 +428,7 @@ const PIECE_BUILDERS := {
 	"res://presentation/cooperative_world.gd": "builds every pad, lever, selector and pulley post in the style its piece resolves to",
 	"res://presentation/island_world.gd": "builds every island world's pads from its family's layout in the style each resolves to (_build_pad), every goal in the style it resolves to (_build_goal), and its crossings as the bridge kit draws them (_build_crossings)",
 	"res://presentation/first_steps_world.gd": "builds its lift in the style it resolves to (lift)",
-	"res://presentation/kit/new_pieces.gd": "builds the new pieces' decks, moving platforms, rope ladders and swings (rules 16) in the styles they resolve to, for cooperative_world",
+	"res://presentation/kit/new_pieces.gd": "builds the new pieces' decks, moving platforms, rope ladders and swings (rules 20) in the styles they resolve to, for cooperative_world",
 	"res://presentation/kit/prop_rules.gd": "builds nothing: reads how wide each pad and goal style is drawn (drawn_radius), so the level checker keeps pieces apart as drawn",
 	"res://presentation/control_feels.gd": "builds nothing: asks the pad kit whether a pip stands on a pad as drawn (PadKit.covers), so a goal's half buzzes where it is drawn",
 }

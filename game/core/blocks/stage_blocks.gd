@@ -39,7 +39,7 @@ extends RefCounted
 ##                            "owner"; "when" (J) holds it until then
 ##   raw                 C J  appends its own arrays as written: the escape
 ##                            hatch for one-off wiring between blocks
-## The new pieces (J, rules 16, core/physical/pieces_rules.gd; the level pins
+## The new pieces (J, rules 20, core/physical/pieces_rules.gd; the level pins
 ## them with PiecesRules.pin):
 ##   fog_lantern           J  "lever" lights the lantern; its pump floods each
 ##                            of "floods" and drains each of "drains" ({route:
@@ -102,7 +102,7 @@ const NEEDS := {
 ## A swinging bucket's beat when the block gives none (ticks): a 3 s beat,
 ## 1 s across the lane after 1 s of warning.
 const SWING_BEAT := {"period": 90, "sweep": 30, "warn": 30, "offset": 0}
-## The new pieces' blocks (rules 16).
+## The new pieces' blocks (rules 20).
 const PIECE_BLOCKS := ["fog_lantern", "crank_bridge", "weight_pan", "platform", "weight_lift", "rope_raft", "sinking_stones", "rope_ladder", "wheel_ride", "falls_path", "swinging_bucket"]
 ## Blocks each family's rules can play.
 const FAMILY_BLOCKS := {
@@ -199,7 +199,7 @@ static func _missing(block: Dictionary, family: String) -> Array[String]:
 			if field != "block" and not block[field] is Array: found.append("block raw's %s must be a list" % field)
 	return found
 
-## The new pieces' own shapes (rules 16).
+## The new pieces' own shapes (rules 20).
 static func _piece_missing(found: Array[String], kind: String, block: Dictionary) -> void:
 	match kind:
 		"fog_lantern":
@@ -399,7 +399,7 @@ static func _needs_hands(level: Dictionary, route: String) -> void:
 	for bridge: Dictionary in level.get("bridges", []):
 		if bridge.id == route: bridge["hands"] = true
 
-## A pan (rules 16): the pad held by a pip, or any of `items` resting at the
+## A pan (rules 20): the pad held by a pip, or any of `items` resting at the
 ## spot of the pan's own id. Places an inline pad.
 static func _pan(level: Dictionary, stage: Dictionary, pad: Variant, items: Array, family: String) -> Dictionary:
 	var id := _place(level, stage, pad, "pressure_pads", "pad", family)
@@ -407,7 +407,7 @@ static func _pan(level: Dictionary, stage: Dictionary, pad: Variant, items: Arra
 	for item: Variant in items: terms.append({"item_id": str(item), "spot_id": id})
 	return _any_of(terms)
 
-## A moving platform (rules 16): a gate for each stop, in order, and the
+## A moving platform (rules 20): a gate for each stop, in order, and the
 ## stage's "platforms" entry naming them.
 static func _platform(level: Dictionary, stage: Dictionary, id: String, stops: Dictionary) -> void:
 	for route: String in stops:

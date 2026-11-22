@@ -31,7 +31,7 @@ extends SceneTree
 ##    its light holding. So no stage may
 ##    be finished by one pip alone across any number of its own turns while
 ##    the other does nothing: only a pip that starts at the goal (or on a
-##    platform that could carry it there, rules 16) could stand there doing
+##    platform that could carry it there, rules 20) could stand there doing
 ##    nothing, and the other would still have to reach it. A level's first
 ##    stage starts with the host's pip and each later one with whoever did not
 ##    close the stage before, so every later stage is checked with either pip
@@ -47,12 +47,12 @@ extends SceneTree
 ##    each pip a part only it can reach: floor behind a crossing the other
 ##    opens, or a pad away from the crossing it holds, so the pip on it cannot
 ##    walk that crossing too. Published chapters are not on open turns.
-##    On the shared ball (rules 17) a ball pad holds only where a pip that
+##    On the shared ball (rules 21) a ball pad holds only where a pip that
 ##    works could push the ball, and a ball home stage needs the ball rolled
 ##    to the cradle's floor with both pips there (level_graph.gd _reach_balls).
-##  - The new pieces (rules 16, core/physical/pieces_rules.gd): a chapter
+##  - The new pieces (rules 20, core/physical/pieces_rules.gd): a chapter
 ##    using any (platforms, sinking stones, a one way stair, a "not" gate)
-##    pins 16, and every piece is sound (PiecesRules.problems: stops of one
+##    pins 20, and every piece is sound (PiecesRules.problems: stops of one
 ##    size each with its gate, stones and stops that are bridges). The new
 ##    pieces' own rules and their witness are tests/test_pieces.gd's.
 ##  - Props (content/dressing, kit/props.gd extents): two props standing in
@@ -428,7 +428,7 @@ func _graph(plan: Dictionary, owned: bool = true) -> RefCounted:
 		floors[field] = plan.get(field, []).duplicate(true)
 	# The rules pin: on open controls either pip works a control (level_graph.gd).
 	if plan.has("simulation_version"): floors.simulation_version = plan.simulation_version
-	# Rules 16: the stage's moving platforms join their stops by ride edges (level_graph.gd build).
+	# Rules 20: the stage's moving platforms join their stops by ride edges (level_graph.gd build).
 	if not plan.get("platforms", []).is_empty(): floors["stages"] = [{"platforms": plan.platforms.duplicate(true)}]
 	if not owned:
 		for kind: String in ["bridges", "stairs"]:
@@ -574,7 +574,7 @@ static func _second_slots(item: Dictionary, turns: bool) -> Array:
 ## start. Two turns (the default): the second pip lights the goal itself. Open
 ## turns (`solo`, either pip): the stage ends with both pips at the goal, so
 ## the still pip must already start there, or on a platform that could carry
-## it there (rules 16: a memory rides too).
+## it there (rules 20: a memory rides too).
 static func solo_finish(graph: RefCounted, stage: Dictionary, checkpoint: Dictionary, journey: bool, solo: String = "") -> bool:
 	var live := Shots.goal_slot(stage) if solo.is_empty() else solo
 	var still := "p1" if live == "p0" else "p0"
@@ -627,7 +627,7 @@ static func _goal_holds(graph: RefCounted, stage: Dictionary, checkpoint: Dictio
 	# The shared ball: a ball home goal also needs its ball rolled to the cradle's floor.
 	if _on_goal_floor(graph, stage) and not graph.ball_reaches_goal(stage, found.settable): return false
 	var when: Dictionary = stage.get("goal_policy", {}).get("when", {})
-	# Rules 16: an item carried at the goal is carried on the goal's floor (level_graph.gd with_items).
+	# Rules 20: an item carried at the goal is carried on the goal's floor (level_graph.gd with_items).
 	return when.is_empty() or graph.gate_can_hold(graph.with_items({"when": when, "surface_id": str(goal.get("surface_id", ""))}, found.settable), stage, found.settable, checkpoint.get("mechanisms", {}), journey, found.floors)
 
 ## Whether a stage ends with both pips on its goal's floor rather than by it:
@@ -705,7 +705,7 @@ func _needs_both_rule() -> void:
 	_check(not presses_alone(lights, returns.view, returns.checkpoint, true, "p0") and presses_alone(lights, beside, returns.checkpoint, true, "p0"), "A pad holds a crossing for the pip on it only when it stands beside that crossing")
 	_check(OpenTurns.cap_valid({"turn_cap": 10}) and OpenTurns.cap_valid({"turn_cap": 11}) and not OpenTurns.cap_valid({"turn_cap": 22}) and not OpenTurns.cap_valid({"turn_cap": 1}) and OpenTurns.cap_valid({}), "A cap is a whole number from 2 to 20; a stage with none gets 10")
 
-## The shared ball (rules 17, core/physical/runtime.gd _shared_ball): a ball
+## The shared ball (rules 21, core/physical/runtime.gd _shared_ball): a ball
 ## pad holds only where some pip that works could push the ball, and a ball
 ## home goal needs its ball rolled to the cradle's floor (level_graph.gd
 ## _reach_balls), so each probe can fail on a ball stage.
@@ -821,19 +821,19 @@ static func _cm(at: Array) -> String:
 static func _rect(r: Array) -> String:
 	return "(%d, %d) to (%d, %d) cm" % [int(r[0]), int(r[1]), int(r[2]), int(r[3])]
 
-## The new pieces (rules 16) in `definition`: used only on rules 16, and sound.
+## The new pieces (rules 20) in `definition`: used only on rules 20, and sound.
 func _pieces(key: String, definition: Dictionary) -> void:
 	var used := PiecesRules.uses(definition)
 	if used.is_empty(): return
-	_check(PiecesRules.pinned(definition), "%s uses the new pieces (%s) without pinning their rules (16)" % [key, ", ".join(used)])
+	_check(PiecesRules.pinned(definition), "%s uses the new pieces (%s) without pinning their rules (20)" % [key, ", ".join(used)])
 	for problem: String in PiecesRules.problems(definition): _check(false, "%s: %s" % [key, problem])
 
-## The pieces check can fail: the witness passes it, a copy on 15 does not.
+## The pieces check can fail: the witness passes it, a copy on 19 does not.
 func _pieces_rule() -> void:
 	var witness := PiecesWitness.definition()
 	var before := failures
 	_pieces("pieces-witness@1", witness)
-	_check(failures == before, "The pieces' witness pins 16 and its pieces are sound")
+	_check(failures == before, "The pieces' witness pins 20 and its pieces are sound")
 	var unpinned := witness.duplicate(true)
-	unpinned.simulation_version = 15
-	_check(not PiecesRules.pinned(unpinned) and not PiecesRules.uses(unpinned).is_empty(), "A level using the pieces on 15 would be named")
+	unpinned.simulation_version = 19
+	_check(not PiecesRules.pinned(unpinned) and not PiecesRules.uses(unpinned).is_empty(), "A level using the pieces on 19 would be named")

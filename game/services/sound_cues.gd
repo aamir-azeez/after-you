@@ -103,7 +103,7 @@ const CUES := {
 	"bolt_shot": {"clip": BOLT, "range": Vector2(-1.0, 1.5), "priority": 2},
 	"bolt_drawn": {"clip": BOLT, "range": Vector2(-4.0, -2.0), "priority": 2},
 	"valve_turned": {"clip": VALVE, "range": Vector2(-1.5, 1.5), "db": -1.0, "priority": 2},
-	# The fog lantern's pump (rules 16): a slosh as it is lit and its pump
+	# The fog lantern's pump (rules 20): a slosh as it is lit and its pump
 	# starts, lower as it is put out.
 	"lantern_lit": {"clip": SLOSH, "range": Vector2(-0.5, 1.5), "db": -2.0, "priority": 2},
 	"lantern_out": {"clip": SLOSH, "range": Vector2(-4.0, -2.0), "db": -3.0, "priority": 2},

@@ -115,7 +115,7 @@ const SLOTS := {
 	"pad": {"board": {}, "crank_board": {}, "pan": {}},
 	"goal": {"bell": {}, "harbour_lantern": {}, "crest": {}, "window": {}, "walled_window": {}, "planter": {}},
 	"lift": {"plain": {}, "rope_tower": {}},
-	# The new pieces' looks (rules 16): a crossing's deck, a rope raft, a stair
+	# The new pieces' looks (rules 20): a crossing's deck, a rope raft, a stair
 	# ridden up only (a pull-up rope ladder or a turning wheel), the fog round a
 	# lit lantern and a spillway made a waterfall.
 	"deck": {"plank": {}, "rope": {}, "stones": {}, "falls_path": {}},
@@ -123,7 +123,7 @@ const SLOTS := {
 	"ladder": {"rope": {}, "wheel": {}},
 	"fog": {"mist": {}, "none": {}},
 	"spillway": {"trickle": {}, "falls": {}},
-	# Rules 16's carried items and floats (kit/pieces/carried_item.gd) and the
+	# Rules 20's carried items and floats (kit/pieces/carried_item.gd) and the
 	# current that carries them (kit/pieces/current.gd).
 	"carried_item": {"parcel": {}, "pipsport": {}, "raft": {}, "seed": {}, "winch_handle": {}},
 	# Where an item rests (kit/pieces/socket.gd item_spot): nothing drawn, a

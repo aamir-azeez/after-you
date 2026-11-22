@@ -657,7 +657,7 @@ static func _clam(holder: Node3D, s: float, color: Color) -> void:
 	_box(Vector3(0.046 * s, 0.004, 0.006 * s), color.darkened(0.18), Vector3(0, 0.0135, 0.004 * s), holder)
 
 
-# --- The Falls and Fog Marsh (rules 16's scenery) ---
+# --- The Falls and Fog Marsh (rules 20's scenery) ---
 
 const CLIFF := Color("7d8272")
 const CLIFF_DARK := Color("666b5d")

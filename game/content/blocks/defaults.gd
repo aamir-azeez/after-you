@@ -36,7 +36,7 @@ const BLOCKS := {
 	"lever": {"cues": ["lever_pulled"]},
 	"selector": {"cues": ["switch_set"]},
 	"raw": {"cues": []},
-	# The new pieces (rules 16). Their words wait for the owner's text pass, so
+	# The new pieces (rules 20). Their words wait for the owner's text pass, so
 	# a stage of them writes its own stage copy.
 	"fog_lantern": {"cues": ["lever_pulled", "bridge_closed"]},
 	"crank_bridge": {"cues": ["bridge_opened"]},

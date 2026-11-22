@@ -70,7 +70,7 @@ describe("carried items", () => {
     const proof = (setEnd as Json).proof;
     await expect(turnOfTheTideV3.checkpoint(await rehash(value), tideStart, proof.turns[0], proof.turns.at(-1), proof.turns.slice(1, -1))).rejects.toMatchObject({ code: "unexpected_fields" });
     const older = { ...clone(definition), simulation_version: 19 };
-    expect(() => journeyAdapter(older as any, initial as unknown as ChapterCheckpoint, "0".repeat(64))).toThrow("rules 16");
+    expect(() => journeyAdapter(older as any, initial as unknown as ChapterCheckpoint, "0".repeat(64))).toThrow("rules 20");
   });
 
   // The item ride witness (game/tests/item_ride_witness.gd; game/tests/test_carried_items.gd writes these files):
