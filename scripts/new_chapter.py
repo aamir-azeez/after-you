@@ -19,10 +19,11 @@ has exactly one Home keepsake, on the version nothing supersedes: releasing
 the new version (superseded_by on the earlier one) moves the earlier
 descriptor's "home_keepsake" to it, and test_chapter_descriptors says so.
 
-A new journey chapter is on open turns too, each stage's cap 10 (the owner
-sets 20 on a hard stage), with the development turn limits. A new cooperative
-chapter stays on the open controls: the cooperative server adapter
-(backend/src/v2/protocol-cooperative.ts) takes only two turns a stage.
+A new chapter of either family is on open turns too (rules 18 to 21), each
+stage's cap 10 (the owner sets 20 on a hard stage), with the development turn
+limits. Its witness routes are carry-over turns ({"turns": [...]}): turn 1
+from the stage's start, every later turn from where the turn before handed
+off (core/physical/open_turns.gd start_tick).
 
 A new chapter gets its Home keepsake: the descriptor's "home_keepsake" field,
 a placeholder builder in game/presentation/keepsakes/ (from
