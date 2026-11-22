@@ -129,9 +129,9 @@ func _run() -> void:
 		var free_places: Array = Catalog.all().filter(func(item: Dictionary) -> bool: return "FreeChapter_" + str(item.family).replace("-", "_") in free.free_card_names)
 		var free_total: int = free_places.reduce(func(total: int, item: Dictionary) -> int: return total + (2 if item.friend_available else 1), 0)
 		var free_hard: int = HardMode.eligible_keys().filter(func(key: String) -> bool: return "FreeChapter_" + key.get_slice("@", 0).replace("-", "_") in free.free_card_names).size()
-		_check(free_total == 20 and free_hard == 5, "The free chapters hold 20 keepsake places and 5 hard chapters" + label)
+		_check(free_total == 16 and free_hard == 4, "The free chapters hold 16 keepsake places and 4 hard chapters" + label)
 		var free_upgrades: int = States.states(States.entries(true), [], {}, app.hard_together()).upgrades[1]
-		_check(free.keepsakes == " · ".join([PlayerCopy.KEEPSAKE_COUNT % [1, 5], PlayerCopy.KEEPSAKE_UPGRADE_COUNT % [0, free_upgrades], PlayerCopy.KEEPSAKE_HARD_COUNT % [0, free_hard]]), "Home counts only the free keepsakes and their upgrades, leaving out a paid place earned with a friend: " + free.keepsakes + label)
+		_check(free.keepsakes == " · ".join([PlayerCopy.KEEPSAKE_COUNT % [1, 4], PlayerCopy.KEEPSAKE_UPGRADE_COUNT % [0, free_upgrades], PlayerCopy.KEEPSAKE_HARD_COUNT % [0, free_hard]]), "Home counts only the free keepsakes and their upgrades, leaving out a paid place earned with a friend: " + free.keepsakes + label)
 		_check(free.keepsake_places == _sorted(States.entries(true).map(func(entry: Dictionary) -> String: return entry.id)), "Only the free chapters stand on Home, so no paid outline is browsed" + label)
 		var free_lines := _changelog_lines(true)
 		_check(free.whats_new.opened and free.whats_new.card == free_lines.card and free.whats_new.earlier == free_lines.earlier and free.whats_new.versions == free_lines.versions, "What's new still opens, without a paid highlight or a version left with none" + label)

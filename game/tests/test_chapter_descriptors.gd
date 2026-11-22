@@ -354,6 +354,7 @@ func _offering() -> void:
 		var version := int(key.get_slice("@", 1))
 		if data.version_of != "":
 			_check(data.version_of.get_slice("@", 0) == key.get_slice("@", 0) and int(data.version_of.get_slice("@", 1)) < version, "A version is of an earlier version of the same chapter: " + key)
+			_same(bool(data.full_journey), bool(Index.data(data.version_of).get("full_journey", false)), "Every version of a chapter sold as Full Journey says so (full_journey): " + key)
 		if data.superseded_by != "":
 			_check(data.superseded_by in Index.keys() and data.superseded_by.get_slice("@", 0) == key.get_slice("@", 0) and int(data.superseded_by.get_slice("@", 1)) > version, "A chapter is superseded by a later registered version of itself: " + key)
 		if data.released: _finished(key, data)

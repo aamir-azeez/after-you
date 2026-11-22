@@ -24,8 +24,11 @@ const relay: ChapterAdapter = {
  * flags.ts) until it ships; every published chapter is always creatable (its
  * flag retired, flags.ts RETIRED_FLAGS). Chapters added after 0.5.1 each pin
  * their own rules and refuse older guests on join. Never reorder rows: old
- * clients see this order. */
-export const CHAPTERS: readonly { readonly adapter: ChapterAdapter; readonly flag: FlagVar | "" }[] = Object.freeze([
+ * clients see this order. `full_journey` sells a chapter whose published
+ * definition is free as Full Journey (the game's descriptor "full_journey"):
+ * its key, pins and advertised `premium` stay the definition's, and every
+ * access and Pollen check asks paid(). */
+export const CHAPTERS: readonly { readonly adapter: ChapterAdapter; readonly flag: FlagVar | ""; readonly full_journey?: true }[] = Object.freeze([
   { adapter: relay, flag: "" },
   { adapter: FirstSteps.adapter, flag: "" },
   { adapter: highAndLow, flag: "" },
@@ -35,11 +38,11 @@ export const CHAPTERS: readonly { readonly adapter: ChapterAdapter; readonly fla
   { adapter: longWayHome, flag: "" },
   { adapter: wishingWell, flag: "" },
   { adapter: longWayHomeV2, flag: "" },
-  { adapter: turnOfTheTide, flag: "" },
+  { adapter: turnOfTheTide, flag: "", full_journey: true },
   { adapter: sleepingLighthouseV2, flag: "" },
-  { adapter: turnOfTheTideV2, flag: "" },
+  { adapter: turnOfTheTideV2, flag: "", full_journey: true },
   { adapter: longWayHomeV3, flag: "LONG_WAY_HOME_V3_CHAPTER_ENABLED" },
-  { adapter: turnOfTheTideV3, flag: "TURN_OF_THE_TIDE_V3_CHAPTER_ENABLED" },
+  { adapter: turnOfTheTideV3, flag: "TURN_OF_THE_TIDE_V3_CHAPTER_ENABLED", full_journey: true },
   { adapter: conservatoryV2, flag: "CONSERVATORY_V2_CHAPTER_ENABLED" },
   { adapter: highAndLowV2, flag: "HIGH_AND_LOW_V2_CHAPTER_ENABLED" },
   { adapter: wishingWellV2, flag: "THE_WISHING_WELL_V2_CHAPTER_ENABLED" },
@@ -62,6 +65,10 @@ export function chapter(value: unknown): ChapterAdapter {
 export function chapterKey(value: unknown): ChapterKey { return { ...chapter(value).key }; }
 export function sameChapter(a: ChapterKey, b: ChapterKey): boolean {
   return a.level_id === b.level_id && a.level_version === b.level_version && a.definition_hash === b.definition_hash;
+}
+/** Whether playing the chapter needs Full Journey: its definition's flag or its row's full_journey. */
+export function paid(entry: ChapterAdapter): boolean {
+  return entry.premium || CHAPTERS.find(row => row.adapter === entry)?.full_journey === true;
 }
 /** The flag gating this chapter: "" if always creatable, undefined if unknown. */
 export function chapterFlag(entry: ChapterAdapter): FlagVar | "" | undefined {

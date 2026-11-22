@@ -29,6 +29,13 @@ const OPTIONAL := {
 	## unlock_level). The server's price table (backend/src/pollen/
 	## level-unlocks.ts) is pinned to it through the chapter manifest. {} is free.
 	"unlock": {},
+	## true makes a chapter whose published definition is free a Full Journey
+	## one. The definition, its hash, room pins and the server's advertised
+	## "premium" keep the published flag; every gate reads the registry
+	## descriptor's "premium", which this turns on, and the server's own gates
+	## read its row's full_journey (backend/src/v2/chapters.ts paid()). Set it on
+	## every version of the level.
+	"full_journey": false,
 	## The newer version offered in this one's place.
 	"superseded_by": "",
 	## The earlier version whose keepsake places this one earns.

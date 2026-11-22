@@ -9,7 +9,7 @@ import { clearTurnHints, deliverTurnHints, initializeNotifications, queueRedoHin
 import type { RoomHint } from "../notifications";
 import { ApiError, IDEMPOTENCY_PATTERN, canonicalJson, digest, equalHash, fail, integer, object, ok, text, type Outcome } from "../protocol";
 import { MAX_V2_BODY_BYTES, RELAY_KEY, acceptedRecording, chapter, boundedTurnValue, checkpointV2, exact, initialCheckpoint, recordingV2, type CheckpointV2, type RecordingV2, type Slot } from "./protocol";
-import { sameChapter } from "./chapters";
+import { paid, sameChapter } from "./chapters";
 import { checkpointAt } from "./checkpoint-chain";
 import { MAX_ROOM_PAIRS, MAX_ROOM_TURNS } from "./row-bound";
 import { fingerprint, isFingerprint, mustFinish, turnId, turnSlot } from "./open-turns";
@@ -1138,7 +1138,7 @@ export class RoomV2 extends DurableObject<Env> {
       requireOwnedFaces(input, ask.face_packs);
       const snapshot = await this.snapshot(player, undefined, ask.history);
       if (!snapshot.ok) return snapshot;
-      if (chapter(snapshot.value).premium && !ask.access_checked) {
+      if (paid(chapter(snapshot.value)) && !ask.access_checked) {
         boundedTurnValue(input, chapter(snapshot.value).limits);
         const value = object(input);
         exactTurnFields(value);
@@ -1317,7 +1317,7 @@ export class RoomV2 extends DurableObject<Env> {
         if (context === undefined && pollen !== undefined && replaces === undefined && !pass) {
           recordTurnFacts(this.ctx.storage, { room_id: state.room_id, recording_hash: recording.recording_hash, turn_id, player, partner: this.partnerOf(state, player),
             host: player === state.host_id, level_id: state.level_id, stage_id, role: recording.role, ticks: recording.duration_ticks, tries,
-            premium: chapter(state).premium, hard: Boolean(current.hard), complete: recording.role === "b" && state.stage_index >= chapter(state).stages.length, accepted_at: Date.now(),
+            premium: paid(chapter(state)), hard: Boolean(current.hard), complete: recording.role === "b" && state.stage_index >= chapter(state).stages.length, accepted_at: Date.now(),
             duel: duelPremium(duelLink(this.ctx.storage)), duel_held: duelHeld(duelLink(this.ctx.storage)) });
         }
         // A duel room's run is over for the duel once it first finishes (duels/room-link.ts).

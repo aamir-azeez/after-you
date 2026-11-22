@@ -133,7 +133,7 @@ static func _descriptor(key: String) -> Dictionary:
 	if level.is_empty(): return {}
 	var words := _words(key)
 	return {"key": key, "level_id": level.id, "level_version": level.version,
-		"definition_hash": Canonical.digest(level), "title": words.get("title", level.get("title", "")), "premium": level.get("premium", false),
+		"definition_hash": Canonical.digest(level), "title": words.get("title", level.get("title", "")), "premium": level.get("premium", false) or _chapter(key).get("full_journey", false),
 		"simulation_version": preferred_rules(key), "recording_version": level.schema_version,
 		"stage_count": level.stages.size(), "local_path": _chapter(key).local_path,
 		"summary": Emphasis.plain(str(words.get("summary", ""))),
@@ -247,7 +247,9 @@ static func supported_capabilities(value: Variant) -> Dictionary:
 		var known := descriptor(key)
 		var old_relay: bool = key == RELAY and not item.has("simulation_version") and not item.has("recording_version")
 		var supported_version: bool = Typed.whole_number(item.get("simulation_version")) and int(item.simulation_version) in supported_rules(key)
-		if not Typed.equal(item.get("premium"), known.premium) or (not old_relay and (not supported_version or not Typed.equal(item.get("recording_version"), known.recording_version))):
+		# The server advertises the published definition's flag, so a full_journey chapter may say false.
+		var premium_known: bool = Typed.equal(item.get("premium"), known.premium) or (_chapter(key).get("full_journey", false) and Typed.equal(item.get("premium"), false))
+		if not premium_known or (not old_relay and (not supported_version or not Typed.equal(item.get("recording_version"), known.recording_version))):
 			return {"valid": false, "chapters": [], "error": PlayerCopy.CHAPTER_REGISTRY_6FD55BE1E08F}
 		if item.has("stage_count") and not Typed.equal(item.get("stage_count"), known.stage_count):
 			return {"valid": false, "chapters": [], "error": PlayerCopy.CHAPTER_REGISTRY_6FD55BE1E08F}
