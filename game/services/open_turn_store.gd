@@ -395,3 +395,21 @@ static func erase_owner(owner_id: String, root_path: String = ROOT) -> bool:
 			if DirAccess.remove_absolute(base.path_join(name)) != OK: return false
 		if DirAccess.remove_absolute(base) != OK: return false
 	return DirAccess.remove_absolute(folder) == OK
+
+## The turns whose photos a replay of a completed stage shows: one a pip, its
+## latest turn of the stage (open turns: the closing turn and the friend's
+## turn before it; two turns: both), in play order. `room` names room_id,
+## host_id and guest_id; `pair_id` is the stage's ("p<branch>-<stage>"), and
+## each turn keeps the id the server numbers it by (OpenTurns.turn_id).
+static func photo_turns(room: Dictionary, pair_id: String, pair: Dictionary, owner: String) -> Array:
+	var branch := int(pair_id.substr(1).get_slice("-", 0))
+	var stage := int(pair_id.get_slice("-", 1))
+	var turns := OpenTurns.pair_turns(pair)
+	var result: Array = []
+	for number in range(turns.size(), 0, -1):
+		var recording: Variant = turns[number - 1]
+		if not recording is Dictionary: return []
+		if result.any(func(kept: Dictionary) -> bool: return kept.player_slot == recording.get("player_slot")): continue
+		var player := str(room.get("host_id", "") if recording.get("player_slot") == "p0" else room.get("guest_id", ""))
+		result.push_front({"room_id": room.get("room_id", ""), "turn_id": OpenTurns.turn_id(branch, stage, number), "recording_hash": recording.get("recording_hash", ""), "owner_player_id": player, "own": player == owner, "role": "a" if number == 1 else "b", "player_slot": recording.get("player_slot", "")})
+	return result

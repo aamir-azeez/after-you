@@ -122,6 +122,17 @@ extends SceneTree
 ##     its blurs kept with the world's others), and the journey world gives
 ##     every item it can throw one. test_throw_look.gd, which must stay in CI,
 ##     flies every item kind with it and keeps First Steps @1's look.
+## (ab) a finished stage's turns: under open turns a stage keeps every turn
+##     (its first, its passes, its closing turn), carried over at each hand-off,
+##     so core/physical/open_turns.gd alone reads a stage pair as turns
+##     (record_valid, pair_turns, closing_memory, proof_turns). No script
+##     checks a pair's shape by its size, lists its turns as [a, b], plays its
+##     closing turn over its first turn alone, or reads only its first and
+##     closing turns; and every script that reads a pair's turns goes through
+##     open_turns.gd or a service built on it (STAGE_TURN_READERS), unless
+##     RAW_PAIR_ALLOWED says why. tests/open_turns_surfaces.gd (test_open_turns_replays_<n>
+##     and test_open_turns_rooms_<n>), which must stay in CI, opens every surface on every
+##     open level.
 ##
 ## Every allow-list entry says why. An entry that no longer matches anything
 ## fails, so the lists shrink as code moves. KNOWN_FAILURES holds the checks
@@ -455,7 +466,25 @@ const OWN_ENVIRONMENTS := {
 }
 
 ## Suites that guard a shared path on their own and must stay in CI.
-const GUARD_SUITES := ["shared_paths", "full_screen_bleed", "pollen_mark", "connectivity", "owner_marks", "pair_tags", "fall_effect", "piece_styles", "open_hints", "contact_shadows", "throw_look"]
+## (ab) Raw readings of a stage pair as two turns.
+const RAW_PAIR_TURNS := {
+	"a pair's shape checked by its size": "\\b\\w*pair\\w*\\.size\\(\\)\\s*[!=]=\\s*2\\b",
+	"its turns listed as [a, b]": "\\[\\s*(\\w*pair\\w*)\\.a\\s*,\\s*\\1\\.b\\s*\\]",
+	"its closing turn played over its first turn alone": "\\b\\w*pair\\w*\\.a\\s+if\\s+role\\b",
+	"only its first and closing turns read": "for\\s+role\\b[^\\n]*in\\s*\\[\\s*\"a\"\\s*,\\s*\"b\"\\s*\\]\\s*:\\s*\\n[^\\n]*\\b\\w*pair\\w*\\[role\\]",
+}
+## A script reading a pair's turns: its first or closing turn by name.
+const PAIR_TURN_READ := "\\b\\w*pair\\w*(?:\\.(?:a|b)\\b|\\.get\\(\"(?:a|b)\"\\)|\\[role\\])"
+## The one reader of a stage's turns and the services built on it.
+const STAGE_TURN_READERS := ["res://core/physical/open_turns.gd", "res://services/checkpoint_pairs.gd", "res://services/open_turn_store.gd"]
+## Scripts that read a pair's turns raw on purpose, or whose pairs are no stage's, with why.
+const RAW_PAIR_ALLOWED := {
+	"res://services/replay_transfer.gd": "fills a pair's first and closing turns from full copies; its passes come back inside the nested checkpoint (OpenTurnStore.nested)",
+	"res://lighthouse_preview.gd": "the Sleeping Lighthouse plays two turns a stage on its own engine (borrowed_light.gd), never open turns",
+	"res://services/lighthouse_migration.gd": "converts Lighthouse @1 pairs, two turns a stage, never open turns",
+	"res://services/sound_cues.gd": "its pairs are a look's pulled and let-go cues, no stage's turns",
+}
+const GUARD_SUITES := ["shared_paths", "full_screen_bleed", "pollen_mark", "connectivity", "owner_marks", "pair_tags", "fall_effect", "piece_styles", "open_hints", "contact_shadows", "throw_look", "open_turns_replays_1", "open_turns_rooms_1"]
 ## (w) The one reader of the ready line, and the one builder of the goal beacon.
 const READY_LINE := "MAIN_1AAC5BE95E22"
 const READY_LINE_READER := "res://relay_preview.gd"
@@ -531,6 +560,7 @@ func _initialize() -> void:
 	_water_worlds()
 	_contact_shadows()
 	_thrown()
+	_stage_turns()
 	_suites()
 	for id: String in KNOWN_FAILURES:
 		_check(_known_seen.has(id), "KNOWN_FAILURES names '%s', which no check reached: delete it" % id)
@@ -554,6 +584,8 @@ func _self_checks() -> void:
 	_check(_flat_diamonds("\tvar d: MeshInstance3D = box(Vector3(SIDE, THICK, SIDE), GOLD, at, p)\n\td.rotate_y(PI / 4.0)\n") == 1 and _flat_diamonds("\tm = mesh_node(Primitives.cached_box(Vector3(0.17, 0.018, 0.17)), look, at, p)\n\tm.rotation = Vector3(0, PI / 4, 0)\n") == 1, "A named or cached flat diamond is found, turned any way")
 	_check(_flat_diamonds("func a() -> void:\n\tvar g := box(Vector3(0.2, 0.02, 0.2), C, p, t)\nfunc b() -> void:\n\tg.rotation.y = PI / 4\n") == 0, "A turn in another function is no diamond")
 	_check(_found(MARK_RING, "ring(0.13, TEAL, at, terrain)\nPrimitives.ring_mesh(0.13)\nring(0.135, C, a, b)\n") == 2, "A ring the size of the second spirit's mark is found")
+	_check(_found(RAW_PAIR_TURNS["a pair's shape checked by its size"], "if pair.size() != 2: return\n") == 1 and _found(RAW_PAIR_TURNS["its closing turn played over its first turn alone"], "var prior := pair.a if role == \"b\" else {}\n") == 1 and _found(RAW_PAIR_TURNS["only its first and closing turns read"], "for role: String in [\"a\", \"b\"]:\n\tvar r: Dictionary = entry.pair[role]\n") == 1, "Raw two-turn pair readings are found")
+	_check(_found(RAW_PAIR_TURNS["a pair's shape checked by its size"], "if names.size() == 2: pass\n") == 0 and _found(PAIR_TURN_READ, "var turn: Dictionary = pair.b\n") == 1 and _found(PAIR_TURN_READ, "var t := OpenTurns.pair_turns(pair)\n") == 0, "A size that is no pair is no reading; a pair's closing turn read by name is")
 	_check(_writers("var c := ConfigFile.new()\nc.save(PATH)\n") == [2] and _writers("var c := ConfigFile.new()\nAtomicFile.write_text(PATH, c.encode_to_text())\n").is_empty(), "A ConfigFile saved by itself is a write; one through AtomicFile is not")
 
 # (a) Pips -------------------------------------------------------------------
@@ -1264,6 +1296,26 @@ func _suites() -> void:
 		if parts.size() >= 2 and not parts[0].begins_with("#"): shards[parts[0]] = parts[1]
 	for suite: String in GUARD_SUITES:
 		_check(shards.get(suite, "skip") in ["1", "2", "3"], "test_%s.gd guards a shared path and runs in CI (tests/ci_shards.txt)" % suite)
+
+# (ab) A finished stage's turns ------------------------------------------------
+
+func _stage_turns() -> void:
+	var seen := {}
+	for path: String in _sources:
+		if path == STAGE_TURN_READERS[0]: continue
+		var source: String = _sources[path]
+		var raw: Array[String] = []
+		for what: String in RAW_PAIR_TURNS:
+			if _found(RAW_PAIR_TURNS[what], source) > 0: raw.append(what)
+		var reads := _found(PAIR_TURN_READ, source) > 0
+		var through := STAGE_TURN_READERS.any(func(reader: String) -> bool: return source.contains("preload(\"" + reader + "\")"))
+		if RAW_PAIR_ALLOWED.has(path):
+			seen[path] = true
+			continue
+		_check(raw.is_empty(), "%s reads a stage pair as two turns (%s): read its turns through core/physical/open_turns.gd (record_valid, pair_turns, closing_memory)" % [path, ", ".join(raw)])
+		_check(not reads or through, "%s reads a stage pair's turns without the shared reader: preload core/physical/open_turns.gd (or a service in STAGE_TURN_READERS) and read them there" % path)
+	for path: String in RAW_PAIR_ALLOWED:
+		_check(seen.has(path) and (_found(PAIR_TURN_READ, _sources[path]) > 0 or RAW_PAIR_TURNS.values().any(func(pattern: String) -> bool: return _found(pattern, _sources[path]) > 0)), "RAW_PAIR_ALLOWED names %s, which reads no pair raw now: delete it" % path)
 
 # Helpers --------------------------------------------------------------------
 
