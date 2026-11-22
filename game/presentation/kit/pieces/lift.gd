@@ -126,7 +126,7 @@ func _rope_tower(rect: Rect2, parent: Node3D, options: Dictionary) -> void:
 	# The cage: a plank deck on edge beams, low rails on its two closed sides,
 	# corner posts, and four ropes up to the hook block.
 	Parts.box(Vector3(width, 0.12, depth), Parts.TIMBER_DARK, Vector3(0, -0.07, 0), root)
-	var planks := [Color("bda27e"), Color("c9af8a"), Color("c2a481"), Color("b99b77")]
+	var planks := [Color("96795a"), Color("a2866a"), Color("9a7e60"), Color("8f7253")]
 	for i in range(7):
 		var z := -depth / 2.0 + (float(i) + 0.5) * depth / 7.0
 		Parts.box(Vector3(width - 0.08, 0.02, depth / 7.0 - 0.02), planks[i % planks.size()], Vector3(0, 0.0, z), root)

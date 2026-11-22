@@ -21,6 +21,8 @@ const PADDLES := 10
 const ROPE := Color("c9b48a")
 const RUNG := Color("9b7653")
 const RUNGS := 8
+## The posts the head's beam hangs from stand this high over the upper floor (m).
+const POST_HEIGHT := 0.55
 
 var _hung: Node3D
 var _rolled: Node3D
@@ -76,6 +78,15 @@ func _make(ladder_style: String, rect: Rect2, foot: float, head: float, along_x:
 		var at := bottom.lerp(top, (float(index) + 0.5) / float(RUNGS))
 		_bar(at - side * 1.1, at + side * 1.1, 0.03, RUNG, _hung)
 	for edge: float in [-1.0, 1.0]: Parts.box(Vector3(0.04, 0.08, 0.04), Parts.IRON, top + side * edge + Vector3(0, 0.03, 0), root)
+	# It hangs from the higher floor's edge: two short posts on that floor and a
+	# beam across them, a rope from the beam to each side rope's hook.
+	var onward := Vector3(sign, 0, 0) if along_x else Vector3(0, 0, sign)
+	var beam_at := top + onward * 0.12 + Vector3(0, POST_HEIGHT, 0)
+	for edge: float in [-1.0, 1.0]:
+		var post := top + onward * 0.12 + side * edge * 1.35
+		Parts.box(Vector3(0.06, POST_HEIGHT, 0.06), Parts.TIMBER, post + Vector3(0, POST_HEIGHT * 0.5 - 0.02, 0), root)
+		_bar(top + side * edge + Vector3(0, 0.06, 0), beam_at + side * edge, 0.02, ROPE, root)
+	_bar(beam_at - side * 1.4, beam_at + side * 1.4, 0.05, Parts.TIMBER_DARK, root)
 	_rolled = Node3D.new()
 	_rolled.name = "Rolled"
 	_rolled.visible = false
