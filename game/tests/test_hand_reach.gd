@@ -268,7 +268,7 @@ func _check_goal_pads(level: Dictionary, routes: Dictionary, cells: Dictionary, 
 	var surface := str(goal.surface_id)
 	var height := int(goal.get("height_cm", _floor_height(level, surface)))
 	for slot: String in GoalPiece.PAD_SLOTS:
-		var offset := GoalPiece.pad_offset(slot, radius)
+		var offset := GoalPiece.pad_offset(slot, radius / 100.0) * 100.0
 		_check(offset.length() + BODY <= radius, "%s: the middle of %s's goal half lies inside the goal" % [where, slot])
 		var centre := Vector2i(int(goal.position_cm[0]) + roundi(offset.x), int(goal.position_cm[1]) + roundi(offset.z))
 		var found := Navigation.at(level, routes, {}, {"height": height, "surface_id": surface}, centre.x, centre.y, slot, BODY, false, cells)

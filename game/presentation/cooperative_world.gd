@@ -233,7 +233,9 @@ func _build_goal_beacon(view: Dictionary) -> void:
 			# At the goal it lies on the floor round the goal's disc, which the
 			# plate fills (kit/pieces/goal.gd).
 			elif role == "b" and _goal_piece != null:
-				spot["around"] = GoalPiece.outer_radius(_goal_piece.style, float(entity.radius_cm) / 100.0)
+				var goal_radius := float(entity.radius_cm) / 100.0
+				spot["around"] = GoalPiece.outer_radius(_goal_piece.style, goal_radius)
+				if _goal_piece.style != "planter": spot["around_half"] = GoalPiece.base_extent(goal_radius, _goal_piece.style)
 			return spot)
 	_goal_beacon = GoalBeacon.new()
 	_goal_beacon.guide = guide

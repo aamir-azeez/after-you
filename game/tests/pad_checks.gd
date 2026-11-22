@@ -7,6 +7,7 @@ extends RefCounted
 ## (sunk, its rim lit) exactly when the snapshot's hold_pads says the pad
 ## counts. Each returns failure messages ([] passes).
 const PadKit = preload("res://presentation/kit/pieces/pad.gd")
+const Squircle = preload("res://presentation/kit/squircle.gd")
 const GoalBeacon = preload("res://presentation/kit/goal_beacon.gd")
 
 ## The pads' shapes on `stage`'s pads in `world`.
@@ -35,6 +36,17 @@ static func outline_fits(piece: RefCounted) -> bool:
 		var ring := piece.rim.mesh as TorusMesh
 		return ring != null and is_equal_approx(ring.outer_radius, piece.radius + PadKit.RIM_TUBE)
 	var half: Vector2 = piece.half_size
+	if not piece.shape.is_empty():
+		# A squircle half's outline: a frame that follows its curved edge and its
+		# straight one, just inside it, inside the half's shape everywhere.
+		var whole: Vector2 = piece.shape.half
+		var side := int(piece.shape.side)
+		var frame: AABB = piece.rim.mesh.get_aabb()
+		var reach := whole - Vector2.ONE * PadKit.RIM_EDGE
+		if not (is_equal_approx(frame.end.z, reach.y) and is_equal_approx(-frame.position.z, reach.y) and is_equal_approx(maxf(absf(frame.position.x), absf(frame.end.x)), reach.x) and is_zero_approx(minf(absf(frame.position.x), absf(frame.end.x)))): return false
+		for corner: Vector3 in piece.rim.mesh.get_faces():
+			if not Squircle.inside_half(Vector2(corner.x, corner.z), whole, side, 0.0001): return false
+		return true
 	var inside := PadKit.frame_inside(half)
 	if piece.rim.mesh is TorusMesh or inside.x <= 0.0 or inside.y <= 0.0 or not piece.rim.basis.is_equal_approx(Basis()): return false
 	var box: AABB = piece.rim.mesh.get_aabb()
@@ -61,7 +73,12 @@ static func beacon_rings(world: Node3D, stage: Dictionary) -> Array[String]:
 			var key := Vector2(spot.at.x, spot.at.z)
 			# Round a goal its ring lies on the floor past the goal's disc, which
 			# the plate fills (kit/pieces/goal.gd outer_radius).
-			if spot.has("around"):
+			if spot.has("around_half"):
+				# A squircle base: its ring is a squircle frame past the base's edge.
+				var frame: AABB = ((beacon._beacons[role][index].nodes[GoalBeacon.RING] as MeshInstance3D).mesh).get_aabb()
+				var base: Vector2 = spot.around_half
+				if frame.end.x <= base.x or frame.end.z <= base.y: found.append("A beacon ring round a goal's squircle base lies past it (%s)" % [key])
+			elif spot.has("around"):
 				var outside := (beacon._beacons[role][index].nodes[GoalBeacon.RING] as MeshInstance3D).mesh as TorusMesh
 				if outside.inner_radius <= float(spot.around): found.append("A beacon ring round a goal lies past its disc (%s)" % [key])
 			if not radii.has(key): continue

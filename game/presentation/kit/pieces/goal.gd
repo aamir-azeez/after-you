@@ -20,20 +20,26 @@ extends "res://presentation/kit/pieces/piece.gd"
 ##       the goal lights. The world names its root for the socket, so a
 ##       planting finds the soil right under it (plant_animation.gd soil()).
 ##
-## Every style stands one plate on its disc: a pad board the goal's size
-## (kit/pieces/pad.gd board_half), split down its middle into two pads, the
-## first pip's west half and the second's east, each its own board in its
-## pip's colour with its own square-cornered outline: the goal needs both
-## pips. A half presses down and glows while its own pip stands over it
-## (present_pips), live or a memory, the board rule every pad keeps; the disc
-## (a planter's soil) reaches past the plate's corners. The goal lights, and a
+## Every style stands one plate on its base: a squircle (kit/squircle.gd, a soft
+## rounded square) split down its middle into two pads, the first pip's west
+## half and the second's east, each its own board in its pip's colour whose
+## outer edge follows the curve and whose inner edge meets the other at the
+## centre line, with its own outline of the same shape: the goal needs both
+## pips. The base is one slightly larger squircle slab under both (a planter
+## keeps its round pot) and the ring that lights with the goal follows its
+## edge. A half's hit test (PadKit.covers) is its drawn shape. A goal of
+## GROWN_FROM or more has each half a regular pad board (kit/pieces/pad.gd
+## board_half); smaller, older ones keep the square plate of 1.6 x the radius.
+## A half presses down and glows while its own pip stands over it
+## (present_pips), live or a memory, the board rule every pad keeps. The goal
+## lights, and a
 ## bell rings, only once the stage is done with both there (lit()), never as
 ## one pip arrives. Anything else the goal waits for (an item carried, a
-## lantern lit) stands as a big token on the plate's middle line at its front
-## edge, clear of where the pips stand, lit while it is met (kit/goal_needs.gd,
-## add_needs). While a pip stands on the plate and the goal is not lit,
-## whatever is still missing (the empty half, an unmet token) blinks red with
-## the closing warning's beat (present_missing).
+## lantern lit) shows as a big token on a sign over the goal's stand, facing
+## the camera (kit/goal_needs.gd, add_needs; NEED_SIGNS says where). While a
+## pip stands on the plate and the goal is not lit, whatever is still missing
+## (the empty half, an unmet token) blinks red with the closing warning's beat
+## (present_missing); an unmet token stays plain otherwise.
 ##
 ## The handles the world lights (lighthouse_world present): `bell` (the
 ## lantern, the lamp or the window pane), `ring`, and `light`, an omni light
@@ -44,9 +50,22 @@ const Look = preload("res://presentation/kit/look.gd")
 const Bell = preload("res://presentation/kit/pieces/bell.gd")
 const Models = preload("res://presentation/kit/models.gd")
 const PadKit = preload("res://presentation/kit/pieces/pad.gd")
+const Primitives = preload("res://presentation/kit/primitives.gd")
+const Squircle = preload("res://presentation/kit/squircle.gd")
 const GoalNeeds = preload("res://presentation/kit/goal_needs.gd")
 const SocketKit = preload("res://presentation/kit/pieces/socket.gd")
 const ClosingWarning = preload("res://presentation/kit/closing_warning.gd")
+## A goal whose radius is at least this (m) has the grown plate: two regular
+## pad boards side by side, the whole squircle inside the goal's counted
+## circle. Smaller goals (every level published before) keep the square plate
+## of 1.6 x the radius, now a squircle too.
+const GROWN_FROM := 0.6
+## How far the base slab reaches past the plate's squircle (m), and its
+## thickness's top rim colour.
+const BASE_RIM := 0.04
+## The ring's bar and its height over the base's top (m).
+const RING_BAR := 0.025
+const RING_HEIGHT := 0.012
 ## The plate's halves, west then east.
 const PAD_SLOTS := ["p0", "p1"]
 ## Where a pip counts as on its half: this far past its edges, this far above
@@ -70,6 +89,19 @@ const PLANTER_RIM := 0.04
 ## A planter's is its soil's top (PLANTER_DRUM + 0.0325).
 const DISC_TOPS := {"bell": 0.065, "harbour_lantern": 0.05, "crest": 0.044, "window": 0.0475, "walled_window": 0.0475, "planter": PLANTER_DRUM + 0.0325}
 const PAD_SINK := 0.02
+## Where each style's need sign hangs (its centre, goal space) and whether it
+## needs a post of its own: over the tallest part (the bell's beam, the
+## lantern's roof, the window's frame), or on a short post behind a crest or
+## planter, whose own parts are low. Far above a pip's head (kit/prop_rules.gd
+## STEP_HEAD) and behind the plate, so the camera sees it over the goal.
+const NEED_SIGNS := {
+	"bell": {"at": Vector3(0, 2.05, -0.12), "post": false},
+	"harbour_lantern": {"at": Vector3(0, 2.6, -0.85), "post": false},
+	"window": {"at": Vector3(0, 1.85, -0.44), "post": false},
+	"walled_window": {"at": Vector3(0, 1.85, -0.44), "post": false},
+	"crest": {"at": Vector3(0, 1.45, -0.45), "post": true},
+	"planter": {"at": Vector3(0, 1.45, -0.45), "post": true},
+}
 ## The bell style's frame, modelled in Blender (tools/blender/models/bell_frame.py).
 const FRAME := "res://assets/models/bell_frame.glb"
 ## Half the frame's width across its posts (its widest, x).
@@ -130,29 +162,52 @@ func set_lit(on: bool, immediate: bool = false) -> void:
 static func lit(state: Dictionary) -> bool:
 	return bool(state.get("objective_done", false)) and bool(state.get("complete", state.get("objective_done", false)))
 
-## Half the side of the plate under a goal in `goal_style`, `radius_m`
-## across (m): a pad board the goal's size, so a plate's corners lie past the
-## goal's ring as every pad board's do past its pad's; a planter's stays on
-## its soil, inside its drum as it always was.
+## Half the plate's depth under a goal in `goal_style`, `radius_m` across (m):
+## the legacy plate is square, 0.8 x the radius (a pad board the goal's size,
+## kit/pieces/pad.gd board_half; a planter's stays on its soil, inside its
+## drum); a grown plate (GROWN_FROM) is a regular pad board deep.
 static func plate_half(radius_m: float, goal_style: String = "") -> float:
-	if goal_style == "planter": return minf(PadKit.board_half(radius_m), (radius_m - PLANTER_RIM - BASE_PAST) / sqrt(2.0))
-	return PadKit.board_half(radius_m)
+	return plate_extent(radius_m, goal_style).y
+
+## The plate's whole squircle, half extents (x across both halves, z deep; m).
+static func plate_extent(radius_m: float, goal_style: String = "") -> Vector2:
+	var room := radius_m - (PLANTER_RIM + BASE_PAST if goal_style == "planter" else 0.0)
+	if radius_m >= GROWN_FROM:
+		# Two squares side by side, as big as the room's circle allows.
+		var unit := Vector2(2.0, 1.0)
+		var scale := room / _reach(unit)
+		return unit * scale
+	var half := PadKit.board_half(radius_m)
+	if goal_style == "planter": half = minf(half, room / sqrt(2.0))
+	return Vector2(half, half)
+
+## How far from its centre a squircle of half extents `half` reaches (m).
+static func _reach(half: Vector2) -> float:
+	var reach := 0.0
+	for point: Vector2 in Squircle.outline(half): reach = maxf(reach, point.length())
+	return reach
 
 ## Half `slot`'s centre from the goal's centre (m, on the floor), for a goal
 ## `radius_m` across: the first pip's west, the second's east.
 static func pad_offset(slot: String, radius_m: float, goal_style: String = "") -> Vector3:
-	return Vector3((-1.0 if slot == "p0" else 1.0) * plate_half(radius_m, goal_style) * 0.5, 0, 0)
+	return Vector3((-1.0 if slot == "p0" else 1.0) * plate_extent(radius_m, goal_style).x * 0.5, 0, 0)
 
-## Each half's half extents (x, z; m).
+## Each half's bounding half extents (x, z; m).
 static func pad_half(radius_m: float, goal_style: String = "") -> Vector2:
-	return Vector2(plate_half(radius_m, goal_style) * 0.5, plate_half(radius_m, goal_style))
+	var plate := plate_extent(radius_m, goal_style)
+	return Vector2(plate.x * 0.5, plate.y)
 
-## The radius of the goal's disc, a planter's soil: past the plate's corners.
+## The base slab's squircle: past the plate by BASE_RIM (a planter has its
+## round soil and drum instead).
+static func base_extent(radius_m: float, goal_style: String = "") -> Vector2:
+	return plate_extent(radius_m, goal_style) + Vector2.ONE * BASE_RIM
+
+## The radius of the goal's base, a planter's soil: the base squircle's reach.
 static func base_radius(radius_m: float, goal_style: String = "") -> float:
 	if goal_style == "planter": return radius_m - PLANTER_RIM
-	return maxf(radius_m, plate_half(radius_m) * sqrt(2.0) + BASE_PAST)
+	return maxf(radius_m, _reach(base_extent(radius_m, goal_style)))
 
-## How far the goal's base reaches on its floor (m): its disc, a planter's
+## How far the goal's base reaches on its floor (m): its base, a planter's
 ## drum round its soil.
 static func outer_radius(goal_style: String, radius_m: float) -> float:
 	return radius_m if goal_style == "planter" else base_radius(radius_m)
@@ -161,7 +216,7 @@ static func outer_radius(goal_style: String, radius_m: float) -> float:
 func _over(pad: RefCounted, player: Variant) -> bool:
 	if not player is Dictionary: return false
 	var at := Vector3(float(player.get("x", 0)), float(player.get("height", 0)), float(player.get("z", 0))) / 100.0
-	return PadKit.covers(root.position + Vector3(pad.at.x, 0, pad.at.z), pad.radius, pad.half_size, at, PAD_SLACK, PAD_HEIGHT)
+	return PadKit.covers(root.position + Vector3(pad.at.x, 0, pad.at.z), pad.radius, pad.half_size, at, PAD_SLACK, PAD_HEIGHT, pad.shape)
 
 ## Presses each half its own pip stands over in `players` (the snapshot's,
 ## cm, in the parent's space), and lights its outline.
@@ -208,7 +263,7 @@ func missing() -> bool:
 ## Puts a token for each need of `stage`'s goal (kit/goal_needs.gd);
 ## `item_style` (Callable(id) -> String) names a carried item's style.
 func add_needs(stage: Dictionary, item_style: Callable) -> void:
-	needs.build(stage, root, Vector3(0, float(DISC_TOPS[style]), plate_half(_radius, style)), _plate_top() - float(DISC_TOPS[style]), item_style)
+	needs.build(stage, root, NEED_SIGNS[style].at, NEED_SIGNS[style].post, item_style)
 
 ## The plate's top over the goal's floor while free (m).
 func _plate_top() -> float:
@@ -220,7 +275,7 @@ func pad_spots() -> Array:
 	var spots: Array = []
 	for slot: String in pads:
 		var pad: RefCounted = pads[slot]
-		spots.append({"id": "goal:" + slot, "at": root.position + Vector3(pad.at.x, 0, pad.at.z), "radius": pad.radius, "half": pad.half_size, "held": pad.held()})
+		spots.append({"id": "goal:" + slot, "at": root.position + Vector3(pad.at.x, 0, pad.at.z), "radius": pad.radius, "half": pad.half_size, "shape": pad.shape, "held": pad.held()})
 	return spots
 
 func moving() -> bool:
@@ -242,12 +297,12 @@ func moving_parts() -> Array[Node3D]:
 	parts.append_array(needs.moving_parts())
 	return parts
 
-## How far from its centre a goal in `goal_style`, `radius_m` across, with
-## `need_count` need tokens (kit/goal_needs.gd), is drawn on its floor
-## (metres): its disc past the plate's corners, a planter's drum, the tokens
-## at the plate's front edge; the bell's frame is wider than most.
-static func drawn_radius(goal_style: String, radius_m: float, need_count: int = 0) -> float:
-	var drawn := maxf(outer_radius(goal_style, radius_m), GoalNeeds.reach(plate_half(radius_m, goal_style), need_count))
+## How far from its centre a goal in `goal_style`, `radius_m` across, is drawn
+## on its floor (metres): its disc past the plate's corners, a planter's drum;
+## the bell's frame is wider than most. The need sign hangs overhead, above
+## walkable height, so it adds nothing.
+static func drawn_radius(goal_style: String, radius_m: float) -> float:
+	var drawn := outer_radius(goal_style, radius_m)
 	return maxf(drawn, BELL_FRAME_HALF) if goal_style == "bell" else drawn
 
 func _make(goal_style: String, at: Vector3, radius_m: float, parent: Node3D) -> void:
@@ -263,7 +318,8 @@ func _make(goal_style: String, at: Vector3, radius_m: float, parent: Node3D) -> 
 		_: _make_bell(radius_m)
 	parent.add_child(light)
 	for slot: String in PAD_SLOTS:
-		pads[slot] = PadKit.build(PadKit.DEFAULT_STYLE, pad_offset(slot, radius_m, goal_style) + Vector3(0, float(DISC_TOPS[goal_style]) - PAD_SINK, 0), pad_half(radius_m, goal_style).x, root, {"owner": slot, "id": "goal-" + slot, "shadow": false, "size": pad_half(radius_m, goal_style) * 2.0})
+		var whole := plate_extent(radius_m, goal_style)
+		pads[slot] = PadKit.build(PadKit.DEFAULT_STYLE, pad_offset(slot, radius_m, goal_style) + Vector3(0, float(DISC_TOPS[goal_style]) - PAD_SINK, 0), pad_half(radius_m, goal_style).x, root, {"owner": slot, "id": "goal-" + slot, "shadow": false, "squircle": {"half": whole, "side": -1 if slot == "p0" else 1}})
 
 ## The goal's light, off, at `offset` from the goal in the parent's space.
 func _light(color: Color, reach: float, offset: Vector3) -> void:
@@ -273,6 +329,20 @@ func _light(color: Color, reach: float, offset: Vector3) -> void:
 	light.omni_range = reach
 	light.position = root.position + offset
 
+## The goal's one base: a squircle slab (kit/squircle.gd) a rim past the plate,
+## `height` tall, so the plate, its base and the stand read as one piece.
+func _base(radius_m: float, height: float, color: Color) -> void:
+	var slab := Primitives.mesh_node(Squircle.slab(base_extent(radius_m, style), height), Primitives.shared_material(color), Vector3.ZERO, root)
+	slab.name = "GoalBase"
+
+## The goal's ring, lit with it: a squircle frame on the base's rim, `height`
+## over the floor (a planter keeps its round ring on its drum).
+func _ring(radius_m: float, color: Color, height: float) -> MeshInstance3D:
+	var edge := base_extent(radius_m, style) - Vector2.ONE * (BASE_RIM * 0.25)
+	var frame := Primitives.mesh_node(Squircle.frame(edge, RING_BAR, RING_HEIGHT), Primitives.shared_material(color), Vector3(0, height - RING_HEIGHT * 0.5, 0), root)
+	frame.name = "GoalRing"
+	return frame
+
 func _make_bell(radius_m: float) -> void:
 	# The step, beam and posts (assets/models/bell_frame.glb), the right post the
 	# left one turned round; the ring stays a kit ring, lit with the goal.
@@ -280,15 +350,15 @@ func _make_bell(radius_m: float) -> void:
 	var post_colors := {"stone": Parts.STONE, "post": Color("9e9180"), "beam": Color("b4a381")}
 	var left := Models.still(FRAME, "bell_post", post_colors, root)
 	Models.still(FRAME, "bell_post", post_colors, root).transform = Transform3D(Basis(Vector3.UP, PI), Vector3(-left.position.x, 0, left.position.z))
-	ring = Parts.ring(radius_m, Color("a2b3c0"), Vector3(0, 0.07, 0), root)
+	ring = _ring(radius_m, Color("a2b3c0"), 0.07)
 	# Between the posts, under the beam, clear of a pip standing on the ring.
 	chime = Bell.build(root, Vector3(0, 1.46, -0.12), Vector2(0.76, 0.52))
 	bell = chime.body
 	_light(BELL_LIGHT, 4.0, Vector3(0, 1.6, 0))
 
 func _make_lantern(radius_m: float) -> void:
-	Parts.cylinder(base_radius(radius_m), 0.05, SLATE, Vector3(0, 0.025, 0), root)
-	ring = Parts.ring(radius_m, Parts.CREAM, Vector3(0, 0.06, 0), root)
+	_base(radius_m, 0.05, SLATE)
+	ring = _ring(radius_m, Parts.CREAM, 0.06)
 	var base := Vector3(0, 0, -0.85)
 	# The plinth, pole, frame and roof (assets/models/harbour_more.glb); the panes
 	# and the lit lantern stay kit parts.
@@ -306,15 +376,15 @@ func _make_lantern(radius_m: float) -> void:
 ## lamp, since a gold diamond would read as the first spirit's mark, standing
 ## on the disc through the plate's seam at its back edge, just over the plate.
 func _make_crest(radius_m: float) -> void:
-	Parts.cylinder(base_radius(radius_m), 0.044, SLATE, Vector3(0, 0.022, 0), root)
-	ring = Parts.ring(radius_m, Parts.CREAM, Vector3(0, 0.06, 0), root)
+	_base(radius_m, 0.044, SLATE)
+	ring = _ring(radius_m, Parts.CREAM, 0.06)
 	var lamp := float(DISC_TOPS.crest) - PAD_SINK + PadKit.BOARD_TOP + CREST_OVER - float(DISC_TOPS.crest)
 	bell = Parts.cylinder(CREST_LAMP, lamp, Parts.LIGHT, Vector3(0, float(DISC_TOPS.crest) + lamp * 0.5, -plate_half(radius_m)), root)
 	_light(Parts.GOLD, 4.0, Vector3(0, 0.8, 0))
 
 func _make_window(radius_m: float) -> void:
-	Parts.cylinder(base_radius(radius_m), 0.045, Color("748e87"), Vector3(0, 0.025, 0), root)
-	ring = Parts.ring(radius_m, Parts.CREAM, Vector3(0, 0.06, 0), root)
+	_base(radius_m, 0.045, Color("748e87"))
+	ring = _ring(radius_m, Parts.CREAM, 0.06)
 	window = WindowVisual.build(root, Vector3(0, 0, -0.44), 0.80, Parts.HOME_FRAME, Parts.GLASS, Parts.CREAM)
 	bell = window.pane
 	bell.name = "SecondWindow"

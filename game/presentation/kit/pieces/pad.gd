@@ -24,6 +24,7 @@ extends "res://presentation/kit/pieces/piece.gd"
 ## Cost: the board's planks fold into one batch under the part that sinks
 ## (kit/static_batch.gd), so a board draws its planks and its rim.
 const StaticBatch = preload("res://presentation/kit/static_batch.gd")
+const Squircle = preload("res://presentation/kit/squircle.gd")
 const STYLES := ["board", "crank_board", "pan"]
 const DEFAULT_STYLE := "board"
 ## Board: its planks' top over the floor, and how far it sinks while held.
@@ -55,6 +56,10 @@ var at := Vector3.ZERO
 var radius := 0.0
 ## A board's half extents (x, z; m); zero for a pan.
 var half_size := Vector2.ZERO
+## A squircle half's shape (option "squircle"): {half (the whole squircle's
+## half extents), side (-1 west, 1 east), offset (the squircle's centre from
+## the pad's, x, z)}; empty for a rectangle. The hit test follows it (covers).
+var shape: Dictionary = {}
 ## A pan's dish or a board's top, which sinks while held; a crank board's drum.
 var _dish: Node3D
 var _drum: Node3D
@@ -94,11 +99,13 @@ static func rim_inside(pad_style: String, radius_m: float) -> float:
 	return frame_inside(Vector2.ONE * board_half(radius_m)).x
 
 ## Whether `point` (parent space, m) stands over a pad at `spot`: within
-## `slack` of a board's rectangle (half extents `half`), or of a pan's
-## `radius_m` when `half` is zero, and within `height` above or below it.
-static func covers(spot: Vector3, radius_m: float, half: Vector2, point: Vector3, slack: float, height: float) -> bool:
+## `slack` of a board's rectangle (half extents `half`), of a squircle half's
+## `shape` (a pad's shape) when it has one, or of a pan's `radius_m` when
+## `half` is zero, and within `height` above or below it.
+static func covers(spot: Vector3, radius_m: float, half: Vector2, point: Vector3, slack: float, height: float, shape: Dictionary = {}) -> bool:
 	if absf(point.y - spot.y) > height: return false
 	var offset := Vector2(point.x - spot.x, point.z - spot.z)
+	if not shape.is_empty(): return Squircle.inside_half(offset + shape.offset, shape.half, int(shape.side), slack)
 	if half == Vector2.ZERO: return offset.length() <= radius_m + slack
 	return absf(offset.x) <= half.x + slack and absf(offset.y) <= half.y + slack
 
@@ -106,6 +113,9 @@ static func covers(spot: Vector3, radius_m: float, half: Vector2, point: Vector3
 ## across. `options`: "owner" ("p0"/"p1"), "heavy" (a ball pad), "id",
 ## "size": a board's size (Vector2, x and z; square, 2 board_half across, by
 ## default),
+## "squircle": {"half": the whole squircle's half extents, "side": -1 or 1}
+## makes the board that half of a squircle (kit/squircle.gd), its straight edge
+## on the pad's own side of the squircle's centre line; its size is then ignored,
 ## "shadow": false for no contact shadow (a pad on a goal's disc); a board
 ## never casts one.
 static func build(pad_style: String, at: Vector3, radius_m: float, parent: Node3D, options: Dictionary = {}) -> RefCounted:
@@ -164,10 +174,27 @@ func _make(pad_style: String, at_point: Vector3, radius_m: float, parent: Node3D
 	else: _root("Pad_" + pad_style, at_point, parent, false)
 	anchor = root
 	if pad_style == "pan": _make_pan(radius_m, color)
+	elif options.has("squircle"): _make_squircle_board(options.squircle, color)
 	else: _make_board(options.get("size", Vector2.ONE * board_half(radius_m) * 2.0), color, heavy)
 	_rim_rest = rim.position.y
 	# The planks (or the dish) draw as one batch under the part that sinks.
 	StaticBatch.fold(_dish, [self])
+
+## A board that is the `squircle` half (see build): one timber slab, its rim a
+## frame along its curved and straight edges, lit while held.
+func _make_squircle_board(squircle: Dictionary, color: Color) -> void:
+	var whole: Vector2 = squircle.half
+	var side := int(squircle.side)
+	half_size = Vector2(whole.x * 0.5, whole.y)
+	shape = {"half": whole, "side": side, "offset": Vector2(float(side) * whole.x * 0.5, 0)}
+	_dish = Node3D.new()
+	root.add_child(_dish)
+	# The squircle's centre line is the pad's own edge: shift the meshes there.
+	var shift := Vector3(-float(side) * whole.x * 0.5, 0, 0)
+	var slab := Parts.Primitives.mesh_node(Squircle.half_slab(whole, BOARD_TOP, side), Parts.Primitives.shared_material(Parts.TIMBER_LIGHT), shift, _dish)
+	slab.name = "SquircleBoard"
+	var tube := rim_tube(half_size)
+	rim = Parts.Primitives.mesh_node(Squircle.half_frame(whole - Vector2.ONE * RIM_EDGE, tube * 2.0, RIM_HEIGHT, side), Parts.Primitives.shared_material(color), shift + Vector3(0, BOARD_RIM - RIM_HEIGHT * 0.5, 0), _dish)
 
 ## The pan: a timber cradle ring on the floor, the dish in it (its rim the
 ## ring the world lights). Every part stays within the pad's radius and under

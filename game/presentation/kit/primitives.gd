@@ -195,6 +195,16 @@ static func frame_mesh(outer: Vector2, bar: float, height: float) -> Mesh:
 	_meshes[key] = cached
 	return cached
 
+## The one mesh `build` makes for `key` (a string naming its kind and size),
+## built the first time and shared after; never resized in place (kit/
+## squircle.gd's slabs and frames).
+static func cached_built(key: String, build: Callable) -> Mesh:
+	var cached: Mesh = _meshes.get(key)
+	if cached != null: return cached
+	cached = build.call()
+	_meshes[key] = cached
+	return cached
+
 ## Cached meshes for static scenery only; a shared mesh is never resized.
 static func shared_mesh(kind: String, a: float, b: float = 0.0, c: float = 0.0) -> Mesh:
 	var key := "%s|%.4f|%.4f|%.4f" % [kind, a, b, c]
