@@ -379,7 +379,8 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	if not state.has("players"): return
 	_present_stones(state, immediate)
 	_present_water(state, immediate)
-	drowning.show(state.get("drowned", {}))
+	var drowned: Dictionary = state.get("drowned", {})
+	drowning.show(drowned, _knock_shove(drowned))
 
 ## Shown at the end of present, once the water stands at the snapshot's level.
 func _present_drowned(_state: Dictionary) -> void:

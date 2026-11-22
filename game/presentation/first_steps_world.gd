@@ -97,6 +97,13 @@ func _build_lift(authored: Dictionary) -> void:
 	lift_target_height = float(authored.bottom_height_cm) / 100.0
 	lift_piece.set_height(lift_target_height)
 
+## The throw mark is a pad here: the stage that throws names it, and its landing.
+func _throw_pads() -> Array:
+	var found: Array = []
+	for stage: Dictionary in current_level.get("stages", []):
+		if stage.has("throw_control") and stage.has("landing_cm"): found.append({"pad": str(stage.throw_control), "to": _floor_point(stage.landing_cm, str(stage.get("landing_surface", "")))})
+	return found
+
 func _descriptor() -> Dictionary:
 	return ChapterIndex.data(_chapter_key())
 
