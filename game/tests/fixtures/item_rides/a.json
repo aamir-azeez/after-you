@@ -1,24 +1,27 @@
 {
   "catch_assistance": true,
-  "checkpoint_hash": "3a1b45ec23071229786b841b1a5ef293dece0032d146bd96bdfe611f1603110b",
+  "checkpoint_hash": "66b1caf937f98becbb978e07e78d63ad596bdc220deada46d2947aaedcc10028",
   "completed": false,
-  "definition_hash": "f4c5ae4b9b1ba742fb4b33a3baca27f2360e723e6f87d01c31bff157182e2527",
+  "definition_hash": "c49ed404594004fb46fe95efcbd8dcd26d239ec464632aac28da902cf9324347",
   "duration_ticks": 547.0,
-  "final_state_hash": "9d5750d516c13039fb842c85c4ee66163b99dfdc099c2728f66f235a3e65bf1d",
+  "final_state_hash": "9470a2341786432f1c0602e3c00318e10facc8731a131b6ae9c6ad9aafac72b7",
+  "handoff_hash": "562a25b7c516d6824a35e2ebf5ee0572273dc01d99b8c115c0093efaa3e13a4e",
+  "handoff_tick": 0.0,
   "level_id": "item-ride-witness",
   "level_version": 1.0,
   "outcome": {
     "objective_complete": false,
     "source_ready": true
   },
-  "packed": "ARI+ZAACGQACAAADAABgnAACtQAiAJwCAM7WBAAASABkAgAZhgFkAAIyABhkAAIyACQAnAIAtRQAAFiE6HzDdET49mKcNq3B+fvkig2XXs2Jls3efLuJSaVlbJLy8ChYsTp/OIHFx2uYbaHwB/N7IpKOX28PBYsnYrJldCnjO8yivqaJEHu9prcNDXp6/FW6L38jwOUdbRLp25dldhPXiwQtCTnXSKFnsPIqF3Q9Tr/nsd6i+UjHoKH4jHAybCGEITpciQJ1EjWpuONXAkx1lOey3dK5DfCNw5mg+wnuEVN6iu35trvQ+MVPCYQALKjf/7oJYZVtiiOlR9p/Cz+7wupC8I+0E/2mvCfgB1Uo1PeFYA==",
+  "packed": "ARI+ZAACGQACAAADAABgnAACtQAiAJwCAM7WBAAASABkAgAZhgFkAAIyABhkAAIyACQAnAIAtRQAAMDRwX8hTiCQvQIMfif9bp5Wch33o+8ZmjzczhsKzT3AeEaTnq3ze3oEH79n/CC7shSraQXxXqThBavsgNcFwzvlp+eXxe538eKdyOqLsz7yU7jaMRlHTz20+7XMShsfk8T+xJoaXG6Nm2b4Y9WRz4tQDrjp5NRJoQpzwe1CfAOXOrTn2WAEF5MRyCr4EsFIEOZXn2ZZzCII/VhMtDKNJhR+pZEh9Agf8mNnlnpItAKl1eQ/AT8U9i47Vk+aa+ujMfpN2HOq+sqTHSr4XUGNm8pVWa1bdVswyg==",
   "player_slot": "p0",
-  "recording_hash": "56dab238240ad89e63fb3f49cb8d8f7fbe5ba3952e3991445da0ee3779424fa8",
+  "recording_hash": "8aa0d92340c56039c8379132bbb7a5562ff38f52f4359fccc226b2d7584f64c0",
   "role": "a",
   "schema_version": 7.0,
-  "simulation_version": 16.0,
+  "simulation_version": 20.0,
   "source_recording_hash": "",
   "stage_id": "home",
   "stage_version": 1.0,
+  "start_hash": "562a25b7c516d6824a35e2ebf5ee0572273dc01d99b8c115c0093efaa3e13a4e",
   "tick_rate": 30.0
 }

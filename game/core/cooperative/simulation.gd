@@ -15,8 +15,8 @@ const COMFORT_ALIAS_VERSION := 9
 ## pad held by either pip and every lever worked by either. Only a definition
 ## that pins 12 plays them. A stage then completes only with every one of its
 ## levers on, as the server's checkpoint asks of every cooperative stage.
-## Open turns (14) ask no such thing: both pips at the goal is the whole
-## finish (core/physical/open_turns.gd), on the server too. 17 is 14 with the
+## Open turns (18) ask no such thing: both pips at the goal is the whole
+## finish (core/physical/open_turns.gd), on the server too. 21 is 18 with the
 ## shared ball (runtime.gd _shared_ball), for a level with a ball.
 
 func _open_controls() -> bool:
@@ -28,11 +28,11 @@ func _may_complete() -> bool:
 		if not bool(_mechanisms.levers.get(lever.id, false)): return false
 	return true
 
-## Open turns (14): a stage keeps open past its end only the crossings its
+## Open turns (18): a stage keeps open past its end only the crossings its
 ## gates hold on the end state, not one the closing pip merely stood on (a
 ## comfort entry): either pip may play the closing turn, so what it happened
 ## to walk last must not open the next stage. Earlier rules keep them all.
-## The shared ball (17) also keeps the crossing its ball rests on, shut or
+## The shared ball (21) also keeps the crossing its ball rests on, shut or
 ## not, so the next stage never starts with its ball on a crossing that is down.
 func _kept_open(route_id: String) -> bool:
 	if not _open_turns() or _holds_ball(route_id): return true
