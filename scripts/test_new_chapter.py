@@ -11,8 +11,7 @@ what it leaves there:
 - content/chapters/index.gd's development turn limits are one limit for
   every turn that the rules and the server accept for two open turns stages
   (scripts/chapter_tools/turn_limits.py);
-- the journey chapter and the new version pin open turns, the cooperative
-  chapter the open controls.
+- every new chapter and the new version pin open turns.
 With a Godot binary (--godot, or the GODOT environment variable) it then
 imports the copy, writes the new chapters' fixtures, manifest rows and backend
 copies with scripts/chapter_fixtures.py, checks that only the manifest golden
@@ -153,7 +152,7 @@ def check_scaffold(repo: Path, before: dict[str, bytes]) -> list[str]:
     turn = int(found.group(1)) if found and found.group(1) == found.group(2) else 0
     check(0 < turn <= rules.cap_open(2) and not rules.problems(turn, turn, 2),
           f"index.gd's development turn limits are one length the rules and the server accept for two open turns stages: {turn} ticks each")
-    pins = {"scaffold-test-coop@1": "OpenControls.pin(", "scaffold-test-journey@1": "OpenTurns.pin(", "conservatory@3": "OpenTurns.pin("}
+    pins = {"scaffold-test-coop@1": "OpenTurns.pin(", "scaffold-test-journey@1": "OpenTurns.pin(", "conservatory@3": "OpenTurns.pin("}
     for key, pin in pins.items():
         stem = key.split("@")[0].replace("-", "_") + ("" if key.endswith("@1") else "_v" + key.split("@")[1])
         family = "cooperative" if "coop" in key else "journey"
@@ -233,7 +232,7 @@ def check_recordings(binary: str, repo: Path) -> None:
     check(not ok and ("server cannot store" in log or "may last at most" in log), "chapter_turn_limits.py refuses turns past the longest the rules and the server take: " + log[-1500:])
     ok, log = tool(binary, repo, "chapter_turn_limits.py", ["--key", JOURNEY, "--a-seconds", "60", "--b-seconds", "60"])
     definition = json.loads((repo / "game/tests/fixtures/journey/scaffold-test-journey-definition.json").read_text(encoding="utf-8"))
-    check(ok and definition.get("simulation_version") == 14 and definition.get("turn_limits") == {"a_ticks": 1800, "b_ticks": 1800} and "updated backend/src/v2/scaffold-test-journey.json" in log,
+    check(ok and definition.get("simulation_version") == 18 and definition.get("turn_limits") == {"a_ticks": 1800, "b_ticks": 1800} and "updated backend/src/v2/scaffold-test-journey.json" in log,
           "chapter_turn_limits.py writes equal open turns limits and rewrites the fixtures and backend copies: " + log[-2000:])
 
 
