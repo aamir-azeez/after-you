@@ -61,7 +61,7 @@ static func source() -> Dictionary:
 			_island("path", [0, -630, 450, 210], 0), _island("middle", [1950, -280, 2400, 140], 0), _island("boat-steps", [1950, 350, 2400, 630], 0), _island("jetty", [3900, -630, 4350, 210], 0),
 			_island("dock", [5350, -630, 5950, 630], 0), _island("north", [6450, -630, 7050, -280], 0), _island("bend", [6525, -70, 6975, 140], 0), _island("landing", [7550, -630, 8000, -210], 0),
 			_island("bank", [7550, 210, 8000, 630], 0), _island("reeds", [8650, 210, 9100, 630], 0),
-			_island("landing-3", [8500, -630, 8950, -70], 0), _island("stilts", [9600, -630, 10050, -70], 192), _island("jetty-3", [11050, -630, 11500, -70], 192), _island("office", [11050, 210, 11500, 630], 192)],
+			_island("landing-3", [8500, -630, 9175, -70], 0), _island("stilts", [9375, -630, 10050, -70], 192), _island("jetty-3", [11050, -630, 11500, -70], 192), _island("office", [11050, 210, 11500, 630], 192)],
 		"bridges": [
 			_bridge("west-boards", [450, -205, 1950, -109], 0, "path", "middle"), _bridge("reed-stones", [450, -9, 1950, 87], 0, "path", "middle"),
 			_bridge("high-boards", [450, -569, 3900, -473], 0, "path", "jetty"), _bridge("low-boards", [2124, 140, 2220, 350], 0, "middle", "boat-steps"),
@@ -71,9 +71,9 @@ static func source() -> Dictionary:
 			_bridge("north-boards", [5950, -560, 6450, -426], 0, "dock", "north"), _bridge("stair", [7050, -560, 7550, -426], 0, "north", "landing"),
 			_bridge("bank-landing", [7724, -210, 7820, 210], 0, "landing", "bank"), _bridge("swirl-stones", [8000, 369, 8650, 465], 0, "bank", "reeds"),
 			_bridge("bend-boards", [6699, -280, 6795, -70], 0, "north", "bend"), _bridge("over-to-landing", [8000, -560, 8500, -426], 0, "landing", "landing-3"),
-			_bridge("lift-low", [8950, -540, 9600, -440], 0, "landing-3", "stilts"), _bridge("lift-high", [8950, -540, 9600, -440], 192, "landing-3", "stilts"),
+			_bridge("lift-low", [9175, -540, 9375, -440], 0, "landing-3", "stilts"), _bridge("lift-high", [9175, -540, 9375, -440], 192, "landing-3", "stilts"),
 			_bridge("stilts-jetty", [10050, -541, 11050, -445], 192, "stilts", "jetty-3"), _bridge("door", [11224, -70, 11320, 210], 192, "jetty-3", "office")],
-		"stairs": [_stair("rope-ladder", [8950, -236, 9600, -156], "x", "landing-3", "stilts", 0, 192, true)],
+		"stairs": [_stair("rope-ladder", [9175, -236, 9375, -156], "x", "landing-3", "stilts", 0, 192, true)],
 		"stages": [_stream(), _catch(), _home()]}
 
 ## Stage 1: Gold on the path, Teal on the boat steps; no pipsport yet.

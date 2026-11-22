@@ -173,10 +173,10 @@ func _make(pad_style: String, at_point: Vector3, radius_m: float, parent: Node3D
 ## ring the world lights). Every part stays within the pad's radius and under
 ## a step, so a spirit standing in it stands in the dish.
 func _make_pan(radius_m: float, color: Color) -> void:
-	Parts.disc(radius_m, 0.05, Parts.TIMBER, Vector3(0, 0.025, 0), root)
+	Parts.disc(radius_m, 0.05, Parts.TIMBER_DARK, Vector3(0, 0.025, 0), root)
 	_dish = Node3D.new()
 	root.add_child(_dish)
-	Parts.disc(radius_m * 0.9, DISH_THICK, Parts.BRASS, Vector3(0, DISH_Y, 0), _dish, radius_m * 0.96)
+	Parts.disc(radius_m * 0.8, DISH_THICK, Parts.BRASS, Vector3(0, DISH_Y, 0), _dish, radius_m * 0.86)
 	rim = Parts.ring(radius_m, color, Vector3(0, PAN_RIM, 0), _dish)
 
 ## A timber board `size` across (x, z), four thick planks standing on the
