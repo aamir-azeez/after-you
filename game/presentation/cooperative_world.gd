@@ -14,6 +14,7 @@ const SelectorPiece = preload("res://presentation/kit/pieces/selector.gd")
 const PulleyPiece = preload("res://presentation/kit/pieces/pulley.gd")
 ## The new pieces' looks (rules 16): decks, platforms, ladders and fog.
 const NewPieces = preload("res://presentation/kit/new_pieces.gd")
+const Deck = preload("res://presentation/kit/pieces/deck.gd")
 ## The opening glance at the goal (glance_at_goal): this long easing there and
 ## looking, then this long easing back to the spirit.
 const GLANCE_TO := 1.6
@@ -443,6 +444,32 @@ func _hangs_pulley(definition: Dictionary) -> bool:
 func _stepping_stones() -> Array:
 	if new_pieces == null: return []
 	return current_level.get("bridges", []).map(func(route: Dictionary) -> String: return str(route.id)).filter(func(id: String) -> bool: return new_pieces.deck_style(id) == "stones")
+
+## Every plank or rope crossing a gate on the shown stage opens and shuts
+## rolls its deck up while shut (kit/pieces/bridge_roll.gd): a pad, plate,
+## crank or lever holds or works it. Stones, the path behind the falls and a
+## platform's stops show their own cause; a crossing with no gate here stays
+## as it is all stage.
+func _rolls_deck(definition: Dictionary) -> bool:
+	var style: String = new_pieces.deck_style(str(definition.id)) if new_pieces != null else "plank"
+	if style not in ["plank", "rope"]: return false
+	return current_level.get("gates", []).any(func(gate: Dictionary) -> bool: return str(gate.get("route_id", "")) == str(definition.id))
+
+## A rope deck's roll keeps the rope bridge's slats and ropes (kit/pieces/deck.gd).
+func _roll_look(definition: Dictionary) -> Dictionary:
+	if new_pieces == null or new_pieces.deck_style(str(definition.id)) != "rope": return super._roll_look(definition)
+	return {"colors": Deck.roll_colors(), "share": Deck.SLAT_SHARE}
+
+## The pads, levers and controls a gate of the shown stage opens crossing
+## `definition` with.
+func _roll_controls(definition: Dictionary) -> Array:
+	var found: Array = []
+	for gate: Dictionary in current_level.get("gates", []):
+		if str(gate.get("route_id", "")) != str(definition.id): continue
+		var named := PairTags.references(gate)
+		for mechanism: Dictionary in current_level.get("pressure_pads", []) + current_level.get("ball_pads", []) + current_level.get("levers", []) + current_level.get("controls", []):
+			if str(mechanism.get("id", "")) in named and mechanism.get("position_cm") is Array: found.append(mechanism)
+	return found
 
 ## A new piece lays its own deck (kit/new_pieces.gd); every other crossing
 ## keeps the Lighthouse planks.

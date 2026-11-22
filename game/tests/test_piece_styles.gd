@@ -17,6 +17,7 @@ const Goal = preload("res://presentation/kit/pieces/goal.gd")
 const Lift = preload("res://presentation/kit/pieces/lift.gd")
 const Pulley = preload("res://presentation/kit/pieces/pulley.gd")
 const BridgeKit = preload("res://presentation/kit/pieces/bridge.gd")
+const BridgeRoll = preload("res://presentation/kit/pieces/bridge_roll.gd")
 const Raft = preload("res://presentation/kit/pieces/raft.gd")
 const Motion = preload("res://presentation/kit/motion.gd")
 ## Frames (at 60 a second) that outlast any arrival's overshoot.
@@ -47,6 +48,7 @@ func _run() -> void:
 	_check_selector_props(holder)
 	_check_goal_light(holder)
 	_check_arrivals(holder)
+	_check_roll(holder)
 	holder.free()
 	print("PIECE STYLES: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -316,6 +318,50 @@ func _check_arrivals(holder: Node3D) -> void:
 		pad.set_held(false)
 		pad.set_held(true, true)
 		_check(not pad.moving(), "A %s pad held at once never dips" % style)
+
+## A held crossing's deck rolls (kit/pieces/bridge_roll.gd), either way along
+## either axis: shut, the deck is hidden and the roll lies at the near end,
+## its axle across the crossing and its loose end facing the far bank; opening,
+## the deck grows from the near end and the roll runs across over SECONDS; open,
+## the deck is whole and the roll gone; shutting winds it back; an immediate
+## call or reduce motion snaps.
+func _check_roll(holder: Node3D) -> void:
+	for across_x: bool in [true, false]:
+		for near_high: bool in [false, true]:
+			var deck := Node3D.new()
+			deck.position = Vector3(2.0, 0.0, -1.0)
+			holder.add_child(deck)
+			Parts.box(Vector3(2.0, 0.1, 1.0) if across_x else Vector3(1.0, 0.1, 2.0), Parts.TIMBER, Vector3.ZERO, deck)
+			var piece: RefCounted = BridgeRoll.build(deck, holder, deck.position, 0.9, across_x, -1.0, 1.0, near_high, {"slat": Parts.TIMBER, "slat_dark": Parts.TIMBER_DARK, "rope": Parts.CREAM, "log": Parts.TIMBER_DARK})
+			var run := Vector3.RIGHT if across_x else Vector3.BACK
+			var near := -1.0 if not near_high else 1.0
+			var where := "%s, rolled at its %s end" % ["along x" if across_x else "along z", "high" if near_high else "low"]
+			piece.set_open(false, true)
+			var roll: Node3D = piece.roll
+			var along := (roll.global_position - Vector3(2.0, 0.0, -1.0)).dot(run)
+			var axle := roll.global_basis.x.normalized()
+			var loose := roll.global_basis.z.normalized()
+			_check(not deck.visible and roll.visible and absf(axle.dot(run)) < 0.01 and loose.dot(run) * near < -0.99 and along * near > 0.6, "Shut %s: the deck is gone and the roll lies at the near end, across the crossing, its loose end facing the far bank" % where)
+			piece.set_open(true)
+			var frames := 0
+			var halfway := false
+			while piece.moving() and frames < 600:
+				piece.advance(1.0 / 60.0)
+				frames += 1
+				if frames == int(BridgeRoll.SECONDS * 30.0):
+					var laid: float = deck.scale.x if across_x else deck.scale.z
+					var near_edge := (deck.position - Vector3(2.0, 0.0, -1.0)).dot(run) + near * laid
+					halfway = deck.visible and roll.visible and laid > 0.2 and laid < 0.8 and absf(near_edge - near) < 0.001
+			_check(halfway and absf(frames - BridgeRoll.SECONDS * 60.0) <= 2.0, "Opening %s: the deck grows from the near end while the roll runs across, over %.1f s (%d frames)" % [where, BridgeRoll.SECONDS, frames])
+			_check(deck.visible and not roll.visible and deck.scale == Vector3.ONE and deck.position == Vector3(2.0, 0.0, -1.0), "Open %s: the deck is whole where it was built and the roll gone" % where)
+			piece.set_open(false)
+			piece.advance(BridgeRoll.SECONDS * 0.5)
+			_check(deck.visible and roll.visible and piece.moving(), "Shutting %s: the deck rolls back up" % where)
+			piece.reduced_motion = true
+			piece.set_open(true)
+			_check(not piece.moving() and deck.visible and not roll.visible, "With reduce motion %s, the deck is laid at once" % where)
+			piece.root.free()
+			deck.free()
 
 func _pose(node: Node3D) -> Array:
 	var pose: Array = []

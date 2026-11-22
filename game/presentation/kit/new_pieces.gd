@@ -54,8 +54,6 @@ var _platforms: Array = []
 var _ladders: Dictionary = {}
 ## Path id -> the falls' water hung over it while shut.
 var _curtains: Dictionary = {}
-## Rope bridge id -> its slats wound in, shown while shut.
-var _wound: Dictionary = {}
 ## [{"node", "lever"}]: water in a pan while its lantern burns.
 var _fills: Array = []
 var fog: RefCounted
@@ -88,8 +86,9 @@ func lay_deck(definition: Dictionary, deck: Node3D, width: float, depth: float, 
 		# Beside the deck at the deck's own height, so whatever lifts the deck lifts it.
 		_curtains[str(definition.id)] = FallsCurtain.build(_rect(_world.drawn_rect(definition)), deck.position.y, deck.get_parent() as Node3D)
 	elif style == "rope":
-		# The posts stand for good; shut, the slats lie wound in at the gap's end.
-		_wound[str(definition.id)] = Deck.rope_ends(deck.get_parent() as Node3D, deck.position, width, depth, across_x, low, high)
+		# The posts stand for good; shut, the slats lie wound in at the gap's
+		# near end (lighthouse_world _rolls_deck, kit/pieces/bridge_roll.gd).
+		Deck.rope_ends(deck.get_parent() as Node3D, deck.position, width, depth, across_x, low, high)
 
 ## A one way stair's ladder, in place of the world's treads.
 func build_ladder(stair: Dictionary) -> void:
@@ -153,7 +152,6 @@ func present(state: Dictionary, immediate: bool) -> void:
 				entry.piece.arrive(0.0)
 		else: entry.piece.set_value(index, immediate)
 	for id: String in _curtains: _curtains[id].visible = not bool(routes.get(id, false))
-	for id: String in _wound: _wound[id].visible = not bool(routes.get(id, false))
 	for fill: Dictionary in _fills: fill.node.visible = bool(state.get("levers", {}).get(fill.lever, false))
 	for id: String in _ladders:
 		var ladder: Dictionary = _ladders[id]
@@ -252,7 +250,6 @@ func moving_nodes() -> Array:
 	if fog != null: nodes.append(fog.node)
 	if cover != null: nodes.append(cover.node)
 	nodes.append_array(_curtains.values())
-	nodes.append_array(_wound.values())
 	for fill: Dictionary in _fills: nodes.append(fill.node)
 	return nodes
 

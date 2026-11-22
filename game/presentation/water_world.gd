@@ -130,6 +130,11 @@ func _standing_routes(stage: Dictionary) -> Array:
 		if str(id) not in standing: standing.append(str(id))
 	return standing
 
+## A crossing standing in the water is a row of stones that sink and rise:
+## never rolled up.
+func _rolls_deck(definition: Dictionary) -> bool:
+	return str(definition.id) not in _standing_routes(current_level) and super._rolls_deck(definition)
+
 # --- Boats: every one by the float rule ---
 
 ## The dressing's "moored_boats", and every "boat" prop that stands over

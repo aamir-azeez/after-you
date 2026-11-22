@@ -42,6 +42,15 @@ var _held := false
 ## The dipping part's held height, which its dip springs back to.
 var _dip_rest := 0.0
 
+## How far from its centre a pad in `pad_style`, `radius_m` across, is drawn
+## on its floor (metres): a board's corners, a crank board's windlass frame.
+static func drawn_radius(pad_style: String, radius_m: float) -> float:
+	var half := radius_m * 0.8
+	match pad_style:
+		"board": return half * sqrt(2.0)
+		"crank_board": return maxf(half * sqrt(2.0), Vector2(0.205, half + 0.125).length())
+	return radius_m
+
 ## A pad in `style` on the spot `at` (parent space) under `parent`, `radius_m`
 ## across. `options`: "owner" ("p0"/"p1"), "heavy" (a ball pad), "id" (names
 ## a stand spot "StandSpot_<id>").

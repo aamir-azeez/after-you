@@ -26,6 +26,8 @@ const Bell = preload("res://presentation/kit/pieces/bell.gd")
 const Models = preload("res://presentation/kit/models.gd")
 ## The bell style's frame, modelled in Blender (tools/blender/models/bell_frame.py).
 const FRAME := "res://assets/models/bell_frame.glb"
+## Half the frame's width across its posts (its widest, x).
+const BELL_FRAME_HALF := 0.55
 ## The harbour lantern style's post (tools/blender/models/harbour_more.py).
 const HARBOUR := "res://assets/models/harbour_more.glb"
 ## A lit goal's light, before the look's lamp scale (kit/look.gd lamp_energy).
@@ -78,6 +80,11 @@ func moving_parts() -> Array[Node3D]:
 	for shutter: Node3D in window.get("shutters", []): parts.append(shutter)
 	if chime != null: parts.append_array(chime.moving_parts())
 	return parts
+
+## How far from its centre a goal in `goal_style`, `radius_m` across, is
+## drawn on its floor (metres): the bell's frame is wider than most rings.
+static func drawn_radius(goal_style: String, radius_m: float) -> float:
+	return maxf(radius_m, BELL_FRAME_HALF) if goal_style == "bell" else radius_m
 
 func _make(goal_style: String, at: Vector3, radius_m: float, parent: Node3D) -> void:
 	style = goal_style

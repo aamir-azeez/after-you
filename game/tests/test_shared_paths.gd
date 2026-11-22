@@ -413,6 +413,7 @@ const PIECE_BUILDERS := {
 	"res://presentation/island_world.gd": "builds every island world's pads from its family's layout in the style each resolves to (_build_pad), and its crossings as the bridge kit draws them (_build_crossings)",
 	"res://presentation/first_steps_world.gd": "builds its lift in the style it resolves to (lift); its loft bell is the kit bell on its own post and arm",
 	"res://presentation/kit/new_pieces.gd": "builds the new pieces' decks, moving platforms and rope ladders (rules 16) in the styles they resolve to, for cooperative_world",
+	"res://presentation/kit/prop_rules.gd": "builds nothing: reads how wide each pad and goal style is drawn (drawn_radius), so the level checker keeps pieces apart as drawn",
 }
 ## Scripts that read a descriptor's pins themselves, with why.
 const PIN_READERS := {
@@ -462,6 +463,7 @@ const CONTACT_SHADOW_LAYER := "res://presentation/island_world.gd"
 const PIECE_KIT_BASE := "res://presentation/kit/pieces/piece.gd"
 const NO_CONTACT_SHADOW := {
 	"res://presentation/kit/pieces/bridge.gd": "a crossing is ground itself",
+	"res://presentation/kit/pieces/bridge_roll.gd": "a crossing's rolled deck is ground itself, hung at the gap's lip",
 	"res://presentation/kit/pieces/current.gd": "chevrons and ripples drawn on the water",
 	"res://presentation/kit/pieces/lift.gd": "its deck is a floor that rides up and down",
 	"res://presentation/kit/pieces/raft.gd": "rides the water (the water's rings show it)",

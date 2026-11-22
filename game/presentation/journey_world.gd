@@ -788,15 +788,16 @@ func _build_items(stage: Dictionary) -> void:
 			_ladder_rungs(route)
 			await _build_step()
 	# A throw's mark is a cream ring where the thrower stands; its landing the
-	# seed landing's ring of ticks (kit/pieces/socket.gd).
+	# seed landing's ring of ticks the landing spot's size (kit/pieces/socket.gd).
 	for thrown: Dictionary in view.get("throws", []):
 		var mark := ring(float(thrown.mark.get("radius_cm", CarriedItems.SPOT_RADIUS_CM)) / 100.0, CREAM, _at(thrown.mark) + Vector3(0, 0.03, 0), terrain)
 		mark.name = "ThrowMark_" + str(thrown.id)
 		var landing := Node3D.new()
 		landing.name = "ThrowLanding_" + str(thrown.id)
-		landing.position = _at(CarriedItems.spot(view, str(thrown.to)))
+		var target: Dictionary = CarriedItems.spot(view, str(thrown.to))
+		landing.position = _at(target)
 		terrain.add_child(landing)
-		SocketKit.landing(landing)
+		SocketKit.landing(landing, float(target.get("radius_cm", CarriedItems.SPOT_RADIUS_CM)) / 100.0)
 
 ## The node drawing item `id` (over its carrier's head or where it rests), or
 ## null: an ending scene hides it while its own stands in for it.
