@@ -511,7 +511,7 @@ const PIECE_KIT_BASE := "res://presentation/kit/pieces/piece.gd"
 const NO_CONTACT_SHADOW := {
 	"res://presentation/kit/pieces/bridge.gd": "a crossing is ground itself",
 	"res://presentation/kit/pieces/bridge_roll.gd": "a crossing's rolled deck is ground itself, hung at the gap's lip",
-	"res://presentation/kit/pieces/current.gd": "chevrons and ripples drawn on the water",
+	"res://presentation/kit/pieces/current.gd": "chevrons and ripples drawn on the water, and a hoist whose bucket hangs off the floor while it runs",
 	"res://presentation/kit/pieces/lift.gd": "its deck is a floor that rides up and down",
 	"res://presentation/kit/pieces/pad.gd": "a board lies flat on the floor and sinks into it, and a goal's two pads stand on the goal's own disc, which casts its shadow",
 	"res://presentation/kit/pieces/raft.gd": "rides the water (the water's rings show it)",

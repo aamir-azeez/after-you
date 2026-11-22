@@ -269,6 +269,12 @@ func _idle_card_frame() -> void:
 ## After the spirits have moved: a carried item follows its carrier's head, a
 ## float bobs (not with Reduce motion), a pick-up or set-down eases on.
 func _advance_items(delta: float) -> void:
+	# A hoist's bucket runs on first, and an item in it rides along.
+	if _current_piece != null and _current_piece.moving():
+		_current_piece.advance(delta)
+		for id: String in _item_pieces:
+			var seat: Variant = _current_piece.seat(id)
+			if seat is Vector3: _item_pieces[id].place(seat)
 	for piece: RefCounted in _item_pieces.values():
 		piece.reduced_motion = reduced_motion
 		if piece.moving(): piece.advance(delta)
@@ -888,9 +894,14 @@ func _build_items(stage: Dictionary) -> void:
 		await _build_step()
 	var legs: Array = []
 	for leg: Dictionary in view.get("current_legs", []):
-		legs.append({"from": _item_point(CarriedItems.at_spot(CarriedItems.spot(view, str(leg.from)))), "to": _item_point(CarriedItems.at_spot(CarriedItems.spot(view, str(leg.to)))), "control_id": str(leg.get("control_id", "")), "value": str(leg.get("value", ""))})
+		var from_spot: Dictionary = CarriedItems.spot(view, str(leg.from))
+		legs.append({"from": _item_point(CarriedItems.at_spot(from_spot)), "to": _item_point(CarriedItems.at_spot(CarriedItems.spot(view, str(leg.to)))), "control_id": str(leg.get("control_id", "")), "value": str(leg.get("value", "")),
+			"from_id": str(leg.from), "to_id": str(leg.to), "when": leg.get("when", {}), "stop": leg.get("stop", {}), "radius": float(from_spot.get("radius_cm", CarriedItems.SPOT_RADIUS_CM)) / 100.0})
 	if not legs.is_empty():
-		_current_piece = CurrentKit.build(_piece_style("current", str(view.current_legs[0].get("control_id", ""))), legs, terrain, _current_water.bind(view))
+		# A pin by the first leg's start spot (a hoist's bucket), else by its wheel.
+		var first: Dictionary = view.current_legs[0]
+		var look := PieceStyles.pinned_style("current", str(first.from), _descriptor())
+		_current_piece = CurrentKit.build(look if not look.is_empty() else _piece_style("current", str(first.get("control_id", ""))), legs, terrain, _current_water.bind(view), view)
 		_ride_current(legs)
 	await _build_step()
 	var hands := CarriedItems.hands_routes(view)
@@ -1023,6 +1034,8 @@ var _spot_outlines: Dictionary = {}
 func _present_items(state: Dictionary, immediate: bool = false) -> void:
 	if _item_pieces.is_empty(): return
 	var items: Dictionary = state.get("mechanisms", {}).get("items", {})
+	# First the current, so an item resting in a hoist's bucket rides it.
+	if _current_piece != null: _current_piece.present(state, immediate)
 	for id: String in _item_pieces:
 		var item_state: Dictionary = items.get(id, {})
 		_item_decks.erase(id)
@@ -1041,12 +1054,14 @@ func _present_items(state: Dictionary, immediate: bool = false) -> void:
 				else: piece.holder.play_carry_release()
 			piece.rest(_item_point(item_state), terrain, str(item_state.surface_id).is_empty() and not flying, flying, immediate)
 			if new_pieces != null and not new_pieces.ride(str(item_state.surface_id)).is_empty(): _item_decks[id] = [_item_point(item_state), str(item_state.surface_id)]
+		# In a hoist's bucket: on its floor, riding with it.
+		var seat: Variant = _current_piece.carry(id, str(item_state.spot) if holder.is_empty() else "", immediate) if _current_piece != null else null
+		if seat is Vector3: piece.place(seat)
 		# Resting in a solid spot (a winch, a nest) it sits fitted; anywhere else as it lies.
 		piece.fit(holder.is_empty() and Solid.solids(chapter_definition.get("item_spots", [])).any(func(spot: Dictionary) -> bool: return str(spot.id) == str(item_state.spot)))
 	for spot_id: String in _spot_outlines:
 		_spot_outlines[spot_id].visible = not items.values().any(func(held: Dictionary) -> bool: return str(held.holder).is_empty() and str(held.spot) == spot_id)
 	_ride_items()
-	if _current_piece != null: _current_piece.set_controls(state.get("controls", {}))
 
 ## The platforms move first, then the items resting on their decks with them.
 func _advance_carriers(delta: float) -> void:
