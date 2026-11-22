@@ -27,11 +27,16 @@ extends RefCounted
 ## The carried pipsport (train/new-pieces-carry) adds to these same rules, and
 ## so does the swinging bucket (core/physical/swings.gd), the one piece with a
 ## state of its own: a beat counter kept in the world, never in a checkpoint.
+## - Light pieces (core/physical/light_pieces.gd): a selector that steers light
+##   ("optics") and lamps lit only while a when holds ("lit_when"), beside
+##   Conservatory's mirrors and receivers.
 ## Shared by the engine, the catalogs, the blocks and the level tools; it
 ## preloads only open_turns.gd, so a catalog may preload it.
 const OpenTurns = preload("res://core/physical/open_turns.gd")
 const OpenControls = preload("res://core/physical/open_controls.gd")
 const Swings = preload("res://core/physical/swings.gd")
+## Loaded where used, so a catalog preloading this still loads only the two above.
+const LIGHT_PIECES := "res://core/physical/light_pieces.gd"
 const RULES := [OpenControls.PIECES_RULES_VERSION]
 ## How fast a deck travels, cm a second: a lift (its stops share a rectangle)
 ## and a raft. The world draws its decks at the same pace (kit/new_pieces.gd).
@@ -57,7 +62,8 @@ static func pin(level: Dictionary, caps: Dictionary) -> Dictionary:
 	return level
 
 ## What in `level` needs the new pieces: each stage's platforms and sinking
-## stones, a one way stair, a "not" in any gate or goal. [] when none.
+## stones, a one way stair, a "not" in any gate or goal, light pieces. [] when
+## none.
 static func uses(level: Dictionary) -> Array:
 	var found: Array = []
 	for stair: Dictionary in level.get("stairs", []):
@@ -66,6 +72,7 @@ static func uses(level: Dictionary) -> Array:
 	for stage: Dictionary in level.get("stages", []):
 		for key: String in ["platforms", "sinking"]:
 			if not stage.get(key, []).is_empty(): found.append("%s on %s" % [key, stage.id])
+		if load(LIGHT_PIECES).declared(stage): found.append("light on %s" % stage.id)
 		var trees: Array = [stage.get("goal_policy", {}).get("when", {})]
 		for gate: Dictionary in stage.get("gates", []): trees.append(gate.get("when", {}))
 		for tree: Variant in trees:
@@ -76,9 +83,10 @@ static func uses(level: Dictionary) -> Array:
 
 ## Shapes the engine relies on, by stage: every platform's stops are distinct
 ## bridges of one size each opened by a gate, every sinking stone is a bridge,
-## every one way stair says "up". [] when sound.
+## every one way stair says "up", and the light is sound
+## (LightPieces.problems). [] when sound.
 static func problems(level: Dictionary) -> Array:
-	var found: Array = []
+	var found: Array = load(LIGHT_PIECES).problems(level)
 	var bridges: Dictionary = {}
 	for bridge: Dictionary in level.get("bridges", []): bridges[bridge.id] = bridge
 	for stair: Dictionary in level.get("stairs", []):
