@@ -648,12 +648,15 @@ func final_scene_job() -> Dictionary:
 
 ## final_scene_job() for any finished chapter: its proven final checkpoint and
 ## last pair (a room's coordinator holds the same verified chain).
+## Open turns: the proof holds every turn of the stage, and the closing turn
+## replays over the one before it, as it was played and proved.
 static func final_scene_job_for(chapter: String, family: Script, level: Dictionary, final_checkpoint: Dictionary, last: Variant) -> Dictionary:
 	var proof: Variant = final_checkpoint.get("proof")
-	if not last is Dictionary or not proof is Dictionary or not proof.get("checkpoint") is Dictionary: return {}
-	if not Typed.same(proof.get("a"), last.get("a")) or not Typed.same(proof.get("b"), last.get("b")) or not last.b is Dictionary: return {}
+	if not last is Dictionary or not proof is Dictionary or not proof.get("checkpoint") is Dictionary or not last.get("b") is Dictionary: return {}
+	if not Typed.same(OpenTurns.proof_turns(proof), OpenTurns.pair_turns(last)): return {}
+	var memory := OpenTurns.closing_memory(last)
 	return {"chapter": chapter, "family": family, "level": level, "stage": str(last.b.get("stage_id", "")), "checkpoint": proof.checkpoint,
-		"prior": last.a, "role": "b", "saved": {}, "proven": true, "turn": last.b}
+		"prior": memory.prior, "chain": memory.chain, "role": "b", "saved": {}, "proven": true, "turn": last.b}
 
 
 ## The worker: sets up and replays final_scene_job()'s turn. {ok, simulation}.

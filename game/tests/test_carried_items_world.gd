@@ -10,6 +10,9 @@ extends SceneTree
 ##   keel its draft under the surface, its deck clear of it;
 ## - the both-hands ladder wears rungs, so a carrier's stop has its cause;
 ## - the current's legs are bright while their wheel shows their value;
+## - set down on a pad (a pan, a board, a floor button), the item rests on top
+##   of it, sunk with it while held, never hidden inside it; every pad style
+##   says how high its standing part stands (kit/pieces/pad.gd top);
 ## - what moves is kept whole by the static fold.
 const World = preload("res://presentation/journey_world.gd")
 const Simulation = preload("res://core/journey/simulation.gd")
@@ -19,6 +22,7 @@ const Floats = preload("res://presentation/kit/floats.gd")
 const CurrentKit = preload("res://presentation/kit/pieces/current.gd")
 const Styles = preload("res://content/dressing/prop_styles.gd")
 const IslandWorld = preload("res://presentation/island_world.gd")
+const PadKit = preload("res://presentation/kit/pieces/pad.gd")
 var checks := 0
 var failures := 0
 
@@ -35,6 +39,12 @@ func _run() -> void:
 	for style: String in Styles.SLOTS.current:
 		var piece: RefCounted = CurrentKit.build(style, [{"from": Vector3.ZERO, "to": Vector3(2, 0, 0), "control_id": "c", "value": "v"}], holder)
 		_check(piece.style == style and piece.moving_parts().size() == 2 and _meshes(piece.root) == 2 and (piece.moving_parts()[0].get_child(0) as MeshInstance3D).mesh.get_faces().size() >= 6 * 36, "Current %s lays its marks in a bright row and a faint one, one mesh a row" % style)
+	for style: String in PadKit.STYLES:
+		for held: bool in [false, true]:
+			var pad: RefCounted = PadKit.build(style, Vector3(1, 0.5, 2), 0.3, holder)
+			pad.set_held(held, true)
+			var surface := _standing_top(pad)
+			_check(pad.top() >= surface - 0.001 and pad.top() <= surface + 0.001, "A %s pad%s says its standing part's top (%.4f, meshes %.4f)" % [style, " held" if held else "", pad.top(), surface])
 	holder.free()
 	await _world()
 	print("CARRIED ITEMS WORLD: %d checks, %d failures" % [checks, failures])
@@ -88,6 +98,15 @@ func _world() -> void:
 	world.present(state, true)
 	_check(current._legs.all(func(leg: Dictionary) -> bool: return leg.live.visible and not leg.faint.visible), "Turned north, both legs run bright")
 	_check(world._static_keep().has(current._legs[0].live), "The current's rows are kept whole by the static fold")
+	var board: RefCounted = world.pad_pieces.get("sluice-board")
+	var floor_y: float = world._at({"position_cm": [-350, 300], "surface_id": "quay"}).y
+	state.mechanisms = state.mechanisms.duplicate(true)
+	state.mechanisms.items.pipsport = {"holder": "", "spot": "", "x": -350, "z": 300, "height": 0, "surface_id": "quay"}
+	for pressed: bool in [false, true]:
+		state.hold_pads = {"sluice-board": pressed}
+		world.present(state, true)
+		var y: float = pieces.pipsport.root.position.y
+		_check(board != null and pieces.pipsport.root.visible and is_equal_approx(y, floor_y + board.top()) and y > floor_y + 0.02, "Set down on the board%s, the pipsport rests on top of it (%.3f over the floor)" % [" held" if pressed else "", y - floor_y])
 	world.queue_free()
 	await process_frame
 
@@ -97,6 +116,19 @@ func _walk(sim: RefCounted, target: Array) -> void:
 			var distance := int(target[0 if axis == "x" else 1]) - int(sim._players[sim.active_slot][axis])
 			if absi(distance) <= 1: break
 			sim.step({"move_" + axis: clampf(float(distance) / 8.0, -1.0, 1.0)})
+
+## The top of a pad's standing part over its floor: its wide meshes (the
+## disc, the dish, the planks), not its rim ring, its mark or a windlass.
+func _standing_top(pad: RefCounted) -> float:
+	var part: Node3D = pad.spot if pad.spot != null else pad._dish if pad._dish != null else pad.root
+	var floor_y: float = (pad.spot.get_parent() as Node3D).global_position.y + pad.spot._rest_y if pad.spot != null else pad.root.global_position.y
+	var top := -INF
+	for found: Node in part.find_children("*", "MeshInstance3D", false, false):
+		var mesh := found as MeshInstance3D
+		if mesh == pad.rim: continue
+		var box: AABB = mesh.global_transform * mesh.get_aabb()
+		if box.size.x >= 0.3: top = maxf(top, box.end.y - floor_y)
+	return top
 
 func _meshes(node: Node) -> int:
 	return node.find_children("*", "MeshInstance3D", true, false).size() + (1 if node is MeshInstance3D else 0)
