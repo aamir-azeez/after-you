@@ -15,9 +15,8 @@ const PUNT := "res://assets/models/punt.glb"
 ## How far a raised ramp stands up (radians), and how fast it swings (radians a second).
 const RAMP_RAISED := 0.95
 const RAMP_RATE := 1.6
-## Tide rules (journey simulation.gd): a closing crossing's edges flash this
-## colour. A drowning is the water world's (kit/drowning.gd).
-const CLOSING_COLOR := Color("f08a5d")
+## A closing crossing's warning and a drowning are every world's
+## (kit/closing_warning.gd, kit/drowning.gd).
 ## The sea gates' leaves stand across both ends of the harbour mouth.
 const MOUTH_X := [-704, -512]
 const SEA_GATE_Z := 5.20
@@ -95,9 +94,8 @@ var _ramps: Dictionary = {}
 var _ramp_on: Dictionary = {}
 ## Each control, lever and pad of the chapter by id -> its owner slot.
 var _owners: Dictionary = {}
-## Kept-crossing masts, raised with the water that covers their crossing.
+## How far a kept crossing's pennant stands over the highest water over it.
 const MAST_CLEARANCE := 0.25
-var _kept_masts: Array[Dictionary] = []
 ## View-plane boxes of bubbles already placed this frame by _clear_scenery: the
 ## first _scenery_placed_count entries; and the scenery marks it clears, the
 ## first _scenery_mark_count entries, with the control each belongs to. The
@@ -148,7 +146,6 @@ func _forget_stage() -> void:
 	_ramps.clear()
 	_ramp_on.clear()
 	_owners = _mechanism_owners()
-	_kept_masts.clear()
 	_bubbles_placed = false
 
 func _terrain_name() -> String:
@@ -175,6 +172,15 @@ func _build_water_scenery() -> void:
 ## Read from the catalog, as a stage's own dressing loads after its floors.
 func _decks_data() -> Dictionary:
 	return DressingCatalog.for_key(_chapter_key()).get("decks", {})
+
+## The dressing's "stones" decks, with any a new piece lays.
+func _stepping_stones() -> Array:
+	var found: Array = super._stepping_stones()
+	var decks := _decks_data()
+	for id: String in decks:
+		if str(decks[id]) == "stones" and id not in found: found.append(id)
+	found.sort()
+	return found
 
 ## Every control, lever and pad of every stage: id -> its owner slot.
 func _mechanism_owners() -> Dictionary:
@@ -211,6 +217,11 @@ func _route(id: String) -> Dictionary:
 	return {}
 
 # --- Crossings: decks at their own height ---
+
+## The tide's decks show the water: dry and laid, or flooded with their ghost
+## (_present_water). None rolls up.
+func _rolls_deck(_definition: Dictionary) -> bool:
+	return false
 
 func _build_bridge(definition: Dictionary) -> void:
 	# The water world lifts the deck to its height.
@@ -249,8 +260,14 @@ func _gate_for(route_id: String) -> Dictionary:
 ## hump, round stepping stones, piled timber, a rope-railed gangway, flagged
 ## towpath stones or a punt, over the whole crossing. The long edges glow while
 ## the crossing is open, in gold where the tide opens it.
-func _lay_deck(route: Dictionary, deck: Node3D, width: float, depth: float, across_x: bool, _low: float, _high: float) -> void:
+func _lay_deck(route: Dictionary, deck: Node3D, full_width: float, full_depth: float, across_x: bool, low: float, high: float) -> void:
 	var id := str(route.id)
+	# Laid over the open span only (low..high along the crossing): where a
+	# floor at the deck's height reaches over its end (kit/walk_reach.gd),
+	# that floor is already drawn there.
+	var before := deck.get_child_count()
+	var width := high - low if across_x else full_width
+	var depth := full_depth if across_x else high - low
 	var length := width if across_x else depth
 	var lane := depth if across_x else width
 	var kind := str(_decks_data().get(id, "timber"))
@@ -266,9 +283,11 @@ func _lay_deck(route: Dictionary, deck: Node3D, width: float, depth: float, acro
 			# Neighbouring stones, and the end ones and the terraces, never
 			# overlap: their tops share one height.
 			var radius := minf(0.26, minf(lane * 0.5 - 0.02, length / float(count) * 0.5 - 0.01))
-			# Each stone is a column standing on the seabed (a centimetre above it),
-			# so it stands in the channel's water at any level.
-			var column := float(WaterBodies.low_cm(route)) / 100.0 - waters.seabed() - 0.01
+			# Each stone is one column from its top down into the seabed, long
+			# enough that its foot stays on the bed while it stands STONE_TALL over
+			# its open height (left high, water_world.gd), so it stands in the
+			# channel's water at any level and never changes size.
+			var column := float(WaterBodies.low_cm(route)) / 100.0 - waters.seabed() - 0.01 + STONE_TALL
 			for index in range(count):
 				var along := (float(index) + 0.5) / float(count) * length - length * 0.5
 				var at := Vector3(along, -column * 0.5, 0) if across_x else Vector3(0, -column * 0.5, along)
@@ -286,9 +305,11 @@ func _lay_deck(route: Dictionary, deck: Node3D, width: float, depth: float, acro
 			punt.scale = Vector3(length / 1.92, 1.0, lane / 1.28)
 			if not across_x: punt.rotation.y = PI / 2.0
 		_:
-			for index in range(8):
-				var offset := -length / 2.0 + (index + 0.5) * length / 8.0
-				var size := Vector3(width / 8.0, 0.10, depth) if across_x else Vector3(width, 0.10, depth / 8.0)
+			# Planks about a quarter metre wide, as the world's own decks.
+			var count := maxi(1, roundi(length / 0.25))
+			for index in range(count):
+				var offset := -length / 2.0 + (index + 0.5) * length / float(count)
+				var size := Vector3(width / float(count), 0.10, depth) if across_x else Vector3(width, 0.10, depth / float(count))
 				box(size, Props.TIMBER_LIGHT.darkened(0.05 * float(index % 2)), Vector3(offset, -0.05, 0) if across_x else Vector3(0, -0.05, offset), deck)
 			if kind == "gangway":
 				for side in [-1, 1]:
@@ -303,7 +324,8 @@ func _lay_deck(route: Dictionary, deck: Node3D, width: float, depth: float, acro
 		var trim := box(Vector3(width, 0.025, 0.035) if across_x else Vector3(0.035, 0.025, depth), GOLD if tide else LIGHT_COLOR, Vector3(0, 0.015, side * (depth / 2.0 - 0.025)) if across_x else Vector3(side * (width / 2.0 - 0.025), 0.015, 0), deck)
 		trim.name = "OpenEdge"
 		_glow(trim, GOLD if tide else LIGHT_COLOR, 0.9 if tide else 0.65)
-		trim.set_meta("edge", [GOLD if tide else LIGHT_COLOR, 0.9 if tide else 0.65])
+	var shift := Vector3((low + high) * 0.5, 0, 0) if across_x else Vector3(0, 0, (low + high) * 0.5)
+	for index in range(before, deck.get_child_count()): (deck.get_child(index) as Node3D).position += shift
 
 ## A shut crossing stays in view as a faint outline at its own height (sunk
 ## under the water when the tide covers it), so the other ways can be read.
@@ -338,39 +360,49 @@ func _ghost(route: Dictionary) -> void:
 ## A mooring post with a pennant, and a gold edge along both sides of the deck,
 ## show a crossing kept for good. They belong to the deck's remembered-footsteps
 ## marker, so they show only while kept. The post and its knob cast no shadow,
-## so nothing dims the pennant, and the post grows to keep the pennant above
-## water that covers the deck.
+## so nothing dims the pennant. The post is built once, tall enough that the
+## pennant stands MAST_CLEARANCE over the highest water over its crossing, and
+## never changes size (water: fixed-size pieces, never stretched).
 func _kept_pennant(route: Dictionary) -> void:
 	var memories: Node3D = _memory_markers.get(route.id)
 	if memories == null: return
-	var r: Array = route.rect_cm
-	var width := float(r[2] - r[0]) / 100.0
-	var depth := float(r[3] - r[1]) / 100.0
-	var at := Vector3(-width / 2.0 + 0.10, 0, depth / 2.0 - 0.10)
-	var post := box(Vector3(0.06, 0.50, 0.06), CREAM, at + Vector3(0, 0.25, 0), memories)
+	# On the deck as laid: its drawn width over the open span (open_span),
+	# never on a floor reaching over its end.
+	var r := drawn_rect(route)
+	var across_x := WalkReach.run_axis(route, WalkReach.walkable(current_level)) == 0
+	var span := open_span(route)
+	var centre := Vector2(float(r[0] + r[2]), float(r[1] + r[3])) / 200.0
+	var middle := (float(span[0]) + float(span[1])) / 200.0 - (centre.x if across_x else centre.y)
+	var length := (float(span[1]) - float(span[0])) / 100.0
+	var width := length if across_x else float(r[2] - r[0]) / 100.0
+	var depth := float(r[3] - r[1]) / 100.0 if across_x else length
+	var shift := Vector3(middle, 0, 0) if across_x else Vector3(0, 0, middle)
+	# Ten and a half centimetres in from the deck's west end, clear of the seam
+	# by it and of a remembered route's marker.
+	var at := Vector3(-width / 2.0 + 0.105, 0, depth / 2.0 - 0.10) + shift
+	# The water over its crossing (the first body's off the water) at its highest.
+	var body := waters.body_of(route.rect_cm)
+	if body.is_empty(): body = waters.first_body()
+	var highest := -INF
+	for level: float in waters.levels_of(body).values(): highest = maxf(highest, level)
+	var tall := maxf(0.50, highest + MAST_CLEARANCE - float(route.get("height_cm", 0)) / 100.0)
+	var post := box(Vector3(0.06, tall, 0.06), CREAM, at + Vector3(0, tall * 0.5, 0), memories)
 	post.name = "KeptPost"
 	post.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	var knob := sphere(0.05, GOLD, at + Vector3(0, 0.52, 0), memories)
+	var knob := sphere(0.05, GOLD, at + Vector3(0, tall + 0.02, 0), memories)
 	knob.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	var flag := box(Vector3(0.36, 0.22, 0.015), GOLD, at + Vector3(0.19, 0.38, 0), memories)
+	var flag := box(Vector3(0.36, 0.22, 0.015), GOLD, at + Vector3(0.19, tall - 0.12, 0), memories)
 	flag.name = "KeptPennant"
 	_glow(flag, GOLD, 1.0)
-	# The mast rides the water over its crossing (the first body's off the water).
-	var body := waters.body_of(r)
-	if body.is_empty(): body = waters.first_body()
-	var mast := {"deck": float(route.get("height_cm", 0)) / 100.0, "post": post, "knob": knob, "flag": flag}
-	_kept_masts.append(mast)
-	waters.ride(body, _raise_mast.bind(mast))
-	var across_x := width >= depth
 	for side in [-1, 1]:
-		var edge := box(Vector3(width - 0.05, 0.02, 0.08) if across_x else Vector3(0.08, 0.02, depth - 0.05), GOLD, Vector3(0, 0.035, side * (depth / 2.0 - 0.075)) if across_x else Vector3(side * (width / 2.0 - 0.075), 0.035, 0), memories)
+		var edge := box(Vector3(width - 0.05, 0.02, 0.08) if across_x else Vector3(0.08, 0.02, depth - 0.05), GOLD, shift + (Vector3(0, 0.035, side * (depth / 2.0 - 0.075)) if across_x else Vector3(side * (width / 2.0 - 0.075), 0.035, 0)), memories)
 		edge.name = "KeptEdge"
 		_glow(edge, GOLD, 1.4)
 
 ## A stub's timber frame stays in view while its boards are up, so its pads
 ## and levers never float; posts carry it down to the harbour floor.
 func _stub_frame(route: Dictionary) -> void:
-	var r: Array = route.rect_cm
+	var r := drawn_rect(route)
 	var y := float(route.height_cm) / 100.0 - 0.07
 	var frame := Node3D.new()
 	frame.name = "StubFrame_" + str(route.id)
@@ -387,7 +419,7 @@ func _stub_frame(route: Dictionary) -> void:
 		cylinder(0.035, y - waters.seabed(), PILE, Vector3(x, (y + waters.seabed()) * 0.5, tip), frame)
 
 func _piles(route: Dictionary) -> void:
-	var r: Array = route.rect_cm
+	var r := drawn_rect(route)
 	var top := float(route.height_cm) / 100.0 - 0.10
 	for x: int in [r[0] + 10, r[2] - 10]:
 		for z: int in [r[1] + 8, r[3] - 8]:
@@ -553,7 +585,7 @@ func _water_mark(value: String) -> int:
 ## Where a route's marks and pair tags sit: a stub's mouth on its own floor,
 ## or just before a crossing's west end, at the route's own height.
 func _route_anchor(route: Dictionary) -> Vector3:
-	var r: Array = route.rect_cm
+	var r := drawn_rect(route)
 	var height := float(route.get("height_cm", route.get("from_height_cm", 0))) / 100.0 + 0.025
 	if _is_stub(route):
 		for island: Dictionary in chapter_definition.islands:
@@ -588,11 +620,13 @@ func _deck_edge_strips() -> Array:
 	var found: Array = []
 	for route: Dictionary in current_level.get("bridges", []):
 		if not _decks.has(str(route.id)): continue
-		var r: Array = route.rect_cm
-		var width := float(r[2] - r[0]) / 100.0
-		var depth := float(r[3] - r[1]) / 100.0
-		var across_x := width >= depth
-		var centre := Vector2(float(r[0] + r[2]) * 0.005, float(r[1] + r[3]) * 0.005)
+		# As _lay_deck lays them: the drawn width, over the open span.
+		var r := drawn_rect(route)
+		var across_x := WalkReach.run_axis(route, WalkReach.walkable(current_level)) == 0
+		var span := open_span(route)
+		var width := (float(span[1]) - float(span[0])) / 100.0 if across_x else float(r[2] - r[0]) / 100.0
+		var depth := float(r[3] - r[1]) / 100.0 if across_x else (float(span[1]) - float(span[0])) / 100.0
+		var centre := Vector2((float(span[0]) + float(span[1])) * 0.005, float(r[1] + r[3]) * 0.005) if across_x else Vector2(float(r[0] + r[2]) * 0.005, (float(span[0]) + float(span[1])) * 0.005)
 		var half := Vector2(width * 0.5, 0.0175) if across_x else Vector2(0.0175, depth * 0.5)
 		for side in [-1, 1]:
 			var at := centre + (Vector2(0, side * (depth / 2.0 - 0.025)) if across_x else Vector2(side * (width / 2.0 - 0.025), 0))
@@ -627,7 +661,7 @@ func _build_post_mark(route: Dictionary, value: String) -> void:
 ## capped with a wave sign that keeps its size on screen.
 ## A crossing over water stands its post in the channel; a stub on its floor.
 func _build_gauge(route: Dictionary, values: Array) -> void:
-	var r: Array = route.rect_cm
+	var r := drawn_rect(route)
 	var base := waters.seabed()
 	var at := point([r[0] + 16, r[3] + 12])
 	var top := float(route.get("height_cm", 0)) / 100.0 + 0.92
@@ -672,16 +706,6 @@ func _build_slack_mark(route: Dictionary) -> void:
 		_slack_marks.append(wave)
 
 # --- Water, chamber, sea gates, mouth lamps and spout ---
-
-## Keeps a kept crossing's pennant MAST_CLEARANCE above the water at `level`.
-func _raise_mast(level: float, mast: Dictionary) -> void:
-	if not is_instance_valid(mast.post): return
-	var lift := maxf(0.0, level + MAST_CLEARANCE - (float(mast.deck) + 0.50))
-	var post: MeshInstance3D = mast.post
-	post.scale.y = (0.50 + lift) / 0.50
-	post.position.y = (0.50 + lift) * 0.5
-	(mast.knob as Node3D).position.y = 0.52 + lift
-	(mast.flag as Node3D).position.y = 0.38 + lift
 
 func _advance_water(delta: float) -> void:
 	super._advance_water(delta)
@@ -739,7 +763,7 @@ func _build_mouth_lamps() -> void:
 		for candidate: Dictionary in chapter_definition.get("bridges", []):
 			if candidate.id == MOUTHS[value]: route = candidate
 		if route.is_empty(): continue
-		var r: Array = route.rect_cm
+		var r := drawn_rect(route)
 		var at := point([r[0] + 40, r[3] + 12])
 		var top := 1.20
 		# The lamp post's glass stands where the lamp always has, its foot on a
@@ -844,7 +868,7 @@ func _build_ramps() -> void:
 	_ramp_on = RampRules.ramps(chapter_definition, waters.water)
 	for id: String in _ramp_on:
 		var route := _route(id)
-		var r: Array = route.rect_cm
+		var r := drawn_rect(route)
 		var length := float(r[2] - r[0]) / 100.0
 		var lane := float(r[3] - r[1]) / 100.0
 		var hinge := Node3D.new()
@@ -853,9 +877,9 @@ func _build_ramps() -> void:
 		terrain.add_child(hinge)
 		for index in range(6):
 			var along := (float(index) + 0.5) / 6.0 * length
-			box(Vector3(length / 6.0 - 0.012, 0.05, lane - 0.28), TIMBER.lightened(0.08 * float(index % 2)), Vector3(along, 0, 0), hinge)
+			box(Vector3(length / 6.0 - 0.012, 0.05, lane - 0.06), TIMBER.lightened(0.08 * float(index % 2)), Vector3(along, 0, 0), hinge)
 		for side in [-1, 1]:
-			box(Vector3(length, 0.06, 0.05), TIMBER.darkened(0.2), Vector3(length * 0.5, 0.02, side * (lane * 0.5 - 0.125)), hinge)
+			box(Vector3(length, 0.06, 0.05), TIMBER.darkened(0.2), Vector3(length * 0.5, 0.02, side * (lane * 0.5 - 0.03)), hinge)
 			cylinder(0.04, 0.42, PILE, Vector3(-0.06, 0.21, side * (lane * 0.5 - 0.06)) + hinge.position, terrain).name = "RampPost"
 		var drum := cylinder(0.07, lane - 0.16, ROPE.darkened(0.15), hinge.position + Vector3(-0.06, 0.36, 0), terrain)
 		drum.name = "RampDrum"
@@ -884,33 +908,6 @@ func _swing_ramps(delta: float) -> void:
 		if not is_instance_valid(hinge): continue
 		var target := float(hinge.get_meta("target"))
 		if not is_equal_approx(hinge.rotation.z, target): hinge.rotation.z = move_toward(hinge.rotation.z, target, RAMP_RATE * maxf(delta, 0.0))
-
-## Tide rules: while a crossing closes (route id -> ticks left before it
-## shuts, from the snapshot), its edges flash and the water still moving
-## slows to reach its new level as the crossing shuts, so the warning is the
-## water rising over it. Nothing here in rules without closing crossings.
-func _show_closing(closing: Dictionary) -> void:
-	for id: String in _decks:
-		var deck: Node3D = _decks[id]
-		if not is_instance_valid(deck): continue
-		for child: Node in deck.get_children():
-			var trim := child as MeshInstance3D
-			if trim == null or not trim.has_meta("edge"): continue
-			if closing.has(id):
-				if not trim.has_meta("warned"):
-					var warned_material := trim.material_override.duplicate()
-					# A copy is never a kit look, whatever it was copied from.
-					warned_material.remove_meta(Primitives.SHARED_META)
-					trim.material_override = warned_material
-					trim.set_meta("warned", true)
-				# Reduce motion: a steady glow instead of a flash.
-				_glow(trim, CLOSING_COLOR, 1.1 if reduced_motion else (1.6 if int(closing[id]) % 10 < 5 else 0.5))
-			elif trim.has_meta("warned"):
-				var edge: Array = trim.get_meta("edge")
-				_glow(trim, edge[0], float(edge[1]))
-	# Water rising past a closing crossing's deck reaches it as the crossing
-	# shuts, then goes on at its usual rate.
-	waters.pace_closing(closing)
 
 ## Warm pools of light under the bank lamps that name "bunting" in the
 ## dressing, and bunting strung from each to that point along its bank.
@@ -941,16 +938,6 @@ func _build_lamplight() -> void:
 func present_history(checkpoint: Dictionary) -> void:
 	_show_first_stage()
 	super.present_history(checkpoint)
-	# The kept-crossing marks are drawn at ground level by the shared adapter;
-	# raise each pair to its crossing's height.
-	if is_instance_valid(_remembered):
-		var index := 0
-		for route: Dictionary in chapter_definition.get("bridges", []):
-			if route.id not in _latched_bridge_ids: continue
-			for offset in range(2):
-				if index + offset < _remembered.get_child_count():
-					(_remembered.get_child(index + offset) as Node3D).position.y += float(route.get("height_cm", 0)) / 100.0
-			index += 2
 	_history_tide = str(checkpoint.get("mechanisms", {}).get("controls", {}).get("tide", ""))
 
 func _present_water(state: Dictionary, immediate: bool) -> void:
@@ -1013,7 +1000,9 @@ func _present_water(state: Dictionary, immediate: bool) -> void:
 	for id: String in _ghosts:
 		if is_instance_valid(_ghosts[id]) and _decks.has(id): _ghosts[id].visible = not _decks[id].visible
 	waters.show_floods(_decks)
-	_show_closing(state.get("route_progress", {}).get("closing", {}))
+	# Water rising past a closing crossing's deck reaches it as the crossing
+	# shuts, then goes on at its usual rate (its rim flashes: kit/closing_warning.gd).
+	waters.pace_closing(state.get("route_progress", {}).get("closing", {}))
 	_occupy_water(state, immediate)
 	if is_instance_valid(_bell) and bool(state.get("complete", false)): _glow(_bell, LIGHT_COLOR, 1.6)
 
@@ -1048,7 +1037,6 @@ func _folds_static_scenery() -> bool:
 func _static_keep() -> Array:
 	var keep := super._static_keep()
 	for group: Dictionary in [_decks, _memory_markers, _ghosts]: keep.append_array(group.values())
-	for mast: Dictionary in _kept_masts: keep.append_array([mast.post, mast.knob, mast.flag])
 	for wheel: Dictionary in _wheels.values(): keep.append(wheel.wheel)
 	for gauge: Dictionary in _gauges.values(): keep.append_array([gauge.post, gauge.icon] + gauge.bands)
 	for lamp: Dictionary in _lever_lamps.values(): keep.append(lamp.lamp)
@@ -1109,7 +1097,9 @@ func _clear_scenery() -> void:
 	for bubble: LabelBubble in _bubbles:
 		if not is_instance_valid(bubble) or not bubble.visible: continue
 		var own := _bubble_owner(bubble)
-		var rect := bubble.plane_rect()
+		# Where the shared placement stood it (its lean and lift), without the bob.
+		var rect := bubble.plane_rect(true)
+		rect.position += Vector2(bubble.lean, -bubble.lift * rise)
 		var climb := 0.0
 		for _pass in range(4):
 			var moved := false
@@ -1146,13 +1136,14 @@ func _mark_scenery() -> void:
 		var reach := Vector2(VALVE_MARK_REACH, VALVE_MARK_REACH * LabelBubble.screen_up().y)
 		_add_mark(Rect2(hub - reach, reach * 2.0), id)
 	for id: String in _physical_levers:
-		var knob := LabelBubble.plane_point((_physical_levers[id] as Node3D).global_transform * Vector3(0, 0.4, 0))
+		# Where the knob rests at the shown value, not where its throw has got to.
+		var knob := LabelBubble.plane_point((_physical_levers[id] as Node3D).get_parent().global_transform * _lever_rest(id) * Vector3(0, 0.4, 0))
 		_add_mark(Rect2(knob - Vector2.ONE * 0.09, Vector2.ONE * 0.18), id)
 	for id: String in _physical_pads:
 		var pad := _physical_pads[id] as MeshInstance3D
 		var radius: float = (pad.mesh as TorusMesh).outer_radius if pad.mesh is TorusMesh else 0.2
-		# A stand spot sinks while held; its pad marks where it stands free.
-		var at := LabelBubble.plane_point(pad_pieces[id].spot.rest_rim() if pad_pieces.has(id) and pad_pieces[id].spot != null else pad.global_position)
+		# A pad sinks while held; its mark is where its rim stands free.
+		var at := LabelBubble.plane_point(pad_pieces[id].rest_rim() if pad_pieces.has(id) else pad.global_position)
 		_add_mark(Rect2(at - Vector2(radius, radius * 0.8), Vector2(radius * 2.0, radius * 1.6)), "")
 
 func _add_mark(mark: Rect2, owner: String) -> void:

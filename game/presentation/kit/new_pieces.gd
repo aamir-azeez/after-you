@@ -16,6 +16,9 @@ extends RefCounted
 ##     its head otherwise, or as a wheel ride ("wheel"), turning while open;
 ##   - water in a weight lift's pan while a lantern its lift reads burns (the
 ##     lantern pump fills the pan);
+##   - each swing (core/physical/swings.gd) in its "swing" style
+##     (kit/pieces/swing.gd): an old crane's bucket over its lane, drawn back
+##     and creaking before each beat's sweep, parked while braked;
 ##   - the fog round lantern levers (kit/fog.gd, the dressing's "fog" pick),
 ##     and the thick fog over the whole stage when the dressing's look has a
 ##     cover (kit/fog_cover.gd), thinned round every control and opened for
@@ -24,6 +27,7 @@ extends RefCounted
 ## and selector styles the world builds itself.
 ## Presentation only: nothing here feeds the simulation.
 const Deck = preload("res://presentation/kit/pieces/deck.gd")
+const PiecesRules = preload("res://core/physical/pieces_rules.gd")
 const Raft = preload("res://presentation/kit/pieces/raft.gd")
 const Lift = preload("res://presentation/kit/pieces/lift.gd")
 const RopeLadder = preload("res://presentation/kit/pieces/rope_ladder.gd")
@@ -31,10 +35,11 @@ const Fog = preload("res://presentation/kit/fog.gd")
 const FogCover = preload("res://presentation/kit/fog_cover.gd")
 const Parts = preload("res://presentation/kit/pieces/parts.gd")
 const FallsCurtain = preload("res://presentation/kit/pieces/falls_curtain.gd")
+const Swing = preload("res://presentation/kit/pieces/swing.gd")
 ## The water in a filled pan.
 const PAN_WATER := Color("7fa7b0")
-## A lift's ride, metres a second.
-const LIFT_RATE := 0.8
+## A lift's ride, metres a second, the simulation's own pace for it.
+const LIFT_RATE := PiecesRules.LIFT_CM_A_SECOND / 100.0
 ## How many times faster a platform eases while it carries a pip that has
 ## already stepped off it (ride_off).
 const HURRY := 4.0
@@ -54,12 +59,12 @@ var _platforms: Array = []
 var _ladders: Dictionary = {}
 ## Path id -> the falls' water hung over it while shut.
 var _curtains: Dictionary = {}
-## Rope bridge id -> its slats wound in, shown while shut.
-var _wound: Dictionary = {}
 ## [{"node", "lever"}]: water in a pan while its lantern burns.
 var _fills: Array = []
 var fog: RefCounted
 var cover: RefCounted
+## Swing id -> its piece (kit/pieces/swing.gd).
+var _swings: Dictionary = {}
 
 func _init(world: Node3D, view: Dictionary) -> void:
 	_world = world
@@ -86,14 +91,15 @@ func lay_deck(definition: Dictionary, deck: Node3D, width: float, depth: float, 
 		# The rock lip over the path and the falls' water pouring off it, shown
 		# while the path is shut (kit/pieces/falls_curtain.gd).
 		# Beside the deck at the deck's own height, so whatever lifts the deck lifts it.
-		_curtains[str(definition.id)] = FallsCurtain.build(_rect(definition.rect_cm), deck.position.y, deck.get_parent() as Node3D)
+		_curtains[str(definition.id)] = FallsCurtain.build(_rect(_world.drawn_rect(definition)), deck.position.y, deck.get_parent() as Node3D)
 	elif style == "rope":
-		# The posts stand for good; shut, the slats lie wound in at the gap's end.
-		_wound[str(definition.id)] = Deck.rope_ends(deck.get_parent() as Node3D, deck.position, width, depth, across_x, low, high)
+		# The posts stand for good; shut, the slats lie wound in at the gap's
+		# near end (lighthouse_world _rolls_deck, kit/pieces/bridge_roll.gd).
+		Deck.rope_ends(deck.get_parent() as Node3D, deck.position, width, depth, across_x, low, high)
 
 ## A one way stair's ladder, in place of the world's treads.
 func build_ladder(stair: Dictionary) -> void:
-	var rect := _rect(stair.rect_cm)
+	var rect := _rect(_world.drawn_rect(stair))
 	var foot := float(stair.from_height_cm) / 100.0
 	var head := float(stair.to_height_cm) / 100.0
 	var rising := head >= foot
@@ -110,12 +116,13 @@ func build(lantern_spots: Dictionary) -> void:
 	for bridge: Dictionary in _view.get("bridges", []): bridges[str(bridge.id)] = bridge
 	for platform: Dictionary in _view.get("platforms", []):
 		var stops: Array = Array(platform.stops).map(func(id: Variant) -> Dictionary: return bridges[str(id)])
-		var rect := _rect(stops[0].rect_cm)
+		# Drawn past the stop's walkable edge (island_world drawn_rect).
+		var rect := _rect(_world.drawn_rect(stops[0]))
 		var heights: Array = stops.map(func(stop: Dictionary) -> float: return float(stop.get("height_cm", 0)) / 100.0)
 		var lift: bool = stops.all(func(stop: Dictionary) -> bool: return stop.rect_cm == stops[0].rect_cm)
 		var anchors: Array = []
 		for index in range(stops.size()): anchors.append(Vector3(_rect(stops[index].rect_cm).get_center().x, heights[index], _rect(stops[index].rect_cm).get_center().y))
-		var entry := {"stops": Array(platform.stops).map(func(id: Variant) -> String: return str(id)), "heights": heights, "anchors": anchors, "half": rect.size / 2.0, "lift": lift, "shown": heights[0], "target": heights[0], "at": 0, "hurry": false}
+		var entry := {"stops": Array(platform.stops).map(func(id: Variant) -> String: return str(id)), "heights": heights, "anchors": anchors, "half": _rect(stops[0].rect_cm).size / 2.0, "lift": lift, "shown": heights[0], "target": heights[0], "at": 0, "hurry": false}
 		if lift:
 			entry.piece = Lift.build(_world._piece_style("lift", str(platform.id)), rect, heights.min(), heights.max(), _world.terrain, _drive(platform))
 			entry.piece.set_height(heights[0])
@@ -125,6 +132,9 @@ func build(lantern_spots: Dictionary) -> void:
 			centres.assign(anchors)
 			entry.piece = Raft.build(_world._piece_style("raft", str(platform.id)), centres, rect.size, _world.terrain)
 		_platforms.append(entry)
+	for swing: Dictionary in _view.get("swings", []):
+		var id := str(swing.id)
+		_swings[id] = Swing.build(_world._piece_style("swing", id), swing, _floor_under(swing.pivot_cm), _height_of(str(swing.lane.surface_id)), _world.terrain)
 	fog = Fog.build(str(_world.dressing.get("fog", "mist")) if not _world.dressing.is_empty() else "mist", _view, lantern_spots, _world.terrain)
 	var spots: Array = []
 	for field: String in ["levers", "controls", "pressure_pads", "ball_pads"]:
@@ -152,7 +162,6 @@ func present(state: Dictionary, immediate: bool) -> void:
 				entry.piece.arrive(0.0)
 		else: entry.piece.set_value(index, immediate)
 	for id: String in _curtains: _curtains[id].visible = not bool(routes.get(id, false))
-	for id: String in _wound: _wound[id].visible = not bool(routes.get(id, false))
 	for fill: Dictionary in _fills: fill.node.visible = bool(state.get("levers", {}).get(fill.lever, false))
 	for id: String in _ladders:
 		var ladder: Dictionary = _ladders[id]
@@ -167,8 +176,12 @@ func present(state: Dictionary, immediate: bool) -> void:
 			if str(player.get("surface_id", "")) == id or (at.distance_to(ladder.foot) < FOOT_REACH and height < float(ladder.low) + 0.2): hung = true
 		ladder.piece.set_pulled(not hung, immediate)
 	if fog != null: fog.present(state.get("levers", {}))
+	var beats: Dictionary = state.get("swings", {})
+	for id: String in _swings:
+		if beats.has(id): _swings[id].set_beat(beats[id], immediate)
 
 func moving() -> bool:
+	if _swings.values().any(func(piece: RefCounted) -> bool: return piece.moving()): return true
 	if _ladders.values().any(func(ladder: Dictionary) -> bool: return ladder.piece.moving()): return true
 	return _platforms.any(func(entry: Dictionary) -> bool: return entry.piece.moving() or (entry.lift and float(entry.shown) != float(entry.target)))
 
@@ -187,7 +200,8 @@ func ride(surface: String) -> Array:
 	return []
 
 ## A pip that stepped off the deck `root` (ride's) onto a floor while that deck
-## is still on its way, as the simulation lets it: it waits on the deck until
+## is still on its way here (the simulation's deck got there first, at the
+## same pace): it waits on the deck until
 ## the deck reaches the stop it goes to, and the deck hurries there (HURRY), so
 ## the pip never hops the rest of the way nor walks through the floor's edge.
 ## [root, how far the root stands from that stop, the deck's half size (m)],
@@ -203,6 +217,8 @@ func ride_off(root: Node3D) -> Array:
 	return []
 
 func advance(delta: float) -> void:
+	for piece: RefCounted in _swings.values():
+		if piece.moving(): piece.advance(delta)
 	for ladder: Dictionary in _ladders.values():
 		if ladder.piece.moving(): ladder.piece.advance(delta)
 	for entry: Dictionary in _platforms:
@@ -251,9 +267,24 @@ func moving_nodes() -> Array:
 	if fog != null: nodes.append(fog.node)
 	if cover != null: nodes.append(cover.node)
 	nodes.append_array(_curtains.values())
-	nodes.append_array(_wound.values())
 	for fill: Dictionary in _fills: nodes.append(fill.node)
+	for piece: RefCounted in _swings.values(): nodes.append_array(piece.moving_parts())
 	return nodes
+
+## The height (m) of the floor or crossing `id` (a stair at its middle).
+func _height_of(id: String) -> float:
+	for surface: Dictionary in _view.get("islands", []) + _view.get("bridges", []):
+		if str(surface.id) == id: return float(surface.get("height_cm", 0)) / 100.0
+	for stair: Dictionary in _view.get("stairs", []):
+		if str(stair.id) == id: return (float(stair.from_height_cm) + float(stair.to_height_cm)) / 200.0
+	return 0.0
+
+## The height (m) of the highest floor under point `at` (cm), else the ground.
+func _floor_under(at: Array) -> float:
+	var height := 0.0
+	for island: Dictionary in _view.get("islands", []):
+		if _rect(island.rect_cm).has_point(Vector2(float(at[0]), float(at[1])) / 100.0): height = maxf(height, float(island.get("height_cm", 0)) / 100.0)
+	return height
 
 ## A lift whose rising gate reads a lantern lever (the lantern pump fills the
 ## pan): water in each pan the same gate reads, shown while that lantern burns.

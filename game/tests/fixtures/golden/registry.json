@@ -1,13 +1,13 @@
 {
 	"chapters": {
 		"a-house-for-two@1": {
-			"definition_digest": "b868745e7bc025bb8fe5a49b698b15dfb0d428ea9fe905ce46fa46dd27d79867",
-			"definition_typed_digest": "b868745e7bc025bb8fe5a49b698b15dfb0d428ea9fe905ce46fa46dd27d79867",
+			"definition_digest": "f14fb0abf330fa46afdb61078a8e8e99cee4cc2ade845304508cc90b05d27995",
+			"definition_typed_digest": "f14fb0abf330fa46afdb61078a8e8e99cee4cc2ade845304508cc90b05d27995",
 			"descriptor": {
 				"checkpoint_text": "Your friend can carry on from here.",
 				"checkpoint_title": "A path kept",
 				"completion_text": "The shutters are open.",
-				"definition_hash": "b868745e7bc025bb8fe5a49b698b15dfb0d428ea9fe905ce46fa46dd27d79867",
+				"definition_hash": "f14fb0abf330fa46afdb61078a8e8e99cee4cc2ade845304508cc90b05d27995",
 				"key": "a-house-for-two@1",
 				"level_id": "a-house-for-two",
 				"level_version": 1,
@@ -19,8 +19,8 @@
 				"summary": "It's our first evening in the new house and we still haven't agreed who gets the top shelf. You've already hung a painting up there. It's upside down. I haven't said anything yet, because you looked so pleased with it. The workshop smells of sawdust, and one of the hanging plants already has a name. You called it Gerald.",
 				"title": "A House for Two"
 			},
-			"initial_checkpoint_hash": "baa0c806fcd4b10c188f77bb96ad31e6fb4b447bc99656c844ad82a5fcdb2b00",
-			"initial_checkpoint_typed_digest": "3dd195af96835bcf1b1525fd5bd705f9f22edc6270d7affdbca8d45c7a821bc3",
+			"initial_checkpoint_hash": "4cb579d7245db4b885c2d9fb1771359631072561877ff77532533e6ef620ee36",
+			"initial_checkpoint_typed_digest": "9d6148118d3dfcd828454fb05e9b6c23a631b0e47a54cc724dc50ff1085155d6",
 			"is_cooperative": true,
 			"is_journey": false,
 			"keepsake_local_path": "user://a-house-for-two-journey-v1.json",
@@ -41,21 +41,21 @@
 				"int"
 			],
 			"previous_checkpoint": {
-				"both_fields": "3dd195af96835bcf1b1525fd5bd705f9f22edc6270d7affdbca8d45c7a821bc3",
+				"both_fields": "9d6148118d3dfcd828454fb05e9b6c23a631b0e47a54cc724dc50ff1085155d6",
 				"final": {
 					"fixture": "cooperative/a-house-for-two-final-checkpoint.json",
-					"fixture_hash": "a1a2aad324bbdd0d6870a81e42ba343e811570ad85dec80e3ce370db27f60c29",
-					"previous_hash": "0b90178881c0ade9f632f68f3b9c63b7836647e0993befb536f62e251527f164",
+					"fixture_hash": "de1dd43e499b40c31080420b98046b6fd5f87d985f0d3f89b25f18a958c3a215",
+					"previous_hash": "0a0d0c6d1ee09aea41dc7e5f9488c3486340190dc15db59a98a4ef36b2883024",
 					"previous_stage_index": "f:1.000000",
-					"previous_typed_digest": "7826c30074fd4f576afb3193719c87a3165ba5d63e5cb9e1bf632188937204f6"
+					"previous_typed_digest": "8c0c0bd724c15e63b201115cabf71be38dae1d989365e0e7725ccf4cf766d74f"
 				},
 				"initial": {},
 				"mid": {
 					"fixture": "cooperative/open-the-house-checkpoint.json",
-					"fixture_hash": "0b90178881c0ade9f632f68f3b9c63b7836647e0993befb536f62e251527f164",
-					"previous_hash": "baa0c806fcd4b10c188f77bb96ad31e6fb4b447bc99656c844ad82a5fcdb2b00",
+					"fixture_hash": "0a0d0c6d1ee09aea41dc7e5f9488c3486340190dc15db59a98a4ef36b2883024",
+					"previous_hash": "4cb579d7245db4b885c2d9fb1771359631072561877ff77532533e6ef620ee36",
 					"previous_stage_index": "f:0.000000",
-					"previous_typed_digest": "ba7484c95de9692ba19aa91a422000563beb3a98bfe59c1dc4829316fbb22d2a"
+					"previous_typed_digest": "b5dd9744783b745b3c1f918df6a34b8ebc013f90beac056b775876202acb1690"
 				},
 				"no_proof": {}
 			},
@@ -64,7 +64,7 @@
 					"error": "",
 					"ok": true,
 					"simulation_version": 8,
-					"state_hash": "a49051f1717450f4e3a30efc888a1c679c712b9363377ced5079d71da07a34aa"
+					"state_hash": "b74a5055a9cb5fc3b785971b42f537b3211b99ecd92620ebd3ce1eeaa1893282"
 				},
 				"recording_1": {
 					"error": "Unsupported recording version.",
@@ -76,13 +76,13 @@
 					"error": "",
 					"ok": true,
 					"simulation_version": 6,
-					"state_hash": "b242fb8b15bb6209eb0efde5ad5b62535df3fd71d88933125f602dc0e1e5e960"
+					"state_hash": "9900937cfaad95936f7ee94d3a04ed65ab1c30aa881c357fafc5a70b9e871fcb"
 				},
 				"recording_8": {
 					"error": "",
 					"ok": true,
 					"simulation_version": 8,
-					"state_hash": "a49051f1717450f4e3a30efc888a1c679c712b9363377ced5079d71da07a34aa"
+					"state_hash": "b74a5055a9cb5fc3b785971b42f537b3211b99ecd92620ebd3ce1eeaa1893282"
 				},
 				"recording_99": {
 					"error": "Unsupported recording version.",
@@ -121,14 +121,14 @@
 					"hint_b": "Go to the bell in the loft.",
 					"is_authored_stage": true,
 					"title": "Open the House",
-					"typed_digest": "cf64636e910e6da6569fbf5d7f7c5c8b3be0aa4dd3bee6ccd6bb6498b05c7cd3"
+					"typed_digest": "d4eee9e5ebdc829181cfc264c9c813f27043cbf628abc0214ddcc87fb8b109a6"
 				},
 				"the-room-below": {
 					"hint_a": "Look for a way down and retrieve the ball.",
 					"hint_b": "Open the sunroom.",
 					"is_authored_stage": true,
 					"title": "The Room Below",
-					"typed_digest": "d751ccefabc3fa3b2918abbf0554e13924bf70c4df86a2e36da2cf5db43e22a8"
+					"typed_digest": "b7a50c08705921ca321d2d3dafdada696a77d94ba081c297c978a5281ade7bd0"
 				}
 			},
 			"supported_rules": [
@@ -149,13 +149,13 @@
 			"world_script": "res://presentation/house_world.gd"
 		},
 		"conservatory@1": {
-			"definition_digest": "fd9fce12c4facd5fd659eedd5a510ea6b0ad796925458ccb73b4b37a893530d5",
-			"definition_typed_digest": "fd9fce12c4facd5fd659eedd5a510ea6b0ad796925458ccb73b4b37a893530d5",
+			"definition_digest": "5e4741419609acd603db2066a0e799c8ab92182ca08f9df3aa54d410760551a3",
+			"definition_typed_digest": "5e4741419609acd603db2066a0e799c8ab92182ca08f9df3aa54d410760551a3",
 			"descriptor": {
 				"checkpoint_text": "Your friend can carry on from here.",
 				"checkpoint_title": "A path kept",
 				"completion_text": "Both lights are able to reach the garden.",
-				"definition_hash": "fd9fce12c4facd5fd659eedd5a510ea6b0ad796925458ccb73b4b37a893530d5",
+				"definition_hash": "5e4741419609acd603db2066a0e799c8ab92182ca08f9df3aa54d410760551a3",
 				"key": "conservatory@1",
 				"level_id": "conservatory",
 				"level_version": 1,
@@ -167,8 +167,8 @@
 				"summary": "Somebody was meant to water the ferns this week, and I'm sure it was you. You're just as sure it was me. It's warm under the glass, and the hanging baskets drip on whoever stands underneath, which today was me. My hat is soaked. Let's water them together and never talk about it again.",
 				"title": "Conservatory"
 			},
-			"initial_checkpoint_hash": "1c0fd08cb85e46316f37c818797aefad42935a67a1ed98b4dfcbe5e8acdf147b",
-			"initial_checkpoint_typed_digest": "61e8a897813b24ba1e66284199b58f2454a3ac0e292c9d60e143b311b80d5c70",
+			"initial_checkpoint_hash": "2b9b23ff1a3bd9e6c33b4faae3236a2655338861896793b093e9b0c2833a0a38",
+			"initial_checkpoint_typed_digest": "29f432ca70bf48321b53128894d3bdfae6b74ed42f2369b49b6ee101933167bd",
 			"is_cooperative": true,
 			"is_journey": true,
 			"keepsake_local_path": "user://conservatory-journey-v1.json",
@@ -189,21 +189,21 @@
 				"int"
 			],
 			"previous_checkpoint": {
-				"both_fields": "61e8a897813b24ba1e66284199b58f2454a3ac0e292c9d60e143b311b80d5c70",
+				"both_fields": "29f432ca70bf48321b53128894d3bdfae6b74ed42f2369b49b6ee101933167bd",
 				"final": {
 					"fixture": "journey/conservatory-final-checkpoint.json",
-					"fixture_hash": "7dbb12b5b1e94876a4bf2cdf94dfc11868fd5a0e8285c6302b8fce6e7c4e4e32",
-					"previous_hash": "665c39a4e3134337fd0c34747e4f5b923de9f388f9287d1b15f8436ce5b5c32b",
+					"fixture_hash": "3923ff0302632fc7c608ade06bcec8734af7d4e524ca9596c5b37a7d94a17042",
+					"previous_hash": "281f18bf13744dbab9dd8ea7f7dacab7364eb719a1167eec20215b13eacd71db",
 					"previous_stage_index": "f:1.000000",
-					"previous_typed_digest": "4ef6eb446938dfc624e5e395449863b4438cd51c65ba242587f72bdb90acbd1f"
+					"previous_typed_digest": "0296b22bcac0c4b15d259c2aee0be4299e45cbed3a7b991a7e65e85f890ad6b1"
 				},
 				"initial": {},
 				"mid": {
 					"fixture": "journey/a-light-above-checkpoint.json",
-					"fixture_hash": "665c39a4e3134337fd0c34747e4f5b923de9f388f9287d1b15f8436ce5b5c32b",
-					"previous_hash": "1c0fd08cb85e46316f37c818797aefad42935a67a1ed98b4dfcbe5e8acdf147b",
+					"fixture_hash": "281f18bf13744dbab9dd8ea7f7dacab7364eb719a1167eec20215b13eacd71db",
+					"previous_hash": "2b9b23ff1a3bd9e6c33b4faae3236a2655338861896793b093e9b0c2833a0a38",
 					"previous_stage_index": "f:0.000000",
-					"previous_typed_digest": "bc59581d45dcba80a2a6383d42107e94ad91d2cbd6a7303b41dd69a4ecdeac26"
+					"previous_typed_digest": "5afa6da6eee2954dbc03f61f7bb1476394c627878b180e7a2e5ccd16a29682c6"
 				},
 				"no_proof": {}
 			},
@@ -212,7 +212,7 @@
 					"error": "",
 					"ok": true,
 					"simulation_version": 8,
-					"state_hash": "1894c6a9ca6fd77e85a630b1a7064a8ac70b05a07dd1b6e9f6cab94bf3b41d10"
+					"state_hash": "fcd3605d081244eb9eb0c7c925f042265b079a7e261cc19893d433b99cec6a5b"
 				},
 				"recording_1": {
 					"error": "Unsupported recording version.",
@@ -224,13 +224,13 @@
 					"error": "",
 					"ok": true,
 					"simulation_version": 7,
-					"state_hash": "1b1d7a4cf388855914706c402111354b467d2b21b32469db9f5b5960b23226a9"
+					"state_hash": "b0548fb70b9e1da886cfc12c1e7fec545b940bce1062b3005e468bb01211b551"
 				},
 				"recording_8": {
 					"error": "",
 					"ok": true,
 					"simulation_version": 8,
-					"state_hash": "1894c6a9ca6fd77e85a630b1a7064a8ac70b05a07dd1b6e9f6cab94bf3b41d10"
+					"state_hash": "fcd3605d081244eb9eb0c7c925f042265b079a7e261cc19893d433b99cec6a5b"
 				},
 				"recording_99": {
 					"error": "Unsupported recording version.",
@@ -449,13 +449,13 @@
 			"world_script": "res://presentation/first_steps_world.gd"
 		},
 		"high-and-low@1": {
-			"definition_digest": "6aa907e802c92445745a6452c6ec0850dd8e98724e689b58a8ec82915fb08956",
-			"definition_typed_digest": "6aa907e802c92445745a6452c6ec0850dd8e98724e689b58a8ec82915fb08956",
+			"definition_digest": "3b6576badcdd214630373a0f51040706e014845d9b8bc17483bd887f04a9ff40",
+			"definition_typed_digest": "3b6576badcdd214630373a0f51040706e014845d9b8bc17483bd887f04a9ff40",
 			"descriptor": {
 				"checkpoint_text": "Your friend can carry on from here.",
 				"checkpoint_title": "A path kept",
 				"completion_text": "Your progress is saved.",
-				"definition_hash": "6aa907e802c92445745a6452c6ec0850dd8e98724e689b58a8ec82915fb08956",
+				"definition_hash": "3b6576badcdd214630373a0f51040706e014845d9b8bc17483bd887f04a9ff40",
 				"key": "high-and-low@1",
 				"level_id": "high-and-low",
 				"level_version": 1,
@@ -467,8 +467,8 @@
 				"summary": "I'm writing this from the deck, where the breeze is lovely and nobody's shouting. Well, you're shouting. You say the grass down below is warmer, and you've said it about nine times since lunch. I can see your hat from up here and it looks very small. Come up and see for yourself, or I'll come down, but only for a bit.",
 				"title": "High and Low"
 			},
-			"initial_checkpoint_hash": "b0315be3c521d13bf652a37825279987dce4382634a075aff5ab4baae7512dfc",
-			"initial_checkpoint_typed_digest": "a86315c32eadbab85df28afc3f07b09f7fe29c2357334481d8a9750d38dfe4b1",
+			"initial_checkpoint_hash": "0808f413664270a5a4bb6abed526b34725504bca285ddcfea80b0058e6e0d5fc",
+			"initial_checkpoint_typed_digest": "d4fcf4afe9a77654bfdefaa8d664ca8de93c4c4b272155277c7e947fafad04c9",
 			"is_cooperative": true,
 			"is_journey": false,
 			"keepsake_local_path": "user://high-and-low-journey-v1.json",
@@ -483,21 +483,21 @@
 				"int"
 			],
 			"previous_checkpoint": {
-				"both_fields": "a86315c32eadbab85df28afc3f07b09f7fe29c2357334481d8a9750d38dfe4b1",
+				"both_fields": "d4fcf4afe9a77654bfdefaa8d664ca8de93c4c4b272155277c7e947fafad04c9",
 				"final": {
 					"fixture": "cooperative/high-and-low-final-checkpoint.json",
-					"fixture_hash": "fd6dbf4644fd7bac961fdb9cba13c662e8f0f3eb06a8d3350153f9e2faa4fab1",
-					"previous_hash": "d97c4bf6e6d03b92dac32e56a164ba19e18d12975ee11b101283834ec113a5e6",
+					"fixture_hash": "7b45b19781aad9e3c1d9acd668c8de562710ab6ad482f0e1a1fdc958050de148",
+					"previous_hash": "cd14c228dfd15a52c8cc8d7c27b3b8a8965ddc59e1c444cef1a9ff035e55fb12",
 					"previous_stage_index": "f:1.000000",
-					"previous_typed_digest": "6278f46e4f432c863102c9bc40bc6837811e49b9beb664d265cfdc007004840e"
+					"previous_typed_digest": "854e32f2df38ca9acfb3752985abcb3fffffd0ba610f3da3f54b4af7d7b64ab5"
 				},
 				"initial": {},
 				"mid": {
 					"fixture": "cooperative/upper-path-checkpoint.json",
-					"fixture_hash": "d97c4bf6e6d03b92dac32e56a164ba19e18d12975ee11b101283834ec113a5e6",
-					"previous_hash": "b0315be3c521d13bf652a37825279987dce4382634a075aff5ab4baae7512dfc",
+					"fixture_hash": "cd14c228dfd15a52c8cc8d7c27b3b8a8965ddc59e1c444cef1a9ff035e55fb12",
+					"previous_hash": "0808f413664270a5a4bb6abed526b34725504bca285ddcfea80b0058e6e0d5fc",
 					"previous_stage_index": "f:0.000000",
-					"previous_typed_digest": "c1d6c3a4345dd6d4d7a1cec5d3f5d5fe73d8cfd31e302c5bd27f00d33a10172d"
+					"previous_typed_digest": "d354b0300c09b1a35ad06314d5c0d5491e61527e63d8572a76f679efb4cb5fa7"
 				},
 				"no_proof": {}
 			},
@@ -506,7 +506,7 @@
 					"error": "",
 					"ok": true,
 					"simulation_version": 8,
-					"state_hash": "2303ea668ac03abe22c0dfefe1acec26aca748217f010997403508b89d28ddad"
+					"state_hash": "4b376453ce89dcdd0de99ffe15dd45c43b4a5697f1a2b325492acb7750bc7dfc"
 				},
 				"recording_1": {
 					"error": "Unsupported recording version.",
@@ -518,13 +518,13 @@
 					"error": "",
 					"ok": true,
 					"simulation_version": 6,
-					"state_hash": "d5a24ef22b4e2491b66783c21803b789137ce602d96a82b5d87e685efada5572"
+					"state_hash": "3f1e8b13d1549fb9324ba9c7e3a9808fdb17b0fe96374dbdddf7980dcf88832f"
 				},
 				"recording_8": {
 					"error": "",
 					"ok": true,
 					"simulation_version": 8,
-					"state_hash": "2303ea668ac03abe22c0dfefe1acec26aca748217f010997403508b89d28ddad"
+					"state_hash": "4b376453ce89dcdd0de99ffe15dd45c43b4a5697f1a2b325492acb7750bc7dfc"
 				},
 				"recording_99": {
 					"error": "Unsupported recording version.",
@@ -563,14 +563,14 @@
 					"hint_b": "Reach the garden bell.",
 					"is_authored_stage": true,
 					"title": null,
-					"typed_digest": "3f260dbaa89b8c187de1d4794ea7e6fa71a9c7bfa68f66f609646074e86ecd0e"
+					"typed_digest": "b2d0a3cab25aa677a13b20cd16fb54ed5cb12636dc92f3a800b2e64d7763716a"
 				},
 				"upper-path": {
 					"hint_a": "Help your partner reach the loft.",
 					"hint_b": "Reach the bell above.",
 					"is_authored_stage": true,
 					"title": null,
-					"typed_digest": "595aa2d9c07f9fde8f9845866bb91a45923eeb1fbf5fb6c74444dc83c0751a6e"
+					"typed_digest": "c569e8911d05985e5cca4ab02930ab0f36357774c29e00ba3e2460ad51e27d69"
 				}
 			},
 			"supported_rules": [
@@ -591,13 +591,13 @@
 			"world_script": "res://presentation/cooperative_world.gd"
 		},
 		"long-way-home@1": {
-			"definition_digest": "bce3ddd36386ebb32f011b8d6afe95316992809030ea828b473bbbc3e1c6bb7f",
-			"definition_typed_digest": "bce3ddd36386ebb32f011b8d6afe95316992809030ea828b473bbbc3e1c6bb7f",
+			"definition_digest": "79ea6a353b52459acc508c2a74baea488a4afe0c62079a07f7fb479e57193932",
+			"definition_typed_digest": "79ea6a353b52459acc508c2a74baea488a4afe0c62079a07f7fb479e57193932",
 			"descriptor": {
 				"checkpoint_text": "Your friend can carry on from here.",
 				"checkpoint_title": "A path kept",
 				"completion_text": "You're both at home.",
-				"definition_hash": "bce3ddd36386ebb32f011b8d6afe95316992809030ea828b473bbbc3e1c6bb7f",
+				"definition_hash": "79ea6a353b52459acc508c2a74baea488a4afe0c62079a07f7fb479e57193932",
 				"key": "long-way-home@1",
 				"level_id": "long-way-home",
 				"level_version": 1,
@@ -609,8 +609,8 @@
 				"summary": "You went out this morning and you still aren't back. I've been standing at the door since the fireflies came out. Just getting some air, in case you ask. The kettle's been boiled twice and gone cold twice. Come home whichever way you like, just don't take all night.",
 				"title": "Long Way Home"
 			},
-			"initial_checkpoint_hash": "fc74e608708a07e7ea28794d245d1aa252c24189b95b13ec7f226fc5468a5c8a",
-			"initial_checkpoint_typed_digest": "ae4e8e25d586004f8fda3fe46583cfe7dd7be5e7dee4466c661c2c48eaddf391",
+			"initial_checkpoint_hash": "13120093c52ffa4bafff220d965ad1e6a090e25478b0904e6c77363a3592ed92",
+			"initial_checkpoint_typed_digest": "5a9f190cbe5092d0b4580b8a6aa20eb5200dc290f14834f443d52a5dd822e80a",
 			"is_cooperative": true,
 			"is_journey": true,
 			"keepsake_local_path": "user://long-way-home-journey-v1.json",
@@ -631,21 +631,21 @@
 				"int"
 			],
 			"previous_checkpoint": {
-				"both_fields": "ae4e8e25d586004f8fda3fe46583cfe7dd7be5e7dee4466c661c2c48eaddf391",
+				"both_fields": "5a9f190cbe5092d0b4580b8a6aa20eb5200dc290f14834f443d52a5dd822e80a",
 				"final": {
 					"fixture": "journey/long-way-home-final-checkpoint.json",
-					"fixture_hash": "ef4d371e3122b7d36d5d8fca3eb2c17c00c2f21118fe5541ec5c2df913c4af80",
-					"previous_hash": "14712a0f9b134a691b7af4cd12a39b792ce492a9452b63eca7a69f06016d309f",
+					"fixture_hash": "ddce8f7c559f032f600bd52f9c8be643e35bf8525edb8ab5d9a0d5c29b383a06",
+					"previous_hash": "bafa20959ceaa5e451818b1763270d229154bbab240319b290289857dd3bcc95",
 					"previous_stage_index": "f:1.000000",
-					"previous_typed_digest": "668dfcc9ad91e3daefe7cb9fe1cced5c3fcde564c947368de5880d2cf3345216"
+					"previous_typed_digest": "6258ebdc29d1a3ff22d0ce28e61eccea100d99ed87be2942d6864b2ae0a7617f"
 				},
 				"initial": {},
 				"mid": {
 					"fixture": "journey/the-path-you-leave-checkpoint.json",
-					"fixture_hash": "14712a0f9b134a691b7af4cd12a39b792ce492a9452b63eca7a69f06016d309f",
-					"previous_hash": "fc74e608708a07e7ea28794d245d1aa252c24189b95b13ec7f226fc5468a5c8a",
+					"fixture_hash": "bafa20959ceaa5e451818b1763270d229154bbab240319b290289857dd3bcc95",
+					"previous_hash": "13120093c52ffa4bafff220d965ad1e6a090e25478b0904e6c77363a3592ed92",
 					"previous_stage_index": "f:0.000000",
-					"previous_typed_digest": "a0b472c6727b90993f8ef13888b6d36badb77baa5b89ec501adb31c51b990584"
+					"previous_typed_digest": "3b32f8ad7a64a4ba7596cd94361ac440adc26e8af2fb7291fd72939808d2b04a"
 				},
 				"no_proof": {}
 			},
@@ -654,7 +654,7 @@
 					"error": "",
 					"ok": true,
 					"simulation_version": 8,
-					"state_hash": "96d58783a3996b66c04c3a7e49000f0bb4d6682e0e474a409dc0cb73ce8f0f12"
+					"state_hash": "aa4557e8b4a3ce0ebe0375dee5472664c0e601dfe50111d335fb7a9271f6b1ca"
 				},
 				"recording_1": {
 					"error": "Unsupported recording version.",
@@ -666,13 +666,13 @@
 					"error": "",
 					"ok": true,
 					"simulation_version": 7,
-					"state_hash": "bd2f4b34451e0e0d59d0d7d9ebdd26b94002ce7bb3420d7bb0bd026b231b0899"
+					"state_hash": "1f6028c366d70a7c88108672086789b5a4c2cb6837fafe26a7cadd2e999f047d"
 				},
 				"recording_8": {
 					"error": "",
 					"ok": true,
 					"simulation_version": 8,
-					"state_hash": "96d58783a3996b66c04c3a7e49000f0bb4d6682e0e474a409dc0cb73ce8f0f12"
+					"state_hash": "aa4557e8b4a3ce0ebe0375dee5472664c0e601dfe50111d335fb7a9271f6b1ca"
 				},
 				"recording_99": {
 					"error": "Unsupported recording version.",
@@ -739,13 +739,13 @@
 			"world_script": "res://presentation/long_way_home_world.gd"
 		},
 		"long-way-home@2": {
-			"definition_digest": "4541bd920062e244f202fbe6ee95363a1f53ae5afc490ad600112af9f01a8c77",
-			"definition_typed_digest": "4541bd920062e244f202fbe6ee95363a1f53ae5afc490ad600112af9f01a8c77",
+			"definition_digest": "9d91b9186b9307460763eba57b2cc2b25c9bfd2a245f20b7ff93eb75b16445eb",
+			"definition_typed_digest": "9d91b9186b9307460763eba57b2cc2b25c9bfd2a245f20b7ff93eb75b16445eb",
 			"descriptor": {
 				"checkpoint_text": "Your friend can carry on from here.",
 				"checkpoint_title": "A path kept",
 				"completion_text": "You're both at home.",
-				"definition_hash": "4541bd920062e244f202fbe6ee95363a1f53ae5afc490ad600112af9f01a8c77",
+				"definition_hash": "9d91b9186b9307460763eba57b2cc2b25c9bfd2a245f20b7ff93eb75b16445eb",
 				"key": "long-way-home@2",
 				"level_id": "long-way-home",
 				"level_version": 2,
@@ -757,8 +757,8 @@
 				"summary": "You went out this morning and you still aren't back. I've been standing at the door since the fireflies came out. Just getting some air, in case you ask. The kettle's been boiled twice and gone cold twice. Come home whichever way you like, just don't take all night.",
 				"title": "Long Way Home"
 			},
-			"initial_checkpoint_hash": "fe0c7aaf890b5da6e89683a2c3c3e4938537c69f038b11a814725225d72b6299",
-			"initial_checkpoint_typed_digest": "afd5766a829265f55f330d45bc15c03318fd2ca2a026c5949668755702ce1de7",
+			"initial_checkpoint_hash": "6cf0df22a2885dad6ba4aaacb94a72c8dc9fbb76adf8b272af626f0eb235f43d",
+			"initial_checkpoint_typed_digest": "fb10624045ca2c888431b952bd4997f7598d4b2ddc4d61c6e4e3e8a7895364da",
 			"is_cooperative": true,
 			"is_journey": true,
 			"keepsake_local_path": "user://long-way-home-journey-v2.json",
@@ -779,21 +779,21 @@
 				"int"
 			],
 			"previous_checkpoint": {
-				"both_fields": "afd5766a829265f55f330d45bc15c03318fd2ca2a026c5949668755702ce1de7",
+				"both_fields": "fb10624045ca2c888431b952bd4997f7598d4b2ddc4d61c6e4e3e8a7895364da",
 				"final": {
 					"fixture": "journey/long-way-home-v2-final-checkpoint.json",
-					"fixture_hash": "136138a7753ced7373afeea098d1f212fb727057bbf51bea711a84a75cbfdc5f",
-					"previous_hash": "81e064f8e8ae0602e0cc4412b7b3b2452fde44d31078ec535061f9218a5a97e0",
+					"fixture_hash": "ddc13c472348cad953dc47f0ae788526233bb47b7b1a455961faf3e61d6da9ec",
+					"previous_hash": "780dd771ef8c9065f5e40656a35a73e553566b2555ab6b5bdca3976361a18c24",
 					"previous_stage_index": "f:1.000000",
-					"previous_typed_digest": "4ccee332bf170f0367479d62ff1d9db0df0ee9a6ba9d8533f72d39a9123fdf48"
+					"previous_typed_digest": "83d4119bf2d0d45d92fbdec6170c0dfe44bf8a01358b1a3f343be286ebcd41ef"
 				},
 				"initial": {},
 				"mid": {
 					"fixture": "journey/long-way-home-v2-the-path-you-leave-checkpoint.json",
-					"fixture_hash": "81e064f8e8ae0602e0cc4412b7b3b2452fde44d31078ec535061f9218a5a97e0",
-					"previous_hash": "fe0c7aaf890b5da6e89683a2c3c3e4938537c69f038b11a814725225d72b6299",
+					"fixture_hash": "780dd771ef8c9065f5e40656a35a73e553566b2555ab6b5bdca3976361a18c24",
+					"previous_hash": "6cf0df22a2885dad6ba4aaacb94a72c8dc9fbb76adf8b272af626f0eb235f43d",
 					"previous_stage_index": "f:0.000000",
-					"previous_typed_digest": "38094b76cd5cd13acf2eece3f4643ffdb1f3d203522a7e3c8fa940eda492a9d2"
+					"previous_typed_digest": "bc8e70a65e84e36e7076dced8d0107816c0e68fa998a280f215ebaab4a0a846b"
 				},
 				"no_proof": {}
 			},
@@ -802,7 +802,7 @@
 					"error": "",
 					"ok": true,
 					"simulation_version": 9,
-					"state_hash": "9da96f249b4770611011d49b1d2df00ca0399f968f3e7d484623c27cbd8038bf"
+					"state_hash": "0d7b0e28d3c1d87ef05c71df5fedee995455493a055c6abf83c9b96c6868fbd0"
 				},
 				"recording_1": {
 					"error": "Unsupported recording version.",
@@ -814,7 +814,7 @@
 					"error": "",
 					"ok": true,
 					"simulation_version": 9,
-					"state_hash": "9da96f249b4770611011d49b1d2df00ca0399f968f3e7d484623c27cbd8038bf"
+					"state_hash": "0d7b0e28d3c1d87ef05c71df5fedee995455493a055c6abf83c9b96c6868fbd0"
 				},
 				"recording_99": {
 					"error": "Unsupported recording version.",
@@ -1018,13 +1018,13 @@
 			"world_script": "res://presentation/relay_world.gd"
 		},
 		"rolling-home@1": {
-			"definition_digest": "d6aaa6006597dd5e4ce4dbc641d94c81c2ab17c55bd80b50c6a240e0e91cff87",
-			"definition_typed_digest": "d6aaa6006597dd5e4ce4dbc641d94c81c2ab17c55bd80b50c6a240e0e91cff87",
+			"definition_digest": "3362e8afd9fb3504868ab4b8b436050f62fe601e5c7ff8fea995424064f2dbff",
+			"definition_typed_digest": "3362e8afd9fb3504868ab4b8b436050f62fe601e5c7ff8fea995424064f2dbff",
 			"descriptor": {
 				"checkpoint_text": "Your friend can carry on from here.",
 				"checkpoint_title": "A path kept",
 				"completion_text": "Your progress is saved.",
-				"definition_hash": "d6aaa6006597dd5e4ce4dbc641d94c81c2ab17c55bd80b50c6a240e0e91cff87",
+				"definition_hash": "3362e8afd9fb3504868ab4b8b436050f62fe601e5c7ff8fea995424064f2dbff",
 				"key": "rolling-home@1",
 				"level_id": "rolling-home",
 				"level_version": 1,
@@ -1036,8 +1036,8 @@
 				"summary": "It's a short walk home across the meadow, or it should be. You've stopped to say hello to every bee, and some of them twice. We set off after lunch and I can still see the tree we sat under. I've started counting bees too, so I can't really tell you off. See you at the next hedge.",
 				"title": "Rolling Home"
 			},
-			"initial_checkpoint_hash": "543c6afed01ec41e692ac9dadc37bdc0e6b63d57b8e6bb8e8764985934e9ae1e",
-			"initial_checkpoint_typed_digest": "2ebeb328c5c4f0bbf1801a2a36859966d7c12cba0c22b10e4621c60f37ddb58a",
+			"initial_checkpoint_hash": "2bc1b48c6629448d1ae152fffb2d34afd4eccbcd7faa3e0b2f33d2fccd396dad",
+			"initial_checkpoint_typed_digest": "6f46dc750bacee689dd42745749a79ffcd5ed514b289e0ad616ce1ca89819ee6",
 			"is_cooperative": true,
 			"is_journey": false,
 			"keepsake_local_path": "user://rolling-home-journey-v1.json",
@@ -1058,21 +1058,21 @@
 				"int"
 			],
 			"previous_checkpoint": {
-				"both_fields": "2ebeb328c5c4f0bbf1801a2a36859966d7c12cba0c22b10e4621c60f37ddb58a",
+				"both_fields": "6f46dc750bacee689dd42745749a79ffcd5ed514b289e0ad616ce1ca89819ee6",
 				"final": {
 					"fixture": "cooperative/rolling-home-final-checkpoint.json",
-					"fixture_hash": "25e79b047ebdb8afcfde1255c5fa2cab3e19d296140f1dd6e2d74086dc25a75c",
-					"previous_hash": "c916f71d6e2a6e0d063f74e8cba3419b679a5072694005941236402a21918844",
+					"fixture_hash": "174966ba53986da10ffc91049d917ba47f18ec8f083d14d79bda2dbc806e5f29",
+					"previous_hash": "dc075b08d54b2d0c7b5a9bc59d062ed4e59ecd5181c6e7d852c262f2919edbaf",
 					"previous_stage_index": "f:1.000000",
-					"previous_typed_digest": "9f42e2bae4b2969464e77cafcd687237a915005c5651068e237696a728491b3e"
+					"previous_typed_digest": "649e5a6555d13ee2291bc732fd3feeb45d87cfed4b28d972c1ed15836951ee71"
 				},
 				"initial": {},
 				"mid": {
 					"fixture": "cooperative/weight-of-a-friend-checkpoint.json",
-					"fixture_hash": "c916f71d6e2a6e0d063f74e8cba3419b679a5072694005941236402a21918844",
-					"previous_hash": "543c6afed01ec41e692ac9dadc37bdc0e6b63d57b8e6bb8e8764985934e9ae1e",
+					"fixture_hash": "dc075b08d54b2d0c7b5a9bc59d062ed4e59ecd5181c6e7d852c262f2919edbaf",
+					"previous_hash": "2bc1b48c6629448d1ae152fffb2d34afd4eccbcd7faa3e0b2f33d2fccd396dad",
 					"previous_stage_index": "f:0.000000",
-					"previous_typed_digest": "6c27a1a3a7a796ed1a0f91f71f937c8a94ecb7b6b59318e2d5a41b9ee3e8289c"
+					"previous_typed_digest": "385290789f373487790946fed7de1830b443843a5afdc67b44acfa3c58778120"
 				},
 				"no_proof": {}
 			},
@@ -1081,7 +1081,7 @@
 					"error": "",
 					"ok": true,
 					"simulation_version": 8,
-					"state_hash": "493ca5e757ce30e69fcc65a7af68f4f41976367021957b2f3342edc9348802da"
+					"state_hash": "9cc1840f3307e9825c1949ae227530b5684efac13f17190879383acbc8208d39"
 				},
 				"recording_1": {
 					"error": "Unsupported recording version.",
@@ -1093,13 +1093,13 @@
 					"error": "",
 					"ok": true,
 					"simulation_version": 6,
-					"state_hash": "59949273f7f5f6bd269ae890740ebd53f3a957d50d6cf335e8c5bdee10f7867e"
+					"state_hash": "e35cd07137c4405739fa3b79b3a9101707d6a245c01ed778e915eb25d91fd6a3"
 				},
 				"recording_8": {
 					"error": "",
 					"ok": true,
 					"simulation_version": 8,
-					"state_hash": "493ca5e757ce30e69fcc65a7af68f4f41976367021957b2f3342edc9348802da"
+					"state_hash": "9cc1840f3307e9825c1949ae227530b5684efac13f17190879383acbc8208d39"
 				},
 				"recording_99": {
 					"error": "Unsupported recording version.",
@@ -1138,14 +1138,14 @@
 					"hint_b": "Roll the ball home.",
 					"is_authored_stage": true,
 					"title": null,
-					"typed_digest": "1f5e4778bbb0524b7161d1fb948d8a33abbeb7c396d9004b0f4b650e05afa8ca"
+					"typed_digest": "506a78cee70272b2d2808ca69f3c75b218e0cf75c8c4c864ab58b41b4b8207ad"
 				},
 				"weight-of-a-friend": {
 					"hint_a": "Help your partner cross with the ball's weight.",
 					"hint_b": "Find what keeps both crossings open.",
 					"is_authored_stage": true,
 					"title": null,
-					"typed_digest": "71d426cd638e1268876b6d1033e5a52ec2052f9520a9092dae6f760b9e8bcb55"
+					"typed_digest": "2c24d026c33f91ae58043b099f3a0b6289b394825b26a6dce582eb27288fd7ad"
 				}
 			},
 			"supported_rules": [
@@ -1166,13 +1166,13 @@
 			"world_script": "res://presentation/cooperative_world.gd"
 		},
 		"sleeping-lighthouse@2": {
-			"definition_digest": "0f5a41aa23b53d9f97d47851740a1bdd484371bc128f8b319bed9f509a9e8149",
-			"definition_typed_digest": "0f5a41aa23b53d9f97d47851740a1bdd484371bc128f8b319bed9f509a9e8149",
+			"definition_digest": "925adf59d94b970e614451ed67386e4d3dc7d5e706470764a54b9ed4c0e4703f",
+			"definition_typed_digest": "925adf59d94b970e614451ed67386e4d3dc7d5e706470764a54b9ed4c0e4703f",
 			"descriptor": {
 				"checkpoint_text": "Your friend can carry on from here.",
 				"checkpoint_title": "A path kept",
 				"completion_text": "The lighthouse is on.",
-				"definition_hash": "0f5a41aa23b53d9f97d47851740a1bdd484371bc128f8b319bed9f509a9e8149",
+				"definition_hash": "925adf59d94b970e614451ed67386e4d3dc7d5e706470764a54b9ed4c0e4703f",
 				"key": "sleeping-lighthouse@2",
 				"level_id": "sleeping-lighthouse",
 				"level_version": 2,
@@ -1184,8 +1184,8 @@
 				"summary": "The striped lighthouse over the water has been dark all year. I'm fairly sure it's haunted. You packed a picnic anyway, with the good jam. If a ghost turns up, I'm telling it the sandwiches were your idea. Save me the one with the most jam.",
 				"title": "Sleeping Lighthouse"
 			},
-			"initial_checkpoint_hash": "8d66c8218fcf51af3fc8964ec812ecdd84905a09c88f48848b35a7081e4495a7",
-			"initial_checkpoint_typed_digest": "7d88de95e729ba1b5cd40efeea37a465dc439e65bd249e807cbca2f2cc21ec66",
+			"initial_checkpoint_hash": "bcf47388dba77a54bae03fab7f33e0b5c8aa5b8deafdb8d4ecb8aaca5b2d4024",
+			"initial_checkpoint_typed_digest": "bdc8c4d02e49eab9e62a037d7bc217093bd1fd816a4aac0ecd31d611f5dafdb6",
 			"is_cooperative": false,
 			"is_journey": false,
 			"keepsake_local_path": "",
@@ -1210,21 +1210,21 @@
 				"int"
 			],
 			"previous_checkpoint": {
-				"both_fields": "7d88de95e729ba1b5cd40efeea37a465dc439e65bd249e807cbca2f2cc21ec66",
+				"both_fields": "bdc8c4d02e49eab9e62a037d7bc217093bd1fd816a4aac0ecd31d611f5dafdb6",
 				"final": {
 					"fixture": "lighthouse/v2-chain.json#6",
-					"fixture_hash": "40ad42811a4346098112f3ea1545ab94276239eac4c5d1bfbbc85051937ff86b",
-					"previous_hash": "d01cfe5ad569de831675658a0180810b68a5db2fcf50817b4993d88ef18a5080",
+					"fixture_hash": "98b985b91f52e13e96efad7190b234d82cd9aac6567c65d6741b1ab7349e60a1",
+					"previous_hash": "d135d3453f0231b60e1eb9c856fbbcaaf1cda7073c84ccd452c171b6ea332283",
 					"previous_stage_index": "f:5.000000",
-					"previous_typed_digest": "627a1249ebb42bd71e0c7f60f036e09c23874a68335c17a48bf7cd9257a35aaf"
+					"previous_typed_digest": "b92495ced23bead00673fc1a8cee8901f45d58261627b96695aca6c5d6f70d6f"
 				},
 				"initial": {},
 				"mid": {
 					"fixture": "lighthouse/v2-chain.json#3",
-					"fixture_hash": "c3e84555a8ca23fd5c00ce4d9ab6e21381fe63e1c7ec20b1ff62514cddf93f03",
-					"previous_hash": "634912b8499a73e15b5647226c02649a7ee8e3b2920c782ea3ce61726b9a6623",
+					"fixture_hash": "158aac8587a4ca7c575d45e3140c35c13e41dbc3b406eedd79bdc28f36f36dd1",
+					"previous_hash": "3bc79a21b1b89c51f2bf055227459340e2d8c2d6adc5adb5b928e82af79bf77a",
 					"previous_stage_index": "f:2.000000",
-					"previous_typed_digest": "f3e8364e019a478ccfa06e90c24658833d485009dcf923504cca12705a52c3cf"
+					"previous_typed_digest": "4aa901709289238dd91a7ee4504b0015fe7c9edaa2447ecbfcf2d23b8957fba8"
 				},
 				"no_proof": {}
 			},
@@ -1233,25 +1233,25 @@
 					"error": "",
 					"ok": true,
 					"simulation_version": 11,
-					"state_hash": "02ab86964a678c6f4e0e2f78d701b2404594c265b582eee9f10d457a1f46a7d8"
+					"state_hash": "a9cc2f16ba0b93c743552d18d1446c9d3177553c896bed3e2713649a104d7257"
 				},
 				"recording_1": {
 					"error": "",
 					"ok": true,
 					"simulation_version": 11,
-					"state_hash": "02ab86964a678c6f4e0e2f78d701b2404594c265b582eee9f10d457a1f46a7d8"
+					"state_hash": "a9cc2f16ba0b93c743552d18d1446c9d3177553c896bed3e2713649a104d7257"
 				},
 				"recording_11": {
 					"error": "",
 					"ok": true,
 					"simulation_version": 11,
-					"state_hash": "02ab86964a678c6f4e0e2f78d701b2404594c265b582eee9f10d457a1f46a7d8"
+					"state_hash": "a9cc2f16ba0b93c743552d18d1446c9d3177553c896bed3e2713649a104d7257"
 				},
 				"recording_99": {
 					"error": "",
 					"ok": true,
 					"simulation_version": 11,
-					"state_hash": "02ab86964a678c6f4e0e2f78d701b2404594c265b582eee9f10d457a1f46a7d8"
+					"state_hash": "a9cc2f16ba0b93c743552d18d1446c9d3177553c896bed3e2713649a104d7257"
 				}
 			},
 			"resolve": {
@@ -1340,13 +1340,13 @@
 			"world_script": "res://presentation/lighthouse_room_world.gd"
 		},
 		"the-wishing-well@1": {
-			"definition_digest": "4418a6f1ad6bdc3f1adee6d07d48184d03867a56a1b2d1d42c189584cfec5a94",
-			"definition_typed_digest": "4418a6f1ad6bdc3f1adee6d07d48184d03867a56a1b2d1d42c189584cfec5a94",
+			"definition_digest": "14cfffbdd9b23cee06056548f29bbae7f1e95c348315ff3ff0098b7190ee5f3e",
+			"definition_typed_digest": "14cfffbdd9b23cee06056548f29bbae7f1e95c348315ff3ff0098b7190ee5f3e",
 			"descriptor": {
 				"checkpoint_text": "Your friend can carry on from here.",
 				"checkpoint_title": "A path kept",
 				"completion_text": "You're both out of the well.",
-				"definition_hash": "4418a6f1ad6bdc3f1adee6d07d48184d03867a56a1b2d1d42c189584cfec5a94",
+				"definition_hash": "14cfffbdd9b23cee06056548f29bbae7f1e95c348315ff3ff0098b7190ee5f3e",
 				"key": "the-wishing-well@1",
 				"level_id": "the-wishing-well",
 				"level_version": 1,
@@ -1358,8 +1358,8 @@
 				"summary": "We each tossed a coin in the well, and you keep asking what I wished for. I'm not telling. You guessed six times on the way back and got it wrong six times, though one was close. Up the cliff, the windows are coming on one by one. It's getting chilly, so bring a jumper if you come back out.",
 				"title": "The Wishing Well"
 			},
-			"initial_checkpoint_hash": "e12981bd6eee5a6b92b2fa64b09cdd3400f32a6721dacfdd8ad301634e02563c",
-			"initial_checkpoint_typed_digest": "ede5220dcd9cb08dce2ae1fc8d580d8405f6ff76fd751f286316e9eefacbbce7",
+			"initial_checkpoint_hash": "cefb360d099223c57c1f742e634fdbea50c81c425cf652c1302d4340355a6342",
+			"initial_checkpoint_typed_digest": "8a57df078835da09f6a314c40c150417b393016298841401013fdc8ed735208a",
 			"is_cooperative": true,
 			"is_journey": false,
 			"keepsake_local_path": "user://the-wishing-well-journey-v1.json",
@@ -1374,21 +1374,21 @@
 				"int"
 			],
 			"previous_checkpoint": {
-				"both_fields": "ede5220dcd9cb08dce2ae1fc8d580d8405f6ff76fd751f286316e9eefacbbce7",
+				"both_fields": "8a57df078835da09f6a314c40c150417b393016298841401013fdc8ed735208a",
 				"final": {
 					"fixture": "cooperative/the-wishing-well-final-checkpoint.json",
-					"fixture_hash": "a7f8bd38582165a3c134f94df69b85b45681271e6b442c1ddf72654743d592c9",
-					"previous_hash": "497140755e4e4e1659580aea3734f944b270bfc1c787555533e6ffa338c93e74",
+					"fixture_hash": "f17490ccf11fda0798099650ecfb7a9c3eaf73ce926f9130b52e21fc8b4a2fb4",
+					"previous_hash": "fc9a86f900c1812f1f6e7ff240f7a2158432e879ed85750a3d56aab4b7f5c006",
 					"previous_stage_index": "f:1.000000",
-					"previous_typed_digest": "f537a83af929e9da9afedfb0335b6634c6911def6319c73e3a1ae91c4bb2a2eb"
+					"previous_typed_digest": "d6a21569da7213c3833761c966669107ddb25dc037cc81de2742a1f1380366ec"
 				},
 				"initial": {},
 				"mid": {
 					"fixture": "cooperative/go-on-ahead-checkpoint.json",
-					"fixture_hash": "497140755e4e4e1659580aea3734f944b270bfc1c787555533e6ffa338c93e74",
-					"previous_hash": "e12981bd6eee5a6b92b2fa64b09cdd3400f32a6721dacfdd8ad301634e02563c",
+					"fixture_hash": "fc9a86f900c1812f1f6e7ff240f7a2158432e879ed85750a3d56aab4b7f5c006",
+					"previous_hash": "cefb360d099223c57c1f742e634fdbea50c81c425cf652c1302d4340355a6342",
 					"previous_stage_index": "f:0.000000",
-					"previous_typed_digest": "ccb60981e90f349eceb3fe889e19c71c5d70a2858edffc8bdcd8b0942df5b94f"
+					"previous_typed_digest": "269342da01c371b4a84da47e203d0689f826bdf9e969777c4a17b2b7f07ea068"
 				},
 				"no_proof": {}
 			},
@@ -1397,7 +1397,7 @@
 					"error": "",
 					"ok": true,
 					"simulation_version": 9,
-					"state_hash": "e627a17433a18e96d4f3376e68fe0dc60273b651c8b7302f23a6130807b43bf1"
+					"state_hash": "4b9de22221269eae865c97e3015670198ce4465253cca1c1b820514bd653f7fb"
 				},
 				"recording_1": {
 					"error": "Unsupported recording version.",
@@ -1409,7 +1409,7 @@
 					"error": "",
 					"ok": true,
 					"simulation_version": 9,
-					"state_hash": "e627a17433a18e96d4f3376e68fe0dc60273b651c8b7302f23a6130807b43bf1"
+					"state_hash": "4b9de22221269eae865c97e3015670198ce4465253cca1c1b820514bd653f7fb"
 				},
 				"recording_99": {
 					"error": "Unsupported recording version.",
@@ -1448,14 +1448,14 @@
 					"hint_b": "Get out of the well and sound the bell.",
 					"is_authored_stage": true,
 					"title": "Back for You",
-					"typed_digest": "bc808f35099fb0c13695d7fbe8fab7eabfe6deac54f30e6d74e3062a5b1078e2"
+					"typed_digest": "b6389e6c5f9878b6cef1f1b6b2f0a5f0b399ea0c898d2e1ceccf5ba2ee276fa5"
 				},
 				"go-on-ahead": {
 					"hint_a": "Hop down and hold the rope.",
 					"hint_b": "Go on ahead.",
 					"is_authored_stage": true,
 					"title": "Go On Ahead",
-					"typed_digest": "7911e963a97009ce34b33ff25ef839bab68de3c72c149944732c386c9f9d99f0"
+					"typed_digest": "b73bea03f506b04fde9dbc81984ad5c5670a8968d4c4133d0052e6d97c3851d2"
 				}
 			},
 			"supported_rules": [
@@ -1472,13 +1472,13 @@
 			"world_script": "res://presentation/wishing_well_world.gd"
 		},
 		"turn-of-the-tide@1": {
-			"definition_digest": "3a6d111455aa69e60c440cc6f04a0656292ed9c40b31c66a7f999c85cd2a911a",
-			"definition_typed_digest": "3a6d111455aa69e60c440cc6f04a0656292ed9c40b31c66a7f999c85cd2a911a",
+			"definition_digest": "bddd92903e047286630ebe9f71a0e20946b929a9bb50952d34157fe45b16d5d0",
+			"definition_typed_digest": "bddd92903e047286630ebe9f71a0e20946b929a9bb50952d34157fe45b16d5d0",
 			"descriptor": {
 				"checkpoint_text": "Your friend can carry on from here.",
 				"checkpoint_title": "A path kept",
 				"completion_text": "The harbour lantern is alight.",
-				"definition_hash": "3a6d111455aa69e60c440cc6f04a0656292ed9c40b31c66a7f999c85cd2a911a",
+				"definition_hash": "bddd92903e047286630ebe9f71a0e20946b929a9bb50952d34157fe45b16d5d0",
 				"key": "turn-of-the-tide@1",
 				"level_id": "turn-of-the-tide",
 				"level_version": 1,
@@ -1490,8 +1490,8 @@
 				"summary": "The boats came in hours ago and we're still down on the sand, counting crabs in the rock pools. I make it eleven. You make it nine, and you say I counted the same crab twice. That one was a different crab, it was waving. The sky's going pink and my feet are cold, but I want a recount.",
 				"title": "Turn of the Tide"
 			},
-			"initial_checkpoint_hash": "d3f696f9eaf0dbaddd2a1d4f571642e602d55a3999328526ca73c926fe92e51c",
-			"initial_checkpoint_typed_digest": "f7d43db8385b6ac62255c5efa54e567ad37600c8905a28c5624dc82f1028b2a9",
+			"initial_checkpoint_hash": "9182eacc7db62f6f5462e6c9831c45dd7aa6e2863401cdeb668ca3dbcfed3039",
+			"initial_checkpoint_typed_digest": "13f8623e36947ea8bb72c052a35251f185c7393a19b1e848a40b7dcb6b40bee8",
 			"is_cooperative": true,
 			"is_journey": true,
 			"keepsake_local_path": "user://turn-of-the-tide-journey-v1.json",
@@ -1506,21 +1506,21 @@
 				"int"
 			],
 			"previous_checkpoint": {
-				"both_fields": "f7d43db8385b6ac62255c5efa54e567ad37600c8905a28c5624dc82f1028b2a9",
+				"both_fields": "13f8623e36947ea8bb72c052a35251f185c7393a19b1e848a40b7dcb6b40bee8",
 				"final": {
 					"fixture": "journey/turn-of-the-tide-final-checkpoint.json",
-					"fixture_hash": "4d14c1b35c34266cd173b4f69b2ac40cb5df1bb53d5c7a99a2512c53ca259f8d",
-					"previous_hash": "999b3275d1b95cb46734b536175dc7b2505dfe33c67a5ba26f41a6392cd01b6e",
+					"fixture_hash": "c6c7b1f1d2df726984f32d51aa9144e1049f3c52fb706020c5d096bf85e50e1b",
+					"previous_hash": "aaf41cc18efd4584f57a0db66a29537d0bc3a9b8bafb4c43a6a97e30edd06b38",
 					"previous_stage_index": "f:1.000000",
-					"previous_typed_digest": "f86edcd025a64f37bb3ddf0f6bf7ba4e088637fbd548cb54b45598fa63cf1228"
+					"previous_typed_digest": "63a5802f20a48197e4270c1f2378641b66bf54d995faa7a0470bd1d25073a8f1"
 				},
 				"initial": {},
 				"mid": {
 					"fixture": "journey/set-the-tide-checkpoint.json",
-					"fixture_hash": "999b3275d1b95cb46734b536175dc7b2505dfe33c67a5ba26f41a6392cd01b6e",
-					"previous_hash": "d3f696f9eaf0dbaddd2a1d4f571642e602d55a3999328526ca73c926fe92e51c",
+					"fixture_hash": "aaf41cc18efd4584f57a0db66a29537d0bc3a9b8bafb4c43a6a97e30edd06b38",
+					"previous_hash": "9182eacc7db62f6f5462e6c9831c45dd7aa6e2863401cdeb668ca3dbcfed3039",
 					"previous_stage_index": "f:0.000000",
-					"previous_typed_digest": "24695cb262304da13215b232b1e46ac1e9660f60777a4bf1eea6dcd9149fc510"
+					"previous_typed_digest": "88bf9de5475abcd12d8e73838c0c1c4ea467f1d77041dee27672f6c30b6acff1"
 				},
 				"no_proof": {}
 			},
@@ -1529,7 +1529,7 @@
 					"error": "",
 					"ok": true,
 					"simulation_version": 9,
-					"state_hash": "6c4a6776694561cd6422395349cb2eb99bd41fc292137c627311b8a2c52c5ca4"
+					"state_hash": "2fe09bb4bf3619117d96f85593d08d7e383b12ce001a965aa1da0dd295de4f28"
 				},
 				"recording_1": {
 					"error": "Unsupported recording version.",
@@ -1541,7 +1541,7 @@
 					"error": "",
 					"ok": true,
 					"simulation_version": 9,
-					"state_hash": "6c4a6776694561cd6422395349cb2eb99bd41fc292137c627311b8a2c52c5ca4"
+					"state_hash": "2fe09bb4bf3619117d96f85593d08d7e383b12ce001a965aa1da0dd295de4f28"
 				},
 				"recording_99": {
 					"error": "Unsupported recording version.",
@@ -1604,13 +1604,13 @@
 			"world_script": "res://presentation/tide_world.gd"
 		},
 		"turn-of-the-tide@2": {
-			"definition_digest": "1f88aabb592fbf14640b50dd0644755d6afe522cae39d844524ac68b491f0a43",
-			"definition_typed_digest": "1f88aabb592fbf14640b50dd0644755d6afe522cae39d844524ac68b491f0a43",
+			"definition_digest": "8e29d35f0f968b3a4f056802794437787c1077883fafc316d285b5edf40edb80",
+			"definition_typed_digest": "8e29d35f0f968b3a4f056802794437787c1077883fafc316d285b5edf40edb80",
 			"descriptor": {
 				"checkpoint_text": "Your friend can carry on from here.",
 				"checkpoint_title": "A path kept",
 				"completion_text": "The harbour lantern is alight.",
-				"definition_hash": "1f88aabb592fbf14640b50dd0644755d6afe522cae39d844524ac68b491f0a43",
+				"definition_hash": "8e29d35f0f968b3a4f056802794437787c1077883fafc316d285b5edf40edb80",
 				"key": "turn-of-the-tide@2",
 				"level_id": "turn-of-the-tide",
 				"level_version": 2,
@@ -1622,8 +1622,8 @@
 				"summary": "The boats came in hours ago and we're still down on the sand, counting crabs in the rock pools. I make it eleven. You make it nine, and you say I counted the same crab twice. That one was a different crab, it was waving. The sky's going pink and my feet are cold, but I want a recount.",
 				"title": "Turn of the Tide"
 			},
-			"initial_checkpoint_hash": "f04821b57f741e692fa350265b24d41d27037026209f8c16f7ef70d4546712e9",
-			"initial_checkpoint_typed_digest": "d62ef293290ff568b5182593aa078d4b204461c6175087cd02eaef4167f308cc",
+			"initial_checkpoint_hash": "18082bf9acb916bb4e7b0c426e34444f1e6f1007fb173014c7731d1fc0b2258e",
+			"initial_checkpoint_typed_digest": "188434201cc4023829ffac82777b47311cdac3cdb5fde40ab7275edc90c1fe9f",
 			"is_cooperative": true,
 			"is_journey": true,
 			"keepsake_local_path": "user://turn-of-the-tide-journey-v2.json",
@@ -1638,21 +1638,21 @@
 				"int"
 			],
 			"previous_checkpoint": {
-				"both_fields": "d62ef293290ff568b5182593aa078d4b204461c6175087cd02eaef4167f308cc",
+				"both_fields": "188434201cc4023829ffac82777b47311cdac3cdb5fde40ab7275edc90c1fe9f",
 				"final": {
 					"fixture": "journey/turn-of-the-tide-v2-final-checkpoint.json",
-					"fixture_hash": "af4c69fd6fbe70076a8f9e137ad5062334c151a5fe4cf9749ec38f9a5baa59f3",
-					"previous_hash": "ad879abc4b90c1f263fa2e02453de08e96b4987aeb83283e27186e148fee00c3",
+					"fixture_hash": "36c9657afb8a556cbc2120624b78bc6bc8645e665500e219168bddd476636617",
+					"previous_hash": "9e2b18217bce7ff0cdf6f56dbb8e4278b5a42c4b9e046a4f631e705352852a36",
 					"previous_stage_index": "f:1.000000",
-					"previous_typed_digest": "c16bf3d171aa9297ab98b5cc5041b045db0922ff3e5147b8a8ffb3b150b0e5b2"
+					"previous_typed_digest": "891d2a81885188cd108188910749fb3a15f7ae1630b94beb0f1cbce7d0308a9d"
 				},
 				"initial": {},
 				"mid": {
 					"fixture": "journey/turn-of-the-tide-v2-set-the-tide-checkpoint.json",
-					"fixture_hash": "ad879abc4b90c1f263fa2e02453de08e96b4987aeb83283e27186e148fee00c3",
-					"previous_hash": "f04821b57f741e692fa350265b24d41d27037026209f8c16f7ef70d4546712e9",
+					"fixture_hash": "9e2b18217bce7ff0cdf6f56dbb8e4278b5a42c4b9e046a4f631e705352852a36",
+					"previous_hash": "18082bf9acb916bb4e7b0c426e34444f1e6f1007fb173014c7731d1fc0b2258e",
 					"previous_stage_index": "f:0.000000",
-					"previous_typed_digest": "eb5ee021ef31a4a29b62fd3a3bb38882e910887507170bd809dffe42c73d4c9b"
+					"previous_typed_digest": "1c8685ec926d22ab0b8315c9e03d1bac029c9340b7a0336b16d4ce9d29fd44f1"
 				},
 				"no_proof": {}
 			},
@@ -1661,7 +1661,7 @@
 					"error": "",
 					"ok": true,
 					"simulation_version": 10,
-					"state_hash": "41e30ad7e95eb877bf77dfb63d77c9421b0aadf462c74cf2b71c8777e0203d4c"
+					"state_hash": "8c275cf6fb6887292d997cd462fb463a0d79a711c7ed8702b8cfbf8b123538b8"
 				},
 				"recording_1": {
 					"error": "Unsupported recording version.",
@@ -1673,7 +1673,7 @@
 					"error": "",
 					"ok": true,
 					"simulation_version": 10,
-					"state_hash": "41e30ad7e95eb877bf77dfb63d77c9421b0aadf462c74cf2b71c8777e0203d4c"
+					"state_hash": "8c275cf6fb6887292d997cd462fb463a0d79a711c7ed8702b8cfbf8b123538b8"
 				},
 				"recording_99": {
 					"error": "Unsupported recording version.",
@@ -1781,7 +1781,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "Your progress is saved.",
-						"definition_hash": "6aa907e802c92445745a6452c6ec0850dd8e98724e689b58a8ec82915fb08956",
+						"definition_hash": "3b6576badcdd214630373a0f51040706e014845d9b8bc17483bd887f04a9ff40",
 						"key": "high-and-low@1",
 						"level_id": "high-and-low",
 						"level_version": 1,
@@ -1797,7 +1797,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "Your progress is saved.",
-						"definition_hash": "d6aaa6006597dd5e4ce4dbc641d94c81c2ab17c55bd80b50c6a240e0e91cff87",
+						"definition_hash": "3362e8afd9fb3504868ab4b8b436050f62fe601e5c7ff8fea995424064f2dbff",
 						"key": "rolling-home@1",
 						"level_id": "rolling-home",
 						"level_version": 1,
@@ -1813,7 +1813,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "The shutters are open.",
-						"definition_hash": "b868745e7bc025bb8fe5a49b698b15dfb0d428ea9fe905ce46fa46dd27d79867",
+						"definition_hash": "f14fb0abf330fa46afdb61078a8e8e99cee4cc2ade845304508cc90b05d27995",
 						"key": "a-house-for-two@1",
 						"level_id": "a-house-for-two",
 						"level_version": 1,
@@ -1829,7 +1829,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "Both lights are able to reach the garden.",
-						"definition_hash": "fd9fce12c4facd5fd659eedd5a510ea6b0ad796925458ccb73b4b37a893530d5",
+						"definition_hash": "5e4741419609acd603db2066a0e799c8ab92182ca08f9df3aa54d410760551a3",
 						"key": "conservatory@1",
 						"level_id": "conservatory",
 						"level_version": 1,
@@ -1845,7 +1845,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "You're both at home.",
-						"definition_hash": "bce3ddd36386ebb32f011b8d6afe95316992809030ea828b473bbbc3e1c6bb7f",
+						"definition_hash": "79ea6a353b52459acc508c2a74baea488a4afe0c62079a07f7fb479e57193932",
 						"key": "long-way-home@1",
 						"level_id": "long-way-home",
 						"level_version": 1,
@@ -1861,7 +1861,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "You're both out of the well.",
-						"definition_hash": "4418a6f1ad6bdc3f1adee6d07d48184d03867a56a1b2d1d42c189584cfec5a94",
+						"definition_hash": "14cfffbdd9b23cee06056548f29bbae7f1e95c348315ff3ff0098b7190ee5f3e",
 						"key": "the-wishing-well@1",
 						"level_id": "the-wishing-well",
 						"level_version": 1,
@@ -1877,7 +1877,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "You're both at home.",
-						"definition_hash": "4541bd920062e244f202fbe6ee95363a1f53ae5afc490ad600112af9f01a8c77",
+						"definition_hash": "9d91b9186b9307460763eba57b2cc2b25c9bfd2a245f20b7ff93eb75b16445eb",
 						"key": "long-way-home@2",
 						"level_id": "long-way-home",
 						"level_version": 2,
@@ -1893,7 +1893,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "The harbour lantern is alight.",
-						"definition_hash": "3a6d111455aa69e60c440cc6f04a0656292ed9c40b31c66a7f999c85cd2a911a",
+						"definition_hash": "bddd92903e047286630ebe9f71a0e20946b929a9bb50952d34157fe45b16d5d0",
 						"key": "turn-of-the-tide@1",
 						"level_id": "turn-of-the-tide",
 						"level_version": 1,
@@ -1909,7 +1909,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "The lighthouse is on.",
-						"definition_hash": "0f5a41aa23b53d9f97d47851740a1bdd484371bc128f8b319bed9f509a9e8149",
+						"definition_hash": "925adf59d94b970e614451ed67386e4d3dc7d5e706470764a54b9ed4c0e4703f",
 						"key": "sleeping-lighthouse@2",
 						"level_id": "sleeping-lighthouse",
 						"level_version": 2,
@@ -1925,7 +1925,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "The harbour lantern is alight.",
-						"definition_hash": "1f88aabb592fbf14640b50dd0644755d6afe522cae39d844524ac68b491f0a43",
+						"definition_hash": "8e29d35f0f968b3a4f056802794437787c1077883fafc316d285b5edf40edb80",
 						"key": "turn-of-the-tide@2",
 						"level_id": "turn-of-the-tide",
 						"level_version": 2,
@@ -2039,7 +2039,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "The harbour lantern is alight.",
-						"definition_hash": "3a6d111455aa69e60c440cc6f04a0656292ed9c40b31c66a7f999c85cd2a911a",
+						"definition_hash": "bddd92903e047286630ebe9f71a0e20946b929a9bb50952d34157fe45b16d5d0",
 						"key": "turn-of-the-tide@1",
 						"level_id": "turn-of-the-tide",
 						"level_version": 1,
@@ -2061,7 +2061,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "The harbour lantern is alight.",
-						"definition_hash": "1f88aabb592fbf14640b50dd0644755d6afe522cae39d844524ac68b491f0a43",
+						"definition_hash": "8e29d35f0f968b3a4f056802794437787c1077883fafc316d285b5edf40edb80",
 						"key": "turn-of-the-tide@2",
 						"level_id": "turn-of-the-tide",
 						"level_version": 2,
@@ -2164,7 +2164,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "Your progress is saved.",
-						"definition_hash": "6aa907e802c92445745a6452c6ec0850dd8e98724e689b58a8ec82915fb08956",
+						"definition_hash": "3b6576badcdd214630373a0f51040706e014845d9b8bc17483bd887f04a9ff40",
 						"key": "high-and-low@1",
 						"level_id": "high-and-low",
 						"level_version": 1,
@@ -2180,7 +2180,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "Your progress is saved.",
-						"definition_hash": "d6aaa6006597dd5e4ce4dbc641d94c81c2ab17c55bd80b50c6a240e0e91cff87",
+						"definition_hash": "3362e8afd9fb3504868ab4b8b436050f62fe601e5c7ff8fea995424064f2dbff",
 						"key": "rolling-home@1",
 						"level_id": "rolling-home",
 						"level_version": 1,
@@ -2196,7 +2196,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "The shutters are open.",
-						"definition_hash": "b868745e7bc025bb8fe5a49b698b15dfb0d428ea9fe905ce46fa46dd27d79867",
+						"definition_hash": "f14fb0abf330fa46afdb61078a8e8e99cee4cc2ade845304508cc90b05d27995",
 						"key": "a-house-for-two@1",
 						"level_id": "a-house-for-two",
 						"level_version": 1,
@@ -2212,7 +2212,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "Both lights are able to reach the garden.",
-						"definition_hash": "fd9fce12c4facd5fd659eedd5a510ea6b0ad796925458ccb73b4b37a893530d5",
+						"definition_hash": "5e4741419609acd603db2066a0e799c8ab92182ca08f9df3aa54d410760551a3",
 						"key": "conservatory@1",
 						"level_id": "conservatory",
 						"level_version": 1,
@@ -2228,7 +2228,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "You're both at home.",
-						"definition_hash": "bce3ddd36386ebb32f011b8d6afe95316992809030ea828b473bbbc3e1c6bb7f",
+						"definition_hash": "79ea6a353b52459acc508c2a74baea488a4afe0c62079a07f7fb479e57193932",
 						"key": "long-way-home@1",
 						"level_id": "long-way-home",
 						"level_version": 1,
@@ -2244,7 +2244,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "You're both out of the well.",
-						"definition_hash": "4418a6f1ad6bdc3f1adee6d07d48184d03867a56a1b2d1d42c189584cfec5a94",
+						"definition_hash": "14cfffbdd9b23cee06056548f29bbae7f1e95c348315ff3ff0098b7190ee5f3e",
 						"key": "the-wishing-well@1",
 						"level_id": "the-wishing-well",
 						"level_version": 1,
@@ -2260,7 +2260,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "You're both at home.",
-						"definition_hash": "4541bd920062e244f202fbe6ee95363a1f53ae5afc490ad600112af9f01a8c77",
+						"definition_hash": "9d91b9186b9307460763eba57b2cc2b25c9bfd2a245f20b7ff93eb75b16445eb",
 						"key": "long-way-home@2",
 						"level_id": "long-way-home",
 						"level_version": 2,
@@ -2276,7 +2276,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "The harbour lantern is alight.",
-						"definition_hash": "3a6d111455aa69e60c440cc6f04a0656292ed9c40b31c66a7f999c85cd2a911a",
+						"definition_hash": "bddd92903e047286630ebe9f71a0e20946b929a9bb50952d34157fe45b16d5d0",
 						"key": "turn-of-the-tide@1",
 						"level_id": "turn-of-the-tide",
 						"level_version": 1,
@@ -2292,7 +2292,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "The lighthouse is on.",
-						"definition_hash": "0f5a41aa23b53d9f97d47851740a1bdd484371bc128f8b319bed9f509a9e8149",
+						"definition_hash": "925adf59d94b970e614451ed67386e4d3dc7d5e706470764a54b9ed4c0e4703f",
 						"key": "sleeping-lighthouse@2",
 						"level_id": "sleeping-lighthouse",
 						"level_version": 2,
@@ -2308,7 +2308,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "The harbour lantern is alight.",
-						"definition_hash": "1f88aabb592fbf14640b50dd0644755d6afe522cae39d844524ac68b491f0a43",
+						"definition_hash": "8e29d35f0f968b3a4f056802794437787c1077883fafc316d285b5edf40edb80",
 						"key": "turn-of-the-tide@2",
 						"level_id": "turn-of-the-tide",
 						"level_version": 2,
@@ -2367,7 +2367,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "Your progress is saved.",
-						"definition_hash": "6aa907e802c92445745a6452c6ec0850dd8e98724e689b58a8ec82915fb08956",
+						"definition_hash": "3b6576badcdd214630373a0f51040706e014845d9b8bc17483bd887f04a9ff40",
 						"key": "high-and-low@1",
 						"level_id": "high-and-low",
 						"level_version": 1,
@@ -2383,7 +2383,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "Your progress is saved.",
-						"definition_hash": "d6aaa6006597dd5e4ce4dbc641d94c81c2ab17c55bd80b50c6a240e0e91cff87",
+						"definition_hash": "3362e8afd9fb3504868ab4b8b436050f62fe601e5c7ff8fea995424064f2dbff",
 						"key": "rolling-home@1",
 						"level_id": "rolling-home",
 						"level_version": 1,
@@ -2399,7 +2399,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "The shutters are open.",
-						"definition_hash": "b868745e7bc025bb8fe5a49b698b15dfb0d428ea9fe905ce46fa46dd27d79867",
+						"definition_hash": "f14fb0abf330fa46afdb61078a8e8e99cee4cc2ade845304508cc90b05d27995",
 						"key": "a-house-for-two@1",
 						"level_id": "a-house-for-two",
 						"level_version": 1,
@@ -2415,7 +2415,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "Both lights are able to reach the garden.",
-						"definition_hash": "fd9fce12c4facd5fd659eedd5a510ea6b0ad796925458ccb73b4b37a893530d5",
+						"definition_hash": "5e4741419609acd603db2066a0e799c8ab92182ca08f9df3aa54d410760551a3",
 						"key": "conservatory@1",
 						"level_id": "conservatory",
 						"level_version": 1,
@@ -2431,7 +2431,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "You're both at home.",
-						"definition_hash": "bce3ddd36386ebb32f011b8d6afe95316992809030ea828b473bbbc3e1c6bb7f",
+						"definition_hash": "79ea6a353b52459acc508c2a74baea488a4afe0c62079a07f7fb479e57193932",
 						"key": "long-way-home@1",
 						"level_id": "long-way-home",
 						"level_version": 1,
@@ -2447,7 +2447,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "You're both out of the well.",
-						"definition_hash": "4418a6f1ad6bdc3f1adee6d07d48184d03867a56a1b2d1d42c189584cfec5a94",
+						"definition_hash": "14cfffbdd9b23cee06056548f29bbae7f1e95c348315ff3ff0098b7190ee5f3e",
 						"key": "the-wishing-well@1",
 						"level_id": "the-wishing-well",
 						"level_version": 1,
@@ -2463,7 +2463,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "You're both at home.",
-						"definition_hash": "4541bd920062e244f202fbe6ee95363a1f53ae5afc490ad600112af9f01a8c77",
+						"definition_hash": "9d91b9186b9307460763eba57b2cc2b25c9bfd2a245f20b7ff93eb75b16445eb",
 						"key": "long-way-home@2",
 						"level_id": "long-way-home",
 						"level_version": 2,
@@ -2479,7 +2479,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "The harbour lantern is alight.",
-						"definition_hash": "3a6d111455aa69e60c440cc6f04a0656292ed9c40b31c66a7f999c85cd2a911a",
+						"definition_hash": "bddd92903e047286630ebe9f71a0e20946b929a9bb50952d34157fe45b16d5d0",
 						"key": "turn-of-the-tide@1",
 						"level_id": "turn-of-the-tide",
 						"level_version": 1,
@@ -2495,7 +2495,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "The lighthouse is on.",
-						"definition_hash": "0f5a41aa23b53d9f97d47851740a1bdd484371bc128f8b319bed9f509a9e8149",
+						"definition_hash": "925adf59d94b970e614451ed67386e4d3dc7d5e706470764a54b9ed4c0e4703f",
 						"key": "sleeping-lighthouse@2",
 						"level_id": "sleeping-lighthouse",
 						"level_version": 2,
@@ -2511,7 +2511,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "The harbour lantern is alight.",
-						"definition_hash": "1f88aabb592fbf14640b50dd0644755d6afe522cae39d844524ac68b491f0a43",
+						"definition_hash": "8e29d35f0f968b3a4f056802794437787c1077883fafc316d285b5edf40edb80",
 						"key": "turn-of-the-tide@2",
 						"level_id": "turn-of-the-tide",
 						"level_version": 2,
@@ -2612,7 +2612,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "Your progress is saved.",
-						"definition_hash": "6aa907e802c92445745a6452c6ec0850dd8e98724e689b58a8ec82915fb08956",
+						"definition_hash": "3b6576badcdd214630373a0f51040706e014845d9b8bc17483bd887f04a9ff40",
 						"key": "high-and-low@1",
 						"level_id": "high-and-low",
 						"level_version": 1,
@@ -2628,7 +2628,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "Your progress is saved.",
-						"definition_hash": "d6aaa6006597dd5e4ce4dbc641d94c81c2ab17c55bd80b50c6a240e0e91cff87",
+						"definition_hash": "3362e8afd9fb3504868ab4b8b436050f62fe601e5c7ff8fea995424064f2dbff",
 						"key": "rolling-home@1",
 						"level_id": "rolling-home",
 						"level_version": 1,
@@ -2644,7 +2644,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "The shutters are open.",
-						"definition_hash": "b868745e7bc025bb8fe5a49b698b15dfb0d428ea9fe905ce46fa46dd27d79867",
+						"definition_hash": "f14fb0abf330fa46afdb61078a8e8e99cee4cc2ade845304508cc90b05d27995",
 						"key": "a-house-for-two@1",
 						"level_id": "a-house-for-two",
 						"level_version": 1,
@@ -2660,7 +2660,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "Both lights are able to reach the garden.",
-						"definition_hash": "fd9fce12c4facd5fd659eedd5a510ea6b0ad796925458ccb73b4b37a893530d5",
+						"definition_hash": "5e4741419609acd603db2066a0e799c8ab92182ca08f9df3aa54d410760551a3",
 						"key": "conservatory@1",
 						"level_id": "conservatory",
 						"level_version": 1,
@@ -2676,7 +2676,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "You're both at home.",
-						"definition_hash": "bce3ddd36386ebb32f011b8d6afe95316992809030ea828b473bbbc3e1c6bb7f",
+						"definition_hash": "79ea6a353b52459acc508c2a74baea488a4afe0c62079a07f7fb479e57193932",
 						"key": "long-way-home@1",
 						"level_id": "long-way-home",
 						"level_version": 1,
@@ -2692,7 +2692,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "You're both out of the well.",
-						"definition_hash": "4418a6f1ad6bdc3f1adee6d07d48184d03867a56a1b2d1d42c189584cfec5a94",
+						"definition_hash": "14cfffbdd9b23cee06056548f29bbae7f1e95c348315ff3ff0098b7190ee5f3e",
 						"key": "the-wishing-well@1",
 						"level_id": "the-wishing-well",
 						"level_version": 1,
@@ -2708,7 +2708,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "You're both at home.",
-						"definition_hash": "4541bd920062e244f202fbe6ee95363a1f53ae5afc490ad600112af9f01a8c77",
+						"definition_hash": "9d91b9186b9307460763eba57b2cc2b25c9bfd2a245f20b7ff93eb75b16445eb",
 						"key": "long-way-home@2",
 						"level_id": "long-way-home",
 						"level_version": 2,
@@ -2724,7 +2724,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "The harbour lantern is alight.",
-						"definition_hash": "3a6d111455aa69e60c440cc6f04a0656292ed9c40b31c66a7f999c85cd2a911a",
+						"definition_hash": "bddd92903e047286630ebe9f71a0e20946b929a9bb50952d34157fe45b16d5d0",
 						"key": "turn-of-the-tide@1",
 						"level_id": "turn-of-the-tide",
 						"level_version": 1,
@@ -2740,7 +2740,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "The lighthouse is on.",
-						"definition_hash": "0f5a41aa23b53d9f97d47851740a1bdd484371bc128f8b319bed9f509a9e8149",
+						"definition_hash": "925adf59d94b970e614451ed67386e4d3dc7d5e706470764a54b9ed4c0e4703f",
 						"key": "sleeping-lighthouse@2",
 						"level_id": "sleeping-lighthouse",
 						"level_version": 2,
@@ -2756,7 +2756,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "The harbour lantern is alight.",
-						"definition_hash": "1f88aabb592fbf14640b50dd0644755d6afe522cae39d844524ac68b491f0a43",
+						"definition_hash": "8e29d35f0f968b3a4f056802794437787c1077883fafc316d285b5edf40edb80",
 						"key": "turn-of-the-tide@2",
 						"level_id": "turn-of-the-tide",
 						"level_version": 2,
@@ -2830,7 +2830,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "Your progress is saved.",
-						"definition_hash": "6aa907e802c92445745a6452c6ec0850dd8e98724e689b58a8ec82915fb08956",
+						"definition_hash": "3b6576badcdd214630373a0f51040706e014845d9b8bc17483bd887f04a9ff40",
 						"key": "high-and-low@1",
 						"level_id": "high-and-low",
 						"level_version": 1,
@@ -2846,7 +2846,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "Your progress is saved.",
-						"definition_hash": "d6aaa6006597dd5e4ce4dbc641d94c81c2ab17c55bd80b50c6a240e0e91cff87",
+						"definition_hash": "3362e8afd9fb3504868ab4b8b436050f62fe601e5c7ff8fea995424064f2dbff",
 						"key": "rolling-home@1",
 						"level_id": "rolling-home",
 						"level_version": 1,
@@ -2862,7 +2862,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "The shutters are open.",
-						"definition_hash": "b868745e7bc025bb8fe5a49b698b15dfb0d428ea9fe905ce46fa46dd27d79867",
+						"definition_hash": "f14fb0abf330fa46afdb61078a8e8e99cee4cc2ade845304508cc90b05d27995",
 						"key": "a-house-for-two@1",
 						"level_id": "a-house-for-two",
 						"level_version": 1,
@@ -2878,7 +2878,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "Both lights are able to reach the garden.",
-						"definition_hash": "fd9fce12c4facd5fd659eedd5a510ea6b0ad796925458ccb73b4b37a893530d5",
+						"definition_hash": "5e4741419609acd603db2066a0e799c8ab92182ca08f9df3aa54d410760551a3",
 						"key": "conservatory@1",
 						"level_id": "conservatory",
 						"level_version": 1,
@@ -2894,7 +2894,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "You're both at home.",
-						"definition_hash": "bce3ddd36386ebb32f011b8d6afe95316992809030ea828b473bbbc3e1c6bb7f",
+						"definition_hash": "79ea6a353b52459acc508c2a74baea488a4afe0c62079a07f7fb479e57193932",
 						"key": "long-way-home@1",
 						"level_id": "long-way-home",
 						"level_version": 1,
@@ -2910,7 +2910,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "You're both out of the well.",
-						"definition_hash": "4418a6f1ad6bdc3f1adee6d07d48184d03867a56a1b2d1d42c189584cfec5a94",
+						"definition_hash": "14cfffbdd9b23cee06056548f29bbae7f1e95c348315ff3ff0098b7190ee5f3e",
 						"key": "the-wishing-well@1",
 						"level_id": "the-wishing-well",
 						"level_version": 1,
@@ -2926,7 +2926,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "You're both at home.",
-						"definition_hash": "4541bd920062e244f202fbe6ee95363a1f53ae5afc490ad600112af9f01a8c77",
+						"definition_hash": "9d91b9186b9307460763eba57b2cc2b25c9bfd2a245f20b7ff93eb75b16445eb",
 						"key": "long-way-home@2",
 						"level_id": "long-way-home",
 						"level_version": 2,
@@ -2942,7 +2942,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "The harbour lantern is alight.",
-						"definition_hash": "3a6d111455aa69e60c440cc6f04a0656292ed9c40b31c66a7f999c85cd2a911a",
+						"definition_hash": "bddd92903e047286630ebe9f71a0e20946b929a9bb50952d34157fe45b16d5d0",
 						"key": "turn-of-the-tide@1",
 						"level_id": "turn-of-the-tide",
 						"level_version": 1,
@@ -2958,7 +2958,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "The lighthouse is on.",
-						"definition_hash": "0f5a41aa23b53d9f97d47851740a1bdd484371bc128f8b319bed9f509a9e8149",
+						"definition_hash": "925adf59d94b970e614451ed67386e4d3dc7d5e706470764a54b9ed4c0e4703f",
 						"key": "sleeping-lighthouse@2",
 						"level_id": "sleeping-lighthouse",
 						"level_version": 2,
@@ -2974,7 +2974,7 @@
 						"checkpoint_text": "Your friend can carry on from here.",
 						"checkpoint_title": "A path kept",
 						"completion_text": "The harbour lantern is alight.",
-						"definition_hash": "1f88aabb592fbf14640b50dd0644755d6afe522cae39d844524ac68b491f0a43",
+						"definition_hash": "8e29d35f0f968b3a4f056802794437787c1077883fafc316d285b5edf40edb80",
 						"key": "turn-of-the-tide@2",
 						"level_id": "turn-of-the-tide",
 						"level_version": 2,
@@ -3137,8 +3137,8 @@
 				"rolling-home@1",
 				"a-house-for-two@1",
 				"conservatory@1",
-				"long-way-home@1",
 				"the-wishing-well@1",
+				"long-way-home@1",
 				"long-way-home@2",
 				"turn-of-the-tide@1",
 				"turn-of-the-tide@2"
@@ -3290,22 +3290,6 @@
 					"title": "The Way Light Returns"
 				},
 				{
-					"chapter_key": "long-way-home@1",
-					"family": "long-way-home",
-					"friend_available": true,
-					"id": "long-way-home/the-path-you-leave",
-					"stage_id": "the-path-you-leave",
-					"title": "The Path You Leave"
-				},
-				{
-					"chapter_key": "long-way-home@1",
-					"family": "long-way-home",
-					"friend_available": true,
-					"id": "long-way-home/a-place-beside-you",
-					"stage_id": "a-place-beside-you",
-					"title": "A Place Beside You"
-				},
-				{
 					"chapter_key": "the-wishing-well@1",
 					"family": "the-wishing-well",
 					"friend_available": true,
@@ -3320,6 +3304,22 @@
 					"id": "the-wishing-well/back-for-you",
 					"stage_id": "back-for-you",
 					"title": "Back for You"
+				},
+				{
+					"chapter_key": "long-way-home@1",
+					"family": "long-way-home",
+					"friend_available": true,
+					"id": "long-way-home/the-path-you-leave",
+					"stage_id": "the-path-you-leave",
+					"title": "The Path You Leave"
+				},
+				{
+					"chapter_key": "long-way-home@1",
+					"family": "long-way-home",
+					"friend_available": true,
+					"id": "long-way-home/a-place-beside-you",
+					"stage_id": "a-place-beside-you",
+					"title": "A Place Beside You"
 				},
 				{
 					"chapter_key": "turn-of-the-tide@1",

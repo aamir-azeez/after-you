@@ -1,0 +1,151 @@
+{
+	"actions": [
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": true,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 4,
+			"x": 0,
+			"z": 100
+		},
+		{
+			"action": false,
+			"ticks": 36,
+			"x": -100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 16,
+			"x": 0,
+			"z": -100
+		},
+		{
+			"action": false,
+			"ticks": 120,
+			"x": -100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 16,
+			"x": 0,
+			"z": 100
+		},
+		{
+			"action": false,
+			"ticks": 6,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 12,
+			"x": 0,
+			"z": -100
+		},
+		{
+			"action": false,
+			"ticks": 6,
+			"x": -100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 4,
+			"x": 0,
+			"z": -100
+		},
+		{
+			"action": false,
+			"ticks": 70,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": true,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		}
+	],
+	"catch_assistance": true,
+	"checkpoint_hash": "c916f71d6e2a6e0d063f74e8cba3419b679a5072694005941236402a21918844",
+	"completed": false,
+	"definition_hash": "d6aaa6006597dd5e4ce4dbc641d94c81c2ab17c55bd80b50c6a240e0e91cff87",
+	"duration_ticks": 294,
+	"final_state_hash": "2b8a28974fb71ed54df4741cb31f24ef13b125e304b7cb5cc701bc77fea94886",
+	"level_id": "rolling-home",
+	"level_version": 1,
+	"outcome": {
+		"objective_complete": false,
+		"source_ready": true
+	},
+	"player_slot": "p1",
+	"recording_hash": "267f4edd304a7864386acad0d8b0fc16b79094504fde3015b241b3cd4c909c17",
+	"replay_checks": [
+		{
+			"state_hash": "5ca547528a0cf86c47115e5e9507be8519aba02bdb17411ca3e2c964dbaabe5b",
+			"tick": 30
+		},
+		{
+			"state_hash": "adace971419636bb6dcddc1d66423b22a8ee31cf247f1cca8757f03b9c1ecaff",
+			"tick": 60
+		},
+		{
+			"state_hash": "cfcdec58ea986a4a97d77d0d2f1536c2c62a9057777935b47b1fe7595139546b",
+			"tick": 90
+		},
+		{
+			"state_hash": "037cf79e3c541d1f6e363ccc8a6de3d9fc4251166c93782a13fefa69b1f71502",
+			"tick": 120
+		},
+		{
+			"state_hash": "2da5c14453438996fd741f540750b71adc3135b9f7237d2b567f63d7695c8d9c",
+			"tick": 150
+		},
+		{
+			"state_hash": "580366e84ec8afb0e8ff5a0e4e3e61ec2ce898ab258c625c993f69022c25d054",
+			"tick": 180
+		},
+		{
+			"state_hash": "5599ecdb9e901ae8c32e3a77b2bb7a7206a4fd539b27c3e9a17a91f548101a70",
+			"tick": 210
+		},
+		{
+			"state_hash": "87e7523b3f4b874515e6022143c76093950d4ade8769afea41159e8beab5c256",
+			"tick": 240
+		},
+		{
+			"state_hash": "36542e47b8354377e9baba3d9118f48852065c7a6d94995c80c2e42147692f2f",
+			"tick": 270
+		},
+		{
+			"state_hash": "2b8a28974fb71ed54df4741cb31f24ef13b125e304b7cb5cc701bc77fea94886",
+			"tick": 294
+		}
+	],
+	"role": "a",
+	"schema_version": 6,
+	"simulation_version": 6,
+	"source_recording_hash": "",
+	"stage_id": "bring-it-home",
+	"stage_version": 1,
+	"tick_rate": 30
+}

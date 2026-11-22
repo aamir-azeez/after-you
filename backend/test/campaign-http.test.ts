@@ -16,18 +16,18 @@ import { campaignAdmissionHash } from "../src/v2/campaign-admission-intent";
 import type { CampaignDefinition, CampaignKey, CampaignView, CampaignJoin } from "../src/v2/campaign-types";
 import type { CampaignRoomContext } from "../src/v2/campaign-room-access";
 import fixture from "./fixtures/campaign-control-v2.json";
-import highA from "../../game/tests/fixtures/cooperative/upper-path-a.json";
-import highB from "../../game/tests/fixtures/cooperative/upper-path-b.json";
-import middle from "../../game/tests/fixtures/cooperative/upper-path-checkpoint.json";
-import lowA from "../../game/tests/fixtures/cooperative/down-and-around-a.json";
-import lowB from "../../game/tests/fixtures/cooperative/down-and-around-b.json";
-import final from "../../game/tests/fixtures/cooperative/high-and-low-final-checkpoint.json";
-import rollingA from "../../game/tests/fixtures/cooperative/weight-of-a-friend-a.json";
-import rollingB from "../../game/tests/fixtures/cooperative/weight-of-a-friend-b.json";
-import rollingMiddle from "../../game/tests/fixtures/cooperative/weight-of-a-friend-checkpoint.json";
-import homeA from "../../game/tests/fixtures/cooperative/bring-it-home-a.json";
-import homeB from "../../game/tests/fixtures/cooperative/bring-it-home-b.json";
-import homeFinal from "../../game/tests/fixtures/cooperative/rolling-home-final-checkpoint.json";
+import highA from "./fixtures/published-runs/cooperative/upper-path-a.json";
+import highB from "./fixtures/published-runs/cooperative/upper-path-b.json";
+import middle from "./fixtures/published-runs/cooperative/upper-path-checkpoint.json";
+import lowA from "./fixtures/published-runs/cooperative/down-and-around-a.json";
+import lowB from "./fixtures/published-runs/cooperative/down-and-around-b.json";
+import final from "./fixtures/published-runs/cooperative/high-and-low-final-checkpoint.json";
+import rollingA from "./fixtures/published-runs/cooperative/weight-of-a-friend-a.json";
+import rollingB from "./fixtures/published-runs/cooperative/weight-of-a-friend-b.json";
+import rollingMiddle from "./fixtures/published-runs/cooperative/weight-of-a-friend-checkpoint.json";
+import homeA from "./fixtures/published-runs/cooperative/bring-it-home-a.json";
+import homeB from "./fixtures/published-runs/cooperative/bring-it-home-b.json";
+import homeFinal from "./fixtures/published-runs/cooperative/rolling-home-final-checkpoint.json";
 
 // Test-only finite registry substitution. Public bodies/env cannot register
 // definitions; real Room bindings receive only the route's immutable definition.

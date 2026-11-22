@@ -14,7 +14,7 @@ const DATA := {
 	# Water never stands higher than high; walls that hold it back stand to here.
 	"wall_top": 0.77,
 	# Water stops this many cm short of what holds it on the sides the camera sees.
-	"inset": 3,
+	"inset": 4,
 	# Sea walls and lock pieces stand only inside this window.
 	"bounds": [-1116, -700, 1884, 700],
 	"bodies": [

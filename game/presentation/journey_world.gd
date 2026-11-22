@@ -9,6 +9,7 @@ const CarriedItems = preload("res://core/physical/carried_items.gd")
 const CarriedItemKit = preload("res://presentation/kit/pieces/carried_item.gd")
 const CurrentKit = preload("res://presentation/kit/pieces/current.gd")
 const ItemParts = preload("res://presentation/kit/pieces/parts.gd")
+const Solid = preload("res://core/solid_footprint.gd")
 const LightPieces = preload("res://core/physical/light_pieces.gd")
 ## The soft honey dashes round a crossing a wait hint names.
 const HINT_DASH := Color("f2d39b")
@@ -119,6 +120,8 @@ func show_stage(stage: Dictionary) -> void:
 	_wait_marks.clear()
 	_seats.clear()
 	_seat_last.clear()
+	for piece: RefCounted in _item_pieces.values():
+		if piece.throw_look != null: drop_throw_look(piece.throw_look)
 	_item_pieces.clear()
 	_item_decks.clear()
 	_current_piece = null
@@ -186,6 +189,7 @@ func _build_mirror(control: Dictionary) -> void:
 	wheel.rotation.x = PI/2.0
 	box(Vector3(0.035,0.26,0.035),CREAM,Vector3.ZERO,hand)
 	_journey_handles[control.id] = hand
+	_hand_controls[control.id] = control
 	mark_sound("control:%s" % control.id, hand)
 
 ## One speech bubble per selector, over the lever and pointing down at it,
@@ -214,9 +218,13 @@ func _follow_knobs() -> void:
 ## The top of a selector lever's knob (terrain space), as the lever now tilts:
 ## where its bubble's tail lands.
 func _knob_top(id: String) -> Vector3:
+	return _lever_rest(id)*KNOB+Vector3(0,KNOB_RADIUS,0)
+
+## A lever's anchor (its parent's space) as it stands at the shown value,
+## never mid-throw or overshooting its stop: what placement reads.
+func _lever_rest(id: String) -> Transform3D:
 	var piece: RefCounted = _lever_pieces.get(id)
-	var at: Transform3D = piece.anchor_rest() if piece != null else (_physical_levers[id] as Node3D).transform
-	return at*KNOB+Vector3(0,KNOB_RADIUS,0)
+	return piece.anchor_rest() if piece != null else (_physical_levers[id] as Node3D).transform
 
 ## A named place (a pad, a door): the same bubble with one word, its tail
 ## pointing down at `at`.
@@ -536,7 +544,8 @@ func present_history(checkpoint: Dictionary) -> void:
 	for route: Dictionary in chapter_definition.bridges:
 		if route.id not in _latched_bridge_ids: continue
 		var r: Array = route.rect_cm
-		var at := point([r[0]+12,r[3]-12])+Vector3(0,0.02,0)
+		# On the crossing at its own height (a raised one's floor stands up there).
+		var at := point([r[0]+12,r[3]-12])+Vector3(0,float(route.get("height_cm",0))/100.0+0.02,0)
 		box(Vector3(0.20,0.035,0.14),CREAM,at,_remembered)
 		box(Vector3(0.04,0.035,0.20),GOLD,at+Vector3(0,0.02,0),_remembered)
 
@@ -852,6 +861,9 @@ func _build_items(stage: Dictionary) -> void:
 		var look := pin if not pin.is_empty() else _piece_style("carried_item", id) if CarriedItems.carriable(item) else "raft"
 		var at := _item_point(start.get(id, {})) if str(start.get(id, {}).get("holder", "")).is_empty() else Vector3.ZERO
 		_item_pieces[id] = CarriedItemKit.build(look, at, terrain, {"id": id})
+		# Where it can be thrown it flies with the one throw look, at its own size.
+		var piece: RefCounted = _item_pieces[id]
+		if not view.get("throws", []).is_empty() and CarriedItems.carriable(item): piece.throw_look = throw_look(piece.root, piece.throw_radius(), piece.middle)
 		# On a world with the water kit, rings spread from it while it floats.
 		var water: Variant = get("waters")
 		if water != null: water.ripple_from(_item_pieces[id].root)
@@ -871,16 +883,20 @@ func _build_items(stage: Dictionary) -> void:
 		if hands.has(str(route.id)) and not rope:
 			_ladder_rungs(route)
 			await _build_step()
-	# A throw's mark is a cream ring where the thrower stands; its landing the
-	# seed landing's ring of ticks (kit/pieces/socket.gd).
+	# A throw's mark is a cream ring where the thrower stands, unless it lies
+	# wholly inside a pad, which is then the throw spot and draws it
+	# (LevelLayout.mark_pad); its landing the seed landing's ring of ticks the
+	# landing spot's size (kit/pieces/socket.gd).
 	for thrown: Dictionary in view.get("throws", []):
-		var mark := ring(float(thrown.mark.get("radius_cm", CarriedItems.SPOT_RADIUS_CM)) / 100.0, CREAM, _at(thrown.mark) + Vector3(0, 0.03, 0), terrain)
-		mark.name = "ThrowMark_" + str(thrown.id)
+		if LevelLayout.mark_pad(view, thrown.mark).is_empty():
+			var mark := ring(float(thrown.mark.get("radius_cm", CarriedItems.SPOT_RADIUS_CM)) / 100.0, CREAM, _at(thrown.mark) + Vector3(0, 0.03, 0), terrain)
+			mark.name = "ThrowMark_" + str(thrown.id)
 		var landing := Node3D.new()
 		landing.name = "ThrowLanding_" + str(thrown.id)
-		landing.position = _at(CarriedItems.spot(view, str(thrown.to)))
+		var target: Dictionary = CarriedItems.spot(view, str(thrown.to))
+		landing.position = _at(target)
 		terrain.add_child(landing)
-		SocketKit.landing(landing)
+		SocketKit.landing(landing, float(target.get("radius_cm", CarriedItems.SPOT_RADIUS_CM)) / 100.0)
 
 ## The node drawing item `id` (over its carrier's head or where it rests), or
 ## null: an ending scene hides it while its own stands in for it.
@@ -903,6 +919,8 @@ func _current_water(at: Vector3, view: Dictionary) -> bool:
 func _ride_current(_legs: Array) -> void:
 	pass
 
+## A pad counts as under an item only on the item's own floor (m apart at most).
+const PAD_FLOOR_M := 0.02
 func _item_point(state: Dictionary) -> Vector3:
 	if state.is_empty(): return Vector3.ZERO
 	# Thrown: where its arc has it.
@@ -912,7 +930,18 @@ func _item_point(state: Dictionary) -> Vector3:
 	var at := _at({"position_cm": [int(state.x), int(state.z)], "surface_id": str(state.surface_id)})
 	# At a drawn item spot: on its pedestal, in its planter's soil or its nest.
 	var spot := str(state.get("spot", ""))
-	return at if spot.is_empty() else at + Vector3(0, SocketKit.rest_height(_piece_style("item_spot", spot)), 0)
+	var lift := 0.0 if spot.is_empty() else SocketKit.rest_height(_piece_style("item_spot", spot))
+	# Set down on a pad (a pan, a board, a floor button): on top of it, never in it.
+	return at + Vector3(0, maxf(lift, _pad_top(at)), 0)
+
+## How high over its floor the pad under `at` (terrain m) stands now, its
+## dish or board sunk while held; 0 off every pad.
+func _pad_top(at: Vector3) -> float:
+	var top := 0.0
+	for piece: RefCounted in pad_pieces.values():
+		var centre: Vector3 = piece.root.position
+		if absf(centre.y - at.y) <= PAD_FLOOR_M and Vector2(centre.x - at.x, centre.z - at.z).length() <= float(piece.radius): top = maxf(top, piece.top())
+	return top
 
 ## Rungs across a both-hands crossing every RUNG_CM along it, at its height
 ## there, with a post at each end: plain leaves the static fold batches.
@@ -965,6 +994,8 @@ func _present_items(state: Dictionary, immediate: bool = false) -> void:
 				else: piece.holder.play_carry_release()
 			piece.rest(_item_point(item_state), terrain, str(item_state.surface_id).is_empty() and not flying, flying, immediate)
 			if new_pieces != null and not new_pieces.ride(str(item_state.surface_id)).is_empty(): _item_decks[id] = [_item_point(item_state), str(item_state.surface_id)]
+		# Resting in a solid spot (a winch, a nest) it sits fitted; anywhere else as it lies.
+		piece.fit(holder.is_empty() and Solid.solids(chapter_definition.get("item_spots", [])).any(func(spot: Dictionary) -> bool: return str(spot.id) == str(item_state.spot)))
 	_ride_items()
 	if _current_piece != null: _current_piece.set_controls(state.get("controls", {}))
 

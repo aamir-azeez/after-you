@@ -29,7 +29,7 @@ static func antialiasing(quality: Variant) -> Viewport.MSAA:
 static func backdrop_detail(quality: Variant) -> bool:
 	return normalize(quality) != "low"
 
-## Motion blur behind a rolling ball or a thrown seed.
+## Motion blur behind a rolling ball or anything thrown.
 static func motion_trails(quality: Variant) -> bool:
 	return normalize(quality) != "low"
 
@@ -47,8 +47,8 @@ static func fill_light(quality: Variant) -> bool:
 	return normalize(quality) != "low"
 
 ## The water's second ripple layer and its wider foam read
-## (presentation/kit/water_look.gd); Low keeps one layer, the foam, the
-## seabed and the glints.
+## (presentation/kit/water_look.gd) and the seabed's small pebbles; Low
+## keeps one layer, the foam, the seabed's bigger pebbles and the glints.
 static func water_detail(quality: Variant) -> bool:
 	return normalize(quality) != "low"
 

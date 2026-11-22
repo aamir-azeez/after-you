@@ -33,6 +33,7 @@ const Isles = preload("res://presentation/keepsakes/home_isles.gd")
 const Dressing = preload("res://content/dressing/catalog.gd")
 const Looks = preload("res://content/water/looks.gd")
 const IslandWorld = preload("res://presentation/island_world.gd")
+const LevelLayout = preload("res://services/level_layout.gd")
 const SoundCues = preload("res://services/sound_cues.gd")
 const Props = preload("res://presentation/kit/props.gd")
 const WaitHints = preload("res://presentation/wait_hints.gd")
@@ -294,9 +295,12 @@ func _wait_hints(key: String, data: Dictionary, level: Dictionary) -> void:
 		for lever: Dictionary in stage.get("levers", []): levers[str(lever.id)] = true
 		for control: Dictionary in stage.get("controls", []):
 			if control.get("kind") == "selector": selectors[str(control.id)] = true
+	# Each stage's goal as its family lays it out (an older family's bell or socket).
 	var goals: Dictionary = {}
 	for stage: Dictionary in level.stages:
 		if stage.get("goal") is Dictionary: goals[str(stage.goal.get("id", ""))] = true
+		var planned: Variant = LevelLayout.for_key(key, str(stage.id), level).get("goal")
+		if planned is Dictionary: goals[str(planned.get("id", ""))] = true
 	# Rules 16's crossings take a deck style, and its one way stairs a ladder.
 	var bridges: Dictionary = {}
 	for route: Dictionary in level.get("bridges", []): bridges[str(route.id)] = true
@@ -308,11 +312,15 @@ func _wait_hints(key: String, data: Dictionary, level: Dictionary) -> void:
 	for item: Dictionary in level.get("items", []): items[str(item.id)] = true
 	var spots: Dictionary = {}
 	for spot: Dictionary in level.get("item_spots", []): spots[str(spot.id)] = true
+	# Rules 20's swings take a "swing" style (kit/pieces/swing.gd).
+	var swings: Dictionary = {}
+	for stage: Dictionary in level.stages:
+		for swing: Dictionary in stage.get("swings", []): swings[str(swing.id)] = true
 	var styles := preload("res://content/dressing/prop_styles.gd")
 	for id: String in data.piece_styles:
 		var style := str(data.piece_styles[id])
 		var suits := (levers.has(id) and styles.has_style("lever", style)) or (selectors.has(id) and styles.has_style("selector", style)) or (pads.has(id) and styles.has_style("pad", style)) or (goals.has(id) and styles.has_style("goal", style)) or (items.has(id) and styles.has_style("carried_item", style)) or (spots.has(id) and styles.has_style("item_spot", style))
-		suits = suits or (bridges.has(id) and styles.has_style("deck", style)) or (stairs.has(id) and styles.has_style("ladder", style))
+		suits = suits or (bridges.has(id) and styles.has_style("deck", style)) or (stairs.has(id) and styles.has_style("ladder", style)) or (swings.has(id) and styles.has_style("swing", style))
 		_check(suits, "Piece style %s of %s suits its piece: %s" % [id, key, style])
 	# Turn of the Tide's water wheels are valves: no three- or four-way
 	# selector there is left with a plain lever.
@@ -355,6 +363,8 @@ func _offering() -> void:
 		if data.version_of != "":
 			_check(data.version_of.get_slice("@", 0) == key.get_slice("@", 0) and int(data.version_of.get_slice("@", 1)) < version, "A version is of an earlier version of the same chapter: " + key)
 			_same(bool(data.full_journey), bool(Index.data(data.version_of).get("full_journey", false)), "Every version of a chapter sold as Full Journey says so (full_journey): " + key)
+		if data.shown_after != "":
+			_check(data.shown_after != key.get_slice("@", 0) and Index.keys().any(func(other: String) -> bool: return other.get_slice("@", 0) == data.shown_after), "shown_after names another registered level: " + key)
 		if data.superseded_by != "":
 			_check(data.superseded_by in Index.keys() and data.superseded_by.get_slice("@", 0) == key.get_slice("@", 0) and int(data.superseded_by.get_slice("@", 1)) > version, "A chapter is superseded by a later registered version of itself: " + key)
 		if data.released: _finished(key, data)

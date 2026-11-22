@@ -185,7 +185,10 @@ letter_view 8
 level_checker 12
 level_tools 15
 level_unlocks 4
-level_view 9
+level_view 45
+level_view_falls 50
+level_view_tide 65
+level_view_water 30
 license_catalog 1
 licenses 12
 lifecycle 9

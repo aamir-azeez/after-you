@@ -14,6 +14,9 @@ const SelectorPiece = preload("res://presentation/kit/pieces/selector.gd")
 const PulleyPiece = preload("res://presentation/kit/pieces/pulley.gd")
 ## The new pieces' looks (rules 16): decks, platforms, ladders and fog.
 const NewPieces = preload("res://presentation/kit/new_pieces.gd")
+const Deck = preload("res://presentation/kit/pieces/deck.gd")
+const Drowning = preload("res://presentation/kit/drowning.gd")
+const ClosingWarning = preload("res://presentation/kit/closing_warning.gd")
 ## The opening glance at the goal (glance_at_goal): this long easing there and
 ## looking, then this long easing back to the spirit.
 const GLANCE_TO := 1.6
@@ -57,6 +60,12 @@ var _floors: Dictionary = {}
 var _rode: Dictionary = {}
 ## How far inside a deck's edge (m) a pip that stepped off it waits (_carry).
 const DECK_EDGE := 0.2
+## A drowning or a fall, shown from the snapshot (kit/drowning.gd): the one
+## every chapter world shows.
+var drowning := Drowning.new(self)
+## A closing crossing's flashing rim (kit/closing_warning.gd): the one every
+## chapter world shows.
+var closing_warning := ClosingWarning.new(self)
 
 func load_level(definition: Dictionary) -> void:
 	chapter_definition = definition.duplicate(true)
@@ -71,6 +80,8 @@ func show_stage(stage: Dictionary) -> void:
 	if view.is_empty(): return
 	displayed_stage_id = stage_id
 	_completion_view = false
+	drowning.forget()
+	closing_warning.forget()
 	_goal_beacon = null
 	_glance_left = 0.0
 	_physical_pads.clear()
@@ -78,6 +89,8 @@ func show_stage(stage: Dictionary) -> void:
 	_floor_cables.clear()
 	_physical_levers.clear()
 	_lever_pieces.clear()
+	_hand_controls.clear()
+	_hand_values.clear()
 	_physical_balls.clear()
 	_ball_trails.clear()
 	_ball_materials.clear()
@@ -212,9 +225,9 @@ func _build_goal_beacon(view: Dictionary) -> void:
 		var slot := str(view.first_player_slot) if role == "a" else ("p0" if str(view.first_player_slot) == "p1" else "p1")
 		spots[role] = GoalBeacon.spots_of(view, role).map(func(entity: Dictionary) -> Dictionary:
 			var spot := {"at": _at(entity), "surface": str(entity.get("surface_id", "")), "slot": str(entity.get("owner_slot", slot))}
-			# On a stand spot the beacon's ring breathes inside the spot; a seat
-			# on the spot leaves it no room, and the spot and seat mark it.
-			if _wears_stand_spot(view, entity):
+			# On a pad the beacon's ring breathes on the pad's board, inside its
+			# rim; a seat on the pad leaves it no room, and the pad and seat mark it.
+			if _is_pad(view, entity):
 				spot["inside"] = float(entity.radius_cm) / 100.0
 				if _seated(str(entity.id)): spot["ring"] = false
 			return spot)
@@ -259,6 +272,8 @@ func _static_keep() -> Array:
 	for piece: RefCounted in _lever_pieces.values(): keep.append_array(piece.moving_parts())
 	for piece: RefCounted in _pulleys.values(): keep.append_array(piece.moving_parts())
 	if new_pieces != null: keep.append_array(new_pieces.moving_nodes())
+	keep.append_array(drowning.moving_nodes())
+	keep.append_array(closing_warning.moving_nodes())
 	return keep
 
 func _configure_shared_view(view: Dictionary) -> void:
@@ -306,9 +321,12 @@ func _shore(island: Dictionary, color: Color) -> void:
 	if hole.is_empty():
 		super._shore(island, color)
 	else:
-		# Four authored floor pieces leave an actual opening; no dark decal.
-		for cut: Array in Primitives.rect_minus_hole(island.rect_cm, hole.rect_cm):
-			super._shore({"id": island.id, "rect_cm": cut}, color)
+		# The floor drawn round an actual opening, one shape, its trims along
+		# the opening's edges; its rock under the walkable pieces round it. No
+		# dark decal.
+		var shape: Array = []
+		for piece: Array in drawn_pieces(island): shape.append_array(WalkReach.minus(piece, hole.rect_cm))
+		super._shore(island.merged({"drawn_shape": shape, "rocks_cm": WalkReach.minus(island.rect_cm, hole.rect_cm)}, true), color)
 	terrain = original
 	raised.set_meta("bounds", island.rect_cm.duplicate())
 	_surface_built(island, raised)
@@ -403,7 +421,7 @@ func _hang_pulleys(view: Dictionary) -> void:
 	for definition: Dictionary in view.get("bridges", []):
 		if not _hangs_pulley(definition): continue
 		var id := str(definition.id)
-		var rect: Array = definition.rect_cm
+		var rect := drawn_rect(definition)
 		var deck: Node3D = _decks.get(definition.id)
 		var post := point([rect[0], rect[3]]) + Vector3(0.05, deck.position.y if deck != null else 0.0, 0.15)
 		var ground: Array[Rect2] = []
@@ -434,6 +452,37 @@ func _hangs_pulley(definition: Dictionary) -> bool:
 	if owner in ["p0", "p1"] and not RouteBarriers.mouths_of(definition, RouteBarriers.floors_of(current_level)).is_empty(): return false
 	return true
 
+## A new piece's stones deck (kit/new_pieces.gd).
+func _stepping_stones() -> Array:
+	if new_pieces == null: return []
+	return current_level.get("bridges", []).map(func(route: Dictionary) -> String: return str(route.id)).filter(func(id: String) -> bool: return new_pieces.deck_style(id) == "stones")
+
+## Every plank or rope crossing a gate on the shown stage opens and shuts
+## rolls its deck up while shut (kit/pieces/bridge_roll.gd): a pad, plate,
+## crank or lever holds or works it. Stones, the path behind the falls and a
+## platform's stops show their own cause; a crossing with no gate here stays
+## as it is all stage.
+func _rolls_deck(definition: Dictionary) -> bool:
+	var style: String = new_pieces.deck_style(str(definition.id)) if new_pieces != null else "plank"
+	if style not in ["plank", "rope"]: return false
+	return current_level.get("gates", []).any(func(gate: Dictionary) -> bool: return str(gate.get("route_id", "")) == str(definition.id))
+
+## A rope deck's roll keeps the rope bridge's slats and ropes (kit/pieces/deck.gd).
+func _roll_look(definition: Dictionary) -> Dictionary:
+	if new_pieces == null or new_pieces.deck_style(str(definition.id)) != "rope": return super._roll_look(definition)
+	return {"colors": Deck.roll_colors(), "share": Deck.SLAT_SHARE}
+
+## The pads, levers and controls a gate of the shown stage opens crossing
+## `definition` with.
+func _roll_controls(definition: Dictionary) -> Array:
+	var found: Array = []
+	for gate: Dictionary in current_level.get("gates", []):
+		if str(gate.get("route_id", "")) != str(definition.id): continue
+		var named := PairTags.references(gate)
+		for mechanism: Dictionary in current_level.get("pressure_pads", []) + current_level.get("ball_pads", []) + current_level.get("levers", []) + current_level.get("controls", []):
+			if str(mechanism.get("id", "")) in named and mechanism.get("position_cm") is Array: found.append(mechanism)
+	return found
+
 ## A new piece lays its own deck (kit/new_pieces.gd); every other crossing
 ## keeps the Lighthouse planks.
 func _lay_deck(definition: Dictionary, deck: Node3D, width: float, depth: float, across_x: bool, low: float, high: float) -> void:
@@ -445,7 +494,7 @@ func _build_stair(stair: Dictionary) -> void:
 	if stair.has("one_way") and new_pieces != null:
 		new_pieces.build_ladder(stair)
 		return
-	var r: Array = stair.rect_cm
+	var r := drawn_rect(stair)
 	var from_height := float(stair.from_height_cm) / 100.0
 	var rise := float(stair.to_height_cm - stair.from_height_cm) / 100.0
 	var width := float(r[2] - r[0]) / 100.0
@@ -453,34 +502,46 @@ func _build_stair(stair: Dictionary) -> void:
 	var center := point([(r[0] + r[2]) * 0.5, (r[1] + r[3]) * 0.5])
 	var along_x: bool = stair.axis == "x"
 	for index in range(10):
-		var height := from_height + rise * float(index + 1) / 10.0
+		# The lowest tread stands just over the floor at its foot, which may
+		# reach under it (kit/walk_reach.gd): never in that floor's plane.
+		var height := maxf(from_height + rise * float(index + 1) / 10.0, minf(from_height, from_height + rise) + Surfaces.DECAL_TOP)
 		var at := center + Vector3((float(index) - 4.5) * width / 10.0 if along_x else 0, height - 0.06, (float(index) - 4.5) * depth / 10.0 if not along_x else 0)
 		var timber := str(dressing.get("stairs", "")) == "timber"
 		var tread := (Props.TIMBER_LIGHT if index % 2 == 0 else Props.TIMBER_LIGHT.darkened(0.06)) if timber else Color("b4c5bd")
-		box(Vector3(width / 10.0 if along_x else width, 0.12, depth if along_x else depth / 10.0), tread, at, terrain)
-		box(Vector3(0.025 if along_x else width, 0.014, depth if along_x else 0.025), Props.TIMBER_DARK if timber else TEAL, at + Vector3(0, 0.065, 0), terrain)
-	if str(dressing.get("stairs", "")) == "timber": _stair_frame(r, from_height, rise, along_x)
+		# A centimetre and a half short of each side, so a tread's side never
+		# lies on the side of a floor reaching under its foot, a floor trim's
+		# end or a wall's coping beside it.
+		box(Vector3(width / 10.0 if along_x else width - 0.03, 0.12, depth - 0.03 if along_x else depth / 10.0), tread, at, terrain)
+		box(Vector3(0.025 if along_x else width - 0.03, 0.014, depth - 0.03 if along_x else 0.025), Props.TIMBER_DARK if timber else TEAL, at + Vector3(0, 0.065, 0), terrain)
+	if str(dressing.get("stairs", "")) == "timber" and _framed_stairs(): _stair_frame(r, from_height, rise, along_x, stair.rect_cm)
 	# A closed stair's gate (posts, bar and chain at its foot and head) is the
 	# route barriers' (kit/route_barriers.gd).
 
 ## Wooden stringers under both sides and a handrail along the far side, or,
 ## when the dressing asks for "stair_rail": "open", along the near side where
 ## a raised floor stands against the far one (its side is the wall there;
-## the rail goes on the open drop); the walkable
-## treads stay exactly the authored rectangle.
-func _stair_frame(r: Array, from_height: float, rise: float, along_x: bool) -> void:
-	for side: float in ([float(r[1]) / 100.0 - 0.03, float(r[3]) / 100.0 + 0.03] if along_x else [float(r[0]) / 100.0 - 0.03, float(r[2]) / 100.0 + 0.03]):
+## the rail goes on the open drop), along the sides of `r`, the treads' drawn
+## rectangle; `authored` is the walkable one.
+func _stair_frame(r: Array, from_height: float, rise: float, along_x: bool, authored: Array) -> void:
+	# Stringers stand half a centimetre off the whole centimetres the floors
+	# beside them end on.
+	for side: float in ([float(r[1]) / 100.0 - 0.04, float(r[3]) / 100.0 + 0.04] if along_x else [float(r[0]) / 100.0 - 0.04, float(r[2]) / 100.0 + 0.04]):
 		var start := Vector3(float(r[0]) / 100.0, from_height - 0.10, side) if along_x else Vector3(side, from_height - 0.10, float(r[1]) / 100.0)
 		var finish := Vector3(float(r[2]) / 100.0, from_height + rise - 0.10, side) if along_x else Vector3(side, from_height + rise - 0.10, float(r[3]) / 100.0)
 		Primitives.bar_between(start, finish, 0.07, Primitives.shared_material(Props.TIMBER), terrain)
-	var walled := str(dressing.get("stair_rail", "")) == "open" and _floor_against_far_side(r, maxf(from_height, from_height + rise), along_x)
-	var rail := (float(r[3]) / 100.0 + 0.04 if walled else float(r[1]) / 100.0 - 0.04) if along_x else (float(r[2]) / 100.0 + 0.04 if walled else float(r[0]) / 100.0 - 0.04)
+	var walled := str(dressing.get("stair_rail", "")) == "open" and _floor_against_far_side(authored, maxf(from_height, from_height + rise), along_x)
+	var rail := (float(r[3]) / 100.0 + 0.055 if walled else float(r[1]) / 100.0 - 0.055) if along_x else (float(r[2]) / 100.0 + 0.055 if walled else float(r[0]) / 100.0 - 0.055)
 	var foot := Vector3(float(r[0]) / 100.0, from_height + 0.62, rail) if along_x else Vector3(rail, from_height + 0.62, float(r[1]) / 100.0)
 	var head := Vector3(float(r[2]) / 100.0, from_height + rise + 0.62, rail) if along_x else Vector3(rail, from_height + rise + 0.62, float(r[3]) / 100.0)
 	Primitives.bar_between(foot, head, 0.04, Primitives.shared_material(Props.TIMBER_DARK), terrain)
 	for t: float in [0.0, 0.5, 1.0]:
 		var top := foot.lerp(head, t)
-		Primitives.mesh_node(Primitives.shared_mesh("box", 0.035, 0.62, 0.035), Primitives.shared_material(Props.TIMBER_DARK), top - Vector3(0, 0.31, 0), terrain)
+		Primitives.mesh_node(Primitives.shared_mesh("box", 0.04, 0.62, 0.04), Primitives.shared_material(Props.TIMBER_DARK), top - Vector3(0, 0.31, 0), terrain)
+
+## Whether a timber stair has a frame (stringers and a rail): a water
+## world's stairs stand between its walls, parapets and fenders instead.
+func _framed_stairs() -> bool:
+	return true
 
 ## Whether a floor at the stair's top height runs along its far side (north
 ## of an x stair, west of a z one) within 40 cm, overlapping its length.
@@ -492,21 +553,18 @@ func _floor_against_far_side(r: Array, top: float, along_x: bool) -> bool:
 		if not along_x and o[1] < r[3] and o[3] > r[1] and o[2] <= r[0] and o[2] >= r[0] - 40: return true
 	return false
 
-## Whether `entity` is one of the stage's pressure pads drawn as a stand spot.
-func _wears_stand_spot(view: Dictionary, entity: Dictionary) -> bool:
-	for pad: Dictionary in view.get("pressure_pads", []):
-		if pad.id == entity.get("id"): return _piece_style("pad", str(pad.id)) == "stand_spot"
-	return false
+## Whether `entity` is one of the stage's pressure pads.
+func _is_pad(view: Dictionary, entity: Dictionary) -> bool:
+	return view.get("pressure_pads", []).any(func(pad: Dictionary) -> bool: return pad.id == entity.get("id"))
 
 ## Whether a seat prop stands on pad `pad_id` (journey_world's "seats").
 func _seated(_pad_id: String) -> bool:
 	return false
 
-## A pressure pad or a ball pad (heavy, always plain) in its style
-## (kit/pieces/pad.gd), in pad_pieces (island_world's), whose stand spots
-## record their owner's marks with the stage's (_build_stage_marks).
+## A pressure pad or a ball pad (heavy, always a gold board) in its style
+## (kit/pieces/pad.gd), in pad_pieces (island_world's).
 func _build_physical_pad(pad: Dictionary, heavy: bool) -> void:
-	var style := "plain" if heavy else _piece_style("pad", str(pad.id))
+	var style := PadPiece.DEFAULT_STYLE if heavy else _piece_style("pad", str(pad.id))
 	var piece: RefCounted = PadPiece.build(style, _at(pad), float(pad.radius_cm) / 100.0, terrain, {"owner": str(pad.get("owner_slot", "")), "heavy": heavy, "id": str(pad.id)})
 	pad_pieces[pad.id] = piece
 	_physical_pads[pad.id] = piece.rim
@@ -523,6 +581,7 @@ func _build_lever(lever: Dictionary) -> void:
 	var kit: Script = SelectorPiece if slot == "selector" else LeverPiece
 	var piece: RefCounted = kit.build(_piece_style(slot, str(lever.id)), _at(lever), terrain, options)
 	_lever_pieces[lever.id] = piece
+	_hand_controls[lever.id] = lever
 	_physical_levers[lever.id] = piece.anchor
 	mark_sound("control:%s" % lever.id, piece.anchor)
 
@@ -687,6 +746,13 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	if is_instance_valid(_goal_beacon): _goal_beacon.present(state)
 	if new_pieces != null: new_pieces.present(state, immediate or reduced_motion)
 	if immediate: _snap_follow()
+	closing_warning.show(state.get("route_progress", {}).get("closing", {}))
+	_present_drowned(state)
+
+## Who drowned or fell, from the snapshot (kit/drowning.gd). The water world
+## shows it once its water stands.
+func _present_drowned(state: Dictionary) -> void:
+	drowning.show(state.get("drowned", {}))
 
 func _should_cutaway(raised: Node3D, state: Dictionary) -> bool:
 	return _uses_lower_cutaway() and _below_raised(raised,state.players[_active_player])
@@ -705,6 +771,7 @@ func _advance_carriers(delta: float) -> void:
 ## that stop; one that stepped off before its deck got there waits on it until
 ## it is (ride_off).
 func _carry(role: String, actor: Node3D) -> Vector3:
+	if drowning.falling_away(role): return Vector3.ZERO
 	var deck: Array = new_pieces.ride(str(_floors.get(role, ""))) if new_pieces != null else []
 	var was: Array = _rode.get(role, [])
 	var riding := not was.is_empty() and is_instance_valid(was[0])
@@ -728,6 +795,7 @@ func _carry(role: String, actor: Node3D) -> Vector3:
 	return target - (actor_targets[role] as Vector3)
 
 func _advance_camera(delta: float) -> void:
+	drowning.advance(delta)
 	if new_pieces != null and not reduced_motion: new_pieces.drift(time)
 	if new_pieces != null and actors.has(_active_player): new_pieces.follow((actors[_active_player] as Node3D).global_position + Vector3(0, 0.25, 0))
 	if new_pieces != null: new_pieces.advance_cover(delta, time)

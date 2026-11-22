@@ -98,9 +98,9 @@ func verdict(verified: Dictionary, review: Dictionary) -> bool:
 	fail(reason, review)
 	return true
 
-## The review card's line above Save turn.
-func review_body(ordinary: String) -> String:
-	return PlayerCopy.HARD_REVIEW_BODY if on() else ordinary
+## The review card's line above Save turn: a hard run's, else none.
+func review_body() -> String:
+	return PlayerCopy.HARD_REVIEW_BODY if on() else ""
 
 ## The ready card's extra line.
 func ready_note() -> String:
@@ -199,7 +199,7 @@ func show_failed(ready: bool) -> void:
 	var again: Button = host._button(PlayerCopy.HARD_START_AGAIN, start_again)
 	again.name = "HardStartAgain"
 	card.add_child(again)
-	card.add_child(host._action_button("back", host._leave))
+	host._card_home()
 	_extras_run = kept
 	# Solo, and a room's slip once the room has counted it, fill the hook now.
 	if not host.hard.together: _fill(0)
@@ -215,7 +215,7 @@ func show_friend_failed(slip: Dictionary) -> void:
 	var again: Button = host._button(PlayerCopy.HARD_START_AGAIN, host._show_ready)
 	again.name = "HardStartAgain"
 	card.add_child(again)
-	card.add_child(host._action_button("back", host._leave))
+	host._card_home()
 	_extras_run = slip
 	_fill(int(slip.number))
 	host.hard.mark_shown(int(slip.number))
@@ -300,10 +300,10 @@ func show_room_full() -> void:
 	if host.hard.hosting():
 		var card: VBoxContainer = host._card(PlayerCopy.HARD_ROOM_FULL_TITLE, PlayerCopy.HARD_ROOM_FULL_BODY)
 		card.add_child(host._button(PlayerCopy.HARD_NEW_ROOM, host._create_another_room))
-		card.add_child(host._action_button("back", host._leave))
+		host._card_home()
 		return
 	var waiting: VBoxContainer = host._card(PlayerCopy.HARD_ROOM_FULL_TITLE, PlayerCopy.HARD_ROOM_FULL_GUEST % _host_name())
-	waiting.add_child(host._action_button("back", host._leave))
+	host._card_home()
 
 func _host_name() -> String:
 	var name: String = host._waiting_partner_name(host.journey.snapshot())

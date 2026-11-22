@@ -55,6 +55,7 @@ const Seven = preload("res://core/journey/seven_mechanisms.gd")
 const OpenControls = preload("res://core/physical/open_controls.gd")
 const LightPieces = preload("res://core/physical/light_pieces.gd")
 const CarriedItems = preload("res://core/physical/carried_items.gd")
+const Solid = preload("res://core/solid_footprint.gd")
 const RADIUS := 12
 const WALK := 28
 const LATERAL_STEP := 8
@@ -473,10 +474,21 @@ func can_stand_at(entity: Dictionary, slot: String, open: Dictionary, journey: b
 	var radius := maxi(0, int(entity.get("radius_cm", 28)) - 2)
 	var at := Vector2i(int(entity.position_cm[0]), int(entity.position_cm[1]))
 	var spots: Array[Vector2i] = [at]
-	for turn in range(8):
-		var offset := Vector2.from_angle(TAU * float(turn) / 8.0) * float(radius)
-		spots.append(at + Vector2i(roundi(offset.x), roundi(offset.y)))
+	var rings: Array = [radius]
+	# A solid control (core/solid_footprint.gd) is worked from its reach band
+	# beside the footprint, never its centre.
+	var solid := Solid.of(entity)
+	if not solid.is_empty():
+		var keep := int(solid.radius_cm) + RADIUS
+		spots.clear()
+		rings = [keep + 2, keep + int(solid.get("reach_cm", 0)) / 2, keep + int(solid.get("reach_cm", 0)) - 2]
+	for ring: int in rings:
+		var turns := 8 if solid.is_empty() else 16
+		for turn in range(turns):
+			var offset := Vector2.from_angle(TAU * float(turn) / float(turns)) * float(ring)
+			spots.append(at + Vector2i(roundi(offset.x), roundi(offset.y)))
 	for spot: Vector2i in spots:
+		if not solid.is_empty() and not Solid.within_reach(entity, spot, RADIUS): continue
 		var height := height_at(int(index[surface]), spot.x, spot.y)
 		var found := Navigation.at(level, open, {}, {"height": height, "surface_id": surface}, spot.x, spot.y, slot, RADIUS, false)
 		if found.is_empty() or str(found.surface_id) != surface: continue

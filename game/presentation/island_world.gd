@@ -15,7 +15,8 @@ const ChapterIndex = preload("res://content/chapters/index.gd")
 const GraphicsPolicy = preload("res://services/graphics_policy.gd")
 const SpaceBackdrop = preload("res://presentation/kit/space_backdrop.gd")
 const ObjectMotionTrail = preload("res://presentation/object_motion_trail.gd")
-const SeedMotionTrail = preload("res://presentation/seed_motion_trail.gd")
+## The look of anything thrown: the seed here, carried items on the journey engine.
+const ThrowLook = preload("res://presentation/kit/throw_look.gd")
 const SeedVisual = preload("res://presentation/seed_visual.gd")
 const Primitives = preload("res://presentation/kit/primitives.gd")
 ## The spirits' ownership marks (kit/owner_mark.gd), whose colours are the worlds' spirit colours.
@@ -30,9 +31,12 @@ const Props = preload("res://presentation/kit/props.gd")
 ## Scenery as data (content/dressing) and the ground styles it names.
 const DressingCatalog = preload("res://content/dressing/catalog.gd")
 const Surfaces = preload("res://presentation/kit/surfaces.gd")
+const WalkReach = preload("res://presentation/kit/walk_reach.gd")
 ## A piece's style (content/dressing/piece_styles.gd) and the pad kit.
 const PieceStyles = preload("res://content/dressing/piece_styles.gd")
 const PadKit = preload("res://presentation/kit/pieces/pad.gd")
+## Every stage goal's look, two pip pads and all (kit/pieces/goal.gd).
+const GoalPiece = preload("res://presentation/kit/pieces/goal.gd")
 ## A crossing that rises as it opens and sinks as it shuts (kit/pieces/bridge.gd).
 const BridgeKit = preload("res://presentation/kit/pieces/bridge.gd")
 ## Each family's floors, crossings and spots (services/level_layout.gd).
@@ -59,7 +63,9 @@ var _motion_quality := "balanced"
 ## The kit/look.gd preset the world shows, lit again when the quality changes.
 var _look := "day"
 var _motion_trails: Array[Node3D] = []
-var _seed_trail: Node3D
+## Every thrown thing's look (throw_look), the seed's among them.
+var _throw_looks: Array[RefCounted] = []
+var _seed_throw: RefCounted
 
 var terrain: Node3D
 var actors: Dictionary = {}
@@ -67,18 +73,6 @@ var actor_targets: Dictionary = {}
 var seed: MeshInstance3D
 var _seed_holder := ""
 var _seed_status := ""
-var _seed_snapshot_position := Vector3.ZERO
-var _seed_previous_position := Vector3.ZERO
-var _seed_snapshot_age := 0.0
-const SEED_SNAPSHOT_INTERVAL := 1.0 / 30.0
-var _seed_launch_offset := Vector3.ZERO
-var _seed_launch_age := 1.0
-## The thrown seed tumbles forward around a tilted axis while it flies. The angle
-## comes from the distance flown since the throw, so a replay poses it the same.
-const SEED_SPIN_PER_METRE := 2.6
-const SEED_SPIN_TILT := 0.42
-var _seed_launch_point := Vector3.ZERO
-var _seed_spin_axis := Vector3.ZERO
 var bridge_parts: Array[MeshInstance3D] = []
 var plate: MeshInstance3D
 var lift: Node3D
@@ -688,7 +682,8 @@ func _create_spirit(color: Color, slot_id: String = "") -> Node3D:
 	return spirit
 
 ## `leaf_height`: where the four leaves sit, just over the planter's drum
-## (a SocketKit planter's is SocketKit.PLANTER).
+## (a SocketKit planter's is SocketKit.PLANTER, a goal planter's
+## GoalPiece.PLANTER_DRUM).
 func _create_garden(leaf_height: float = 0.16) -> void:
 	# Four leaves make availability readable without relying on color or bloom.
 	# Everything stays under the existing planter root, including on a lift.
@@ -910,52 +905,51 @@ func present(snapshot: Dictionary, immediate: bool=false) -> void:
 	_present_garden(bool(snapshot.get("gate_open", false)) and bool(snapshot.get("lift_ready", false)), bool(snapshot.complete), immediate)
 
 func _reset_seed_pose() -> void:
-	if is_instance_valid(_seed_trail): _seed_trail.reset()
+	if _seed_throw != null: _seed_throw.reset()
 	_seed_holder=""
 	_seed_status=""
-	_seed_launch_offset=Vector3.ZERO
-	_seed_launch_age=1.0
-	_seed_snapshot_age=0.0
-	_seed_spin_axis=Vector3.ZERO
 
 func _clear_object_trails() -> void:
 	for trail: Node3D in _motion_trails:
 		if is_instance_valid(trail): trail.reset()
 	_motion_trails.clear()
-	_seed_trail = null
+	_throw_looks.clear()
+	_seed_throw = null
+
+## The look (kit/throw_look.gd) `body` flies with when thrown, its middle at
+## `middle` and blurred as wide as `radius`; its blur joins the world's others.
+func throw_look(body: Node3D, radius: float, middle: Vector3 = Vector3.ZERO) -> RefCounted:
+	var look: RefCounted = ThrowLook.new(self, body, radius, middle)
+	terrain.add_child(look.trail)
+	look.trail.set_quality(_motion_quality)
+	_motion_trails.append(look.trail)
+	_throw_looks.append(look)
+	return look
+
+## A look whose body is gone (a stage rebuilt without it), and its blur.
+func drop_throw_look(look: RefCounted) -> void:
+	_throw_looks.erase(look)
+	_motion_trails.erase(look.trail)
+	if is_instance_valid(look.trail): look.trail.queue_free()
 
 func _present_seed(value: Dictionary, immediate: bool) -> void:
-	if not is_instance_valid(_seed_trail):
-		_seed_trail = SeedMotionTrail.new()
-		_seed_trail.configure(self, seed, 0.13)
-		terrain.add_child(_seed_trail)
-		_seed_trail.set_quality(_motion_quality)
-		_motion_trails.append(_seed_trail)
+	if _seed_throw == null: _seed_throw = throw_look(seed, 0.13)
 	var status := str(value.get("status",""))
 	var holder := str(value.get("owner","")) if status=="held" else status.trim_prefix("held_") if status.begins_with("held_") else ""
 	var target := Vector3(float(value.x)/100.0,float(value.get("height",0))/100.0+0.16,float(value.z)/100.0)
+	var thrown_from: Variant = null
 	if immediate:
 		_reset_seed_pose()
 	elif status=="flying" and _seed_status!="flying" and actors.has(_seed_holder):
 		actors[_seed_holder].play_throw()
 		# Ease only the visual handoff from the higher head to the existing arc.
 		# The recorded trajectory and every catch window remain in simulation.
-		_seed_launch_offset=seed.position-target
-		_seed_launch_age=0.0
-	if status=="flying" and (immediate or _seed_status!="flying"):
-		_seed_launch_point=target
-		_seed_spin_axis=Vector3.ZERO
-	if immediate or status != "flying" or _seed_status != "flying":
-		_seed_previous_position=target
-		_seed_snapshot_age=SEED_SNAPSHOT_INTERVAL
-	elif not target.is_equal_approx(_seed_snapshot_position):
-		# Interpolate one recorded tick behind. Do not predict or alter catches.
-		_seed_previous_position=_seed_snapshot_position
-		_seed_snapshot_age=0.0
+		thrown_from=seed.position
+	var shown := status not in ["planted","missed"]
+	_seed_throw.present(status=="flying", target, shown, CREAM, immediate, thrown_from)
 	preload("res://presentation/plant_animation.gd").on_seed(self, seed, _seed_status, value, target, immediate)
 	_seed_status=status
 	_seed_holder=holder if actors.has(holder) else ""
-	_seed_snapshot_position=target
 	var material := seed.material_override as StandardMaterial3D
 	var carry_color := GOLD if _seed_holder in ["a", "p0"] else TEAL if _seed_holder in ["b", "p1"] else CREAM
 	# The icon's seed is white; the holder only tints it, and the glow carries their colour.
@@ -966,9 +960,7 @@ func _present_seed(value: Dictionary, immediate: bool) -> void:
 	SeedVisual.tint_glow(seed, carry_color)
 	for slot: String in actors:
 		actors[slot].carrying_seed=slot==_seed_holder
-	seed.visible=status not in ["planted","missed"]
-	_seed_trail.tint = carry_color
-	_seed_trail.set_motion_allowed(status == "flying" and seed.visible, immediate)
+	seed.visible=shown
 	_apply_seed_pose()
 
 func _create_object_trail(object: Node3D, radius: float) -> Node3D:
@@ -979,42 +971,15 @@ func _create_object_trail(object: Node3D, radius: float) -> Node3D:
 	_motion_trails.append(trail)
 	return trail
 
+## The seed in flight is its throw look's (kit/throw_look.gd); otherwise
+## upright on its holder's carry point or where it rests.
 func _apply_seed_pose() -> void:
-	if not is_instance_valid(seed) or _seed_status.is_empty(): return
-	if actors.has(_seed_holder):
-		var actor: SpiritVisual=actors[_seed_holder]
-		seed.position=actor.carry_point()
-	else:
-		var launch_blend := maxf(0.0,1.0-_seed_launch_age/0.16) if _seed_status=="flying" and not reduced_motion else 0.0
-		var flight_position := _seed_previous_position.lerp(_seed_snapshot_position, clampf(_seed_snapshot_age / SEED_SNAPSHOT_INTERVAL, 0.0, 1.0)) if _seed_status=="flying" else _seed_snapshot_position
-		seed.position=flight_position+_seed_launch_offset*launch_blend
-		if _seed_status=="flying" and not reduced_motion:
-			_spin_seed(flight_position)
-			return
-	_upright_seed()
+	if not is_instance_valid(seed) or _seed_status.is_empty() or _seed_throw == null: return
+	if not _seed_throw.pose(reduced_motion): _rest_seed()
 
-func _spin_seed(flight_position: Vector3) -> void:
-	var travel := flight_position-_seed_launch_point
-	var distance := travel.length()
-	if _seed_spin_axis.is_zero_approx():
-		var level := Vector3(travel.x,0.0,travel.z)
-		if level.length() < 0.02:
-			_upright_seed()
-			return
-		# Lock the axis once per throw: across the flight, tipped toward the sky.
-		var side := Vector3.UP.cross(level.normalized())
-		_seed_spin_axis=(side*cos(SEED_SPIN_TILT)+Vector3.UP*sin(SEED_SPIN_TILT)).normalized()
-	_set_seed_rotation(Quaternion(_seed_spin_axis,distance*SEED_SPIN_PER_METRE))
-
-func _upright_seed() -> void:
-	_set_seed_rotation(Quaternion.IDENTITY)
-
-func _set_seed_rotation(rotation_value: Quaternion) -> void:
-	if seed.quaternion.is_equal_approx(rotation_value): return
-	seed.quaternion=rotation_value
-	# The soft halo is a billboard; keep its own transform unrotated as well.
-	var glow := seed.get_node_or_null("SeedGlow") as Node3D
-	if glow != null: glow.quaternion=rotation_value.inverse()
+func _rest_seed() -> void:
+	seed.position=actors[_seed_holder].carry_point() if actors.has(_seed_holder) else _seed_throw.at()
+	_seed_throw.turn(Quaternion.IDENTITY)
 
 func update_spirit_attention() -> void:
 	# Rendered positions drive expression only; no snapshot or input is changed.
@@ -1119,6 +1084,8 @@ var _fold_job: Dictionary = {}
 func _static_keep() -> Array:
 	var keep: Array = [garden] + route_barriers.moving_nodes()
 	for piece: RefCounted in pad_pieces.values(): keep += piece.moving_parts()
+	# A goal's parts that light, press or swing stay whole.
+	for piece: RefCounted in goal_pieces.values(): keep += piece.moving_parts()
 	if not _marks_fold(): keep += owner_marks.made() + pair_tags.made()
 	return keep
 
@@ -1218,15 +1185,17 @@ func _process(delta: float) -> void:
 		actor.advance_motion(actor.position-previous-ridden,delta,reduced_motion)
 	if not (home_view and home_presentation_owner!=0):
 		finish_spirit_motion()
-	_seed_launch_age+=delta
-	_seed_snapshot_age+=delta
-	_apply_seed_pose()
+	# Thrown things fly on (the seed among them), then the seed rests or rides.
+	for look: RefCounted in _throw_looks: look.advance(delta, reduced_motion)
+	if is_instance_valid(seed) and not _seed_status.is_empty() and _seed_throw != null and not _seed_throw.flying: _rest_seed()
 	for trail: Node3D in _motion_trails:
 		if is_instance_valid(trail): trail.advance(delta, reduced_motion)
 	_move_bridge(weight)
 	for piece: RefCounted in crossing_pieces.values():
 		if piece.moving(): piece.advance(delta)
 	for piece: RefCounted in pad_pieces.values():
+		if piece.moving(): piece.advance(delta)
+	for piece: RefCounted in goal_pieces.values():
 		if piece.moving(): piece.advance(delta)
 	if route_barriers.moving(): route_barriers.advance(delta)
 	_advance_garden_bloom(delta)
@@ -1653,15 +1622,11 @@ func _clear_stage_marks() -> void:
 ## stands: the barriers, then what the world adds beside them
 ## (_build_barrier_extras), then the marks and the tags, which keep clear of
 ## all of it. `tag_view` is the plan the marks and tags read where it differs.
-## A stand spot pad already wears its owner's mark (kit/stand_spot.gd); a pad
-## either pip holds (open controls) has no owner to mark.
+## A pad either pip holds (open controls) has no owner to mark.
 func _build_stage_marks(view: Dictionary, tag_view: Dictionary = {}) -> void:
 	route_barriers.build(view)
 	_build_barrier_extras()
 	var tagged := view if tag_view.is_empty() else tag_view
-	for pad: Dictionary in tagged.get("pressure_pads", []):
-		var piece: Variant = pad_pieces.get(str(pad.id))
-		if piece != null and piece.spot != null and pad.has("owner_slot"): owner_marks.record(str(pad.get("owner_slot", "")), &"spot", str(pad.id), piece.spot.mark.position, piece.spot)
 	owner_marks.build(tagged)
 	pair_tags.prepare(tagged)
 
@@ -1684,12 +1649,15 @@ func _marks_state(state: Dictionary) -> Dictionary:
 	return state
 
 ## Shows the snapshot on the route barriers; a new push into one (the
-## snapshot's "refused") bumps the spirit back.
+## snapshot's "refused") bumps the spirit back, and a step cut at a drop
+## (kind EDGE) makes it teeter over the edge.
 func _present_barriers(state: Dictionary) -> void:
 	route_barriers.set_reduced_motion(reduced_motion)
 	for event: Variant in route_barriers.present(state):
 		var slot := str(event.get("slot", "")) if event is Dictionary else ""
-		if actors.has(slot): actors[slot].play_bump(reduced_motion)
+		if not actors.has(slot): continue
+		if event.kind == RouteBarriers.EDGE: actors[slot].play_teeter(event.get("push", Vector2.ZERO), reduced_motion)
+		else: actors[slot].play_bump(reduced_motion)
 
 # Where the marks and tags go (kit/owner_mark.gd, kit/pair_tags.gd ask these).
 
@@ -1758,6 +1726,9 @@ func _pair_gate_anchors(route: Dictionary) -> Array:
 var pad_pieces: Dictionary = {}
 ## The crossing pieces by id (_build_crossings), for present() to open.
 var crossing_pieces: Dictionary = {}
+## Every goal piece the shown stage draws (_build_goal), by goal id: a world
+## draws each of its goals through the goal kit, never a look of its own.
+var goal_pieces: Dictionary = {}
 
 ## What every island world builds from its definition and dressing alone: the
 ## chapter's dressing, its floors (_build_floors), its pads (_build_pads), its
@@ -1776,7 +1747,7 @@ func _build_island_ground(definition: Dictionary) -> void:
 func _build_crossings(bridges: Array) -> void:
 	crossing_pieces.clear()
 	for bridge: Dictionary in bridges:
-		var piece: RefCounted = BridgeKit.build(bridge, terrain)
+		var piece: RefCounted = BridgeKit.build(bridge.merged({"rect_cm": drawn_rect(bridge)}, true), terrain)
 		crossing_pieces[str(bridge.id)] = piece
 		mark_sound("bridge:%s" % bridge.id, piece.root)
 		await _build_step()
@@ -1820,13 +1791,54 @@ func _build_floors(islands: Array) -> void:
 		if root != terrain: _surface_nodes[str(island.id)] = root
 		await _build_step()
 
-## Builds `island` in the dressing's ground style under `parent`; false, with
-## nothing built, when the dressing gives it none.
+## Builds `island` in the dressing's ground style under `parent`, to its drawn
+## rectangle (drawn_rect); false, with nothing built, when the dressing gives
+## it none.
 func _dressed_ground(island: Dictionary, parent: Node3D) -> bool:
 	var style := _ground_style(str(island.id))
 	if style.is_empty(): return false
-	Surfaces.build(island, style, parent)
+	Surfaces.build(island, style, parent, true, drawn_pieces(island))
 	return true
+
+## The rectangle (cm) a walkable surface of the shown plan is drawn to: past
+## its walkable edge by what the drawn pip reaches over it (kit/walk_reach.gd).
+## A floor cut round a hole names its own shape ("drawn_shape").
+func drawn_rect(surface: Dictionary) -> Array:
+	if surface.has("drawn_shape"):
+		var shape: Array = surface.drawn_shape
+		var found: Array = shape[0].duplicate()
+		for piece: Array in shape: found = [mini(found[0], piece[0]), mini(found[1], piece[1]), maxi(found[2], piece[2]), maxi(found[3], piece[3])]
+		return found
+	return WalkReach.rect(current_level, surface, _plan_stones())
+
+## Where a wall that holds water stands round a crossing of the shown plan
+## (WalkReach wall_rect).
+func wall_rect(surface: Dictionary) -> Array:
+	return WalkReach.wall_rect(current_level, surface, _plan_stones())
+
+## The rectangles (cm) a floor of the shown plan is drawn as: its drawn
+## rectangle cut round the neighbours that meet it (kit/walk_reach.gd).
+func drawn_pieces(surface: Dictionary) -> Array:
+	if surface.has("drawn_shape"): return surface.drawn_shape.duplicate(true)
+	return WalkReach.pieces(current_level, surface, _plan_stones())
+
+## The stretch (cm along its run) of a crossing of the shown plan that no
+## floor reaches over: where its deck is laid (WalkReach open_span).
+func open_span(crossing: Dictionary) -> Array:
+	return WalkReach.open_span(current_level, crossing, _plan_stones())
+
+## The crossings of the shown plan laid as stepping stones (no floor reaches
+## over their ends: WalkReach "open"); a world that lays stones names them.
+func _stepping_stones() -> Array:
+	return []
+
+## _stepping_stones() of the shown plan, worked out once per plan: a build
+## asks for its floors' drawn shapes thousands of times. [plan, stones].
+var _stones_memo: Array = []
+
+func _plan_stones() -> Array:
+	if _stones_memo.is_empty() or not is_same(_stones_memo[0], current_level): _stones_memo = [current_level, _stepping_stones()]
+	return _stones_memo[1]
 
 ## Where a floor is built: a root named for it at its height.
 func _floor_root(island: Dictionary) -> Node3D:
@@ -1840,7 +1852,7 @@ func _floor_root(island: Dictionary) -> Node3D:
 ## each island varied by its place in the list (built in `terrain`, here the
 ## floor's root).
 func _plain_floor(island: Dictionary, index: int) -> void:
-	var rect: Array = island.rect_cm
+	var rect := drawn_rect(island)
 	_make_island(float(rect[0] + rect[2]) / 200.0, float(rect[1] + rect[3]) / 200.0,
 		float(rect[2] - rect[0]) / 100.0, float(rect[3] - rect[1]) / 100.0, _plain_floor_colour(), index + 1)
 
@@ -1862,8 +1874,37 @@ func _build_pads(pads: Array) -> void:
 
 ## A pad in its style (piece_styles.gd "pad", kit/pieces/pad.gd) in its pip's colour.
 func _build_pad(pad: Dictionary, at: Vector3) -> Variant:
-	var style := PieceStyles.style("pad", str(pad.id), ChapterIndex.data(_chapter_key()), dressing)
-	return PadKit.build(style, at, float(pad.radius_cm) / 100.0, terrain, {"owner": str(pad.get("owner_slot", "")), "id": str(pad.id)})
+	return PadKit.build(_piece_style("pad", str(pad.id)), at, float(pad.radius_cm) / 100.0, terrain, {"owner": str(pad.get("owner_slot", "")), "id": str(pad.id)})
+
+## Goal `id` in its style (piece_styles.gd "goal", kit/pieces/goal.gd) at
+## `at` (terrain space, on its floor), `radius_m` across.
+func _build_goal(id: String, at: Vector3, radius_m: float) -> RefCounted:
+	var piece: RefCounted = GoalPiece.build(_piece_style("goal", id), at, radius_m, terrain)
+	goal_pieces[id] = piece
+	return piece
+
+## Presses each goal's pad its own pip stands on in `players` (the snapshot's).
+func _present_goal_pips(players: Dictionary, immediate: bool) -> void:
+	for piece: RefCounted in goal_pieces.values(): piece.present_pips(players, immediate)
+
+## A piece's style here (content/dressing/piece_styles.gd); a world with its
+## own descriptor pins asks with them.
+func _piece_style(slot: String, id: String) -> String:
+	return PieceStyles.style(slot, id, ChapterIndex.data(_chapter_key()), dressing)
+
+## A piece's style, for what reads it beside the world (control_feels.gd).
+func piece_style(slot: String, id: String) -> String:
+	return _piece_style(slot, id)
+
+## Each pad and each goal's two: {id, at (its floor point, terrain space, m),
+## radius (m), held (as shown)}, for the control haptics (control_feels.gd).
+func pad_spots() -> Array:
+	var spots: Array = []
+	for id: Variant in pad_pieces:
+		var piece: RefCounted = pad_pieces[id]
+		spots.append({"id": str(id), "at": piece.at, "radius": piece.radius, "held": piece.held()})
+	for piece: RefCounted in goal_pieces.values(): spots.append_array(piece.pad_spots())
+	return spots
 
 ## A placed thing's spot on its floor (its walking height), in metres.
 func _at(value: Dictionary) -> Vector3:

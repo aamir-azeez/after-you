@@ -38,7 +38,7 @@ describe("new pieces (rules 16)", () => {
   it("accepts turns where a lift carries the memory, and the stage they close", async () => {
     const adapter = journeyAdapter(rideDefinition as any, rideInitial as unknown as ChapterCheckpoint, await digest(canonicalJson(rideDefinition)));
     const [a, b] = [rideA, rideB] as unknown as ChapterRecording[];
-    expect(adapter.simulation_version).toBe(16);
+    expect(adapter.simulation_version).toBe(20);
     for (const turn of [a, b]) expect(await adapter.recording(turn)).toBeTruthy();
     // The server's schema 8 checkpoint carries no proof (the hash never covered it).
     const { proof: _proof, ...flat } = structuredClone(rideEnd) as Record<string, any>; void _proof;

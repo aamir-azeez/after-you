@@ -187,16 +187,11 @@ func _opt_in() -> void:
 	world.free()
 	for other: String in ChapterIndex.keys():
 		if not other.begins_with("turn-of-the-tide"): _check(not ChapterIndex.data(other).goal_beacon, "%s leaves the beacon off" % other)
-	# Without stand spots a pad's beacon keeps the full ring; with them (the
-	# chapter's own descriptor) its ring breathes inside the spot, and a seat on
-	# a spot (a stand-in seating the bollard step) leaves that beacon no ring.
-	for look: String in ["plain", "stand", "seated"]:
-		var stand := look != "plain"
+	# A pad's beacon ring breathes on the pad's board, inside its rim, and a
+	# seat on a pad (a stand-in seating the bollard step) leaves that beacon no ring.
+	for seated: bool in [false, true]:
 		descriptor = ChapterIndex.data(key).duplicate(true)
-		if not stand:
-			for stage: Dictionary in level.stages:
-				for pad: Dictionary in stage.get("pressure_pads", []): descriptor.piece_styles[pad.id] = "plain"
-		if look == "seated": descriptor.seats = {"bollard-pad": {"kind": "bollard", "size": 1.6}}
+		if seated: descriptor.seats = {"bollard-pad": {"kind": "bollard", "size": 1.6}}
 		world = Registry.world_script(key).new()
 		world.descriptor_override = descriptor
 		root.add_child(world)
@@ -207,11 +202,10 @@ func _opt_in() -> void:
 		var rings: Array = world._goal_beacon._beacons.a.map(func(beacon: Dictionary) -> float: return ((beacon.nodes[GoalBeacon.RING] as MeshInstance3D).mesh as TorusMesh).outer_radius)
 		var widest := 0.0
 		for outer: float in rings: widest = maxf(widest, outer * (1.0 + GoalBeacon.BREATH))
-		if stand: _check(rings.size() == 3 and widest <= 0.20 - 0.045, "With stand spots each step's beacon ring breathes inside its 20 cm pad: %s" % [rings])
+		_check(rings.size() == 3 and widest <= 0.20 - GoalBeacon.INSIDE_CLEAR + 0.0001, "Each step's beacon ring breathes inside its 20 cm pad: %s" % [rings])
 		var shown: Array = world._goal_beacon._beacons.a.map(func(beacon: Dictionary) -> bool: return beacon.ring)
-		if look == "stand": _check(shown == [true, true, true], "With stand spots every step keeps its beacon's ring, the bollard step's too: nobody sits there")
-		if look == "seated": _check(shown == [true, true, false], "A seat on the bollard step's spot takes its beacon's ring; the other steps keep theirs")
-		if not stand: _check(rings.size() == 3 and rings.all(func(outer: float) -> bool: return is_equal_approx(outer, GoalBeacon.RING_RADIUS + 0.025)), "Without stand spots each step's beacon keeps its full ring: %s" % [rings])
+		if not seated: _check(shown == [true, true, true], "Every step keeps its beacon's ring, the bollard step's too: nobody sits there")
+		else: _check(shown == [true, true, false], "A seat on the bollard step's pad takes its beacon's ring; the other steps keep theirs")
 		world.free()
 
 func _stage_one(key: String, level: Dictionary, initial: Dictionary) -> Dictionary:

@@ -117,7 +117,7 @@
   "premium": false,
   "props": [],
   "schema_version": 7.0,
-  "simulation_version": 16.0,
+  "simulation_version": 20.0,
   "stages": [
     {
       "ball_pads": [],

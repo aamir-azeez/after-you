@@ -1,6 +1,7 @@
 extends RefCounted
 ## Every registered chapter, in order: one descriptor file per chapter in this
-## folder. Order is behaviour (the pickers and Home's browsing read it). The
+## folder. Order is behaviour (the pickers and Home's browsing read it, through
+## shown_keys(), which a descriptor's "shown_after" moves). The
 ## family's shared facts are in services/chapter_families.gd.
 ##
 ## A descriptor declares `const DATA := {...}`. Pure data: scripts and scenes are
@@ -134,6 +135,11 @@ const OPTIONAL := {
 	## true lists the chapter first among its kind (free or Full Journey) in
 	## every chapter picker. The registry order above is published, so it stays.
 	"leads_picker": false,
+	## A level id: every chapter list (the pickers, the unlock chain, Home)
+	## shows this chapter's level right after that one, within its kind
+	## (shown_keys()). "" keeps it where its level is registered. Any
+	## version may say it; the first that does counts.
+	"shown_after": "",
 	## [catalog script, static method]: the definition written with puzzle
 	## blocks (core/blocks/stage_blocks.gd) before it is expanded. Its blocks'
 	## default stage copy, piece styles and water levels fill whichever of
@@ -186,10 +192,18 @@ const CHAPTERS := [
 ## Worked out once when this file loads, then only read (workers read it too).
 static var _keys: Array[String] = _ordered_keys()
 static var _data: Dictionary = _by_key()
+static var _shown: Array[String] = _shown_order()
 
 ## Registered keys in order. A copy: callers may change it.
 static func keys() -> Array[String]:
 	return _keys.duplicate()
+
+## Registered keys in the order every chapter list shows them: each level where
+## its first version not superseded is registered, with all its versions
+## together in registry order, then moved right after its "shown_after" level.
+## A copy.
+static func shown_keys() -> Array[String]:
+	return _shown.duplicate()
 
 ## A chapter's keepsake on Home by its level id (the part of a key before
 ## "@"): {"key": the descriptor holding it, "keepsake": its home_keepsake}, or
@@ -207,6 +221,33 @@ static func data(key: String) -> Dictionary:
 static func _ordered_keys() -> Array[String]:
 	var result: Array[String] = []
 	for file: Script in CHAPTERS: result.append(str(file.DATA.get("key", "")))
+	result.make_read_only()
+	return result
+
+static func _shown_order() -> Array[String]:
+	var levels: Array[String] = []
+	var after: Dictionary = {}
+	for key: String in _keys:
+		var level := key.get_slice("@", 0)
+		# A superseded version names a later one, which places the level.
+		if not level in levels and str(_data[key].superseded_by).is_empty(): levels.append(level)
+		if not after.has(level) and not str(_data[key].shown_after).is_empty(): after[level] = str(_data[key].shown_after)
+	# Placed once its anchor is, so one moved level may follow another.
+	var placed: Array = levels.filter(func(level: String) -> bool: return not after.has(level))
+	var waiting: Array = after.keys()
+	while not waiting.is_empty():
+		var moved: Array = waiting.filter(func(level: String) -> bool: return after[level] in placed)
+		if moved.is_empty(): break
+		for level: String in moved:
+			placed.insert(placed.find(after[level]) + 1, level)
+			waiting.erase(level)
+	# An anchor that is not registered keeps the level at the end
+	# (test_chapter_descriptors refuses one).
+	placed.append_array(waiting)
+	var result: Array[String] = []
+	for level: String in placed:
+		for key: String in _keys:
+			if key.get_slice("@", 0) == level: result.append(key)
 	result.make_read_only()
 	return result
 

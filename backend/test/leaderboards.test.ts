@@ -11,7 +11,8 @@ import { boardKey, boardKeys, developerBest } from "../src/leaderboards/boards";
 import { DEVELOPER_BESTS } from "../src/leaderboards/developer-bests";
 import { JOB_TOKEN_LABEL, deriveJobToken } from "../src/leaderboards/job-token";
 import { compareRuns, holdsFor, strictlyFirst, TOP_PLACES, KEPT_RANKED, MAX_UNCHECKED, MAX_CHECKED, MAX_WAITING_PER_MEMBER, MAX_REPLAY_BYTES, MIN_ACCOUNT_AGE_MS, MIN_PARTNERS } from "../src/leaderboards/rules";
-import { entryId, finishedRun, pairKey, runTicks, type LeaderboardRun } from "../src/leaderboards/run";
+import { entryId, finishedRun, pairKey, roomRun, runTicks, type LeaderboardRun } from "../src/leaderboards/run";
+import { LEGACY_CHAPTERS } from "../src/v2/legacy-chapters";
 import { eligible, playerStanding, type Standing } from "../src/leaderboards/standing";
 import { VIEW_TTL_MS, cachedView, forgetViews, storeView } from "../src/leaderboards/view-cache";
 import { forgetReplays } from "../src/leaderboards/replays";
@@ -179,6 +180,15 @@ describe("leaderboard rules", () => {
     const assisted = structuredClone(fin) as { proof: { b: { catch_assistance: boolean } } };
     assisted.proof.b.catch_assistance = true;
     expect(runTicks(assisted as never, 2)).toBeNull();
+  });
+  it("takes a run on its chapter's current definition only, never one an older app plays on the published one before it", async () => {
+    const { fin } = await unassistedRelay();
+    const legacy = LEGACY_CHAPTERS.find(entry => entry.key.level_id === "high-and-low" && entry.key.level_version === 1)!;
+    const current = CHAPTERS.find(row => row.adapter.key.level_id === "high-and-low" && row.adapter.key.level_version === 1)!.adapter;
+    const room = { active_role: "complete", room_id: "r".repeat(22), branch: 0, host_id: "a".repeat(22), guest_id: "b".repeat(22), level_id: "high-and-low", level_version: 1, checkpoint: fin, updated_at: "2026-11-20T00:00:00Z" };
+    // On a fresh board named by the definition (boards.ts boardKey); older apps keep reading high-and-low@1.
+    expect((await roomRun({ ...room, definition_hash: current.key.definition_hash } as never))?.board).toBe(`high-and-low-${current.key.definition_hash.slice(0, 8)}@1`);
+    expect(await roomRun({ ...room, definition_hash: legacy.key.definition_hash } as never)).toBeNull();
   });
 });
 

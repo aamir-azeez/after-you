@@ -89,11 +89,21 @@ extends SceneTree
 ##     builds presentation/kit/goal_beacon.gd, the late guide every open turns chapter
 ##     gets with no code of its own. test_open_hints.gd, which must stay in CI, checks
 ##     them on every open turns chapter.
-## (y) water worlds: presentation/water_world.gd alone shows a drowning (it holds
-##     presentation/kit/drowning.gd, the one drown), floats boats by the float rule
-##     (kit/floats.gd keel, the dressing's "moored_boats" and every "boat" prop over
-##     water) and sinks stepping stones under the water; no other world reads the
-##     snapshot's "drowned", builds a drowning, floats a boat or reads "moored_boats".
+## (y) water worlds and losses: presentation/cooperative_world.gd alone holds
+##     presentation/kit/drowning.gd (the one drown and fall, a fall away into the
+##     sky included) and presentation/kit/closing_warning.gd (the one flashing rim
+##     of a closing crossing); presentation/water_world.gd alone floats boats by the
+##     float rule (kit/floats.gd keel, the dressing's "moored_boats" and every
+##     "boat" prop over water) and sinks stepping stones under the water. No other
+##     world reads the snapshot's "drowned" (the water world's stones aside),
+##     builds a drowning or a closing warning, flashes a closing crossing of its
+##     own, floats a boat or reads "moored_boats".
+##     Nothing changes size with the water but the water: no function a water
+##     body's ride() calls sets a scale or a mesh, and in the water world, its
+##     worlds and the water kits every scale or mesh set from a level, a lift, a
+##     fall or the shown water is the water's own (WATER_SCALES). A piece that
+##     must reach the water is built once tall enough for every level and only
+##     moves; test_level_view measures the sizes on every water stage.
 ## (z) contact shadows: presentation/kit/contact_shadows.gd alone draws the soft
 ##     shadow where things meet the ground (its shader is preloaded nowhere
 ##     else; the pip's shadow takes its look from it), island_world alone makes
@@ -106,6 +116,12 @@ extends SceneTree
 ##     shaders are preloaded by the kit alone). test_contact_shadows.gd, which
 ##     must stay in CI, builds every style and kind; test_world_looks checks
 ##     every chapter stage bakes them and that every floor is a ground.
+## (aa) thrown things: presentation/kit/throw_look.gd alone draws a flight (it
+##     alone makes the path blur, seed_motion_trail.gd; services/gl_warmup.gd
+##     only warms its shader), island_world alone makes the looks (throw_look,
+##     its blurs kept with the world's others), and the journey world gives
+##     every item it can throw one. test_throw_look.gd, which must stay in CI,
+##     flies every item kind with it and keeps First Steps @1's look.
 ##
 ## Every allow-list entry says why. An entry that no longer matches anything
 ## fails, so the lists shrink as code moves. KNOWN_FAILURES holds the checks
@@ -354,10 +370,11 @@ const PAIR_TAGS_OWNER := "res://presentation/island_world.gd"
 ## scripts that override them, with why: a mark drawn by hand (mark, record,
 ## keep_clear) or a world hook (_mark_stair, _marks_goal).
 const OWNER_MARK_OVERRIDES := {
-	"res://presentation/island_world.gd": "builds every stage's marks (build), records a stand spot's own mark (record), and holds the default hooks (_mark_stair, _marks_goal)",
+	"res://presentation/island_world.gd": "builds every stage's marks (build) and holds the default hooks (_mark_stair, _marks_goal)",
 	"res://presentation/lighthouse_world.gd": "a goal whose style wears a mark carries its owner's (_marks_goal)",
-	"res://presentation/wishing_well_world.gd": "the bucket's mark rides the bucket (mark); folding stairs and the rope ladder have their own feet (_mark_stair); the ladder top's mark steps east of a bell frame that hides it (_mark_stair); marks keep off the notch (keep_clear)",
-	"res://presentation/kit/stand_spot.gd": "the mark on a stand spot's disc (OwnerMark.spot)",
+	"res://presentation/wishing_well_world.gd": "folding stairs and the rope ladder have their own feet, from the well's scenery (_mark_stair)",
+	"res://presentation/wishing_well_v2_world.gd": "folding stairs and the rope ladder have their own feet, from the well's scenery (_mark_stair)",
+	"res://presentation/wishing_well_scenery.gd": "the bucket's mark rides the bucket (mark); the ladder top's mark steps east of a bell frame that hides it (_mark_stair's feet); marks keep off the notch (keep_clear)",
 }
 const PAIR_TAG_OVERRIDES := {
 	"res://presentation/tide_world.gd": "the tide wheel shows on the gauges and the second spirit's stubs on their mouth marks (skip); the sea key's tile stands on its sign (tag); gate tiles start at a stub's mouth and keep clear of the gauges and mouth marks (hooks)",
@@ -409,10 +426,10 @@ const PIECE_KITS := "res://presentation/kit/pieces/"
 ## Scripts that preload a piece kit, with why.
 const PIECE_BUILDERS := {
 	"res://presentation/cooperative_world.gd": "builds every pad, lever, selector and pulley post in the style its piece resolves to",
-	"res://presentation/lighthouse_world.gd": "builds every goal in the style it resolves to",
-	"res://presentation/island_world.gd": "builds every island world's pads from its family's layout in the style each resolves to (_build_pad), and its crossings as the bridge kit draws them (_build_crossings)",
-	"res://presentation/first_steps_world.gd": "builds its lift in the style it resolves to (lift); its loft bell is the kit bell on its own post and arm",
-	"res://presentation/kit/new_pieces.gd": "builds the new pieces' decks, moving platforms and rope ladders (rules 16) in the styles they resolve to, for cooperative_world",
+	"res://presentation/island_world.gd": "builds every island world's pads from its family's layout in the style each resolves to (_build_pad), every goal in the style it resolves to (_build_goal), and its crossings as the bridge kit draws them (_build_crossings)",
+	"res://presentation/first_steps_world.gd": "builds its lift in the style it resolves to (lift)",
+	"res://presentation/kit/new_pieces.gd": "builds the new pieces' decks, moving platforms, rope ladders and swings (rules 16) in the styles they resolve to, for cooperative_world",
+	"res://presentation/kit/prop_rules.gd": "builds nothing: reads how wide each pad and goal style is drawn (drawn_radius), so the level checker keeps pieces apart as drawn",
 }
 ## Scripts that read a descriptor's pins themselves, with why.
 const PIN_READERS := {
@@ -421,7 +438,8 @@ const PIN_READERS := {
 ## Worlds that extend a piece builder, with what they add, or why they still
 ## draw one piece themselves.
 const PIECE_OVERRIDES := {
-	"res://presentation/wishing_well_world.gd": "the well floor's pad is the bucket the well's winch lowers and raises on its rope (_build_physical_pad): it moves with the well's rig, so it stays with it; every other pad comes from the kit",
+	"res://presentation/wishing_well_world.gd": "the well floor's pad is the bucket the well's winch lowers and raises on its rope (_build_physical_pad, wishing_well_scenery.gd): it moves with the well's rig, so it stays with it; every other pad comes from the kit",
+	"res://presentation/wishing_well_v2_world.gd": "the well floor's pad is the bucket the well's winch lowers and raises on its rope (_build_physical_pad, wishing_well_scenery.gd), as @1's; every other pad comes from the kit",
 	"res://presentation/journey_world.gd": "a selector's value bubble over its lever (_build_selector)",
 	"res://presentation/tide_world.gd": "a valve's water sign (_build_selector) and every lever's on lamp (_build_lever)",
 	"res://presentation/long_way_home_world.gd": "the porch and garden pads' word labels and the cables to the greeting window (_build_physical_pad)",
@@ -437,7 +455,7 @@ const OWN_ENVIRONMENTS := {
 }
 
 ## Suites that guard a shared path on their own and must stay in CI.
-const GUARD_SUITES := ["shared_paths", "full_screen_bleed", "pollen_mark", "connectivity", "owner_marks", "pair_tags", "fall_effect", "piece_styles", "open_hints", "contact_shadows"]
+const GUARD_SUITES := ["shared_paths", "full_screen_bleed", "pollen_mark", "connectivity", "owner_marks", "pair_tags", "fall_effect", "piece_styles", "open_hints", "contact_shadows", "throw_look"]
 ## (w) The one reader of the ready line, and the one builder of the goal beacon.
 const READY_LINE := "MAIN_1AAC5BE95E22"
 const READY_LINE_READER := "res://relay_preview.gd"
@@ -447,21 +465,25 @@ const GOAL_BEACON_BUILDER := "res://presentation/cooperative_world.gd"
 const CONTACT_SHADOWS := "res://presentation/kit/contact_shadows.gd"
 const CONTACT_SHADOW_SHADERS := ["res://presentation/kit/contact_shadow.gdshader", "res://presentation/kit/ground_shade.gdshader"]
 ## (z) The shared floor builders, each registering the floor tops it lays as
-## grounds (ContactShadows.ground), with what they lay.
+## grounds (ContactShadows.ground, or ground_cm for a floor drawn in pieces),
+## with what they lay.
+const GROUND_CALL := "\\bContactShadows\\.ground(_cm)?\\("
 const FLOOR_GROUNDS := {
 	"res://presentation/kit/surfaces.gd": "every ground style's floor",
 	"res://presentation/island_world.gd": "the floating grass shell (plain floors, Home's isles)",
 	"res://presentation/lighthouse_world.gd": "the Lighthouse family's plain stone floors",
 	"res://presentation/house_world.gd": "A House for Two's timber rooms",
-	"res://presentation/wishing_well_world.gd": "the Wishing Well's stone tiers",
+	"res://presentation/wishing_well_scenery.gd": "the Wishing Well's stone tiers",
 	"res://presentation/kit/props.gd": "a bank, which is ground itself",
 }
 const CONTACT_SHADOW_LAYER := "res://presentation/island_world.gd"
 const PIECE_KIT_BASE := "res://presentation/kit/pieces/piece.gd"
 const NO_CONTACT_SHADOW := {
 	"res://presentation/kit/pieces/bridge.gd": "a crossing is ground itself",
+	"res://presentation/kit/pieces/bridge_roll.gd": "a crossing's rolled deck is ground itself, hung at the gap's lip",
 	"res://presentation/kit/pieces/current.gd": "chevrons and ripples drawn on the water",
 	"res://presentation/kit/pieces/lift.gd": "its deck is a floor that rides up and down",
+	"res://presentation/kit/pieces/pad.gd": "a board lies flat on the floor and sinks into it, and a goal's two pads stand on the goal's own disc, which casts its shadow",
 	"res://presentation/kit/pieces/raft.gd": "rides the water (the water's rings show it)",
 	"res://presentation/kit/pieces/rope_ladder.gd": "a stair is ground itself",
 }
@@ -508,6 +530,7 @@ func _initialize() -> void:
 	_space_backdrop()
 	_water_worlds()
 	_contact_shadows()
+	_thrown()
 	_suites()
 	for id: String in KNOWN_FAILURES:
 		_check(_known_seen.has(id), "KNOWN_FAILURES names '%s', which no check reached: delete it" % id)
@@ -1133,7 +1156,7 @@ func _contact_shadows() -> void:
 		var source: String = _sources[path]
 		for shader: String in CONTACT_SHADOW_SHADERS:
 			_check(path == CONTACT_SHADOWS or _found("\"" + shader + "\"", source) == 0, "%s draws a contact shadow itself: use kit/contact_shadows.gd (mark a root, register a floor, or single_material for one quad)" % path)
-		if path != CONTACT_SHADOWS and _found("\\bContactShadows\\.ground\\(", source) > 0: _check(FLOOR_GROUNDS.has(path), "%s registers floor grounds: add it to FLOOR_GROUNDS with what it lays" % path)
+		if path != CONTACT_SHADOWS and _found(GROUND_CALL, source) > 0: _check(FLOOR_GROUNDS.has(path), "%s registers floor grounds: add it to FLOOR_GROUNDS with what it lays" % path)
 		var kit := _alias(source, CONTACT_SHADOWS)
 		_check(path == CONTACT_SHADOW_LAYER or kit.is_empty() or _found("\\b" + kit + "\\.new\\(", source) == 0, "%s makes a contact shadow layer: island_world makes one per world" % path)
 		if not path.begins_with(PIECE_KITS) or _found("^extends\\s+\"" + PIECE_KIT_BASE + "\"", source) == 0: continue
@@ -1144,29 +1167,95 @@ func _contact_shadows() -> void:
 	for path: String in NO_CONTACT_SHADOW:
 		_check(opted.has(path), "NO_CONTACT_SHADOW names %s, which casts its shadow now: delete it" % path)
 	for path: String in FLOOR_GROUNDS:
-		_check(_found("\\bContactShadows\\.ground\\(", str(_sources.get(path, ""))) > 0, "FLOOR_GROUNDS names %s, which registers no ground now: delete it" % path)
+		_check(_found(GROUND_CALL, str(_sources.get(path, ""))) > 0, "FLOOR_GROUNDS names %s, which registers no ground now: delete it" % path)
 	_check(_found("\\bContactShadows\\.mark\\(root\\)", str(_sources.get(PIECE_KIT_BASE, ""))) > 0, "piece.gd _root() marks every piece root for a contact shadow")
 	_check(_found("\\bContactShadows\\.prop\\(root, spec\\)", str(_sources.get("res://presentation/kit/props.gd", ""))) > 0, "kit/props.gd build() marks every dressing prop for a contact shadow")
 	_check(_found("\\bContactShadows\\.(?:single_material|pip_quad)\\(", str(_sources.get("res://presentation/spirit_visual.gd", ""))) > 0, "A pip's shadow takes the contact shadows' look")
 
+# (aa) Thrown things -----------------------------------------------------------
+
+const THROW_LOOK := "res://presentation/kit/throw_look.gd"
+const THROW_LOOK_MAKER := "res://presentation/island_world.gd"
+const PATH_BLUR := "res://presentation/seed_motion_trail.gd"
+
+## (aa) One look for every flight, made by the world.
+func _thrown() -> void:
+	for path: String in _sources:
+		var source: String = _sources[path]
+		var blur := _alias(source, PATH_BLUR)
+		_check(path == THROW_LOOK or blur.is_empty() or _found("\\b" + blur + "\\.new\\(", source) == 0, "%s makes a path blur itself: a thrown thing flies with kit/throw_look.gd" % path)
+		var look := _alias(source, THROW_LOOK)
+		_check(path == THROW_LOOK_MAKER or look.is_empty() or _found("\\b" + look + "\\.new\\(", source) == 0, "%s makes a throw look itself: island_world throw_look() makes each, with the world's blurs" % path)
+	_check(_found("\\bThrowLook\\.new\\(", str(_sources.get(THROW_LOOK_MAKER, ""))) == 1, "island_world makes the throw looks")
+	_check(_found("\\bthrow_look\\(piece\\.root,", str(_sources.get("res://presentation/journey_world.gd", ""))) == 1, "The journey world gives every item it can throw the throw look")
+
 # (y) Water worlds -------------------------------------------------------------
 
 const WATER_WORLD := "res://presentation/water_world.gd"
+const LOSS_HOST := "res://presentation/cooperative_world.gd"
 const DROWNING := "res://presentation/kit/drowning.gd"
+const CLOSING_WARNING := "res://presentation/kit/closing_warning.gd"
+## (y) The only sizes set from the water: the water itself, by script and line.
+const WATER_SCALES := {
+	"res://presentation/kit/water_bodies.gd": {
+		"root.scale.y = maxf(level - bed(id), 0.02)": "a body's water, from its bed to its level",
+		"(flood.node as Node3D).scale.y = maxf(level - bed(str(flood.water)), 0.02)": "a walled stub's flood, from its bed to its level",
+	},
+	"res://presentation/kit/water_locks.gd": {
+		"sheet.mesh = _pour_mesh(_length(run) - 0.04, fall, turn)": "a spillway's pour, as long as its drop",
+		"sheet.scale = Vector3(1, maxf(fall, 0.01), 1)": "a spillway's falling sheet, as long as its drop",
+	},
+}
 
-## (y) One drowning, one float rule and one way stones go under, in the water world.
+## (y) One drowning and one closing warning, shown in every world through
+## cooperative_world; one float rule and one way stones go under, in the water world.
 func _water_worlds() -> void:
 	var worlds := 0
 	for path: String in _sources:
 		var source: String = _sources[path]
-		if path != WATER_WORLD and path != DROWNING:
-			var alias := _alias(source, DROWNING)
-			_check(_found("\\b(?:Drowning" + ("|" + alias if not alias.is_empty() else "") + ")\\.new\\(", source) == 0, "%s builds a drowning of its own: the water world holds the one (presentation/kit/drowning.gd)" % path)
-		if not path.begins_with("res://presentation/") or not path.ends_with("_world.gd") or path == WATER_WORLD: continue
+		if path != LOSS_HOST:
+			for kit: Array in [[DROWNING, "Drowning"], [CLOSING_WARNING, "ClosingWarning"]]:
+				if path == kit[0]: continue
+				var alias := _alias(source, kit[0])
+				_check(_found("\\b(?:" + str(kit[1]) + ("|" + alias if not alias.is_empty() else "") + ")\\.new\\(", source) == 0, "%s builds a %s of its own: cooperative_world holds the one (%s)" % [path, kit[1], kit[0]])
+		if not path.begins_with("res://presentation/") or not path.ends_with("_world.gd") or path == LOSS_HOST: continue
 		worlds += 1
-		_check(_found("\"drowned\"|DrownRing|DROWN_", source) == 0, "%s shows a drowning of its own: presentation/water_world.gd shows every one through kit/drowning.gd" % path)
+		_check(_found("CLOSING_COLOR|\"warned\"|ClosingWarning_", source) == 0, "%s flashes a closing crossing of its own: kit/closing_warning.gd flashes every one" % path)
+		if path == WATER_WORLD: continue
+		_check(_found("\"drowned\"|DrownRing|DROWN_", source) == 0, "%s shows a drowning of its own: kit/drowning.gd shows every one, through cooperative_world" % path)
 		_check(_found("\\bFloats\\.keel\\(|\"moored_boats\"", source) == 0, "%s floats boats of its own: presentation/water_world.gd floats every boat by the float rule" % path)
-	_check(worlds > 10 and _found("Drowning\\.new\\(", _sources.get(WATER_WORLD, "")) == 1 and _found("\"drowned\"", _sources.get(WATER_WORLD, "")) > 0, "The water world holds the one drowning and every chapter world is scanned (%d)" % worlds)
+	var host: String = _sources.get(LOSS_HOST, "")
+	_check(worlds > 10 and _found("Drowning\\.new\\(", host) == 1 and _found("ClosingWarning\\.new\\(", host) == 1 and _found("\"drowned\"", host) > 0 and _found("\"closing\"", host) > 0, "cooperative_world holds the one drowning and closing warning, and every chapter world is scanned (%d)" % worlds)
+	_water_sizes()
+
+## (y) Nothing but the water changes size with it.
+func _water_sizes() -> void:
+	_check(_sized_lines("\tpost.scale.y = (0.50 + lift) / 0.50\n\tpost.position.y = lift").size() == 1 and _sized_lines("\tpunt.scale = Vector3(length / 1.92, 1.0, 1.0)").is_empty(), "The water size scan finds a scale set from the water, and only that")
+	var scanned := 0
+	for path: String in _sources:
+		var source: String = _sources[path]
+		if not path.begins_with("res://presentation/"): continue
+		# A function a body's ride() calls follows the water: it only moves.
+		for found: RegExMatch in RegEx.create_from_string("\\.ride\\([^,\\n]+,\\s*(\\w+)(?:\\.bind\\(|\\s*[,)])").search_all(source):
+			var body := RegEx.create_from_string("(?ms)^func " + found.get_string(1) + "\\(.*?(?=^func |\\z)").search(source)
+			if body == null: continue
+			_check(_found("\\bscale(?:\\.[xyz])?\\s*=(?!=)|\\.mesh\\s*=(?!=)", body.get_string()) == 0, "%s %s follows the water and sets a size: build the piece once tall enough for every level and only move it (water: fixed-size pieces, never stretched)" % [path, found.get_string(1)])
+		if not (path == WATER_WORLD or path.begins_with("res://presentation/kit/water_") or source.contains("extends \"" + WATER_WORLD + "\"")): continue
+		scanned += 1
+		var allowed: Dictionary = WATER_SCALES.get(path, {})
+		for line: String in _sized_lines(source):
+			_check(allowed.has(line), "%s sets a size from the water: %s (only the water and its effects may, WATER_SCALES; build the piece once tall enough for every level and only move it)" % [path, line])
+	_check(scanned >= 6, "The water size scan reads the water world, its worlds and the water kits (%d)" % scanned)
+	for path: String in WATER_SCALES:
+		for line: String in WATER_SCALES[path]: _check(line in _sized_lines(_sources.get(path, "")), "WATER_SCALES names a line %s no longer has: %s" % [path, line])
+
+## The lines of `source` that set a scale or a mesh from the water: its level,
+## the shown water, a lift or a fall.
+static func _sized_lines(source: String) -> Array[String]:
+	var lines: Array[String] = []
+	for found: RegExMatch in RegEx.create_from_string("(?m)^[^\\n]*(?:\\bscale(?:\\.[xyz])?|\\.mesh)\\s*=(?!=)[^\\n]*\\b(?:level|lift|fall|shown|tide)\\b[^\\n]*$").search_all(source):
+		lines.append(found.get_string().strip_edges())
+	return lines
 
 func _suites() -> void:
 	var shards := {}

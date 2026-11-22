@@ -5,9 +5,9 @@ extends RefCounted
 ## version, its controls carry no owner, either pip pushes the ball in any
 ## turn, live or as a memory, and a stage passes back and forth until it ends:
 ## both pips at the far bell, then the ball in its cradle with both pips home.
-## Its turns are development limits, 120 seconds every turn, to explore while
-## the owner records; the release step sets the owner's numbers
-## (scripts/chapter_turn_limits.py). Its in-play hints are @1's own (the
+## Its turns are the fallback until the owner plays it: twice the longest
+## carry-over witness turn, at least 60 s (60 s every turn;
+## scripts/chapter_turn_limits.py --suggested). Its in-play hints are @1's own (the
 ## cooperative family's stage_hud is authored).
 ##
 ## The ball is still the idea; only what open play needs changed. Weight of a
@@ -38,7 +38,7 @@ static func definition() -> Dictionary:
 	var level: Dictionary = load(EARLIER).definition("rolling-home@1").duplicate(true)
 	level.version = 2
 	OpenTurns.pin(level, CAPS)
-	level.turn_limits = {"a_ticks": 3600, "b_ticks": 3600}
+	level.turn_limits = {"a_ticks":1800,"b_ticks":1800}
 	OpenControls.open_crossings(level, OWNED)
 	level.access_zones = []
 	var friend: Dictionary = level.stages[0]

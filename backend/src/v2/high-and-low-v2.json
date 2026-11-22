@@ -86,7 +86,7 @@
 	"premium": false,
 	"props": [],
 	"schema_version": 6,
-	"simulation_version": 14,
+	"simulation_version": 18,
 	"stages": [
 		{
 			"ball_pads": [],
@@ -130,6 +130,10 @@
 						112
 					],
 					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
 					"surface_id": "shore"
 				},
 				{
@@ -139,6 +143,10 @@
 						-128
 					],
 					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
 					"surface_id": "loft"
 				}
 			],
@@ -225,6 +233,10 @@
 						-128
 					],
 					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
 					"surface_id": "loft"
 				},
 				{
@@ -234,6 +246,10 @@
 						-112
 					],
 					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
 					"surface_id": "garden"
 				}
 			],
@@ -305,8 +321,8 @@
 	},
 	"title": "High and Low",
 	"turn_limits": {
-		"a_ticks": 3600,
-		"b_ticks": 3600
+		"a_ticks": 1800,
+		"b_ticks": 1800
 	},
 	"version": 2
 }

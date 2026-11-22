@@ -1,7 +1,9 @@
 extends RefCounted
 ## Pinned authored chapters for the separate simulation7 ruleset.
 const Canonical = preload("res://core/v2/canonical.gd")
+const Solid = preload("res://core/solid_footprint.gd")
 const CarriedItems = preload("res://core/physical/carried_items.gd")
+const Seven = preload("res://core/journey/seven_mechanisms.gd")
 const Home = preload("res://core/journey/long_way_home_catalog.gd")
 const Conservatory = preload("res://core/journey/conservatory_catalog.gd")
 const Tide = preload("res://core/journey/turn_of_the_tide_catalog.gd")
@@ -13,10 +15,16 @@ const FirstStepsV2Catalog = preload("res://core/journey/first_steps_v2_catalog.g
 const RelayIslesV3Catalog = preload("res://core/journey/relay_isles_v3_catalog.gd")
 const TheFallsCatalog = preload("res://core/journey/the_falls_catalog.gd")
 const FogMarshCatalog = preload("res://core/journey/fog_marsh_catalog.gd")
+const TheWishingWellV2Catalog = preload("res://core/journey/the_wishing_well_v2_catalog.gd")
 const SleepingLighthouseV3Catalog = preload("res://core/journey/sleeping_lighthouse_v3_catalog.gd")
-const KEYS := ["conservatory@1","long-way-home@1","long-way-home@2","turn-of-the-tide@1","turn-of-the-tide@2","long-way-home@3","turn-of-the-tide@3","conservatory@2","first-steps@2","the-falls@1","fog-marsh@1","relay-isles@3","sleeping-lighthouse@3"]
+const KEYS := ["conservatory@1","long-way-home@1","long-way-home@2","turn-of-the-tide@1","turn-of-the-tide@2","long-way-home@3","turn-of-the-tide@3","conservatory@2","first-steps@2","the-falls@1","fog-marsh@1","relay-isles@3","the-wishing-well@2","sleeping-lighthouse@3"]
 
+## Every chapter's definition as it plays: its catalog's, with the hand
+## controls made solid (core/solid_footprint.gd with_hands, the one rule).
 static func definition(key: String = "long-way-home") -> Dictionary:
+	return Solid.with_hands(_authored(key))
+
+static func _authored(key: String) -> Dictionary:
 	if key in ["long-way-home", "long-way-home@1"]: return Home.definition()
 	if key == "long-way-home@2": return Home.definition_v2()
 	if key in ["conservatory", "conservatory@1"]: return Conservatory.definition()
@@ -29,6 +37,7 @@ static func definition(key: String = "long-way-home") -> Dictionary:
 	if key == "relay-isles@3": return RelayIslesV3Catalog.definition()
 	if key in ["the-falls", "the-falls@1"]: return TheFallsCatalog.definition()
 	if key in ["fog-marsh", "fog-marsh@1"]: return FogMarshCatalog.definition()
+	if key == "the-wishing-well@2": return TheWishingWellV2Catalog.definition()
 	if key == "sleeping-lighthouse@3": return SleepingLighthouseV3Catalog.definition()
 	return {}
 
@@ -66,6 +75,22 @@ static func initial_checkpoint(level: Dictionary) -> Dictionary:
 	if CarriedItems.declared(level): checkpoint.mechanisms["items"]=CarriedItems.initial(level)
 	checkpoint["checkpoint_hash"]=checkpoint_hash(checkpoint)
 	return checkpoint
+
+## Stepping stones the water can leave standing too tall to step on, by
+## chapter (every version alike): route id -> a controls-only predicate that
+## holds while its water stands below it. A shut stone is then left high
+## instead of under the water; the tide rules (simulation.gd) keep a pip on it
+## up there and a pip that walks off it falls, and the water world draws it
+## standing tall (presentation/water_world.gd). Beside the definition, not in
+## it: no published hash, record or checkpoint moves, since a pip on a shut
+## stone used to drown, so no kept turn ever had one there.
+static func tall_stones(level: Dictionary) -> Dictionary:
+	return Tide.TALL_STONES if str(level.get("id", "")) == "turn-of-the-tide" else {}
+
+## Whether shut stone `id` stands too tall for its water under `controls`.
+static func left_high(level: Dictionary, id: String, controls: Dictionary) -> bool:
+	var when: Variant = tall_stones(level).get(id)
+	return when is Dictionary and Seven.predicate(when, {}, {}, {"controls": controls, "levers": {}})
 
 static func checkpoint_hash(checkpoint: Dictionary) -> String:
 	var body:=checkpoint.duplicate(true)

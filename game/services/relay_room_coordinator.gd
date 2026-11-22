@@ -62,10 +62,10 @@ const JOURNAL_NODES_PER_TWO_STAGES := 140000
 const MAX_PAIR_BYTES := 2097152
 const MAX_PAIR_NODES := 220000
 ## Highest room rules number this build understands (9 = comfort alias,
-## 11 = sleeping-lighthouse@2, 12 and 13 = open controls, 14 and 15 = open
-## turns, 16 = the new pieces, 17 = the shared ball). A room is still held to
-## its chapter's own rules.
-const MAX_SIMULATION_VERSION := 17
+## 11 = sleeping-lighthouse@2, 12 and 13 = open controls, 18 and 19 = carry-over
+## open turns, 20 = the new pieces, 21 = the shared ball). A room is still held
+## to its chapter's own rules.
+const MAX_SIMULATION_VERSION := 21
 const MAX_HELD := 4
 const STATE_KEYS := ["schema_version", "api_version", "owner_player_id", "room_id", "snapshot", "draft", "held_drafts", "pending", "last_receipt", "auth_required"]
 const SNAPSHOT_KEYS := ["schema_version", "room_id", "revision", "branch", "stage_index", "level_id", "level_version", "definition_hash", "host_id", "guest_id", "checkpoint", "a_turn_id", "completed_pair_ids", "invite_expires_at", "created_at", "updated_at", "api_version", "active_role", "first_player_id", "active_player_id", "player_slot", "stage_id", "recording_a", "validation"]
@@ -275,7 +275,10 @@ func bind_room(room_id: String) -> bool:
 	var loaded: Variant = _load.call(_scope)
 	if not loaded is Dictionary or not loaded.get("ok", false):
 		return _hold("storage_unavailable", PlayerCopy.RELAY_ROOM_COORDINATOR_C4AFE12FC876)
-	if loaded.get("found", false):
+	# A room kept here from before its level's definition changed (Registry.retired)
+	# can never replay on this build: it binds as if never kept, so it holds no
+	# other room, and its bytes stay where they are, unread and unwritten.
+	if loaded.get("found", false) and not (loaded.get("value") is Dictionary and loaded.value.get("snapshot") is Dictionary and Registry.retired(loaded.value.snapshot)):
 		var value: Variant = loaded.get("value")
 		if not _valid_state(value):
 			return _hold("invalid_saved_room", PlayerCopy.RELAY_ROOM_COORDINATOR_604A0BACD534)

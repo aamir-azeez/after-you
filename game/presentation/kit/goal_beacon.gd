@@ -12,10 +12,9 @@ extends Node3D
 ## set_goal_beacon_live).
 ##
 ## Each end spot gets a beacon: a ring on the floor, a mast with a lamp and a
-## pennant in the spirit's colour. On a pad drawn as a stand spot
-## (kit/stand_spot.gd) the ring breathes inside the spot, never past where the
-## pad counts. A spot whose floor is open now (its
-## crossing's gate holds, or it stands on an island) has its lamp lit warm and
+## pennant in the spirit's colour. On a pad (kit/pieces/pad.gd) the ring
+## breathes on the pad's board, never past where the pad counts. A spot whose
+## floor is open now (its crossing's gate holds, or it stands on an island) has its lamp lit warm and
 ## its ring breathing; one still shut stands grey and still with its lamp out,
 ## so the beacon also says which spot is ready. Within NEAR_CM of a beacon the
 ## live spirit sees only its ring, so the mast never tangles with the spirit.
@@ -49,8 +48,8 @@ const NEAR_CM := 100
 ## outward (goal_beacon.gdshader, part 1: the mesh grows to 1 + BREATH).
 const RING_RADIUS := 0.30
 const BREATH := 0.12
-## Inside a stand spot the ring keeps this clear of the spot's edge at its
-## widest, inside the spot's rim (StandSpot.RIM_WIDTH).
+## On a pad the ring keeps this clear of the pad's edge at its widest, inside
+## the pad's rim.
 const INSIDE_CLEAR := 0.05
 ## A beacon's pieces, in build order.
 enum {RING, MAST_PIECE, LAMP, PENNANT}
@@ -72,8 +71,8 @@ var guide := false
 var _guide := WAITING
 
 ## The spots by role: {"a": [{"at": Vector3, "surface": String, "slot": String}], "b": [...]};
-## a spot on a stand spot also has "inside", the spot's radius in metres, and
-## "ring": false when a seat fills the spot and leaves its ring no room.
+## a spot on a pad also has "inside", the pad's radius in metres, and
+## "ring": false when a seat fills the pad and leaves its ring no room.
 var _spots: Dictionary = {}
 ## {slot: Color}, the spirits' colours.
 var _colors: Dictionary = {}
@@ -113,7 +112,7 @@ static func spots_of(stage: Dictionary, role: String) -> Array:
 
 ## Builds both roles' beacons, hidden. The beacon stands at its parent's
 ## origin. `spots`: {role: [{"at": the floor point in the parent's space,
-## "surface": the floor's id, "slot": the spirit's slot, and on a stand spot
+## "surface": the floor's id, "slot": the spirit's slot, and on a pad
 ## "inside": its radius in metres, and "ring": false for no floor ring}]};
 ## `colors`: {slot: Color}.
 func build(spots: Dictionary, colors: Dictionary) -> void:
@@ -164,7 +163,7 @@ func _beacon(spot: Dictionary, color: Color) -> Dictionary:
 	if not bool(spot.get("ring", true)): nodes[RING].visible = false
 	return {"root": root, "nodes": nodes, "materials": materials, "tints": tints, "ring": bool(spot.get("ring", true))}
 
-## The floor ring: RING_RADIUS, or on a stand spot of radius `inside` one
+## The floor ring: RING_RADIUS, or on a pad of radius `inside` one
 ## whose outer edge stays INSIDE_CLEAR inside it at its widest breath.
 static func ring_mesh(inside: float) -> TorusMesh:
 	if inside <= 0.0: return Primitives.ring_mesh(RING_RADIUS)
@@ -175,9 +174,10 @@ static func ring_mesh(inside: float) -> TorusMesh:
 	shape.ring_segments = 8
 	return shape
 
-## The floor ring's height: over a stand spot's disc and mark, under its rim's top.
+## The floor ring's height: on a pad, lying on its board (kit/pieces/pad.gd
+## BOARD_TOP, 6 cm) inside its rim.
 static func ring_lift(inside: float) -> float:
-	return 0.035 if inside <= 0.0 else 0.045
+	return 0.035 if inside <= 0.0 else 0.075
 
 ## Shows the beacons only while the screen plays a live turn.
 func set_live(on: bool) -> void:

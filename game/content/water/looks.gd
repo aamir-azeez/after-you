@@ -47,20 +47,22 @@ const PIP_RISE := 0.30
 ## Spots closer than this (metres) share one set of rings.
 const RING_MERGE := 0.30
 
-## The seabed styles. A tile of the floor spans TILE_M metres: "ground" and
-## "light" mottle it, "lines" (if any) draw a tiled edge, and "pebbles" lie on
-## it (count of them and their colours).
-const TILE_M := 0.64
+## The seabed styles (presentation/kit/seabed.gdshader draws them from the
+## spot's place in the plan, never a repeating tile): "ground" and "light"
+## mottle the bed, "stones" colour its pebbles, "density" is the share of the
+## pebble grids' cells that hold one where the ground is stony, "patchiness"
+## how much the wide patches swing that between bare and full, and "ripples"
+## soft sand ripples on the bare patches.
 const SEABEDS := {
-	# Pale sandy tiles (Turn of the Tide's harbour).
-	"sand": {"ground": Color("ead9b4"), "light": Color("f3e6c8"), "lines": Color("d4bd92"),
-		"pebbles": 4, "pebble_colors": [Color("c9b28a"), Color("bfd2c4"), Color("d8c39c"), Color("c7b9a0")]},
-	# A stream bed of round grey and brown pebbles on grit, no tiles.
-	"pebbles": {"ground": Color("a9a491"), "light": Color("c4bfaa"),
-		"pebbles": 18, "pebble_colors": [Color("8e8a7c"), Color("b7ae96"), Color("7d7466"), Color("cfc7b0"), Color("9a8f78")]},
+	# Pale sand in soft ripples with a few shells and pebbles (Turn of the Tide's harbour).
+	"sand": {"ground": Color("e6d3ab"), "light": Color("f3e6c8"), "density": 0.16, "patchiness": 0.8, "ripples": 1.0,
+		"stones": [Color("c9b28a"), Color("bfd2c4"), Color("d8c39c"), Color("c7b9a0")]},
+	# A stream bed of round grey and brown pebbles on grit, in drifts with bare silt between.
+	"pebbles": {"ground": Color("a29d89"), "light": Color("c4bfaa"), "density": 0.62, "patchiness": 0.7, "ripples": 0.0,
+		"stones": [Color("8e8a7c"), Color("b7ae96"), Color("7d7466"), Color("cfc7b0"), Color("9a8f78")]},
 	# Dark soft mud with a few darker clods.
-	"mud": {"ground": Color("5b5142"), "light": Color("6d6250"),
-		"pebbles": 5, "pebble_colors": [Color("4b4336"), Color("625846")]},
+	"mud": {"ground": Color("5b5142"), "light": Color("6d6250"), "density": 0.12, "patchiness": 0.9, "ripples": 0.0,
+		"stones": [Color("4b4336"), Color("625846")]},
 }
 ## The seabed when the dressing picks none.
 const DEFAULT_SEABED := "sand"

@@ -30,7 +30,6 @@ const DATA := {
 	"tag": "stone_tile",
 	"lever": "winch",
 	"selector": "valve",
-	"pad": "stand_spot",
 	"spillway": "falls",
 	"carried_item": "pipsport",
 	"current": "ripples",

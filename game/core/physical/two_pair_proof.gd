@@ -25,8 +25,10 @@ var _factory: Script
 var _version: int
 var _schema: int
 ## Open turns: the turns this proof already replayed, by recording hash, so a
-## stage's chain replays each turn once however deep it nests.
+## stage's turns replay once each, and the world each hands the next turn
+## (runtime.gd handoff_world), by recording hash.
 var _replayed: Dictionary = {}
+var _worlds: Dictionary = {}
 
 func _init(catalog: Script, factory: Script, version: int, schema: int = -1) -> void:
 	_catalog = catalog
@@ -53,67 +55,81 @@ func verify_recording(definition: Dictionary, record: Dictionary, checkpoint: Di
 	var check := verify_checkpoint(definition, checkpoint)
 	return _verify_raw(definition, record, checkpoint, prior_a, chain) if check.valid else check
 
-## A turn replayed over its memory (`prior_a`, which replays over `chain`).
+## A turn replayed over its memory (`prior_a`, after the stage's turns in `chain`).
 ## "ready": whether it may be a memory: a first turn that can be saved, or an
-## open turns pass that waited out its own memory and did not finish the stage.
-## Open turns keep each exact replay's result and memory trace (memory_trace.gd):
-## a turn checked once is not simulated again, and `simulate` forces the run
-## when its trace is wanted.
+## open turns pass that waited out the friend's replay and did not finish the
+## stage. Open turns play each turn once from the world the turn before handed
+## off (turn_start), its own pip by its inputs and the friend's replay by
+## prior_a's from H on; the record's handoff_tick, start_hash and handoff_hash
+## replay with it. They keep each exact replay's result and hand-off world
+## (memory_trace.gd): a turn checked once is not simulated again, and
+## `simulate` forces the run when its world is wanted.
 func _verify_raw(definition: Dictionary, record: Dictionary, checkpoint: Dictionary, prior_a: Dictionary, chain: Array = [], simulate: bool = false) -> Dictionary:
 	var reason := recording_error(definition, record, checkpoint)
 	if not reason.is_empty(): return _invalid(reason)
 	var open := OpenTurns.rules(_version)
 	var id := MemoryTrace.key(_factory, _version, record) if open else ""
+	var start: Dictionary = {}
 	if record.role == "b":
 		if prior_a.get("role") != ("a" if chain.is_empty() else "b") or (not chain.is_empty() and not open) or record.source_recording_hash != prior_a.get("recording_hash", ""): return _invalid("The partner recording does not match.")
-		var turn := chain.size() + 2
-		var selected := stage_by_id(definition, str(record.stage_id))
-		# A turn that ended lasts at least its memory. A saved draft is a turn
-		# still being played, so it may be shorter; it is never "ready" (below),
-		# so it cannot pass or be saved as a turn until it has played out.
-		var short: bool = int(record.duration_ticks) < int(prior_a.get("duration_ticks", 0)) and record.get("completed") != false
-		if open and (record.player_slot != OpenTurns.slot(str(selected.first_player_slot), turn) or turn > OpenTurns.cap(selected) or short): return _invalid("Incorrect player identity.")
-		# A kept result covers the memory it was checked over; the memory given must be that one.
-		var kept := MemoryTrace.check(id) if open and not simulate else {}
-		if not kept.is_empty() and recording_hash(prior_a) == prior_a.recording_hash: return kept
+		if open:
+			# Turns alternate from the stage's first pip, and each takes over where the timeline says.
+			var turn := chain.size() + 2
+			var lengths: Array = (chain + [prior_a]).map(func(each: Dictionary) -> int: return int(each.get("duration_ticks", 0)))
+			if record.player_slot != OpenTurns.slot(OpenTurns.first_slot(checkpoint), turn) or turn > OpenTurns.cap(stage_by_id(definition, str(record.stage_id))) or int(record[OpenTurns.HANDOFF_TICK]) != OpenTurns.handoff_tick(lengths, turn): return _invalid("Incorrect player identity.")
+			# A kept result covers the turn it was checked over; the one given must be that one.
+			var kept := MemoryTrace.check(id) if not simulate else {}
+			if not kept.is_empty() and recording_hash(prior_a) == prior_a.recording_hash: return kept
 		var first_check := _replayed_turn(definition, prior_a, checkpoint, chain)
 		if not first_check.valid or not first_check.ready: return _invalid("The partner recording is not ready.")
+		if open:
+			start = turn_start(definition, checkpoint, prior_a, chain)
+			if start.is_empty(): return _invalid("The partner recording is not ready.")
 	elif not prior_a.is_empty() or not chain.is_empty() or not str(record.source_recording_hash).is_empty(): return _invalid("Unexpected partner recording.")
-	elif open and not simulate:
-		var kept := MemoryTrace.check(id)
-		if not kept.is_empty(): return kept
+	elif open:
+		if record.player_slot != OpenTurns.first_slot(checkpoint) or int(record[OpenTurns.HANDOFF_TICK]) != 0: return _invalid("Incorrect player identity.")
+		if not simulate:
+			var kept := MemoryTrace.check(id)
+			if not kept.is_empty(): return kept
 	var simulation: RefCounted = _factory.new()
 	simulation.simulation_version = _version
 	simulation.catch_assistance = record.catch_assistance
 	simulation.packed_recordings = RecordingCodec.is_packed(record)
-	# Only open turns pass a chain: other facades (the Lighthouse room's) keep five arguments.
-	if chain.is_empty(): simulation._reset_trusted(definition, record.stage_id, checkpoint, prior_a, record.role)
-	else: simulation._reset_trusted(definition, record.stage_id, checkpoint, prior_a, record.role, chain)
-	var frames: Array = []
-	if open: MemoryTrace.record(frames, simulation)
+	# Only open turns pass a chain and a start: other facades (the Lighthouse room's) keep five arguments.
+	if not open: simulation._reset_trusted(definition, record.stage_id, checkpoint, prior_a, record.role)
+	else: simulation._reset_trusted(definition, record.stage_id, checkpoint, prior_a, record.role, chain, start)
 	# Runtime engines tick without building a snapshot each tick; the Lighthouse room's steps.
 	var lean: bool = simulation.has_method("_tick")
 	for input: Dictionary in expand_recording_inputs(record):
 		if simulation.finished: return _invalid("The recording continues after the turn ended.")
 		if lean: simulation._tick(input)
 		else: simulation.step(input)
-		if open: MemoryTrace.record(frames, simulation)
 	if not Canonical.same(simulation.export_recording(), record): return _invalid("The recording did not replay exactly.")
 	var state: Dictionary = simulation.snapshot()
-	var ready: bool = state.can_commit if record.role == "a" else open and not state.complete and int(record.duration_ticks) >= int(prior_a.get("duration_ticks", 0))
+	var ready: bool = state.can_commit if record.role == "a" else open and not state.complete and int(record.duration_ticks) >= int(simulation.replay_ticks())
 	var result := {"valid":true,"error":"","snapshot":state,"ready":ready}
-	if open: MemoryTrace.keep(id, result, frames, str(record.player_slot), str(record.role))
+	if open:
+		var handoff: Dictionary = simulation.handoff_world()
+		_worlds[str(record.recording_hash)] = handoff
+		MemoryTrace.keep(id, result, handoff)
 	return result
 
-## Open turns: the trace `record` plays back as a memory over `chain` (the
-## turns before it), checked once and kept; {} when it does not replay exactly.
-func memory_trace(definition: Dictionary, record: Dictionary, checkpoint: Dictionary, chain: Array) -> Dictionary:
-	if not MemoryTrace.enabled: return {}
-	var id := MemoryTrace.key(_factory, _version, record)
-	var found := MemoryTrace.trace(id)
-	if not found.is_empty(): return found
-	var checked := _verify_raw(definition, record, checkpoint, chain.back() if not chain.is_empty() else {}, chain.slice(0, maxi(0, chain.size() - 1)), true)
-	return MemoryTrace.trace(id) if checked.valid else {}
+## Open turns: where the turn after `prior` (the stage's turns in `chain`
+## before it) starts: {"world": the world prior handed off at its tick M,
+## "handoff_tick": H}, from this proof's or the kept worlds, or by checking
+## prior again (which plays the stage's turns once each on a miss); {} when
+## prior never reached its hand-off or does not replay exactly.
+func turn_start(definition: Dictionary, checkpoint: Dictionary, prior: Dictionary, chain: Array) -> Dictionary:
+	var key := str(prior.get("recording_hash", ""))
+	var world: Dictionary = _worlds.get(key, {})
+	if world.is_empty(): world = MemoryTrace.world(MemoryTrace.key(_factory, _version, prior))
+	if world.is_empty():
+		var checked := _verify_raw(definition, prior, checkpoint, chain.back() if not chain.is_empty() else {}, chain.slice(0, maxi(0, chain.size() - 1)), true)
+		if not checked.valid: return {}
+		world = _worlds.get(key, {})
+	if world.is_empty() or Canonical.digest(world) != str(prior.get(OpenTurns.HANDOFF_HASH, "")): return {}
+	var lengths: Array = (chain + [prior]).map(func(each: Dictionary) -> int: return int(each.get("duration_ticks", 0)))
+	return {"world": world, "handoff_tick": OpenTurns.handoff_tick(lengths, chain.size() + 2)}
 
 ## _verify_raw once per recording hash in this proof (open turns chains).
 func _replayed_turn(definition: Dictionary, record: Dictionary, checkpoint: Dictionary, chain: Array) -> Dictionary:
@@ -122,7 +138,9 @@ func _replayed_turn(definition: Dictionary, record: Dictionary, checkpoint: Dict
 	return _replayed[key]
 
 func recording_error(definition: Dictionary, record: Dictionary, checkpoint: Dictionary) -> String:
-	if not _exact_keys(record, RecordingCodec.keys_for(record, RECORD_KEYS)): return "Malformed recording."
+	# Open turns: every turn also names its hand-off (open_turns.gd RECORD_FIELDS).
+	var open := OpenTurns.rules(_version)
+	if not _exact_keys(record, RecordingCodec.keys_for(record, RECORD_KEYS + OpenTurns.RECORD_FIELDS if open else RECORD_KEYS)): return "Malformed recording."
 	for key: String in ["schema_version", "simulation_version", "level_version", "stage_version"]:
 		var expected := _version if key == "simulation_version" else _schema if key == "schema_version" else _level_version(definition) if key == "level_version" else 1
 		if not _integer(record[key]) or int(record[key]) != expected: return "Unsupported recording version."
@@ -130,15 +148,16 @@ func recording_error(definition: Dictionary, record: Dictionary, checkpoint: Dic
 	if record.level_id != definition.get("id") or record.definition_hash != Canonical.digest(definition) or record.checkpoint_hash != checkpoint.get("checkpoint_hash") or record.stage_id != checkpoint.get("next_stage_id"): return "Recording checkpoint mismatch."
 	var selected: Dictionary = stage_by_id(definition, str(record.stage_id))
 	if selected.is_empty() or record.role not in ["a", "b"]: return "Unknown recording stage."
-	# Open turns: a later turn is either pip's, as its place in the stage says (_verify_raw checks it).
-	var open := OpenTurns.rules(_version)
-	if record.player_slot != (selected.first_player_slot if record.role == "a" else _other(selected.first_player_slot)) and not (open and record.role == "b" and record.player_slot in ["p0", "p1"]): return "Incorrect player identity."
+	# Open turns: a turn is either pip's, as its place in the stage says (_verify_raw checks it).
+	if record.player_slot != (selected.first_player_slot if record.role == "a" else _other(selected.first_player_slot)) and not (open and record.player_slot in ["p0", "p1"]): return "Incorrect player identity."
 	var limit: int = Runtime.turn_ticks(definition, _version, "b" if open else str(record.role))
 	if not _integer(record.tick_rate) or int(record.tick_rate) != TICK_RATE or not _integer(record.duration_ticks) or int(record.duration_ticks) < 1 or int(record.duration_ticks) > limit: return "Invalid recording duration."
 	if not record.catch_assistance is bool or not record.completed is bool or not record.outcome is Dictionary or not _exact_keys(record.outcome, OUTCOME_KEYS): return "Invalid recording outcome."
 	for key: String in OUTCOME_KEYS:
 		if not record.outcome[key] is bool: return "Invalid recording outcome."
 	if not record.source_recording_hash is String or not _hash(record.final_state_hash) or not _hash(record.recording_hash) or (record.role == "b" and not _hash(record.source_recording_hash)): return "Invalid recording hashes."
+	# The world hash at the turn's start, and at its tick M ("" for a turn that ended before it).
+	if open and (not _integer(record[OpenTurns.HANDOFF_TICK]) or int(record[OpenTurns.HANDOFF_TICK]) < 0 or int(record[OpenTurns.HANDOFF_TICK]) > limit or not _hash(record[OpenTurns.START_HASH]) or not (record[OpenTurns.HANDOFF_HASH] is String and (record[OpenTurns.HANDOFF_HASH] == "" or _hash(record[OpenTurns.HANDOFF_HASH])))): return "Invalid recording hashes."
 	# A packed record's runs and checks come back canonical, on the implied ticks and ending on final_state_hash.
 	if RecordingCodec.is_packed(record):
 		if RecordingCodec.unpack(record.packed, int(record.duration_ticks), str(record.final_state_hash), limit).is_empty(): return "Invalid action list."
@@ -174,7 +193,7 @@ func verify_checkpoint(definition: Dictionary, checkpoint: Dictionary) -> Dictio
 	return _verify_checkpoint(definition, checkpoint, 0)
 
 func _verify_checkpoint(definition: Dictionary, checkpoint: Dictionary, depth: int) -> Dictionary:
-	# Open turns nest every turn of a stage (schema 8, open_turns.gd); published checkpoints nest a and b.
+	# Open turns hold every turn of a stage (schema 9, open_turns.gd); published checkpoints nest a and b.
 	var open := OpenTurns.rules(_version)
 	if depth > clampi(definition.stages.size(), 2, MAX_STAGES) or not _integer(checkpoint.get("stage_index")) or int(checkpoint.stage_index) < 0 or int(checkpoint.stage_index) > definition.stages.size(): return _invalid("Malformed stage checkpoint.")
 	if checkpoint.stage_index == 0: return {"valid":true,"error":""} if Canonical.same(checkpoint, _catalog.initial_checkpoint(definition)) else _invalid("The initial checkpoint does not match.")
@@ -238,11 +257,12 @@ func _build_checkpoint(definition: Dictionary, previous: Dictionary, first: Dict
 		"mechanisms":state.mechanisms.duplicate(true),"previous_checkpoint_hash":previous.checkpoint_hash,"a_recording_hash":first.recording_hash,"b_recording_hash":second.recording_hash,
 		"proof":{"checkpoint":previous.duplicate(true),"a":first.duplicate(true),"b":second.duplicate(true)}}
 	if OpenTurns.rules(_version):
-		# Open turns: every turn of the stage, in order, in place of a and b.
+		# Open turns: every turn of the stage, in order, in place of a and b, and who starts the next stage.
 		checkpoint.erase("a_recording_hash")
 		checkpoint.erase("b_recording_hash")
 		checkpoint.schema_version = OpenTurns.CHECKPOINT_SCHEMA
 		checkpoint["turn_hashes"] = turns.map(func(turn: Dictionary) -> String: return str(turn.recording_hash))
+		checkpoint[OpenTurns.NEXT_FIRST_SLOT] = OpenTurns.next_first_slot(OpenTurns.first_slot(previous), turns.size())
 		checkpoint.proof = {"checkpoint":previous.duplicate(true),"turns":turns.duplicate(true)}
 	checkpoint["checkpoint_hash"] = _catalog.checkpoint_hash(checkpoint)
 	return checkpoint

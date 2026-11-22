@@ -1,12 +1,15 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import * as FirstSteps from "../src/v2/protocol-first-steps";
-import { highAndLow, highAndLowV2, rollingHome, rollingHomeV2, houseForTwo, houseForTwoV2, wishingWell, wishingWellV2 } from "../src/v2/protocol-cooperative";
-import { conservatory, conservatoryV2, firstStepsV2, fogMarsh, longWayHome, longWayHomeV2, longWayHomeV3, relayIslesV3, sleepingLighthouseV3, theFalls, turnOfTheTide, turnOfTheTideV2, turnOfTheTideV3 } from "../src/v2/protocol-journey";
+import { highAndLow, highAndLowV2, rollingHome, rollingHomeV2, houseForTwo, houseForTwoV2, wishingWell } from "../src/v2/protocol-cooperative";
+import { conservatory, conservatoryV2, firstStepsV2, fogMarsh, longWayHome, longWayHomeV2, longWayHomeV3, relayIslesV3, sleepingLighthouseV3, theFalls, turnOfTheTide, turnOfTheTideV2, turnOfTheTideV3, wishingWellV2 } from "../src/v2/protocol-journey";
 import { sleepingLighthouseV2 } from "../src/v2/protocol-lighthouse";
 import { LEGACY_STAGE_COUNT, type ChapterAdapter } from "../src/v2/chapter-types";
 import { CHAPTERS, RELAY_KEY, advertisedChapters, chapter, chapterFlag, creatable } from "../src/v2/chapters";
 import { withConfig } from "./config";
+import { LEGACY_CHAPTERS } from "../src/v2/legacy-chapters";
+// The published chapters as older apps hold them, which room level 2 lists after the rows (legacy-chapters.ts).
+const current = <T extends { definition_hash: string }>(items: T[]): T[] => items.filter(item => !LEGACY_CHAPTERS.some(entry => entry.key.definition_hash === item.definition_hash));
 
 // The advertised order and fields as live served them with every chapter flag on, before those flags retired.
 const relay = chapter(RELAY_KEY);
@@ -37,7 +40,7 @@ describe("chapter table", () => {
         expect(chapterFlag(entry), entry.key.level_id).toBe("");
         expect(creatable(entry, vars), entry.key.level_id).toBe(true);
       }
-      for (const level of [1, 2]) expect(JSON.stringify(advertisedChapters(vars, level)), `level ${level}`).toBe(JSON.stringify(liveAdvertised(level)));
+      for (const level of [1, 2]) expect(JSON.stringify(current(advertisedChapters(vars, level))), `level ${level}`).toBe(JSON.stringify(liveAdvertised(level)));
     }
   });
   it("knows no chapter outside the table", () => {

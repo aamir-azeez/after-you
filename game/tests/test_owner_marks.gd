@@ -24,7 +24,7 @@ const Primitives = preload("res://presentation/kit/primitives.gd")
 const StaticBatch = preload("res://presentation/kit/static_batch.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 ## Kinds that mark one thing once.
-const SINGLE := [&"lever", &"mirror", &"stair", &"ladder", &"pad", &"bucket", &"spot"]
+const SINGLE := [&"lever", &"mirror", &"stair", &"ladder", &"pad", &"bucket"]
 ## Goals whose world marks their cradle, by level id: the tide's harbour
 ## lantern and every Long Way Home window ("*").
 const MARKED_GOALS := {"turn-of-the-tide": ["harbour-lantern"], "long-way-home": ["*"]}
@@ -127,9 +127,9 @@ func _stage(world: Node3D, key: String, view: Dictionary) -> int:
 	# Clear of every pair tag on the stage.
 	for tile: Dictionary in world.pair_tags.placed():
 		for mark: Dictionary in placed:
-			if mark.kind == &"spot" or absf((mark.at as Vector3).y - (tile.at as Vector3).y) > 0.3: continue
+			if absf((mark.at as Vector3).y - (tile.at as Vector3).y) > 0.3: continue
 			_check(not FloorSpots.hits(tile.row, {"centre": Vector2(mark.at.x, mark.at.z), "radius": _reach(str(mark.slot))}), "%s: the %s mark of %s lies clear of %s's pair tag" % [where, mark.kind, mark.id, tile.control])
-	_drawn(world, key, where, placed, owners)
+	_drawn(world, key, where, placed)
 	return placed.size()
 
 ## Owned things of the stage: id -> {slot, what, entity}.
@@ -153,7 +153,6 @@ func _placement(key: String, where: String, view: Dictionary, placed: Array[Dict
 		floors.append([_rect(route.rect_cm), float(route.get("height_cm", route.get("from_height_cm", 0))) / 100.0, "deck", str(route.id)])
 	for index in range(placed.size()):
 		var mark: Dictionary = placed[index]
-		if mark.kind == &"spot": continue
 		var at: Vector3 = mark.at
 		var flat := Vector2(at.x, at.z)
 		var reach := _reach(str(mark.slot))
@@ -178,7 +177,7 @@ func _placement(key: String, where: String, view: Dictionary, placed: Array[Dict
 			_known_or_check(key, where, "deck " + tag, not (entry[0] as Rect2).intersects(footprint), "lies off the deck of %s" % entry[3])
 		for other in range(index + 1, placed.size()):
 			var them: Dictionary = placed[other]
-			if them.kind == &"spot" or absf((them.at as Vector3).y - at.y) > SAME_FLOOR: continue
+			if absf((them.at as Vector3).y - at.y) > SAME_FLOOR: continue
 			var apart := flat.distance_to(Vector2((them.at as Vector3).x, (them.at as Vector3).z))
 			_known_or_check(key, where, "apart " + tag, apart >= reach + _reach(str(them.slot)), "lies clear of %s mark %s (%.3f m)" % [them.kind, them.id, apart])
 
@@ -194,8 +193,7 @@ func _route_ends(where: String, view: Dictionary, route: Dictionary, marks: Arra
 		var found := marks.any(func(m: Dictionary) -> bool: return floor.has_point(Vector2(m.at.x, m.at.z)) and near.has_point(Vector2(m.at.x, m.at.z)))
 		_check(found, "%s: crossing %s has an end mark on %s, the island it joins at that end" % [where, route.id, island.id])
 
-## Each mark the kit moves (not a pad's, a zone's, a source's or a stand
-## spot's): no closer to what it marks than its kind's own place beside it,
+## Each mark the kit moves (not a pad's, a zone's or a source's): no closer to what it marks than its kind's own place beside it,
 ## and clear of the goal and the handoff ring.
 func _room(world: Node3D, where: String, view: Dictionary, placed: Array[Dictionary], owners: Dictionary) -> void:
 	var goal: Dictionary = view.get("goal", {})
@@ -227,13 +225,9 @@ func _room(world: Node3D, where: String, view: Dictionary, placed: Array[Diction
 ## static fold leaves none drawing on its own where the terrain is built again
 ## with every stage; a world that keeps its terrain keeps them whole, so the
 ## next stage takes them down (island_world _marks_fold).
-func _drawn(world: Node3D, key: String, where: String, placed: Array[Dictionary], owners: Dictionary) -> void:
+func _drawn(world: Node3D, key: String, where: String, placed: Array[Dictionary]) -> void:
 	var drawn := _mark_nodes(world)
-	var expected := placed.filter(func(mark: Dictionary) -> bool: return mark.kind != &"spot")
-	_check(drawn.size() == expected.size(), "%s: every mark on the stage came from the kit (%d drawn, %d placed)" % [where, drawn.size(), expected.size()])
-	# A pad either pip holds (open controls) has no owner, so no mark.
-	var owned_spots: Array = world.pad_pieces.keys().filter(func(id: Variant) -> bool: return world.pad_pieces[id].spot != null and owners.has(str(id)))
-	_check(placed.filter(func(mark: Dictionary) -> bool: return mark.kind == &"spot").size() == owned_spots.size(), "%s: each owned stand spot's mark is recorded" % where)
+	_check(drawn.size() == placed.size(), "%s: every mark on the stage came from the kit (%d drawn, %d placed)" % [where, drawn.size(), placed.size()])
 	StaticBatch.fold(world.terrain, [world], world._fold_options())
 	if not world._marks_fold():
 		_check(_mark_nodes(world).size() == drawn.size(), "%s: the marks stay whole for the next stage to take down" % where)
@@ -242,7 +236,7 @@ func _drawn(world: Node3D, key: String, where: String, placed: Array[Dictionary]
 		# By where it stands across the floor: a bucket may have risen since.
 		var at: Vector3 = world.terrain.to_local(node.global_position)
 		var mark: Dictionary = {}
-		for candidate: Dictionary in expected:
+		for candidate: Dictionary in placed:
 			if Vector2((candidate.at as Vector3).x, (candidate.at as Vector3).z).is_equal_approx(Vector2(at.x, at.z)): mark = candidate
 		_known_or_check(key, where, "fold %s %s" % [mark.get("kind", "?"), mark.get("id", node.name)], false, "folds into its colour's batch")
 

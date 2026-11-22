@@ -641,6 +641,16 @@ func _tide_state(sim: RefCounted, controls: Dictionary, bridges: Dictionary = {}
 func _named_look(world: Node3D) -> Array:
 	return FoldLook.look(world)
 
+## The batches `terrain`'s own fold made: not those a piece folds into
+## itself as it is built (a pad's planks, under its own folded root).
+func _terrain_batches(terrain: Node3D) -> Array:
+	return terrain.find_children("StaticBatch*", "MeshInstance3D", true, false).filter(func(batch: Node) -> bool:
+		var up := batch.get_parent()
+		while up != null and up != terrain:
+			if up.has_meta(StaticBatch.FOLDED_META): return false
+			up = up.get_parent()
+		return true)
+
 func _tide() -> void:
 	var Simulation: Script = Registry.simulation_script(Registry.TURN_OF_THE_TIDE)
 	var Journey: Script = load("res://core/journey/stage_catalog.gd")
@@ -652,7 +662,7 @@ func _tide() -> void:
 		var meshes: int = tide.terrain.find_children("*", "MeshInstance3D", true, false).size()
 		for i in range(2): await process_frame
 		var name := "Turn of the Tide stage %d" % (index + 1)
-		var batches: Array = tide.terrain.find_children("StaticBatch*", "MeshInstance3D", true, false)
+		var batches: Array = _terrain_batches(tide.terrain)
 		var after: int = tide.terrain.find_children("*", "MeshInstance3D", true, false).size()
 		_check(tide.terrain.has_meta(StaticBatch.FOLDED_META) and batches.size() > 0 and after < meshes, "%s folds: %d meshes become %d (%d batches)" % [name, meshes, after, batches.size()])
 		var kept := true
@@ -706,7 +716,7 @@ func _tide() -> void:
 	while (settle < 2 or plain.scenery_settling() or folded.scenery_settling()) and settle < 600:
 		await process_frame
 		settle += 1
-	_check(plain.terrain.find_children("StaticBatch*", "MeshInstance3D", true, false).is_empty() and folded.terrain.has_meta(StaticBatch.FOLDED_META) and not folded.terrain.find_children("StaticBatch*", "MeshInstance3D", true, false).is_empty(), "One world stays unfolded to compare against")
+	_check(_terrain_batches(plain.terrain).is_empty() and folded.terrain.has_meta(StaticBatch.FOLDED_META) and not _terrain_batches(folded.terrain).is_empty(), "One world stays unfolded to compare against")
 	# From here both only present, frame for frame alike.
 	plain.process_mode = Node.PROCESS_MODE_DISABLED
 	folded.process_mode = Node.PROCESS_MODE_DISABLED

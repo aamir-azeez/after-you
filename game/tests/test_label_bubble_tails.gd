@@ -25,6 +25,7 @@ const Registry = preload("res://services/chapter_registry.gd")
 const LabelBubble = preload("res://presentation/kit/label_bubble.gd")
 const JourneySimulation = preload("res://core/journey/simulation.gd")
 const Lever = preload("res://presentation/kit/pieces/lever.gd")
+const Selector = preload("res://presentation/kit/pieces/selector.gd")
 const Models = preload("res://presentation/kit/models.gd")
 ## How far a drawn tip may sit from its anchor on the view plane (metres).
 const EPSILON := 0.003
@@ -224,7 +225,7 @@ func _foot(world: Node3D, bubble: LabelBubble) -> Vector3:
 
 ## Every selector's tail lands on its own lever's knob, on its top, at every
 ## value the lever tilts to: the knob found on the lever's handle model. A selector
-## drawn as a look (a valve) has no knob; its tail lands on the look's top,
+## drawn as a look (a valve or a rope wheel) has no knob; its tail lands on the look's top,
 ## the anchor's knob point, at every value.
 func _knobs(world: Node3D, state: Dictionary, bubbles: Array, label: String) -> void:
 	for id: String in world._journey_switches:
@@ -246,6 +247,10 @@ func _knobs(world: Node3D, state: Dictionary, bubbles: Array, label: String) -> 
 				top = Vector3(axis.x, world.terrain.to_local(tip.end).y, axis.z)
 				var index: int = world._journey_switches[id].values.find(value)
 				_check(is_equal_approx(look.wheel().rotation.y, look.value_angle(index, world._journey_switches[id].values.size())), "%s: the %s valve's arrow points at %s" % [label, id, value])
+			elif world._lever_pieces[id].style == "rope_wheel":
+				# A rope wheel is the control itself, with no lever: the tail lands
+				# on its rim's top, over its spot.
+				top = world.terrain.to_local((world._lever_pieces[id].root as Node3D).global_position) + Vector3(0, Selector.ROPE_TOP, 0)
 			else:
 				var knob := _knob(world._physical_levers[id])
 				if not _check(knob != null, "%s: the %s lever has a knob" % [label, id]): continue
@@ -255,7 +260,7 @@ func _knobs(world: Node3D, state: Dictionary, bubbles: Array, label: String) -> 
 				var radius := ball.size.x * 0.5
 				var centre := Vector3(ball.get_center().x, ball.end.y - radius, ball.get_center().z)
 				top = world.terrain.to_local(knob.global_transform * centre) + Vector3(0, radius * knob.global_basis.y.length(), 0)
-			_check(bubble.anchor.distance_to(top) < (0.005 if world._lever_pieces[id].style == "valve" else 0.001), "%s: the %s tail lands on the top of its lever's knob at %s (anchor %s, knob top %s)" % [label, id, value, bubble.anchor, top])
+			_check(bubble.anchor.distance_to(top) < (0.005 if world._lever_pieces[id].style in Selector.WHEELS else 0.001), "%s: the %s tail lands on the top of its lever's knob at %s (anchor %s, knob top %s)" % [label, id, value, bubble.anchor, top])
 			_tips(bubbles, "%s, %s at %s" % [label, id, value])
 	world.present(state, true)
 	_frames(world, 2)

@@ -83,6 +83,9 @@ import houseBelowEnd from "../../game/tests/fixtures/cooperative/a-house-for-two
 import bundledHouse from "../src/v2/a-house-for-two-v2.json";
 import bundledHouseInitial from "../src/v2/a-house-for-two-v2-initial.json";
 import { withConfig } from "./config";
+import { LEGACY_CHAPTERS } from "../src/v2/legacy-chapters";
+// The published chapters as older apps hold them, which room level 2 lists after the rows (legacy-chapters.ts).
+const current = <T extends { definition_hash: string }>(items: T[]): T[] => items.filter(item => !LEGACY_CHAPTERS.some(entry => entry.key.definition_hash === item.definition_hash));
 import { grantFullJourney } from "./full-journey";
 
 /** A fixture checkpoint as an open turns room takes it: no proof nests in it (v2/open-turns.ts fingerprints), and its hash never covered one. */
@@ -92,23 +95,24 @@ type Chain = { name: string; adapter: ChapterAdapter; hash: string; rules: numbe
   /** Each stage's first turn, its second turn (a pass), its closing third turn and its checkpoint (open turns). */
   stages: [unknown, unknown, unknown, unknown][] };
 const CHAINS: Chain[] = [
-  { name: "long-way-home@3", adapter: longWayHomeV3, hash: LONG_WAY_HOME_V3_HASH, rules: 14, flag: "LONG_WAY_HOME_V3_CHAPTER_ENABLED", definition: homeDefinition, initial: homeInitial,
+  { name: "long-way-home@3", adapter: longWayHomeV3, hash: LONG_WAY_HOME_V3_HASH, rules: 18, flag: "LONG_WAY_HOME_V3_CHAPTER_ENABLED", definition: homeDefinition, initial: homeInitial,
     bundled: bundledHome, bundledInitial: bundledHomeInitial, stages: [[homePathA, homePathB, homePathC, flat(homePathEnd)], [homePlaceA, homePlaceB, homePlaceC, flat(homePlaceEnd)]] },
-  { name: "turn-of-the-tide@3", adapter: turnOfTheTideV3, hash: TURN_OF_THE_TIDE_V3_HASH, rules: 15, flag: "TURN_OF_THE_TIDE_V3_CHAPTER_ENABLED", definition: tideDefinition, initial: tideInitial,
+  { name: "turn-of-the-tide@3", adapter: turnOfTheTideV3, hash: TURN_OF_THE_TIDE_V3_HASH, rules: 19, flag: "TURN_OF_THE_TIDE_V3_CHAPTER_ENABLED", definition: tideDefinition, initial: tideInitial,
     bundled: bundledTide, bundledInitial: bundledTideInitial, stages: [[tideSetA, tideSetB, tideSetC, flat(tideSetEnd)], [tideSlackA, tideSlackB, tideSlackC, flat(tideSlackEnd)]] },
-  { name: "conservatory@2", adapter: conservatoryV2, hash: CONSERVATORY_V2_HASH, rules: 14, flag: "CONSERVATORY_V2_CHAPTER_ENABLED", definition: roomsDefinition, initial: roomsInitial,
+  { name: "conservatory@2", adapter: conservatoryV2, hash: CONSERVATORY_V2_HASH, rules: 18, flag: "CONSERVATORY_V2_CHAPTER_ENABLED", definition: roomsDefinition, initial: roomsInitial,
     bundled: bundledRooms, bundledInitial: bundledRoomsInitial, stages: [[roomsAboveA, roomsAboveB, roomsAboveC, flat(roomsAboveEnd)], [roomsReturnA, roomsReturnB, roomsReturnC, flat(roomsReturnEnd)]] },
   // The cooperative family on the same open turns (protocol-cooperative.ts): both players end at each bell.
-  { name: "high-and-low@2", adapter: highAndLowV2, hash: HIGH_AND_LOW_V2_HASH, rules: 14, flag: "HIGH_AND_LOW_V2_CHAPTER_ENABLED", definition: highDefinition, initial: highInitial,
+  { name: "high-and-low@2", adapter: highAndLowV2, hash: HIGH_AND_LOW_V2_HASH, rules: 18, flag: "HIGH_AND_LOW_V2_CHAPTER_ENABLED", definition: highDefinition, initial: highInitial,
     bundled: bundledHigh, bundledInitial: bundledHighInitial, stages: [[highUpperA, highUpperB, highUpperC, flat(highUpperEnd)], [highDownA, highDownB, highDownC, flat(highDownEnd)]] },
-  // The shared ball (17): both players push one ball; Rolling Home's last stage ends with it in its cradle and both players home.
-  { name: "rolling-home@2", adapter: rollingHomeV2, hash: ROLLING_HOME_V2_HASH, rules: 17, flag: "ROLLING_HOME_V2_CHAPTER_ENABLED", definition: rollingDefinition, initial: rollingInitial,
+  // The shared ball (21, 17 on carry-over turns): both players push one ball; Rolling Home's last stage ends with it in its cradle and both players home.
+  { name: "rolling-home@2", adapter: rollingHomeV2, hash: ROLLING_HOME_V2_HASH, rules: 21, flag: "ROLLING_HOME_V2_CHAPTER_ENABLED", definition: rollingDefinition, initial: rollingInitial,
     bundled: bundledRolling, bundledInitial: bundledRollingInitial, stages: [[rollingFriendA, rollingFriendB, rollingFriendC, flat(rollingFriendEnd)], [rollingHomeA, rollingHomeB, rollingHomeC, flat(rollingHomeEnd)]] },
-  { name: "a-house-for-two@2", adapter: houseForTwoV2, hash: HOUSE_V2_HASH, rules: 17, flag: "A_HOUSE_FOR_TWO_V2_CHAPTER_ENABLED", definition: houseDefinition, initial: houseInitial,
+  { name: "a-house-for-two@2", adapter: houseForTwoV2, hash: HOUSE_V2_HASH, rules: 21, flag: "A_HOUSE_FOR_TWO_V2_CHAPTER_ENABLED", definition: houseDefinition, initial: houseInitial,
     bundled: bundledHouse, bundledInitial: bundledHouseInitial, stages: [[houseOpenA, houseOpenB, houseOpenC, flat(houseOpenEnd)], [houseBelowA, houseBelowB, houseBelowC, flat(houseBelowEnd)]] },
 ];
 // 0.8.1 and older: none of them offers 12 or 13 (11 is the Lighthouse room's).
-const OLD_CLIENTS = [[2, 4, 5, 6, 7, 8, 9, 10], [2, 4, 5, 6, 7, 8, 9, 10, 11], [2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]], NEW_CLIENT = [2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+// A client that knows the older open turns (14 to 17) and not carry-over turns (18 to 21) is old for every open level.
+const OLD_CLIENTS = [[2, 4, 5, 6, 7, 8, 9, 10], [2, 4, 5, 6, 7, 8, 9, 10, 11], [2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13], [2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]], NEW_CLIENT = [2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 18, 19, 20, 21];
 const key = () => crypto.randomUUID();
 let requestNo = 0;
 async function call(path: string, method = "GET", account?: Account, body?: unknown, overrides: Record<string, unknown> = {}): Promise<Response> {
@@ -156,7 +160,7 @@ describe("open controls (rules 12 and 13)", () => {
       expect(advertisedChapters(withConfig({ ...env }) as Env, 2).some(item => item.level_id === chain.adapter.key.level_id && item.level_version === chain.adapter.key.level_version)).toBe(false);
       const on = withConfig({ ...env, [chain.flag]: "true" }) as Env;
       expect(creatable(chain.adapter, on)).toBe(true);
-      expect(advertisedChapters(on, 2).at(-1)).toMatchObject({ ...chain.adapter.key, supported_simulation_versions: [chain.rules] });
+      expect(current(advertisedChapters(on, 2)).at(-1)).toMatchObject({ ...chain.adapter.key, supported_simulation_versions: [chain.rules] });
       // No control in it names an owner.
       for (const stage of (chain.definition as { stages: Record<string, { owner_slot?: string }[]>[] }).stages)
         for (const kind of ["controls", "levers", "pressure_pads"]) for (const item of stage[kind] ?? []) expect(item, `${kind} ${JSON.stringify(item)}`).not.toHaveProperty("owner_slot");
@@ -222,7 +226,7 @@ describe("open controls (rules 12 and 13)", () => {
     const extra = structuredClone(end); extra.mechanisms.props["round-ball"] = { ...ball, owner: "p0" };
     await expect(checkpointV2(await rehash(extra), opening, a, c, [b])).rejects.toMatchObject({ code: "unexpected_fields" });
   });
-  it("keeps the tide rules on 15: no route latches", async () => {
+  it("keeps the tide rules on 19: no route latches", async () => {
     const chain = CHAINS[1], [a, b, c] = await records(chain, 0);
     const kept = structuredClone(flat(tideSetEnd)) as Record<string, any>; kept.mechanisms.latched_bridges = [kept.players.p0.surface_id];
     await expect(checkpointV2(await rehash(kept), initialCheckpoint(chain.adapter.key) as ChapterCheckpoint, a, c, [b])).rejects.toMatchObject({ code: "checkpoint_mechanism_mismatch" });

@@ -15,12 +15,13 @@ extends "res://presentation/kit/pieces/piece.gd"
 ## (Motion.arrival), then rests exactly on the stop.
 const STYLES := ["logs"]
 const Models = preload("res://presentation/kit/models.gd")
+const PiecesRules = preload("res://core/physical/pieces_rules.gd")
 const MODEL := "res://assets/models/raft.glb"
 const LOG := Color("8a6a4c")
 const LASHING := Color("c9b48a")
 const ROPE := Color("c9b48a")
-## Metres a second the raft travels.
-const RATE := 1.6
+## Metres a second the raft travels, the simulation's own pace for it.
+const RATE := PiecesRules.RAFT_CM_A_SECOND / 100.0
 ## How far past its stop the raft drifts as it arrives (m).
 const OVER := 0.02
 

@@ -1,0 +1,75 @@
+extends RefCounted
+## Shared checks for a world's pressure pads (presentation/kit/pieces/pad.gd):
+## every pressure pad of the stage on show is a board whose rim is drawn at
+## exactly the pad's radius_cm, on the pad's own point, lit by the world; the
+## goal beacon's ring breathes on the board inside it; and a pad shows held
+## (sunk, its rim lit) exactly when the snapshot's hold_pads says the pad
+## counts. Each returns failure messages ([] passes).
+const PadKit = preload("res://presentation/kit/pieces/pad.gd")
+const GoalBeacon = preload("res://presentation/kit/goal_beacon.gd")
+
+## The pads' shapes on `stage`'s pads in `world`.
+static func shapes(world: Node3D, stage: Dictionary) -> Array[String]:
+	var found: Array[String] = []
+	for pad: Dictionary in stage.get("pressure_pads", []):
+		var id := str(pad.id)
+		var radius := float(pad.radius_cm) / 100.0
+		var piece: RefCounted = world.pad_pieces.get(id)
+		if piece == null:
+			found.append("Pad %s is built" % id)
+			continue
+		var rim := piece.rim.mesh as TorusMesh
+		if rim == null or not is_equal_approx(rim.outer_radius, radius + 0.025) or not is_equal_approx(piece.radius, radius):
+			found.append("Pad %s's rim rings exactly its radius_cm %d" % [id, pad.radius_cm])
+		if world._physical_pads.get(id) != piece.rim: found.append("Pad %s's lit outline is its rim" % id)
+		var at: Vector3 = world._at(pad)
+		if not (piece.at.is_equal_approx(at) and piece.root.position.is_equal_approx(at)):
+			found.append("Pad %s stands on the pad's own point and floor" % id)
+	return found
+
+## The goal beacon's rings on pads breathe on the board inside the rim.
+static func beacon_rings(world: Node3D, stage: Dictionary) -> Array[String]:
+	var found: Array[String] = []
+	var beacon: GoalBeacon = world._goal_beacon
+	if beacon == null: return found
+	var radii: Dictionary = {}
+	for pad: Dictionary in stage.get("pressure_pads", []):
+		radii[Vector2(world._at(pad).x, world._at(pad).z)] = float(pad.radius_cm) / 100.0
+	var checked := 0
+	for role: String in beacon._beacons:
+		for index in range(beacon._beacons[role].size()):
+			var spot: Dictionary = beacon._spots[role][index]
+			var key := Vector2(spot.at.x, spot.at.z)
+			if not radii.has(key): continue
+			checked += 1
+			var ring := (beacon._beacons[role][index].nodes[GoalBeacon.RING] as MeshInstance3D).mesh as TorusMesh
+			var seated := false
+			for pad: Dictionary in stage.get("pressure_pads", []):
+				if Vector2(world._at(pad).x, world._at(pad).z) == key: seated = world._seated(str(pad.id))
+			# A seat fills its pad: that beacon draws no floor ring at all.
+			if seated != (not bool(beacon._beacons[role][index].ring)) or (seated and beacon._beacons[role][index].nodes[GoalBeacon.RING].visible):
+				found.append("A beacon draws no ring exactly on a seated pad (%s)" % [key])
+			if not is_equal_approx(float(spot.get("inside", 0.0)), float(radii[key])):
+				found.append("A beacon on a pad knows the pad's radius (%s)" % [key])
+			elif ring.outer_radius * (1.0 + GoalBeacon.BREATH) > float(radii[key]) - GoalBeacon.INSIDE_CLEAR + 0.0001:
+				found.append("A beacon ring on a pad breathes inside the pad's rim at its widest (%s)" % [key])
+			if beacon._beacons[role][index].nodes[GoalBeacon.RING].position.y <= PadKit.BOARD_TOP:
+				found.append("A beacon ring on a pad lies on the pad's board (%s)" % [key])
+	if checked == 0 and not stage.get("pressure_pads", []).is_empty() and str(stage.get("source_policy", {}).get("kind", "")) == "choice_pad":
+		found.append("The stage's pad beacons were found")
+	return found
+
+## Each pad shows held exactly when `state`'s hold_pads counts it.
+static func held(world: Node3D, stage: Dictionary, state: Dictionary) -> Array[String]:
+	var found: Array[String] = []
+	for pad: Dictionary in stage.get("pressure_pads", []):
+		var id := str(pad.id)
+		var piece: RefCounted = world.pad_pieces.get(id)
+		if piece == null: continue
+		var counts := bool(state.get("hold_pads", {}).get(id, false))
+		var look := piece.rim.material_override as StandardMaterial3D
+		var lit: bool = look.emission_enabled and look.emission == world.LIGHT_COLOR
+		var sunk: bool = piece._dish.position.y < -PadKit.BOARD_SINK * 0.5
+		if piece.held() != counts or lit != counts or sunk != counts:
+			found.append("Pad %s shows %s exactly when the pad %s" % [id, "held" if counts else "free", "counts" if counts else "does not count"])
+	return found

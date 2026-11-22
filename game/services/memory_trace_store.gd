@@ -1,7 +1,7 @@
 extends RefCounted
-## Where open turns' checked turns persist (core/physical/memory_trace.gd): one
-## file per turn, named by its id's digest, written through atomic_file.gd,
-## the newest MAX_FILES kept. journey_proofs.gd attaches it beside the proofs.
+## Where open turns' checked turns and the worlds they hand the next turn
+## persist (core/physical/memory_trace.gd): one file per turn, named by its
+## id's digest, written through atomic_file.gd, the newest MAX_FILES kept. journey_proofs.gd attaches it beside the proofs.
 const AtomicFile = preload("res://services/atomic_file.gd")
 const MemoryTrace = preload("res://core/physical/memory_trace.gd")
 const SUFFIX := ".trace"

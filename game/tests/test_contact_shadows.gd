@@ -47,7 +47,9 @@ func _run() -> void:
 	_check_unseen(holder)
 	holder.free()
 	_check_bake()
+	_check_patch()
 	await _check_layer()
+	_check_playing()
 	_check_pip()
 	print("CONTACT SHADOWS: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -108,8 +110,8 @@ func _check_pieces(holder: Node3D) -> void:
 	for style: String in ["parcel", "pipsport"]: built.append(["item " + style, CarriedItem.build(style, AT, holder, {"id": style})])
 	for entry: Array in built:
 		var piece: RefCounted = entry[1]
-		if entry[0] == "pad stand_spot":
-			_check(not piece.root.is_in_group(ContactShadows.GROUP), "A stand spot is a mark on the floor: no shadow")
+		if entry[0] == "pad board":
+			_check(not piece.root.is_in_group(ContactShadows.GROUP), "A board lies flat on the floor: no shadow")
 			continue
 		_check(piece.root.is_in_group(ContactShadows.GROUP), "The %s is marked for a contact shadow" % entry[0])
 		var kept := {}
@@ -275,6 +277,18 @@ func _check_bake() -> void:
 	for tile: Rect2 in tiles: covered += tile.get_area()
 	_check(covered < rect.get_area() * 0.5 and tiles.all(func(tile: Rect2) -> bool: return rect.encloses(tile)), "The overlay covers only tiles with shade, inside the floor: %.2f of %.2f m2" % [covered, rect.get_area()])
 	_check(ContactShadows.bake(rect, [[Vector2(9, 9), Vector2(0.2, 0.2), 1.0, Vector2.RIGHT]], [], true).is_empty(), "A floor with nothing on it bakes nothing")
+	# A floor drawn as two pieces cut round a neighbour (kit/walk_reach.gd): one
+	# ground, a foot by the seam baked whole, shade drawn only over the pieces.
+	var cut_parent := Node3D.new()
+	var cut := ContactShadows.ground_cm(cut_parent, [[0, 0, 200, 200], [200, 0, 400, 100]], 0.0, true)
+	var cut_rect: Rect2 = cut.get_meta(ContactShadows.GROUND_RECT_META)
+	var cut_pieces: Array = cut.get_meta(ContactShadows.GROUND_PIECES_META)
+	_check(cut_rect == rect and ContactShadows.holds(cut, Vector2(3, 0.5)) and not ContactShadows.holds(cut, Vector2(3, 1.5)), "A floor in pieces is one ground over their bounds that holds only its pieces")
+	var by_seam := ContactShadows.bake(cut_rect, [[Vector2(2.0, 0.6), Vector2(0.3, 0.3), 1.0, Vector2.RIGHT], [Vector2(3.0, 0.9), Vector2(0.3, 0.3), 1.0, Vector2.RIGHT]], [], true, cut_pieces)
+	var seam_image: Image = by_seam.image
+	_check(seam_image.get_pixel(int(1.9 / ContactShadows.TEXEL), 12).r > 0.99 and seam_image.get_pixel(int(2.1 / ContactShadows.TEXEL), 12).r > 0.99, "A foot on a seam between pieces shades both sides")
+	_check((by_seam.tiles as Array).all(func(tile: Rect2) -> bool: return cut_pieces.any(func(piece: Rect2) -> bool: return piece.encloses(tile))), "Shade is drawn only over the floor's pieces, never over its cut")
+	cut_parent.free()
 	var cast := ContactShadows.bake(rect, [], [[Vector2(2, 1), Vector2(1, 0), Vector2(0.5, 0.2), 0.1]], true)
 	_check((cast.image as Image).get_pixel(int(2.4 / ContactShadows.TEXEL), int(1.0 / ContactShadows.TEXEL)).b > 0.9 and (cast.image as Image).get_pixel(int(2.4 / ContactShadows.TEXEL), int(1.0 / ContactShadows.TEXEL)).r == 0.0, "The sun's shadow has its own channel")
 	# A long thin beam high up (the Bell Arch's top) casts a thin band, not a
@@ -289,6 +303,128 @@ func _check_bake() -> void:
 	_check(is_equal_approx((post[2] as Vector2).y, 0.16), "A round post's shadow is as wide whichever way it is turned")
 	var look := FileAccess.get_file_as_string(ContactShadows.SHADE_SHADER.resource_path)
 	_check(look.contains("blend_mul") and look.contains("depth_draw_never") and look.contains("max(s.r"), "The floor's shade multiplies the floor, writes no depth and takes the darker of contact and sun")
+
+## Baking a floor again where a few stamps came or went (patch()) gives the
+## very bytes and tiles a whole bake gives, drawing only the stamps round them;
+## nothing changed draws nothing, and much changed bakes whole.
+func _check_patch() -> void:
+	var rect := Rect2(0, 0, 6, 4)
+	var feet_list: Array = []
+	for index in range(10): feet_list.append([Vector2(0.4 + index * 0.55, 0.5 + (index % 3) * 1.2), Vector2(0.15, 0.1 + index * 0.01), 0.6, Vector2(0.6, 0.8) if index % 2 else Vector2.RIGHT])
+	var casts := [[Vector2(3.0, 2.0), Vector2(0.8, 0.6), Vector2(0.4, 0.15), 0.1]]
+	var before := ContactShadows.bake(rect, feet_list, casts, true)
+	# A part moved, one came and one went: on a floor full of others.
+	var after := feet_list.duplicate()
+	after[4] = [Vector2(2.6, 3.1), Vector2(0.2, 0.12), 1.0, Vector2.RIGHT]
+	after.remove_at(7)
+	after.append([Vector2(5.4, 3.5), Vector2(0.1, 0.1), 1.0, Vector2.RIGHT, 0.5, false])
+	var patched := ContactShadows.patch(rect, before, after, casts, true)
+	var whole := ContactShadows.bake(rect, after, casts, true)
+	_check((patched.image as Image).get_data() == (whole.image as Image).get_data() and patched.tiles == whole.tiles, "A floor baked again only where it changed is the same, texel for texel and tile for tile, as one baked whole")
+	_check(int(patched.stamped) < after.size() + casts.size(), "and draws only the stamps round what changed: %d of %d" % [int(patched.stamped), after.size() + casts.size()])
+	_check((before.image as Image).get_data() != (whole.image as Image).get_data(), "while what it was baked from stays as it was")
+	var again := ContactShadows.patch(rect, whole, after, casts, true)
+	_check(int(again.stamped) == 0 and again.image == whole.image, "Nothing changed: nothing drawn")
+	var gone := ContactShadows.patch(rect, whole, [], [], true)
+	_check(gone.is_empty(), "Everything gone: nothing left to draw")
+	var moved_all: Array = feet_list.map(func(foot: Array) -> Array: return [(foot[0] as Vector2) + Vector2(0.03, 0), foot[1], foot[2], foot[3]])
+	var rebaked := ContactShadows.patch(rect, before, moved_all, casts, true)
+	_check(int(rebaked.stamped) == moved_all.size() + casts.size() and (rebaked.image as Image).get_data() == (ContactShadows.bake(rect, moved_all, casts, true).image as Image).get_data(), "Much changed: it bakes whole")
+
+## A thing's changing parts (a keepsake's arm): baked where they rest; while
+## it plays, out of the bake and drawn live, following the part, fading as it
+## hides, cast along the sun as it rises (a blob under it alone on Low); once
+## it stops, baked where it ended, the floor again only round them. At rest
+## nothing of it is live.
+func _check_playing() -> void:
+	var world := Node3D.new()
+	var with_sun := GDScript.new()
+	with_sun.source_code = "extends Node3D\nvar sun: DirectionalLight3D\n"
+	with_sun.reload()
+	world.set_script(with_sun)
+	root.add_child(world)
+	var sun := DirectionalLight3D.new()
+	sun.rotation = Vector3(-0.9, 0.6, 0)
+	world.add_child(sun)
+	world.set("sun", sun)
+	var layer: Node3D = ContactShadows.new()
+	world.add_child(layer)
+	# Driven a fixed step at a time, so its fades never hang on the clock.
+	layer.set_process(false)
+	var lawn := ContactShadows.ground(world, Rect2(-3, -3, 6, 6), 0.0, true)
+	for index in range(12): Props.build({"kind": "crate", "at": [-250 + index * 40, -200]}, world, 0.0, false)
+	var thing := _marked(world)
+	_box(thing, Vector3(0.3, 0.6, 0.3), Vector3(0, 0.3, 0))
+	var arm := Node3D.new()
+	thing.add_child(arm)
+	_box(arm, Vector3(0.4, 0.3, 0.3), Vector3(0.6, 0.15, 0))
+	ContactShadows.changes(arm)
+	var lamp := _box(thing, Vector3(0.2, 0.2, 0.2), Vector3(-0.6, 0.1, 0))
+	ContactShadows.changes(lamp)
+	lamp.visible = false
+	_steps(layer, 60)
+	# The floor as drawn: the darker of what stands still and its resting moving parts.
+	var texel := func(x: float, z: float) -> float:
+		var at := Vector2i(int((x + 3.0) / ContactShadows.TEXEL), int((z + 3.0) / ContactShadows.TEXEL))
+		var drawn_now: Dictionary = layer.overlays()[0]
+		return maxf((drawn_now.image as Image).get_pixelv(at).r, (drawn_now.moving as Image).get_pixelv(at).r if drawn_now.moving != null else 0.0)
+	_check(ContactShadows.feet(thing).size() == 1 and (thing.get_meta(ContactShadows.MOVERS_META).movers as Array).size() == 2, "A changing part is no foot of its thing, but measured on its own, shown or not")
+	_check(texel.call(0.6, 0.0) > 0.9 and texel.call(-0.6, 0.0) == 0.0 and layer.part_shadows().is_empty(), "At rest a changing part is baked where it stands, a hidden one not, and nothing is live")
+	_check((layer.overlays()[0].image as Image).get_pixel(int(3.6 / ContactShadows.TEXEL), int(3.0 / ContactShadows.TEXEL)).r == 0.0 and bool((ContactShadows.overlay_of(lawn).material_override as ShaderMaterial).get_shader_parameter("has_moving")), "in its floor's second texture, read with the first")
+	var still: Image = layer.overlays()[0].image
+	ContactShadows.set_playing(thing, true)
+	_steps(layer, 1)
+	_check(layer.part_shadows().size() == 2 and texel.call(0.6, 0.0) == 0.0 and texel.call(0.0, 0.0) > 0.9, "Playing, its parts leave the bake at once and are drawn live: %d" % layer.part_shadows().size())
+	_check(layer.overlays()[0].image == still and not bool((ContactShadows.overlay_of(lawn).material_override as ShaderMaterial).get_shader_parameter("has_moving")), "and what stands still round them is never baked again")
+	_check(layer.shown() == 0 and (layer.get_node("Shadows") as MultiMeshInstance3D).multimesh.instance_count == 2, "in the one MultiMesh")
+	var drawn: Dictionary = _part_shadow(layer, arm)
+	_check(is_equal_approx((drawn.transform as Transform3D).origin.x, 0.6) and is_equal_approx(float(drawn.strength), 1.0) and is_zero_approx(float(_part_shadow(layer, lamp).strength)), "A resting part's live shadow lies under it; a hidden one draws nothing")
+	arm.position = Vector3(-1.2, 0, 1.0)
+	_steps(layer, 1)
+	drawn = _part_shadow(layer, arm)
+	_check((drawn.transform as Transform3D).origin.is_equal_approx(Vector3(-0.6, ContactShadows.SHADE_TOP, 1.0)), "and follows it as it moves: %s" % (drawn.transform as Transform3D).origin)
+	arm.position.y = 1.2
+	_steps(layer, 1)
+	drawn = _part_shadow(layer, arm)
+	var flat := Vector2((drawn.transform as Transform3D).origin.x + 0.6, (drawn.transform as Transform3D).origin.z - 1.0)
+	_check(flat.length() > 0.3 and is_equal_approx(float(drawn.strength), ContactShadows.PART_CAST), "Raised, it falls along the sun, as dark as a floor's sun shadow: %s at %.2f" % [flat, float(drawn.strength)])
+	layer.set_quality("low")
+	_steps(layer, 1)
+	drawn = _part_shadow(layer, arm)
+	_check(is_zero_approx(float(drawn.strength)) and is_equal_approx((drawn.transform as Transform3D).origin.x, -0.6), "On Low a part's live shadow is a blob under it alone, gone as it rises")
+	layer.set_quality("balanced")
+	arm.position.y = 0.0
+	_steps(layer, 60)
+	lamp.visible = true
+	_steps(layer, 2)
+	var easing := float(_part_shadow(layer, lamp).strength)
+	_steps(layer, ceili(ContactShadows.PART_FADE * 30.0))
+	_check(easing > 0.0 and easing < 1.0 and is_equal_approx(float(_part_shadow(layer, lamp).strength), 1.0), "A part that shows eases its shadow in: %.2f, then %.2f" % [easing, float(_part_shadow(layer, lamp).strength)])
+	still = layer.overlays()[0].image
+	ContactShadows.set_playing(thing, false)
+	_steps(layer, 1)
+	_check(layer.part_shadows().is_empty() and (layer.get_node("Shadows") as MultiMeshInstance3D).multimesh.instance_count == 0, "Once it stops nothing of it is live")
+	_check(texel.call(-0.6, 1.0) > 0.9 and texel.call(-0.6, 0.0) > 0.9 and texel.call(0.6, 0.0) == 0.0, "and its parts are baked where they ended, at once")
+	var moving: Dictionary = layer._baked[lawn].moving.bake
+	_check(layer.overlays()[0].image == still and int(moving.stamped) == (moving.records as Array).size() and (moving.records as Array).size() <= 4, "drawing only their own few stamps: %d" % int(moving.stamped))
+	# The same floor baked whole from nothing: the same bytes.
+	var patched: Dictionary = layer.overlays()[0]
+	layer._baked.erase(lawn)
+	ContactShadows.touch()
+	_steps(layer, 60)
+	var whole: Dictionary = layer.overlays()[0]
+	_check((whole.image as Image).get_data() == (patched.image as Image).get_data() and (whole.moving as Image).get_data() == (patched.moving as Image).get_data(), "and the floor is what a whole bake makes")
+	world.free()
+
+## Runs a layer `count` steps of a thirtieth of a second.
+func _steps(layer: Node3D, count: int) -> void:
+	for step in range(count): layer.refresh(1.0 / 30.0)
+
+## The playing part's live shadow as drawn.
+func _part_shadow(layer: Node3D, part: Node3D) -> Dictionary:
+	for drawn: Dictionary in layer.part_shadows():
+		if drawn.part == part: return drawn
+	return {}
 
 ## A world's layer: still things are baked into the floor they stand on, one
 ## overlay per floor; what moves, or stands on no floor, gets a live quad in

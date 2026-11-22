@@ -748,6 +748,10 @@ const HARD_LOCKED_NOTE := "Finish this chapter to unlock Hard"
 const HARD_OPEN_NOTE := "Hard · No retries"
 const HARD_LOCKED_TOAST := "Finish this chapter once, solo or with a friend, to unlock Hard."
 const HARD_HOST_UNAVAILABLE := "Hard rooms aren't open yet."
+# A room made under an earlier definition of its level (ChapterRegistry.retired):
+# opening one this phone had, and joining a friend's from an older app.
+const ROOM_BEFORE_UPDATE := "This room is from before this level was updated. Host a new room to play it again."
+const JOIN_BEFORE_UPDATE := "This room is from an older version of the game. Once your friend updates, host a new room together."
 # Chapter unlocks (services/chapter_unlocks.gd): a locked chapter's card, and
 # the line a tap on it shows. %s is the chapter before it.
 const CHAPTER_LOCKED_NOTE := "Finish %s to open this chapter"
@@ -1599,7 +1603,7 @@ const REDO_KEEP_TRYING := "Keep trying"
 const REDO_ASKED_FOR := "%s asked for a redo"
 const REDO_FIRST_TURN := "Your first turn"
 const REDO_NOT_NOW := "Not now"
-const REDO_PLAY_AGAIN := "Play my turn again"
+const REDO_PLAY_AGAIN := "Redo last turn"
 const REDO_KEEP := "Keep it as it is"
 const REDO_RETRY := "Retry request"
 const REDO_AGAIN_NOTE := "Your turn again"
@@ -1648,7 +1652,7 @@ const FIRST_STEPS_LIFT_HINT_A := "The lift goes up while someone stands on a spo
 const FIRST_STEPS_LIFT_HINT_B := "Ride up, then stand on the loft's spot to bring your friend up too. Meet at the bell."
 const FIRST_STEPS_GROW_TITLE := "A Place to Grow"
 const FIRST_STEPS_GROW_HINT_A := "Take the seed from beside the pedestal. Throw it from the marked edge, or ride the lift down with it."
-const FIRST_STEPS_GROW_HINT_B := "Put the seed in the garden and meet by its lamp."
+const FIRST_STEPS_GROW_HINT_B := "Put the seed in the garden and meet beside it."
 # relay-isles@3 (open turns, the shared rules). Its title, summary and stage
 # titles are relay-isles@2's; the completion and hints are drafts awaiting the owner.
 const RELAY_ISLES_TITLE := "The Relay Isles"
@@ -1706,6 +1710,12 @@ const TURN_OF_THE_TIDE_V2_SLACK_HINT_B_SOLO := "Let your memory cross before you
 const JOURNEY_DROWNED_YOU := "Oh no, you drowned! Try again?"
 const JOURNEY_DROWNED_FRIEND := "Oh no, your friend drowned! Try again?"
 const JOURNEY_DROWNED_MEMORY := "Oh no, your memory drowned! Try again?"
+# A turn that ends with a spirit walking off a stepping stone its water left
+# standing tall, the same three ways; and Finish held while one is up there.
+const JOURNEY_FELL_YOU := "Your pip fell! Try again?"
+const JOURNEY_FELL_FRIEND := "Your friend fell! Try again?"
+const JOURNEY_FELL_MEMORY := "Your memory fell! Try again?"
+const JOURNEY_LEFT_HIGH := "A pip is stuck up on the stones."
 # Finish is held while a spirit stands on a crossing that is closing.
 const JOURNEY_ON_CLOSING := "Step off the crossing before it shuts."
 # The winch's two settings as its lever's bubble names them. The catalog keeps
@@ -2253,7 +2263,6 @@ const RELAY_PREVIEW_34409DD3D3AA := "Your identity changed. Before reopening thi
 # Relay chapter — finish
 const RELAY_PREVIEW_AFC92040F3DB := "You were here. I was here. We made this."
 # Relay chapter — show review
-const RELAY_PREVIEW_B9074234FC11 := "Watch your recorded turn before saving it. If you attempt again, your last checkpoint remains safe."
 # Relay chapter — show review
 const RELAY_PREVIEW_9DDEE52F0B85 := "Repeat the turn to make your contribution."
 # Relay chapter — show review
@@ -2274,7 +2283,6 @@ const RELAY_PREVIEW_8D42D9E99BAF := "You left a path. I carried it on."
 const RELAY_PREVIEW_FF18C2378950 := "Your shared chapter is confirmed in the room."
 # Relay chapter — show completed
 # Relay chapter — pause
-const RELAY_PREVIEW_50922961D853 := "This device retains your saved checkpoint and rehearsal."
 # Relay chapter — show save problem
 const RELAY_PREVIEW_761D2317CF80 := "\n\nThe latest recording is kept on this screen. Before leaving, try saving again to retain it."
 # Additional source scan; review surrounding UI flow
@@ -2332,7 +2340,6 @@ const ACTION_BUTTONS_C3D6912E5E40 := "Resume from a saved checkpoint."
 # Shared action buttons — back action; tooltip
 const ACTION_BUTTONS_09F37563336D := "Go back to the previous screen."
 # Shared action buttons — leave draft action; tooltip
-const ACTION_BUTTONS_D37398B29BC6 := "Close this screen. Your draft has been saved and will be retained."
 # Shared action buttons — retry save action; tooltip
 const ACTION_BUTTONS_DCBA5AB65E41 := "Retry saving the existing recording of this turn."
 # Shared action buttons — leave unsaved action; tooltip
@@ -2548,6 +2555,10 @@ const LOCAL_SAVE_27DCFA34F3AD := "Recovered the last saved progress after an int
 const LOCAL_SAVE_34FCC2945DC1 := "The existing save could not be read. It is stored for retrieval."
 # Local progress save status — Note after an unreadable save was moved aside (start fresh if unreadable)
 const LOCAL_SAVE_STARTED_FRESH := "After You could not read your saved progress, so it started a new save. Your old save file is still on this phone."
+## Start over on a chapter save that could not be verified (action_buttons.gd
+## "start_over"): its hint, and the line when the old save could not be moved.
+const START_OVER_HINT := "Play this chapter from the start. The old save stays on this phone."
+const START_OVER_FAILED := "The old save could not be put aside, so nothing was changed."
 # Local progress save status — Status or error (flush)
 const LOCAL_SAVE_D4B7ABA2BF24 := "The progress was not saved due to an invalid format."
 # Local progress save status — Status or error (flush)
@@ -3364,6 +3375,10 @@ const TEXT := {
 	"journey.drowned_you": JOURNEY_DROWNED_YOU,
 	"journey.drowned_friend": JOURNEY_DROWNED_FRIEND,
 	"journey.drowned_friend" + SOLO: JOURNEY_DROWNED_MEMORY,
+	"journey.fell_you": JOURNEY_FELL_YOU,
+	"journey.fell_friend": JOURNEY_FELL_FRIEND,
+	"journey.fell_friend" + SOLO: JOURNEY_FELL_MEMORY,
+	"journey.left_high": JOURNEY_LEFT_HIGH,
 	"journey.on_closing": JOURNEY_ON_CLOSING,
 	"cooperative.high_summary": COOPERATIVE_HIGH_SUMMARY,
 	"cooperative.rolling_summary": COOPERATIVE_ROLLING_SUMMARY,
@@ -3632,7 +3647,6 @@ const TEXT := {
 	"relay_preview.ae39b1e4a9f7": RELAY_PREVIEW_AE39B1E4A9F7,
 	"relay_preview.34409dd3d3aa": RELAY_PREVIEW_34409DD3D3AA,
 	"relay_preview.afc92040f3db": RELAY_PREVIEW_AFC92040F3DB,
-	"relay_preview.b9074234fc11": RELAY_PREVIEW_B9074234FC11,
 	"relay_preview.9ddee52f0b85": RELAY_PREVIEW_9DDEE52F0B85,
 	"relay_preview.93772d9a4da5": RELAY_PREVIEW_93772D9A4DA5,
 	"relay_preview.faf7dfd92132": RELAY_PREVIEW_FAF7DFD92132,
@@ -3642,7 +3656,6 @@ const TEXT := {
 	"relay_preview.da6ba2478fe5": RELAY_PREVIEW_DA6BA2478FE5,
 	"relay_preview.8d42d9e99baf": RELAY_PREVIEW_8D42D9E99BAF,
 	"relay_preview.ff18c2378950": RELAY_PREVIEW_FF18C2378950,
-	"relay_preview.50922961d853": RELAY_PREVIEW_50922961D853,
 	"relay_preview.761d2317cf80": RELAY_PREVIEW_761D2317CF80,
 	"beam_field.d1d0a898da7f": BEAM_FIELD_D1D0A898DA7F,
 	"beam_field.0a335806e9b1": BEAM_FIELD_0A335806E9B1,
@@ -3671,7 +3684,6 @@ const TEXT := {
 	"action_buttons.7b0d22bc0fec": ACTION_BUTTONS_7B0D22BC0FEC,
 	"action_buttons.c3d6912e5e40": ACTION_BUTTONS_C3D6912E5E40,
 	"action_buttons.09f37563336d": ACTION_BUTTONS_09F37563336D,
-	"action_buttons.d37398b29bc6": ACTION_BUTTONS_D37398B29BC6,
 	"action_buttons.dcba5ab65e41": ACTION_BUTTONS_DCBA5AB65E41,
 	"action_buttons.46c4ed81ff3a": ACTION_BUTTONS_46C4ED81FF3A,
 	"action_buttons.2c04aa881c37": ACTION_BUTTONS_2C04AA881C37,
@@ -4140,6 +4152,9 @@ const CANONICAL_KEYS := {
 	"Wait until your friend has crossed the harbour before you turn the tide. Then fetch the pin, key or line at the mill, each at its own tide, and light the lantern.": "turn_of_the_tide_v2.slack_water_b",
 	"Oh no, you drowned! Try again?": "journey.drowned_you",
 	"Oh no, your friend drowned! Try again?": "journey.drowned_friend",
+	"Your pip fell! Try again?": "journey.fell_you",
+	"Your friend fell! Try again?": "journey.fell_friend",
+	"A pip is stuck up on the stones.": "journey.left_high",
 	"Step off the crossing before it shuts.": "journey.on_closing",
 	"Help your partner reach the loft.": "cooperative.upper_path_a",
 	"Reach the bell above.": "cooperative.upper_path_b",
@@ -4293,6 +4308,8 @@ const FOG_MARSH_STAGE_2_HINT_B := "TODO copy: Fog Marsh, stage 2, second turn"
 const FOG_MARSH_STAGE_3_TITLE := "TODO copy: Fog Marsh, stage 3"
 const FOG_MARSH_STAGE_3_HINT_A := "TODO copy: Fog Marsh, stage 3, first turn"
 const FOG_MARSH_STAGE_3_HINT_B := "TODO copy: Fog Marsh, stage 3, second turn"
+# The rope wheel's stop across from the boat steps, as its bubble names it.
+const FOG_MARSH_ROPE_DOCK := "Dock"
 const FOG_MARSH_KEEPSAKE_NAME := "Fog Lantern"
 const FOG_MARSH_KEEPSAKE_ACTION := "Light the lantern"
 const FOG_MARSH_KEEPSAKE_TOGETHER := "mint raft"

@@ -2,17 +2,18 @@ extends SceneTree
 ## Open controls (core/physical/open_controls.gd): the rules numbers, the
 ## versions pinned to them, and the rules themselves, played with real inputs
 ## where a real run can reach the spot:
-## - 12 and 13 are their own rules (14 and 15 add open turns, which the three
+## - 12 and 13 are their own rules (18 and 19 add open turns, which the three
 ##   open versions pin); every published chapter keeps its own, and
 ##   its controls keep their owners;
 ## - a pad holds for either pip, and either pip works a lever or selector;
-## - in the second turn a control takes the memory's value only on the tick the
-##   memory turned it, and keeps the live pip's otherwise; on a tick both turn
-##   it, the memory's lands first and the live press turns it on from there;
-##   owner rules still copy the memory's controls every tick;
-## - a live turn on a control the memory used replays exactly;
-## - the drowning path is the tide rules' own: a live toggle that shuts the
-##   crossing under the memory ends the turn with DROWNED_FRIEND.
+## - in the second turn of open turns the friend's replay presses a control on
+##   the tick it pressed it, in the one world, turning it on from whatever the
+##   live pip left; on a tick both press, p0's lands first and p1's turns it on
+##   from there; owner rules still copy the memory's controls every tick;
+## - a live turn on a control the replay used replays exactly.
+## (A live toggle that drowns the friend's replay: test_open_turns_memories.gd.)
+## The open levels' turns are recorded again from the fixtures' inputs on
+## today's rules (_first).
 const Registry = preload("res://services/chapter_registry.gd")
 const Simulation = preload("res://core/journey/simulation.gd")
 const Cooperative = preload("res://core/cooperative/simulation.gd")
@@ -37,15 +38,14 @@ func _run() -> void:
 	_same_tick()
 	_owner_rules_unchanged()
 	_levers()
-	_live_toggle_drowns_memory()
 	print("OPEN CONTROLS: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
 func _numbers() -> void:
-	_check(OpenControls.OPEN_RULES == [12, 13, 14, 15, 16, 17] and OpenControls.TIDE_RULES == [10, 13, 15, 16] and OpenControls.OPEN_TURNS_RULES == [14, 15, 16, 17] and 11 not in OpenControls.OPEN_RULES, "Open controls are 12 and 13, 14 and 15 with open turns, 16 with the new pieces too, 17 with the shared ball; 11 stays the Lighthouse room's")
-	_check(OpenControls.rules_for(9) == 12 and OpenControls.rules_for(7) == 12 and OpenControls.rules_for(10) == 13 and OpenControls.rules_for(15) == 15, "The open rules keep the earlier rules: tide (10) becomes 13, the rest 12, and open turns stay")
-	_check(Registry.supported_rules(HOME) == [14] and Registry.supported_rules(TIDE) == [15] and Registry.supported_rules("conservatory@2") == [14], "Each new version plays only its open rules, with open turns")
-	_check(Simulation._record_version({"simulation_version": 14.0}) == 14 and Simulation._record_version({"simulation_version": 15}) == 15, "A record names its open turns rules, JSON floats included")
+	_check(OpenControls.OPEN_RULES == [12, 13, 18, 19, 20, 21] and OpenControls.TIDE_RULES == [10, 13, 19, 20] and OpenControls.OPEN_TURNS_RULES == [18, 19, 20, 21] and 11 not in OpenControls.OPEN_RULES, "Open controls are 12 and 13, 18 and 19 with open turns, 20 with the new pieces too, 21 with the shared ball; 11 stays the Lighthouse room's")
+	_check(OpenControls.rules_for(9) == 12 and OpenControls.rules_for(7) == 12 and OpenControls.rules_for(10) == 13 and OpenControls.rules_for(19) == 19, "The open rules keep the earlier rules: tide (10) becomes 13, the rest 12, and open turns stay")
+	_check(Registry.supported_rules(HOME) == [18] and Registry.supported_rules(TIDE) == [19] and Registry.supported_rules("conservatory@2") == [18], "Each new version plays only its open rules, with open turns")
+	_check(Simulation._record_version({"simulation_version": 18.0}) == 18 and Simulation._record_version({"simulation_version": 19}) == 19, "A record names its open turns rules, JSON floats included")
 	_check(Registry.supported_rules(HOME_PUBLISHED) == [9] and Registry.supported_rules("turn-of-the-tide@2") == [10] and Registry.supported_rules("conservatory@1") == [7, 8], "Published versions keep their rules")
 	_check(not Simulation.rules_allowed(Registry.definition(HOME), 9) and not Simulation.rules_allowed(Registry.definition(HOME_PUBLISHED), 12) and not Cooperative.rules_allowed(Registry.definition("the-wishing-well@1"), 12), "No published chapter plays the open rules, and no open chapter plays the old ones")
 	_check(Simulation._record_version({"simulation_version": 12.0}) == 12 and Simulation._record_version({"simulation_version": 13}) == 13 and Cooperative._record_version({"simulation_version": 12.0}) == 12, "A record names its open rules, JSON floats included")
@@ -72,8 +72,8 @@ func _pads() -> void:
 	var stage := {"pressure_pads": [pad], "source_policy": {"branches": [{"id": "near", "pad_id": "seat"}]}}
 	_check(Seven.choice(stage, {"p0": off, "p1": on}, true).get("id") == "near" and Seven.predicate({"pad_id": "seat"}, stage, {"p0": on, "p1": off}, {}, {}, true), "Choices and gates read the open pad the same way")
 
-## The second pip walks to the memory's selector and turns it back; the turn
-## replays exactly, and the memory never takes it back.
+## The second pip walks to the replay's selector and turns it back; the turn
+## replays exactly, and the replay never takes it back.
 func _live_turns_a_memory_control() -> void:
 	var level := Registry.definition(HOME)
 	var b := _receiver(HOME)
@@ -81,54 +81,52 @@ func _live_turns_a_memory_control() -> void:
 	var frames: Array = Simulation.expand_recording_inputs(_fixture("long-way-home-v3-%s-b.json" % PATH))
 	# Its own press (return selector to garden) is frame 148.
 	for tick in range(149): b.step(_input(frames[tick]))
-	_check(str(b._mechanisms.controls["path-selector"]) == "friend", "The memory turned the path selector to friend")
+	_check(str(b._mechanisms.controls["path-selector"]) == "friend", "The replay turned the path selector to friend")
 	_walk(b, [64, 64])
 	var action: Dictionary = b.context_action()
-	_check(action.id == "selector" and action.target_id == "path-selector" and action.enabled, "The second pip may turn the memory's path selector (%s)" % str(action))
+	_check(action.id == "selector" and action.target_id == "path-selector" and action.enabled, "The second pip may turn the replay's path selector (%s)" % str(action))
 	b.step({})
 	b.step({"interact": true})
 	var turned_at := int(b.tick)
 	for tick in range(60): b.step({})
-	_check(str(b._mechanisms.controls["path-selector"]) == "home", "The live turn holds: the memory does not take it back (turned at tick %d)" % turned_at)
+	_check(str(b._mechanisms.controls["path-selector"]) == "home", "The live turn holds: the replay does not take it back (turned at tick %d)" % turned_at)
 	# Open turns: the first turn's part is not asked again at the end; the
 	# stage ends only with both pips at the goal.
-	_check(b._source_holds(), "On open turns undoing the memory's part does not by itself block the finish")
+	_check(b._source_holds(), "On open turns undoing the replay's part does not by itself block the finish")
 	_walk(b, [640, 224])
 	if b.context_action().id == "ring": b.step({"interact": true})
 	for tick in range(400): b.step({})
-	_check(not b._objective and not b.complete, "At the window alone, with the memory waiting in the garden, the stage does not complete")
+	_check(not b._objective and not b.complete, "At the window alone, with the replay waiting in the garden, the stage does not complete")
 	var record: Dictionary = b.export_recording()
 	var initial := Registry.initial_checkpoint(HOME)
-	var first := _fixture("long-way-home-v3-%s-a.json" % PATH)
+	var first := _first(HOME, PATH, "long-way-home-v3-%s-a.json" % PATH)
 	_check(Simulation.verify_recording(level, _json(record), _json(initial), _json(first)).valid, "The turn replays exactly (Retry and Preview see the same)")
 	var again := _receiver(HOME)
 	for frame: Dictionary in Simulation.expand_recording_inputs(record): again.step(_input(frame))
 	_check(again.state_hash() == b.state_hash(), "Played again from its inputs it ends in the same state")
 
-## A live value the memory did not touch this tick stays; on the memory's own
-## turn the memory's value lands. Owner rules copy it every tick.
+## A live value stays until the replay presses; its press turns the control
+## on from the live value, in the one world. Owner rules copy it every tick.
 func _memory_toggle_ticks() -> void:
 	var b := _receiver(HOME)
 	if b == null: return
-	# As if the live pip had turned both: the memory's selector and its own.
+	# As if the live pip had turned both: the replay's selector and its own.
 	b._mechanisms.controls["return-selector"] = "garden"
 	b._mechanisms.controls["path-selector"] = "friend"
 	for tick in range(MEMORY_TURN_TICK): b.step({})
-	_check(str(b._mechanisms.controls["path-selector"]) == "friend" and str(b._mechanisms.controls["return-selector"]) == "garden", "Before the memory's turn the live values stay, on its control and on the live pip's")
-	b._mechanisms.controls["path-selector"] = "home"
+	_check(str(b._mechanisms.controls["path-selector"]) == "friend" and str(b._mechanisms.controls["return-selector"]) == "garden", "Before the replay's press the live values stay, on its control and on the live pip's")
 	b.step({})
-	_check(str(b._mechanisms.controls["path-selector"]) == "friend" and b._source_toggles.controls.has("path-selector"), "On the memory's turn its value lands (tick %d)" % MEMORY_TURN_TICK)
-	b._mechanisms.controls["path-selector"] = "home"
+	_check(str(b._mechanisms.controls["path-selector"]) == "home" and b._events.has("selector:path-selector"), "The replay's press turns it on from the live value (tick %d)" % MEMORY_TURN_TICK)
 	for tick in range(30): b.step({})
-	_check(str(b._mechanisms.controls["path-selector"]) == "home", "After it, the live value stays again")
+	_check(str(b._mechanisms.controls["path-selector"]) == "home", "After it, the value stays")
 	var owner := _receiver(HOME_PUBLISHED)
 	if owner == null: return
 	owner._mechanisms.controls["path-selector"] = "friend"
 	owner.step({})
 	_check(str(owner._mechanisms.controls["path-selector"]) == "home", "Owner rules: the memory's control is copied every tick")
 
-## On the tick the memory turns its selector, the live pip presses it too:
-## memory first (home to friend), then the live press (friend to home).
+## On the tick the replay (p0) turns its selector, the live pip (p1) presses
+## it too: p0 first (home to friend), then p1 (friend to home).
 func _same_tick() -> void:
 	var b := _receiver(HOME)
 	if b == null: return
@@ -138,7 +136,7 @@ func _same_tick() -> void:
 	b.step({})
 	_check(str(b._mechanisms.controls["path-selector"]) == "home", "The tick before, nothing has turned")
 	b.step({"interact": true})
-	_check(str(b._mechanisms.controls["path-selector"]) == "home" and b._source_toggles.controls.has("path-selector") and b._events.has("selector:path-selector"), "Both on one tick: the memory's turn lands, then the live press turns it on")
+	_check(str(b._mechanisms.controls["path-selector"]) == "home" and b._events.count("selector:path-selector") == 2, "Both on one tick: p0's press lands, then p1's turns it on")
 
 ## Owner rules: the second pip still cannot work the memory's selector.
 func _owner_rules_unchanged() -> void:
@@ -149,67 +147,46 @@ func _owner_rules_unchanged() -> void:
 	_check(b.context_action().id != "selector", "Owner rules: the memory's selector is not the second pip's to turn")
 
 ## Levers follow the same rule as selectors (runtime.gd): in Set the Tide the
-## memory pulls a lever; a live value held opposite stays until that tick, then
-## the memory's lands; and the live pip may pull the memory's lever.
+## replay pulls a lever; a live value held opposite stays until that tick, and
+## the replay's pull turns it from there; the live pip may pull it too.
 func _levers() -> void:
 	var level := Registry.definition(TIDE)
-	var first := _fixture("turn-of-the-tide-v3-set-the-tide-a.json")
+	var first := _first(TIDE, "set-the-tide", "turn-of-the-tide-v3-set-the-tide-a.json")
 	var idle := Simulation.new()
 	idle.reset(level, "set-the-tide", Registry.initial_checkpoint(TIDE), first, "b")
 	var pulled_at := -1
 	var lever_id := ""
+	var before: Dictionary = idle._mechanisms.levers.duplicate()
 	while not idle.finished and int(idle.tick) < int(first.duration_ticks):
 		idle.step({})
-		if not idle._source_toggles.levers.is_empty():
+		if idle._events.has("lever"):
 			pulled_at = int(idle.tick) - 1
-			lever_id = str(idle._source_toggles.levers.keys()[0])
+			for id: String in idle._mechanisms.levers:
+				if bool(idle._mechanisms.levers[id]) != bool(before.get(id, false)): lever_id = id
 			break
-	_check(pulled_at >= 0, "The memory pulls a lever in Set the Tide")
-	if pulled_at < 0: return
+		before = idle._mechanisms.levers.duplicate()
+	_check(pulled_at >= 0 and not lever_id.is_empty(), "The replay pulls a lever in Set the Tide")
+	if pulled_at < 0 or lever_id.is_empty(): return
 	var pulled: bool = bool(idle._mechanisms.levers[lever_id])
 	var b := Simulation.new()
 	b.reset(level, "set-the-tide", Registry.initial_checkpoint(TIDE), first, "b")
-	b._mechanisms.levers[lever_id] = not pulled
+	b._mechanisms.levers[lever_id] = pulled
 	for tick in range(pulled_at): b.step({})
-	_check(bool(b._mechanisms.levers[lever_id]) == (not pulled), "Before the memory's pull the live lever stays (%s)" % lever_id)
-	b._mechanisms.levers[lever_id] = not pulled
+	_check(bool(b._mechanisms.levers[lever_id]) == pulled, "Before the replay's pull the live lever stays (%s)" % lever_id)
 	b.step({})
-	_check(bool(b._mechanisms.levers[lever_id]) == pulled, "On the memory's pull its value lands (tick %d)" % pulled_at)
+	_check(bool(b._mechanisms.levers[lever_id]) == (not pulled), "The replay's pull turns it from the live value (tick %d)" % pulled_at)
 	var lever := _entity(b.stage.levers, lever_id)
 	b._players.p1 = {"x": int(lever.position_cm[0]), "z": int(lever.position_cm[1]), "height": int(lever.get("height_cm", b._players.p1.height)), "surface_id": str(lever.surface_id)}
 	var action: Dictionary = b.context_action()
-	_check(action.id == "lever" and action.target_id == lever_id, "The live pip may pull the memory's lever (%s)" % str(action))
-
-## Slack Water on the open tide rules: the memory ends its turn on the boom
-## post, which holds while the basin stands at half. The live pip turns the
-## basin, the memory's own wheel under owner rules: the post closes, and 45
-## ticks later the memory drowns and the turn ends.
-func _live_toggle_drowns_memory() -> void:
-	var level := Registry.definition(TIDE)
-	var checkpoint := _fixture("turn-of-the-tide-v3-set-the-tide-checkpoint.json")
-	var first := _fixture("turn-of-the-tide-v3-slack-water-a.json")
-	var b := Simulation.new()
-	_check(b.reset(level, "slack-water", checkpoint, first, "b"), "Slack Water's second turn starts beside the memory")
-	# The live pip plays its own recorded part until the memory's turn has ended.
-	var frames: Array = Simulation.expand_recording_inputs(_fixture("turn-of-the-tide-v3-slack-water-b.json"))
-	while not b.finished and int(b.tick) < mini(int(first.duration_ticks), frames.size()): b.step(_input(frames[b.tick]))
-	_check(str(b._players.p1.surface_id) == "boom-post" and str(b._mechanisms.controls.basin) == "half", "The memory stands on the boom post at a half basin")
-	var basin := _entity(b.stage.controls, "basin")
-	b._players.p0 = {"x": int(basin.position_cm[0]), "z": int(basin.position_cm[1]), "height": int(basin.height_cm), "surface_id": str(basin.surface_id)}
-	var action: Dictionary = b.context_action()
-	_check(action.id == "selector" and action.target_id == "basin", "The live pip may turn the memory's basin wheel (%s)" % str(action))
-	b.step({"interact": true})
-	var turned := int(b.tick) - 1
-	while not b.finished: b.step({})
-	var drowned: Dictionary = b.snapshot().drowned
-	_check(drowned.get("slot") == "p1" and drowned.get("route") == "boom-post" and int(drowned.tick) == turned + int(level.closing_ticks), "The boom post shuts under the memory and it drowns (%s, turned at %d)" % [str(drowned), turned])
-	_check(b.commit_reason() == Simulation.DROWNED_FRIEND and not b.can_commit() and not b.keeps_draft(), "The turn ends with DROWNED_FRIEND, cannot be saved and keeps no draft")
+	_check(action.id == "lever" and action.target_id == lever_id, "The live pip may pull the replay's lever (%s)" % str(action))
 
 func _receiver(key: String) -> Simulation:
 	var level := Registry.definition(key)
 	var stem := "long-way-home-v3" if key == HOME else "long-way-home-v2"
 	var b := Simulation.new()
-	var ok := b.reset(level, PATH, Registry.initial_checkpoint(key), _fixture("%s-%s-a.json" % [stem, PATH]), "b")
+	var name := "%s-%s-a.json" % [stem, PATH]
+	var first := _first(key, PATH, name) if key == HOME else _fixture(name)
+	var ok := b.reset(level, PATH, Registry.initial_checkpoint(key), first, "b")
 	_check(ok, "%s: the second turn starts (%s)" % [key, b.error])
 	return b if ok else null
 
@@ -223,6 +200,17 @@ static func _walk(sim: Simulation, to: Array) -> void:
 			var input := {"move_x": 0.0, "move_z": 0.0}
 			input["move_" + key] = clampf(float(gap) / 8.0, -1.0, 1.0)
 			sim.step(input)
+
+## An open level's first turn recorded again from fixture `name`'s inputs on
+## today's rules, once per run.
+var _firsts: Dictionary = {}
+func _first(key: String, stage_id: String, name: String) -> Dictionary:
+	if not _firsts.has(name):
+		var one := Simulation.new()
+		one.reset(Registry.definition(key), stage_id, Registry.initial_checkpoint(key), {}, "a")
+		for frame: Dictionary in Simulation.expand_recording_inputs(_fixture(name)): one.step(frame)
+		_firsts[name] = _json(one.export_recording())
+	return _firsts[name]
 
 func _fixture(name: String) -> Dictionary:
 	return JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/journey/" + name))

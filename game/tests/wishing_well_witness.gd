@@ -2,11 +2,11 @@ extends RefCounted
 ## The Wishing Well routes use only actual control inputs. No state injection.
 const Simulation = preload("res://core/cooperative/simulation.gd")
 const Catalog = preload("res://core/cooperative/stage_catalog.gd")
-const Well = preload("res://core/cooperative/wishing_well_catalog.gd")
+const Well = preload("res://core/cooperative/stage_catalog.gd")
 const Walk = preload("res://tests/cooperative_witness.gd")
 
 static func chapter() -> Dictionary:
-	var level := Well.definition()
+	var level := Well.definition("the-wishing-well@1")
 	var checkpoint := Catalog.initial_checkpoint(level)
 	var result := {"definition": level, "checkpoints": [checkpoint], "pairs": [], "error": ""}
 	for stage: Dictionary in level.stages:

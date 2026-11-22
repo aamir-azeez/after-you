@@ -1,9 +1,9 @@
 {
   "a_recording_hash": "",
   "b_recording_hash": "",
-  "checkpoint_hash": "add10b736d72d16a7f96d4f7a8c2e7085863f2ff842f7d977a117828ca3fd86d",
+  "checkpoint_hash": "56ad25d057376f21578af40fa0a4f7c46aa4f02749c2631af4f3f68aa14e79bd",
   "completed_stage_id": "",
-  "definition_hash": "2a9dea7880937018ac9d744fac0592c51a5feddcdfdc5db0a6d08e525d9a3c52",
+  "definition_hash": "4cc28f4d6d0128d12f160737be979ed1479d47fe0a9ddc4d3fca44590bb8b8b7",
   "level_id": "carry-witness",
   "level_version": 1.0,
   "mechanisms": {

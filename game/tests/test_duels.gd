@@ -29,7 +29,8 @@ const MAYA := "AAAAAAAAAAAAAAAAAAAAAA"
 const FINN := "FFFFFFFFFFFFFFFFFFFFFF"
 const NOOR := "NNNNNNNNNNNNNNNNNNNNNN"
 const ROOM := "RRRRRRRRRRRRRRRRRRRRRR"
-const BOARD := "sleeping-lighthouse@2"
+## The Lighthouse's current board (its mirrors went solid, so it opened again by definition).
+var BOARD := Runs.board_key(Registry.LIGHTHOUSE_V2)
 const SAVE_PATH := "user://duels-test.json"
 const DUEL := "d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0"
 
@@ -491,18 +492,18 @@ func _pages() -> void:
 	# Start a duel: Send waits for both choices.
 	var challenge := ChallengePage.new()
 	challenge.friends = [{"id": FINN, "name": "Finn"}]
-	challenge.chapters = [Registry.FIRST_STEPS, BOARD]
+	challenge.chapters = [Registry.FIRST_STEPS, Registry.LIGHTHOUSE_V2]
 	lobby.open_overlay(challenge)
 	await process_frame
 	var send: Button = challenge.find_child("DuelSend", true, false)
 	_check(send.disabled, "Send waits for a pair and a chapter")
 	(challenge.find_child("Pair_" + FINN.left(6), true, false) as Button).pressed.emit()
-	(challenge.find_child("Chapter_" + BOARD.replace("@", "_"), true, false) as Button).pressed.emit()
+	(challenge.find_child("Chapter_" + Registry.LIGHTHOUSE_V2.replace("@", "_"), true, false) as Button).pressed.emit()
 	_check(not send.disabled, "then it is ready")
 	var sent: Array = []
 	challenge.send_requested.connect(func(friend: String, chapter: String, _control: Control) -> void: sent.append([friend, chapter]))
 	send.pressed.emit()
-	_check(sent == [[FINN, BOARD]], "Send names both")
+	_check(sent == [[FINN, Registry.LIGHTHOUSE_V2]], "Send names both")
 	challenge.close()
 	# Race a recorded run.
 	var ghosts := GhostPage.new()

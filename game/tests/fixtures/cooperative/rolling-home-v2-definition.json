@@ -108,7 +108,7 @@
 		}
 	],
 	"schema_version": 6,
-	"simulation_version": 17,
+	"simulation_version": 21,
 	"stages": [
 		{
 			"ball_pads": [
@@ -169,6 +169,10 @@
 						112
 					],
 					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
 					"surface_id": "middle"
 				}
 			],
@@ -352,8 +356,8 @@
 	},
 	"title": "Rolling Home",
 	"turn_limits": {
-		"a_ticks": 3600,
-		"b_ticks": 3600
+		"a_ticks": 1800,
+		"b_ticks": 1800
 	},
 	"version": 2
 }

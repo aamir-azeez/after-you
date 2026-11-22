@@ -1,8 +1,8 @@
 extends RefCounted
-## Carried items and currents, two generic journey pieces under rules 16
+## Carried items and currents, two generic journey pieces under rules 20
 ## (open_controls.gd PIECES_RULES_VERSION: the tide rules with open controls
-## and open turns, 15, plus the new pieces). They play only where a definition
-## declares them, so a rules 16 level without items plays exactly as before.
+## and open turns, 19, plus the new pieces). They play only where a definition
+## declares them, so a rules 20 level without items plays exactly as before.
 ##
 ## The definition (all optional):
 ##   "items": [{"id", "at", "carry"}]: things a pip can carry ("carry" true,
@@ -52,16 +52,14 @@ extends RefCounted
 ## height (a platform's item at whichever stop it stands). Put down on an
 ## island (snapped to an item spot it stands in) or on the stop a platform
 ## stands at (a lift, a raft), never on another crossing.
-## Hand over to the other pip, live or the memory, when they meet: on one
-## floor within HAND_REACH_CM, or at the two ends of a "hands" crossing while
-## it is open (hand it up the ladder; a shut trapdoor stops the hand up too).
-## A pip on a "hands" crossing takes nothing.
-## The memory: its own turn's take, put and give replay on the ticks it did
-## them, against the live state, the memory's going first on a shared tick, as
-## its control presses do. A take finds nothing if the live pip took the item
-## first ("the replay sees it gone"); a give out of reach puts the item down
-## at the memory's feet; a memory that steps onto a "hands" crossing loaded
-## (it was handed something it never had) puts it down where it last stood.
+## Hand over to the other pip when they meet: on one floor within
+## HAND_REACH_CM, or at the two ends of a "hands" crossing while it is open
+## (hand it up the ladder; a shut trapdoor stops the hand up too). A pip on a
+## "hands" crossing takes nothing.
+## The friend's replay presses through this same code by its recorded inputs,
+## in the one world (runtime.gd), p0 first on a tick both press: its take finds
+## nothing if the live pip took the item first, its give finds no one out of
+## reach, and loaded it never steps onto a "hands" crossing.
 ## Limits: a float ("carry": false) opens crossings through gates
 ## ({"item_id", "spot_id"}); carrying a pip or an item is a platform's job
 ## (pieces_rules.gd), not the current's. An item on a platform weighs no pan:
@@ -74,11 +72,9 @@ extends RefCounted
 ## flight_ticks on an arc from over the thrower's head, and while it flies it
 ## rests nowhere: holder, spot and surface_id empty, x, z and height where the
 ## arc has it. In its last CATCH_WINDOW_TICKS a pip with empty hands standing
-## within catch_cm of the landing, on its floor, catches it: the live pip
-## first, then the memory (where it stands in the live world). Otherwise it
-## lands at the landing spot, where anyone picks it up. Either pip throws and
-## catches; a memory's own throw replays on the tick it threw, as a take does,
-## when it holds the item in the mark then. A stage never completes while an
+## within catch_cm of the landing, on its floor, catches it, p0 first.
+## Otherwise it lands at the landing spot, where anyone picks it up. Either
+## pip throws and catches, the friend's replay as the live pip. A stage never completes while an
 ## item flies (core/journey/simulation.gd _may_complete), so a checkpoint never
 ## holds one. Nothing in a throw names a level: First Steps @2 throws the seed
 ## from the loft's edge, and Relay Isles @3 can throw from its plate.
@@ -101,7 +97,7 @@ const SPOT_RADIUS_CM := 30
 ## A pip's body radius (runtime.gd PLAYER_RADIUS), for a solid spot
 ## (core/solid_footprint.gd): a pip walks round it and takes or puts there
 ## from within its reach_cm of the edge, the spot's radius no longer counting.
-const BODY_CM := 12
+const BODY_CM := Solid.BODY_CM
 ## Heights within this many cm count as level (stair ends, pip heights).
 const LEVEL_CM := 2
 const ACTS := ["take", "put", "give", "throw"]

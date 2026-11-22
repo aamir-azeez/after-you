@@ -15,7 +15,7 @@ const OTHER_CHAPTERS := {
 		["what-carried-you", "What Carried You Can Come With You"],
 		["a-welcome-left-on", "A Welcome, Left On"]]},
 }
-## Browse order. A registered chapter that is a version of a key Home knows
+## Browse order (Index.shown_keys()). A registered chapter that is a version of a key Home knows
 ## only by that key (the Lighthouse @2 of @1) is browsed under it. An unreleased
 ## chapter (released: false) is not on Home: it has no places there yet.
 static var CHAPTERS: Array = _chapters()
@@ -30,7 +30,7 @@ static var ROWS: Array = _rows()
 
 static func _chapters() -> Array:
 	var result: Array = []
-	for key: String in Index.keys():
+	for key: String in Index.shown_keys():
 		if not Index.data(key).released: continue
 		var version_of: String = Index.data(key).version_of
 		if version_of.is_empty() or version_of in Index.keys(): result.append(key)

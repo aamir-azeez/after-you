@@ -7,6 +7,7 @@ const Seven = preload("res://core/journey/seven_mechanisms.gd")
 const LightPieces = preload("res://core/physical/light_pieces.gd")
 const PiecesRules = preload("res://core/physical/pieces_rules.gd")
 const CarriedItems = preload("res://core/physical/carried_items.gd")
+const Swings = preload("res://core/physical/swings.gd")
 const CURRENT_SIMULATION_VERSION := 7
 const COMFORT_VERSION := 8
 ## Comfort rules under a new number, as in the cooperative ruleset. Only a
@@ -18,6 +19,9 @@ const COMFORT_ALIAS_VERSION := 9
 ## definition's "closing_ticks", then shuts; a spirit standing on a shut
 ## crossing then drowns and the turn ends there. A completed stage keeps no
 ## routes for the next one. Only a definition that pins 10 plays them.
+## A stepping stone its water leaves standing too tall (stage_catalog.gd
+## tall_stones) drowns no one: a spirit on it as it shuts stays up there, one
+## that walks off it or onto it falls, and the turn ends as a drowning does.
 const TIDE_RULES_VERSION := 10
 ## Open controls (core/physical/open_controls.gd): the comfort rules (9) with
 ## open controls are 12, the tide rules (10) with open controls 13. Only a
@@ -26,29 +30,29 @@ const TIDE_RULES_VERSION := 10
 const OPEN_TIDE_RULES_VERSION := OpenControls.OPEN_TIDE_RULES_VERSION
 const TIDE_RULES := OpenControls.TIDE_RULES
 const OPEN_RULES := OpenControls.OPEN_RULES
-## What a drowned turn says (snapshot text; PlayerCopy shows the editable
-## lines): the player's own spirit, or the memory's.
-const DROWNED_YOU := "Oh no, you drowned! Try again?"
-const DROWNED_FRIEND := "Oh no, your friend drowned! Try again?"
+## What a drowned or fallen turn says is runtime.gd's DROWNED_YOU, DROWNED_FRIEND,
+## FELL_YOU and FELL_FRIEND.
+## A turn that would end with a spirit left high on a stone.
+const LEFT_HIGH := "A pip is stuck up on the stones."
 ## A turn that would end with a spirit on a closing crossing.
 const ON_CLOSING := "Step off the crossing before it shuts."
 var _entry_latches: Dictionary = {}
 ## Tide rules: route id -> the tick its crossing shuts, while it closes.
 var _closing: Dictionary = {}
-## Tide rules: {"slot", "route", "tick"} once a spirit has drowned.
-var _drowned: Dictionary = {}
+## Tide rules: slot -> where that spirit stood, left high on a stone, as the
+## last tick ended. (Who drowned or fell is runtime.gd's _drowned, with
+## "fell": true when it fell off a stone left high instead.)
+var _high: Dictionary = {}
 var _ready_branch := ""
-## Rules 16's carried items and currents (core/physical/carried_items.gd),
+## The pieces rules' carried items and currents (core/physical/carried_items.gd),
 ## set at reset: whether they play, the items in order, the crossings that
-## need both hands, each item's last leg ("control=value": it takes no other
-## leg on that wheel value until the wheel turns or a pip handles it) and where
-## the memory last stood off a both-hands crossing.
+## need both hands and each item's last leg ("control=value": it takes no
+## other leg on that wheel value until the wheel turns or a pip handles it).
 var _carrying := false
 var _item_order: Array = []
 var _hands: Dictionary = {}
 var _legs_taken: Dictionary = {}
-var _memory_floor: Dictionary = {}
-## Rules 16's throws (carried_items.gd), set at reset: the stage's throws by
+## The pieces rules' throws (carried_items.gd), set at reset: the stage's throws by
 ## id, and each item in flight: {"throw": its id, "from": {x, z, height},
 ## "left": ticks}.
 var _throws: Dictionary = {}
@@ -60,13 +64,25 @@ var _optics: Dictionary = {"segments":[],"signals":{}}
 ## tick, so it reads these instead of building them again.
 var _route_defs: Array = []
 var _gate_plan: Array = []
-## Rules 16 (core/physical/pieces_rules.gd), fixed at reset: the stage's
-## platforms as [platform, [stop bridges]], every stop id, the sinking stones,
-## and each pip's surface as the tick began (who stepped onto a stone last).
+## The pieces rules (core/physical/pieces_rules.gd), fixed at reset: the stage's
+## platforms as [platform, [stop bridges], whether it is a lift], every stop id
+## with its platform's place in that list, the sinking stones, and each pip's
+## surface as the tick began (who stepped onto a stone last).
 var _platforms: Array = []
 var _stops: Dictionary = {}
+## The pieces rules: each deck still on its way to the stop its platform
+## stands at, by platform id: {"from": [x, z, height] cm where it set off,
+## "done": ticks travelled, "ticks": the whole way} (PiecesRules.deck_ticks).
+## A deck at its stop has none.
+var _decks: Dictionary = {}
 var _sinking: Array = []
 var _surfaces_before: Dictionary = {}
+## The pieces rules' swings (core/physical/swings.gd), set at reset: the
+## stage's swings in order, each one's beat counter by id (world state), and
+## whether its brake held this tick (for the screen).
+var _swing_plan: Array = []
+var _swing_counts: Dictionary = {}
+var _swing_braked: Dictionary = {}
 
 func _init() -> void:
 	simulation_version = CURRENT_SIMULATION_VERSION
@@ -132,60 +148,68 @@ func _reset_mechanics() -> void:
 	_entry_latches = {}
 	_closing = {}
 	_drowned = {}
+	_high = {}
 	_ready_branch = ""
 	_optics = {"segments":[],"signals":{}}
 	_platforms = []
 	_stops = {}
+	_decks = {}
 	_sinking = []
 	_surfaces_before = {}
+	_swing_plan = []
+	_swing_counts = {}
+	_swing_braked = {}
 	if _pieces_rules():
+		_swing_plan = stage.get("swings", [])
+		for swing: Dictionary in _swing_plan: _swing_counts[str(swing.id)] = 0
 		var bridges: Dictionary = {}
 		for bridge: Dictionary in level.get("bridges", []): bridges[bridge.id] = bridge
 		for platform: Dictionary in stage.get("platforms", []):
 			var stops: Array = []
 			for id: Variant in platform.stops:
 				stops.append(bridges[str(id)])
-				_stops[str(id)] = true
-			_platforms.append([platform, stops])
+				_stops[str(id)] = _platforms.size()
+			_platforms.append([platform, stops, stops.all(func(stop: Dictionary) -> bool: return stop.rect_cm == stops[0].rect_cm)])
 		for id: Variant in stage.get("sinking", []): _sinking.append(str(id))
 
+## The pieces rules: each pip's surface as the tick began (who stepped onto a
+## stone last), and each travelling deck a tick further along.
+func _before_moves() -> void:
+	if not _pieces_rules(): return
+	_surfaces_before = {"p0": str(_players.p0.surface_id), "p1": str(_players.p1.surface_id)}
+	for id: String in _decks.keys():
+		_decks[id].done = int(_decks[id].done) + 1
+		if int(_decks[id].done) >= int(_decks[id].ticks): _decks.erase(id)
+
 func _advance_source() -> void:
-	if _pieces_rules(): _surfaces_before = {"p0": str(_players.p0.surface_id), "p1": str(_players.p1.surface_id)}
-	# Rules 16: where the memory stood here and in its own world as the tick began.
-	var rides := not _platforms.is_empty()
-	var memory_was: Dictionary = _players[memory_slot].duplicate() if rides else {}
-	var source_was: Dictionary = _source._players[memory_slot].duplicate() if rides else {}
-	var levers_was: Dictionary = _mechanisms.levers.duplicate() if rides else {}
 	super._advance_source()
-	var apart := rides and _place_memory(memory_was, source_was, levers_was)
 	# A evolves independently. Copy only its declared controls, never B's local
 	# selector, shutter, entry latches, or future changed source ownership.
 	# Open controls: copy a control only on a tick the memory turned it.
 	var open := _open_controls()
 	for control: Dictionary in stage.get("controls", []):
 		if open:
-			if _source_toggles.controls.has(control.id) and (not apart or Seven.near(_players[memory_slot], control)): _mechanisms.controls[control.id] = _source._mechanisms.controls[control.id]
+			if _source_toggles.controls.has(control.id): _mechanisms.controls[control.id] = _source._mechanisms.controls[control.id]
 		elif control.owner_slot == first_player_slot:
 			_mechanisms.controls[control.id] = _source._mechanisms.controls[control.id]
 	_ready_branch = _source._ready_branch
-	if _carrying: _replay_memory_items()
 
 func _refresh_routes() -> void:
 	_refresh_optics()
-	var was: Dictionary = _routes.duplicate() if _tide_rules() else {}
+	var was: Dictionary = _routes.duplicate() if _closes_slowly() else {}
 	for route: Dictionary in _route_defs:
 		_routes[route.id] = route.id in _mechanisms.latched_bridges or bool(_entry_latches.get(route.id, false))
 	var open := _open_controls()
 	for gate: Array in _gate_plan:
 		_routes[gate[0]] = bool(_routes.get(gate[0], false)) or gate[1] == null or Seven.predicate(gate[1], stage, _players, _mechanisms, _optics.signals, open)
 	if not _platforms.is_empty(): _move_platforms(was)
-	if _tide_rules(): _close_slowly(was)
+	if _closes_slowly(): _close_slowly(was)
 
-## Rules 16: each platform stands at the one stop whose gate holds, or where
-## it stood when none or several do (its first stop at the start). When it
-## moves, every pip on the old stop rides along to the same spot on the new
-## one, the live pip and the memory alike (_place_memory keeps the memory
-## there afterwards), and so does every item put down on it.
+## The pieces rules: each platform stands at the one stop whose gate holds,
+## or where it stood when none or several do (its first stop at the start).
+## When it moves, every pip on the old stop rides along to the same spot on
+## the new one, both pips alike, and so does every item put down on it, while
+## the deck sets off from wherever it is (_decks).
 func _move_platforms(was: Dictionary) -> void:
 	for entry: Array in _platforms:
 		var stops: Array = entry[1]
@@ -196,6 +220,10 @@ func _move_platforms(was: Dictionary) -> void:
 		var at: Dictionary = holding[0] if holding.size() == 1 else before if not before.is_empty() else holding[0] if not holding.is_empty() else stops[0]
 		for stop: Dictionary in stops: _routes[stop.id] = stop.id == at.id
 		if before.is_empty() or before.id == at.id: continue
+		var from := _deck_now(entry, before)
+		var ticks := PiecesRules.deck_ticks(from, _corner(at), bool(entry[2]))
+		if ticks > 0: _decks[str(entry[0].id)] = {"from": from, "done": 0, "ticks": ticks}
+		else: _decks.erase(str(entry[0].id))
 		var rode := false
 		for slot: String in ["p0", "p1"]:
 			if str(_players[slot].surface_id) != str(before.id): continue
@@ -208,6 +236,37 @@ func _move_platforms(was: Dictionary) -> void:
 			rode = true
 		if rode: _events.append("rode:" + str(entry[0].id))
 
+## Where the deck of platform `entry` stands now, [x, z, height] cm of its
+## corner: on its way to stop `at` (the stop it stands at), or there.
+func _deck_now(entry: Array, at: Dictionary) -> Array:
+	var deck: Dictionary = _decks.get(str(entry[0].id), {})
+	return _corner(at) if deck.is_empty() else PiecesRules.deck_at(deck.from, _corner(at), int(deck.done), int(deck.ticks))
+
+static func _corner(stop: Dictionary) -> Array:
+	return [int(stop.rect_cm[0]), int(stop.rect_cm[1]), int(stop.height_cm)]
+
+## The pieces rules: a pip steps between a platform's stop and anything else
+## only while the deck stands within a step (Navigation.STEP_CM, as at any
+## ledge) of the stop and of the floor it steps from or to, measured from
+## where the deck is this tick. So riders stay on until it gets there, and no
+## pip boards a deck still on its way, the live pip and the friend's replay
+## alike.
+func _may_step(previous: Dictionary, position: Dictionary) -> bool:
+	var left := str(previous.surface_id)
+	var reached := str(position.surface_id)
+	if _platforms.is_empty() or left == reached: return true
+	return _deck_meets(left, int(position.height)) and _deck_meets(reached, int(previous.height))
+
+## Whether `surface`, when it is a platform's stop, has its deck there, within a
+## step of `height`.
+func _deck_meets(surface: String, height: int) -> bool:
+	if not _stops.has(surface): return true
+	var entry: Array = _platforms[int(_stops[surface])]
+	var stop: Dictionary = entry[1].filter(func(each: Dictionary) -> bool: return str(each.id) == surface)[0]
+	var deck := _deck_now(entry, stop)
+	var corner := _corner(stop)
+	return absi(int(deck[0]) - int(corner[0])) <= Navigation.STEP_CM and absi(int(deck[1]) - int(corner[1])) <= Navigation.STEP_CM and absi(int(deck[2]) - height) <= Navigation.STEP_CM
+
 ## `player` (a pip, or an item resting loose) moved from platform stop `from`
 ## to the same spot on stop `to`.
 static func _shifted(player: Dictionary, from: Dictionary, to: Dictionary) -> Dictionary:
@@ -218,48 +277,6 @@ static func _shifted(player: Dictionary, from: Dictionary, to: Dictionary) -> Di
 	moved.surface_id = str(to.id)
 	return moved
 
-## Rules 16: a memory rides what moves in this world, not what moved in its
-## own. While it stands where its own world has it, it keeps to that world
-## (super._advance_source copied it), except that a ride there is undone: it
-## stays on the stop it rode from, at the same spot, and this world's platform
-## carries it or not. Once apart, it walks its recorded input from where it
-## stands here, through this world's floors, and works only the levers and
-## controls it stands by here (its picks and puts already ask this world).
-## `memory_was` and `source_was`: the memory here and in its own world as the
-## tick began; `levers_was`: this world's levers then. Returns whether the
-## memory now stands apart from its own world.
-func _place_memory(memory_was: Dictionary, source_was: Dictionary, levers_was: Dictionary) -> bool:
-	var source_now: Dictionary = _players[memory_slot]
-	if _same_spot(memory_was, source_was):
-		var ride := _ride(str(source_was.surface_id), str(source_now.surface_id))
-		if ride.is_empty(): return false
-		_players[memory_slot] = _shifted(source_now, ride[1], ride[0])
-	else:
-		_players[memory_slot] = memory_was
-		if tick < _prior_frames.size(): _move(quantize_input(_prior_frames[tick]), memory_slot)
-	if _same_spot(_players[memory_slot], source_now): return false
-	for id: Variant in _source_toggles.levers.keys():
-		var lever := _entity(stage.get("levers", []), str(id))
-		if not lever.is_empty() and _near_entity(_players[memory_slot], lever): continue
-		if levers_was.has(id): _mechanisms.levers[id] = levers_was[id]
-		else: _mechanisms.levers.erase(id)
-		_source_toggles.levers.erase(id)
-	return true
-
-## The two stops of one platform a pip went between in a tick, [from, to], or [].
-func _ride(from: String, to: String) -> Array:
-	if from == to or not _stops.has(from) or not _stops.has(to): return []
-	for entry: Array in _platforms:
-		var ends: Array = [{}, {}]
-		for stop: Dictionary in entry[1]:
-			if stop.id == from: ends[0] = stop
-			if stop.id == to: ends[1] = stop
-		if not ends[0].is_empty() and not ends[1].is_empty(): return ends
-	return []
-
-static func _same_spot(a: Dictionary, b: Dictionary) -> bool:
-	return int(a.x) == int(b.x) and int(a.z) == int(b.z) and int(a.height) == int(b.height) and str(a.surface_id) == str(b.surface_id)
-
 func _tide_rules() -> bool:
 	return simulation_version in TIDE_RULES
 
@@ -269,35 +286,62 @@ func _open_controls() -> bool:
 func _pieces_rules() -> bool:
 	return PiecesRules.on(simulation_version)
 
-## Tide rules: a crossing that was open and whose gate no longer holds keeps
-## its floor until `closing_ticks` after the tick it started closing, then
-## shuts. Holding again in the meantime, it simply stays open.
+## Whether a crossing whose gate lets go keeps its floor a while first: the
+## tide rules, and every open turns level (runtime.gd CLOSING_GRACE_TICKS).
+func _closes_slowly() -> bool:
+	return _tide_rules() or _open_turns()
+
+## How long a closing crossing keeps its floor: under open turns the one
+## shared grace, else the definition's "closing_ticks".
+func _grace_ticks() -> int:
+	return CLOSING_GRACE_TICKS if _open_turns() else int(level.get("closing_ticks", 0))
+
+## A crossing that was open and whose gate no longer holds keeps its floor
+## until _grace_ticks() after the tick it started closing, then shuts; the
+## worlds flash its edges meanwhile (kit/closing_warning.gd, from the
+## snapshot's route_progress.closing). Holding again in the meantime, it
+## simply stays open.
 func _close_slowly(was: Dictionary) -> void:
 	for id: String in _routes:
-		# Rules 16: a platform's stop is wherever the platform stands, at once.
+		# The pieces rules: a platform's stop is wherever the platform stands, at once.
 		if _stops.has(id): continue
 		if _routes[id]:
 			_closing.erase(id)
 		elif _closing.has(id):
 			if tick < int(_closing[id]): _routes[id] = true
 			else: _closing.erase(id)
-		elif bool(was.get(id, false)) and int(level.get("closing_ticks", 0)) > 0:
-			_closing[id] = tick + int(level.closing_ticks)
+		elif bool(was.get(id, false)) and _grace_ticks() > 0:
+			_closing[id] = tick + _grace_ticks()
 			_routes[id] = true
 			_events.append("closing:" + id)
 
 ## Tide rules: a spirit standing on a crossing that is now shut drowns, the
-## player's own or the memory's, and the turn ends.
+## player's own or the memory's, and the turn ends. On a stone left high it
+## stays up there; walking off it, or onto it, it falls where it stood, and
+## the turn ends the same way.
 func _check_hazards() -> void:
+	if not _swing_plan.is_empty(): _advance_swings()
 	if not _tide_rules() or not _drowned.is_empty(): return
 	for slot: String in ["p0", "p1"]:
 		var surface := str(_players[slot].surface_id)
-		if _routes.has(surface) and not bool(_routes[surface]):
+		var stood: Dictionary = _high.get(slot, {})
+		if not _walked(slot) or not (_left_high(surface) or (not stood.is_empty() and _left_high(str(stood.surface_id)))): continue
+		if not stood.is_empty(): _players[slot] = stood
+		_drowned = {"slot": slot, "route": str(_players[slot].surface_id), "tick": tick, "fell": true}
+		finished = true
+		_events.append("fell:" + slot)
+		return
+	_high = {}
+	for slot: String in ["p0", "p1"]:
+		var surface := str(_players[slot].surface_id)
+		if _left_high(surface):
+			_high[slot] = _players[slot].duplicate()
+		elif _routes.has(surface) and not bool(_routes[surface]):
 			_drowned = {"slot": slot, "route": surface, "tick": tick}
 			finished = true
 			_events.append("drowned:" + slot)
 			return
-	# Rules 16: a sinking stone holds one pip. The one that stepped on last
+	# The pieces rules: a sinking stone holds one pip. The one that stepped on last
 	# pushes it under (the live pip when both stepped on this tick).
 	var stone := str(_players.p0.surface_id)
 	if stone in _sinking and stone == str(_players.p1.surface_id):
@@ -307,6 +351,57 @@ func _check_hazards() -> void:
 		finished = true
 		_events.append("sank:" + stone)
 		_events.append("drowned:" + slot)
+		return
+	# The pieces rules: a swing across its lane knocks off a pip standing in it, p0 first.
+	for swing: Dictionary in _swing_plan:
+		if not Swings.sweeping(swing, int(_swing_counts[str(swing.id)])): continue
+		for slot: String in ["p0", "p1"]:
+			if not Swings.in_lane(swing, _players[slot]): continue
+			_drowned = {"slot": slot, "route": str(swing.lane.surface_id), "tick": tick, "swing": str(swing.id)}
+			finished = true
+			_events.append("knocked:" + str(swing.id))
+			_events.append("drowned:" + slot)
+			return
+
+## The pieces rules: each swing's beat moves on a tick, unless its brake holds
+## while it hangs back (core/physical/swings.gd). Says when one starts to creak
+## and when it swings.
+func _advance_swings() -> void:
+	for swing: Dictionary in _swing_plan:
+		var id := str(swing.id)
+		var braked: bool = swing.has("brake") and Seven.predicate(swing.brake, stage, _players, _mechanisms, _optics.signals, _open_controls())
+		var count := int(_swing_counts[id])
+		var next := Swings.next_count(swing, count, braked)
+		_swing_counts[id] = next
+		_swing_braked[id] = braked
+		if next == count: continue
+		var at := Swings.phase(swing, next)
+		var sweep_from := int(swing.period_ticks) - int(swing.sweep_ticks)
+		if at == sweep_from: _events.append("swing:" + id)
+		elif int(swing.warn_ticks) > 0 and at == sweep_from - int(swing.warn_ticks): _events.append("swing_creak:" + id)
+
+## Tide rules: whether crossing `id` is a stepping stone shut and left standing
+## too tall by its water.
+func _left_high(id: String) -> bool:
+	return _routes.has(id) and not bool(_routes[id]) and Catalog.left_high(level, id, _mechanisms.controls)
+
+## Open turns: a pip on a stepping stone its water left standing too tall
+## stays up there as the stone shuts (_check_hazards decides what follows),
+## instead of stepping back or falling (runtime.gd _keep_footing).
+func _stands_fast(slot: String) -> bool:
+	return _tide_rules() and _left_high(str(_players[slot].surface_id))
+
+## Whether `slot` walks this tick: the live pip by its input, the friend's by
+## its recorded one (a step _move would take): on open turns the friend's
+## replay from the hand-off, before them the memory's own turn.
+func _walked(slot: String) -> bool:
+	var frame: Variant = null
+	if slot == active_slot: frame = _actions.back() if not _actions.is_empty() else null
+	elif role == "b" and _open_turns(): frame = _friend_frame()
+	elif role == "b" and tick < _prior_frames.size(): frame = quantize_input(_prior_frames[tick])
+	if not frame is Dictionary: return false
+	var direction := Vector2(float(frame.x), float(frame.z)).limit_length(100.0)
+	return Vector2i(roundi(direction.x * MOVE_PER_TICK / 100.0), roundi(direction.y * MOVE_PER_TICK / 100.0)) != Vector2i.ZERO
 
 func _keeps_routes_at_completion() -> bool:
 	return not _tide_rules()
@@ -316,15 +411,16 @@ func _keeps_routes_at_completion() -> bool:
 ## the crossing shuts (and the spirit drowns) or holds again, so every saved
 ## end has both spirits on open floor.
 func _on_closing() -> bool:
-	return _tide_rules() and (_closing.has(str(_players.p0.surface_id)) or _closing.has(str(_players.p1.surface_id)))
+	return _closes_slowly() and (_closing.has(str(_players.p0.surface_id)) or _closing.has(str(_players.p1.surface_id)))
 
 func _may_complete() -> bool:
-	# Rules 16: never while an item flies, so a checkpoint never holds one.
-	return not _on_closing() and _source_holds() and _flights.is_empty()
+	# The pieces rules: never while an item flies, so a checkpoint never holds one.
+	return not _on_closing() and _high.is_empty() and _source_holds() and _flights.is_empty()
 
-## Open turns: a turn never passes with a spirit on a closing crossing or drowned.
+## Open turns: a turn never passes with a spirit on a closing crossing, left
+## high or drowned.
 func _may_pass() -> bool:
-	return not _on_closing() and _drowned.is_empty()
+	return not _on_closing() and _high.is_empty() and _drowned.is_empty()
 
 ## Open turns: the goal holds for a pip only while the goal's light holds.
 func _at_goal(slot: String) -> bool:
@@ -343,16 +439,6 @@ func _source_holds() -> bool:
 		return Seven.predicate(policy.get("when", {}), stage, _players, _mechanisms, _optics.signals, true) and (not policy.has("endpoint") or Seven.near(_players[first_player_slot], policy.endpoint))
 	return true
 
-## Whether this turn may be kept anywhere: a draft, a replay or an upload. A
-## drowned turn is not (tide rules); the screen still holds it for Preview.
-func _memory_frame() -> Array:
-	var frame := super._memory_frame()
-	frame[MemoryTrace.READY_BRANCH] = _ready_branch
-	return frame
-
-func keeps_draft() -> bool:
-	return _drowned.is_empty()
-
 func _refresh_optics() -> void:
 	if not stage.has("optical_field"):
 		_optics={"segments":[],"signals":{}}
@@ -362,14 +448,16 @@ func _refresh_optics() -> void:
 	_optics=LightPieces.optics(stage,_players,_mechanisms,_open_controls())
 	if not _optics.valid: error=str(_optics.error)
 
-func _after_move() -> void:
-	if role != "b": return
-	var player: Dictionary = _players[active_slot]
+## `slot`: the pip that walked; open turns latch for either pip in every turn.
+func _after_move(slot: String = "") -> void:
+	if slot.is_empty(): slot = active_slot
+	if role != "b" and not _open_turns(): return
+	var player: Dictionary = _players[slot]
 	var point := Vector2i(player.x, player.z)
 	var diagonal := int(ceil(float(PLAYER_RADIUS)*0.707107))
 	var samples := [Vector2i.ZERO,Vector2i(PLAYER_RADIUS,0),Vector2i(-PLAYER_RADIUS,0),Vector2i(0,PLAYER_RADIUS),Vector2i(0,-PLAYER_RADIUS),Vector2i(diagonal,diagonal),Vector2i(-diagonal,diagonal),Vector2i(diagonal,-diagonal),Vector2i(-diagonal,-diagonal)]
 	for route: Dictionary in level.get("bridges", []) + level.get("stairs", []):
-		if route.id not in stage.get("entry_latch_routes", []) or not bool(_routes.get(route.id, false)) or not Navigation._owns(route, active_slot): continue
+		if route.id not in stage.get("entry_latch_routes", []) or not bool(_routes.get(route.id, false)) or not Navigation._owns(route, slot): continue
 		for offset: Vector2i in samples:
 			var sample := point+offset
 			if not Navigation.inside(sample,route.rect_cm): continue
@@ -378,19 +466,19 @@ func _after_move() -> void:
 				_entry_latches[route.id] = true
 				break
 
-func context_action() -> Dictionary:
+func _context_for(slot: String) -> Dictionary:
 	if level.is_empty(): return _action("", "", false, "")
 	for control: Dictionary in stage.get("controls", []):
-		if (_open_controls() or control.owner_slot == active_slot) and Seven.near(_players[active_slot],control):
+		if (_open_controls() or control.owner_slot == slot) and Seven.near(_players[slot],control):
 			return _action("selector", "Turn mirror" if control.kind=="mirror" else "Turn switch", true, control.id)
-	var inherited := super.context_action()
+	var inherited := super._context_for(slot)
 	if inherited.id == "ring" and level.id == "long-way-home": inherited.label = "Light window"
 	if inherited.id == "ring" and level.id == "conservatory": inherited.label = "Light garden"
 	# Stage one of the harbour keeps its bell; only the second stage is a lantern.
 	if inherited.id == "ring" and level.id == "turn-of-the-tide" and stage.id == "slack-water": inherited.label = "Light lantern"
 	if inherited.id == "ring" and not Seven.predicate(stage.goal_policy.get("when", {}),stage,_players,_mechanisms,_optics.signals,_open_controls()):
 		inherited.enabled = false
-	if _carrying and str(inherited.id).is_empty(): return _item_action()
+	if _carrying and str(inherited.id).is_empty(): return _item_action(slot)
 	return inherited
 
 func _objective_display() -> Dictionary:
@@ -405,26 +493,28 @@ func _objective_display() -> Dictionary:
 ## Snapshot text only. A harbour hold that began too late to leave the partner
 ## their budget says so, instead of the generic "keep the crossing ready".
 func commit_reason() -> String:
-	if not _drowned.is_empty(): return DROWNED_YOU if _drowned.slot == active_slot else DROWNED_FRIEND
+	var lost := _lost_reason()
+	if not lost.is_empty(): return lost
 	if _on_closing(): return ON_CLOSING
+	if not _high.is_empty(): return LEFT_HIGH
 	if level.get("id", "") == "turn-of-the-tide" and error.is_empty() and role == "a" and not can_commit() and not _ready_branch.is_empty() and _hold_start >= 0 and _hold_start + source_budget_ticks() >= receiver_deadline():
 		return "Try again with more time left for your partner."
 	return super.commit_reason()
 
-func _interact() -> void:
-	var action := context_action()
+func _interact(slot: String = "") -> void:
+	if slot.is_empty(): slot = active_slot
+	var action := _context_for(slot)
 	if _carrying and action.id in CarriedItems.ACTS:
-		_item_act(action)
+		_item_act(action, slot)
 		return
 	if action.id != "selector":
-		super._interact()
+		super._interact(slot)
 		return
 	if not action.enabled: return
 	var control := _entity(stage.controls, str(action.target_id))
 	var values: Array = control.values
 	var index := values.find(_mechanisms.controls[control.id])
 	_mechanisms.controls[control.id] = values[(index+1)%values.size()]
-	_own_toggles.controls[control.id] = true
 	_events.append("selector:"+control.id)
 
 func _update_source_readiness() -> void:
@@ -461,7 +551,7 @@ func source_budget_ticks() -> int:
 	return budget
 
 func can_commit() -> bool:
-	if level.is_empty() or not error.is_empty() or tick==0 or not _drowned.is_empty() or _on_closing(): return false
+	if level.is_empty() or not error.is_empty() or tick==0 or not _drowned.is_empty() or _on_closing() or not _high.is_empty(): return false
 	if role=="b": return complete
 	# Open turns: a first turn may end at any time (runtime.gd can_commit).
 	return _open_turns() or _source_ready()
@@ -476,13 +566,18 @@ func snapshot() -> Dictionary:
 		value.route_progress["entered_routes"]=_sorted_latches()
 		value["source_branch"]=_ready_branch
 		value["optics"]=_optics.duplicate(true)
-		if _tide_rules():
+		if _closes_slowly():
 			# Ticks left before each closing crossing shuts, and who drowned.
 			var closing: Dictionary = {}
 			for id: String in _closing: closing[id] = int(_closing[id]) - tick
 			value.route_progress["closing"]=closing
 			value["drowned"]=_drowned.duplicate()
-		# Rules 16: what each pip carries on its back.
+		# The pieces rules: where each swing is in its beat.
+		if not _swing_plan.is_empty():
+			var swings: Dictionary = {}
+			for swing: Dictionary in _swing_plan: swings[str(swing.id)] = Swings.view(swing, int(_swing_counts[str(swing.id)]), bool(_swing_braked.get(str(swing.id), false)))
+			value["swings"]=swings
+		# The pieces rules: what each pip carries on its back.
 		if _carrying:
 			for slot: String in value.players: value.players[slot]["carrying"]=CarriedItems.held_by(_mechanisms.items,slot)
 	return value
@@ -494,9 +589,46 @@ func _state_body() -> Dictionary:
 	if _tide_rules():
 		value["closing"]=_closing.duplicate()
 		value["drowned"]=_drowned.duplicate()
-	# Rules 16: a stage with throws hashes what is in flight.
+	# Open turns off the tide: only while something closes, so other hashes stay.
+	elif not _closing.is_empty(): value["closing"]=_closing.duplicate()
+	# The pieces rules: a stage with throws hashes what is in flight, and one
+	# with a deck on its way hashes the deck.
 	if not _throws.is_empty(): value["flights"]=_flights.duplicate(true)
+	# The pieces rules: a stage with swings hashes each beat counter.
+	if not _swing_plan.is_empty(): value["swings"]=_swing_counts.duplicate()
+	if not _decks.is_empty(): value["decks"]=_decks.duplicate(true)
 	return value
+
+## Open turns: the journey's own world values (runtime.gd save_world): entry
+## latches, the closing crossings as ticks left, who drowned or fell, who
+## stands left high on a stone (tide rules only), each item's last leg, what
+## flies and each deck on its way (none while every deck stands at its stop,
+## as before decks travelled). The ready branch, holds and surfaces are a
+## first turn's own part or a tick's, so they stay out.
+func _save_extra(world: Dictionary) -> void:
+	world["entry_latches"] = _sorted_latches()
+	var closing: Dictionary = {}
+	for id: String in _closing: closing[id] = int(_closing[id]) - tick
+	world["closing"] = closing
+	world["drowned"] = _drowned.duplicate()
+	if _tide_rules(): world["high"] = _high.duplicate(true)
+	world["legs_taken"] = _legs_taken.duplicate()
+	world["flights"] = _flights.duplicate(true)
+	# Only a stage with swings, so every other world hashes as before.
+	if not _swing_plan.is_empty(): world["swings"] = _swing_counts.duplicate()
+	if not _decks.is_empty(): world["decks"] = _decks.duplicate(true)
+
+func _load_extra(world: Dictionary) -> void:
+	_entry_latches = {}
+	for id: Variant in world.entry_latches: _entry_latches[str(id)] = true
+	_closing = {}
+	for id: Variant in world.closing: _closing[str(id)] = int(world.closing[id]) + tick
+	_drowned = world.drowned.duplicate()
+	_high = world.get("high", {}).duplicate(true)
+	_legs_taken = world.legs_taken.duplicate()
+	_flights = world.flights.duplicate(true)
+	for id: Variant in world.get("swings", {}): _swing_counts[str(id)] = int(world.swings[id])
+	_decks = world.get("decks", {}).duplicate(true)
 
 func _sorted_latches() -> Array:
 	var result:=_entry_latches.keys()
@@ -517,7 +649,7 @@ static func verify_checkpoint(definition: Dictionary, checkpoint: Dictionary) ->
 static func derive_checkpoint(definition: Dictionary, previous: Dictionary, first: Dictionary, second: Dictionary, passes: Array = []) -> Dictionary:
 	return _proof(_record_version(first)).derive_checkpoint(definition,previous,first,second,passes)
 
-# --- Rules 16: carried items and currents (core/physical/carried_items.gd) ---
+# --- The pieces rules: carried items and currents (core/physical/carried_items.gd) ---
 
 ## Sets the items up for this stage: its item_starts over the checkpoint's.
 func _reset_items() -> void:
@@ -525,7 +657,6 @@ func _reset_items() -> void:
 	_item_order = []
 	_hands = {}
 	_legs_taken = {}
-	_memory_floor = {}
 	_throws = {}
 	_flights = {}
 	if not _carrying: return
@@ -544,12 +675,12 @@ func _walk_routes(slot: String) -> Dictionary:
 	for id: String in _hands: routes[id] = false
 	return routes
 
-## What an item offers the live pip here: hand over, put down or pick up.
-func _item_action() -> Dictionary:
-	var player: Dictionary = _players[active_slot]
-	var other := _other(active_slot)
+## What an item offers `slot`'s pip here: hand over, put down or pick up.
+func _item_action(slot: String) -> Dictionary:
+	var player: Dictionary = _players[slot]
+	var other := _other(slot)
 	var items: Dictionary = _mechanisms.items
-	var mine := CarriedItems.held_by(items, active_slot)
+	var mine := CarriedItems.held_by(items, slot)
 	if not mine.is_empty():
 		if not _throws.is_empty() and not CarriedItems.throw_at(stage, player).is_empty(): return _action("throw", CarriedItems.LABELS.throw, true, mine)
 		if CarriedItems.held_by(items, other).is_empty() and CarriedItems.can_hand(level, _hands, player, _players[other], _routes): return _action("give", CarriedItems.LABELS.give, true, mine)
@@ -560,15 +691,14 @@ func _item_action() -> Dictionary:
 		if CarriedItems.carriable(CarriedItems.item(level, id)) and CarriedItems.can_pick(player, items[id], level): return _action("take", CarriedItems.LABELS.take, true, id)
 	return _action("", "", false, "")
 
-## The live pip's press on an item; a later turn replays it from _own_toggles.
-func _item_act(action: Dictionary) -> void:
+## `slot`'s press on an item, the live pip's or the friend's replay's.
+func _item_act(action: Dictionary, slot: String) -> void:
 	var id := str(action.target_id)
 	match str(action.id):
-		"take": _take(id, active_slot)
-		"put": _put(id, _players[active_slot])
-		"give": _give(id, _other(active_slot))
-		"throw": _throw(id, active_slot)
-	(_own_toggles.get_or_add("items", {}) as Dictionary)[id] = str(action.id)
+		"take": _take(id, slot)
+		"put": _put(id, _players[slot])
+		"give": _give(id, _other(slot))
+		"throw": _throw(id, slot)
 
 func _take(id: String, slot: String) -> void:
 	_mechanisms.items[id] = CarriedItems.held(slot)
@@ -592,8 +722,8 @@ func _throw(id: String, slot: String) -> bool:
 	return true
 
 ## Each item in flight moves a tick along its arc; in its last ticks a pip
-## with empty hands at the landing catches it (the live pip first), and at
-## the end it lands at the landing spot.
+## with empty hands at the landing catches it (p0 first, so a catch is the
+## same live or replayed), and at the end it lands at the landing spot.
 func _advance_flights() -> void:
 	for id: String in _item_order:
 		if not _flights.has(id): continue
@@ -606,7 +736,7 @@ func _advance_flights() -> void:
 		_mechanisms.items[id] = CarriedItems.flying(flight.from, to, duration - int(flight.left), duration)
 		if int(flight.left) <= CarriedItems.CATCH_WINDOW_TICKS:
 			var catcher := ""
-			for slot: String in ([active_slot, memory_slot] if role == "b" else [active_slot]):
+			for slot: String in SLOTS:
 				if catcher.is_empty() and CarriedItems.held_by(_mechanisms.items, slot).is_empty() and CarriedItems.can_catch(_players[slot], landing, int(thrown.catch_cm)): catcher = slot
 			if not catcher.is_empty():
 				_mechanisms.items[id] = CarriedItems.held(catcher)
@@ -634,34 +764,6 @@ func _standing_stops() -> Dictionary:
 	for id: String in _stops:
 		if bool(_routes.get(id, false)): standing[id] = true
 	return standing
-
-## The memory's own take, put and give, on the ticks it did them, against the
-## live state (header of carried_items.gd), then the both-hands rule for it.
-func _replay_memory_items() -> void:
-	var memory: Dictionary = _players[memory_slot]
-	var items: Dictionary = _mechanisms.items
-	if tick < _prior_frames.size():
-		var acts: Dictionary = _source._own_toggles.get("items", {})
-		var ids := acts.keys()
-		ids.sort()
-		for id: Variant in ids:
-			if not items.has(id): continue
-			var held: bool = str(items[id].holder) == memory_slot
-			match str(acts[id]):
-				"take":
-					if CarriedItems.held_by(items, memory_slot).is_empty() and not _hands.has(str(memory.surface_id)) and CarriedItems.carriable(CarriedItems.item(level, str(id))) and CarriedItems.can_pick(memory, items[id], level): _take(str(id), memory_slot)
-				"put":
-					if held: _put(str(id), memory)
-				"throw":
-					if held: _throw(str(id), memory_slot)
-				"give":
-					if held and CarriedItems.held_by(items, active_slot).is_empty() and CarriedItems.can_hand(level, _hands, memory, _players[active_slot], _routes): _give(str(id), active_slot)
-					elif held: _put(str(id), memory)
-	if not _hands.has(str(memory.surface_id)):
-		_memory_floor = memory.duplicate()
-		return
-	var loaded := CarriedItems.held_by(items, memory_slot)
-	if not loaded.is_empty() and not _memory_floor.is_empty() and _put(loaded, _memory_floor): _events.append("item_dropped:" + loaded)
 
 ## The current: an item resting at a leg's start moves along it while its
 ## wheel shows the leg's value, `when` holds and `stop` does not; then it

@@ -36,8 +36,8 @@ describe("per-chapter limits", () => {
   });
 
   it("registers no published chapter with its own limits or branch cap, beyond the turn caps and branch cap Turn of the Tide declares", () => {
-    // Sleeping Lighthouse @2 has six stages and its own bounds, pinned in its own suite.
-    const rows = advertisedChapters(env, 2).filter(row => chapter(row) !== sleepingLighthouseV2);
+    // Sleeping Lighthouse @2 (and the published copy older apps hold) has six stages and its own bounds, pinned in its own suite.
+    const rows = advertisedChapters(env, 2).filter(row => row.level_id !== sleepingLighthouseV2.key.level_id);
     expect(rows.length).toBeGreaterThan(7);
     expect(rows.some(row => row.level_id === "turn-of-the-tide")).toBe(true);
     for (const row of rows) {

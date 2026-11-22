@@ -45,9 +45,9 @@
 			"id": "relay",
 			"rect_cm": [
 				-140,
-				-180,
+				-220,
 				220,
-				180
+				220
 			]
 		},
 		{
@@ -80,8 +80,8 @@
 			"height_cm": 0,
 			"id": "relay-socket",
 			"position_cm": [
-				40,
-				0
+				130,
+				110
 			],
 			"radius_cm": 30,
 			"solid": {
@@ -130,7 +130,7 @@
 	"premium": false,
 	"props": [],
 	"schema_version": 7,
-	"simulation_version": 16,
+	"simulation_version": 20,
 	"stages": [
 		{
 			"ball_pads": [],
@@ -157,7 +157,7 @@
 				"owner_slot": "p1",
 				"position_cm": [
 					-60,
-					110
+					160
 				],
 				"radius_cm": 40,
 				"surface_id": "relay"
@@ -198,7 +198,7 @@
 			"receiver_route_cm": [
 				[
 					-60,
-					110
+					160
 				]
 			],
 			"source_policy": {
@@ -272,7 +272,7 @@
 					"id": "relay-crank",
 					"position_cm": [
 						-60,
-						-100
+						-130
 					],
 					"radius_cm": 32,
 					"surface_id": "relay"
@@ -307,8 +307,8 @@
 					"mark": {
 						"height_cm": 0,
 						"position_cm": [
-							150,
-							100
+							140,
+							-80
 						],
 						"radius_cm": 30,
 						"surface_id": "relay"

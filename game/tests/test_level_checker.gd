@@ -26,12 +26,17 @@ extends SceneTree
 ##    controls only, and the route barriers still show those causes.
 ##    A crossing an open version keeps owned must still be needed: opening it
 ##    lets one pip finish a stage alone.
-##  - Open turns (core/physical/open_turns.gd, 14 and 15): a stage ends when a
-##    turn ends with both pips at its goal, its light holding. So no stage may
+##  - Open turns (core/physical/open_turns.gd, carry-over turns): a stage is
+##    one shared timeline and ends the first moment both pips are at its goal,
+##    its light holding. So no stage may
 ##    be finished by one pip alone across any number of its own turns while
 ##    the other does nothing: only a pip that starts at the goal (or on a
 ##    platform that could carry it there, rules 16) could stand there doing
-##    nothing, and the other would still have to reach it. Each
+##    nothing, and the other would still have to reach it. A level's first
+##    stage starts with the host's pip and each later one with whoever did not
+##    close the stage before, so every later stage is checked with either pip
+##    first: neither starts on a pad it would hold through the first turn, and
+##    both pips can stand at a ring goal. Each
 ##    stage must be solvable: both pips reach the goal's floor and stand at it
 ##    with its light able to hold (an over-approximation; the chapter suite's
 ##    witness, played within the cap, is the proof). Each cap is a whole
@@ -51,8 +56,9 @@ extends SceneTree
 ##    size each with its gate, stones and stops that are bridges). The new
 ##    pieces' own rules and their witness are tests/test_pieces.gd's.
 ##  - Props (content/dressing, kit/props.gd extents): two props standing in
-##    each other on a stage, and two controls drawn into each other: a lever,
-##    selector, pad or goal and what its world builds beside it (Tide's lever
+##    each other on a stage, and two controls or pieces drawn into each other: a
+##    lever, selector, pad, goal, item spot, throw mark or landing as wide as
+##    its look draws it, and what its world builds beside it (Tide's lever
 ##    lamps), each swept up its height toward the camera
 ##    (kit/prop_rules.gd control_bodies). Props against routes, pads, levers, goals and
 ##    starts, and the camera's view of them, are tests/test_dressing_lint.gd's.
@@ -73,6 +79,7 @@ const Seven = preload("res://core/journey/seven_mechanisms.gd")
 const PropRules = preload("res://presentation/kit/prop_rules.gd")
 const PiecesRules = preload("res://core/physical/pieces_rules.gd")
 const PiecesWitness = preload("res://tests/pieces_witness.gd")
+const PieceStyles = preload("res://content/dressing/piece_styles.gd")
 ## Known failures: {failure id: why it is left}. Published worlds never change
 ## to clear one; a new chapter fixes its own.
 const KNOWN := {
@@ -85,6 +92,9 @@ const KNOWN := {
 	"sleeping-lighthouse@2 a-welcome-left-on controls beacon-upper-mirror and beacon-hold": "published: the beacon's mirrors stand close round its tower on purpose",
 	"sleeping-lighthouse@2 a-welcome-left-on controls beacon-lower-mirror and tower-projector": "published: the beacon's mirrors stand close round its tower on purpose",
 	"sleeping-lighthouse@2 a-welcome-left-on controls beacon-lower-mirror and beacon-crest": "published: the beacon's mirrors stand close round its tower on purpose",
+	"first-steps@1 a-little-lift controls seed-pedestal and loft-bell": "published before pieces were judged as drawn (2026-11-21): the loft bell's frame stands beside the seed's pedestal on the loft",
+	"first-steps@1 a-place-to-grow controls seed-pedestal and loft-bell": "published before pieces were judged as drawn (2026-11-21): the loft bell's frame stands beside the seed's pedestal on the loft",
+	"the-wishing-well@1 back-for-you controls tower-step and reunion-bell": "published before pieces were judged as drawn (2026-11-21): the tower step stands under the reunion bell's frame",
 }
 ## Published one-pip spots the other pip can reach, each shown by the route
 ## barriers (a gate, a stair's chain, a zone's rope or a lock) rather than
@@ -481,7 +491,9 @@ func _reach(key: String) -> void:
 		var goal: Dictionary = stage.get("goal", {})
 		if not goal.is_empty():
 			if str(stage.get("goal_policy", {}).get("kind", "ring")) == "ring":
-				_stand(graph, found, goal, Shots.goal_slot(stage), where, "goal", journey)
+				# On open turns both pips stand at the goal to finish.
+				for slot: String in (["p0", "p1"] if OpenTurns.pinned(Registry.definition(key)) else [Shots.goal_slot(stage)]):
+					_stand(graph, found, goal, slot, where, "goal", journey)
 			else:
 				var surface := str(goal.get("surface_id", ""))
 				_expect(found.floors.p0.has(surface) or found.floors.p1.has(surface), "%s goal %s" % [where, goal.id], "%s: neither pip reaches the goal %s's floor %s at %s" % [where, goal.id, surface, _cm(goal.position_cm)])
@@ -545,10 +557,18 @@ func _needs_both(key: String) -> void:
 		else:
 			_expect(not solo_finish(graph, stage, item.checkpoint, journey), "%s alone" % where, "%s: with the first pip standing still, the second still reaches the goal with it lit; give the first pip a part only it can play" % where)
 		# The first turn sees the second pip standing still at its start; on a
-		# pad there it would hold it for the first turn.
-		var second: Dictionary = item.checkpoint.get("players", {}).get(Shots.goal_slot(stage), {})
-		for pad: Dictionary in stage.get("pressure_pads", []):
-			_expect(second.is_empty() or not Seven.near(second, pad), "%s pad %s under the second pip" % [where, pad.id], "%s: the second pip starts on the pad %s, so it holds it through the first turn" % [where, pad.id])
+		# pad there it would hold it for the first turn. On open turns a later
+		# stage may start with either pip, so either may be the second.
+		for slot: String in _second_slots(item, turns):
+			var second: Dictionary = item.checkpoint.get("players", {}).get(slot, {})
+			for pad: Dictionary in stage.get("pressure_pads", []):
+				_expect(second.is_empty() or not Seven.near(second, pad), "%s pad %s under the second pip" % [where, pad.id], "%s: %s may play second and starts on the pad %s, so it holds it through the first turn" % [where, slot, pad.id])
+
+## The pips that may play second on a stage of `item` (level_stages.gd): the
+## stage's own second pip, or on open turns either pip for a stage after the
+## first (it starts with whoever did not close the stage before).
+static func _second_slots(item: Dictionary, turns: bool) -> Array:
+	return ["p0", "p1"] if turns and int(item.get("index", 0)) > 0 else [Shots.goal_slot(item.view)]
 
 ## Whether one pip could finish `stage` alone, the other standing still at its
 ## start. Two turns (the default): the second pip lights the goal itself. Open
@@ -729,8 +749,10 @@ func _props(key: String) -> void:
 				var id := "%s props %s and %s" % [where, _prop(one.spec), _prop(two.spec)]
 				_expect(share <= PropRules.PROP_SHARE, id, "%s: the %s and the %s stand in each other (%d%% of the smaller)" % [where, _prop(one.spec), _prop(two.spec), roundi(share * 100.0)])
 
-## Two controls of a stage whose bodies draw into each other on screen (a
-## lever's knob over the housing of the lever behind it). Dressing props are
+## Two controls or pieces of a stage drawn into each other on screen (a
+## lever's knob over the housing of the lever behind it, a nest inside a
+## landing's ticks, a crank board's windlass on a bell's frame), each as wide
+## as its look draws it in the chapter's piece styles. Dressing props are
 ## _props'; controls and the pieces a world builds beside them are never
 ## dressing, so this is where they meet.
 func _controls_apart(key: String) -> void:
@@ -738,8 +760,11 @@ func _controls_apart(key: String) -> void:
 	var extras := Callable()
 	if world != null and world.get_script_method_list().any(func(method: Dictionary) -> bool: return method.name == "control_extras"):
 		extras = func(spot: Dictionary) -> Array: return world.call("control_extras", spot)
+	var descriptor := Index.data(key)
+	var dressing := Dressing.for_key(key)
+	var styles := func(slot: String, id: String) -> String: return PieceStyles.style(slot, id, descriptor, dressing)
 	for item: Dictionary in _stages_of(key):
-		var bodies := PropRules.control_bodies(item.view, extras)
+		var bodies := PropRules.control_bodies(item.view, extras, styles)
 		for a in range(bodies.size()):
 			for b in range(a + 1, bodies.size()):
 				var one: Dictionary = bodies[a]
@@ -758,6 +783,25 @@ func _controls_rule() -> void:
 	var below := front.merged({"y": 0.48}, true)
 	_check(PropRules.bodies_touch(back, front), "A lever just in front of another draws its knob over the other's housing")
 	_check(not PropRules.bodies_touch(back, beside) and not PropRules.bodies_touch(back, below), "Levers side by side, or on different floors, stay apart")
+	# Pieces as drawn: a nest beside a landing (Relay @3 as it stood: nest at
+	# 40 cm, landing at -10 cm) sits inside the landing's ticks, though their
+	# reaches alone would not touch; a crank board's windlass reaches past it.
+	var styles := func(slot: String, _id: String) -> String: return {"item_spot": "nest", "pad": "crank_board"}.get(slot, "")
+	var crowded := {"throws": [{"id": "t", "mark": {"position_cm": [-300, 0], "surface_id": "f", "radius_cm": 30}, "to": "landing"}],
+		"islands": [{"id": "f", "rect_cm": [-400, -200, 200, 200], "height_cm": 0}],
+		"item_spots": [{"id": "nest", "surface_id": "f", "position_cm": [40, 0], "radius_cm": 30, "solid": {"radius_cm": 22, "reach_cm": 20}},
+			{"id": "landing", "surface_id": "f", "position_cm": [-10, 0], "radius_cm": 20}]}
+	var bodies := PropRules.control_bodies(crowded, Callable(), styles)
+	var nest: Dictionary = bodies.filter(func(body: Dictionary) -> bool: return body.id == "nest")[0]
+	var landing: Dictionary = bodies.filter(func(body: Dictionary) -> bool: return body.id == "landing")[0]
+	_check(PropRules.bodies_touch(nest, landing) and not PropRules.bodies_touch(nest.merged({"radius": 0.3}, true), landing.merged({"radius": 0.2}, true)), "A nest inside a landing's ticks draws into it, though their reaches stand apart")
+	_check(bodies.size() == 3 and PropRules.drawn_radius(crowded, {"kind": "pressure_pads", "id": "c", "radius_cm": 32}, styles, {}) > 0.36, "Throw marks and item spots are pieces too, and a crank board is drawn wider than its reach")
+	# A throw mark wholly inside a pad is the pad's (LevelLayout.mark_pad):
+	# one piece, no ring of its own; one reaching past the pad's edge is drawn.
+	var on_pad := crowded.merged({"pressure_pads": [{"id": "pad", "surface_id": "f", "position_cm": [-290, 10], "radius_cm": 48}]}, true)
+	var past := on_pad.merged({"pressure_pads": [{"id": "pad", "surface_id": "f", "position_cm": [-280, 20], "radius_cm": 48}]}, true)
+	var marked := func(view: Dictionary) -> bool: return PropRules.control_bodies(view, Callable(), styles).any(func(body: Dictionary) -> bool: return body.at == Vector2(-3, 0))
+	_check(not marked.call(on_pad) and marked.call(past) and PropRules.control_bodies(on_pad, Callable(), styles).size() == 3, "A throw mark wholly inside a pad is drawn by the pad, one reaching past it by its own ring")
 
 ## The prop rule on small cases, so it can fail at all.
 func _share_rule() -> void:

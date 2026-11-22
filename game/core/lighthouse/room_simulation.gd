@@ -1,9 +1,10 @@
 extends RefCounted
-## sleeping-lighthouse@2 facade over the unchanged schema-3 Lighthouse engine.
-## It speaks the shared two-pair contract (reset/_reset_trusted with a room
-## checkpoint, the shared 20 record keys, mechanisms in the snapshot) and drives
-## AfterYouBorrowedLight with its current physics. borrowed_light.gd and
-## stage_catalog.gd are not edited; solo @1 plays exactly as before.
+## sleeping-lighthouse@2 facade over the schema-3 Lighthouse engine. It speaks
+## the shared two-pair contract (reset/_reset_trusted with a room checkpoint,
+## the shared 20 record keys, mechanisms in the snapshot) and drives
+## AfterYouBorrowedLight with its current physics on the chapter's embedded
+## stage, whose mirrors and selector are solid (core/solid_footprint.gd). Solo
+## @1 plays the plain catalog exactly as before.
 const Native = preload("res://core/lighthouse/borrowed_light.gd")
 const LightCatalog = preload("res://core/lighthouse/stage_catalog.gd")
 const Catalog = preload("res://core/lighthouse/room_catalog.gd")
@@ -65,6 +66,8 @@ func _reset_trusted(definition: Dictionary, stage_id: String, checkpoint: Dictio
 		error = requirement
 		return
 	_inner = Native.new()
+	# The chapter's own stage: its mirrors and selector are solid.
+	_inner.given_stage = stage.native
 	_inner.simulation_version = PHYSICS
 	_inner._reset_trusted(current_role, native_record(prior_a, checkpoint) if current_role == "b" else {}, view)
 	error = str(_inner.error)

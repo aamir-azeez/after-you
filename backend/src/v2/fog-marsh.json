@@ -448,7 +448,7 @@
 	"premium": false,
 	"props": [],
 	"schema_version": 7,
-	"simulation_version": 16,
+	"simulation_version": 20,
 	"stages": [
 		{
 			"ball_pads": [],
@@ -463,6 +463,10 @@
 						126
 					],
 					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
 					"surface_id": "jetty",
 					"values": [
 						"BOAT",
@@ -552,6 +556,10 @@
 						126
 					],
 					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
 					"surface_id": "path"
 				},
 				{
@@ -562,6 +570,10 @@
 						588
 					],
 					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
 					"surface_id": "boat-steps"
 				},
 				{
@@ -572,6 +584,10 @@
 						-224
 					],
 					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
 					"surface_id": "middle"
 				},
 				{
@@ -582,6 +598,10 @@
 						-224
 					],
 					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
 					"surface_id": "middle"
 				}
 			],
@@ -622,6 +642,10 @@
 						560
 					],
 					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
 					"surface_id": "dock",
 					"values": [
 						"SOUTH",
@@ -736,6 +760,10 @@
 						-560
 					],
 					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
 					"surface_id": "dock"
 				},
 				{
@@ -746,6 +774,10 @@
 						-280
 					],
 					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
 					"surface_id": "landing"
 				},
 				{
@@ -756,6 +788,10 @@
 						-336
 					],
 					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
 					"surface_id": "north"
 				}
 			],
@@ -937,6 +973,10 @@
 						574
 					],
 					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
 					"surface_id": "office"
 				}
 			],
@@ -1033,8 +1073,8 @@
 		}
 	},
 	"turn_limits": {
-		"a_ticks": 3150,
-		"b_ticks": 3150
+		"a_ticks": 3000,
+		"b_ticks": 3000
 	},
 	"version": 1
 }

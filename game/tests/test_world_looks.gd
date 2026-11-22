@@ -100,7 +100,7 @@ func _floors_grounded(world: Node3D, stage: Dictionary, definition: Dictionary) 
 			var spot := world.global_transform * Vector3(lerpf(float(r[0]), float(r[2]), 0.1 + 0.2 * (step % 5)) / 100.0, height, lerpf(float(r[1]), float(r[3]), 0.1 + 0.2 * (step / 5)) / 100.0)
 			for ground: Node3D in grounds:
 				var local := ground.global_transform.affine_inverse() * spot
-				if absf(local.y) < 0.03 and (ground.get_meta(ContactShadows.GROUND_RECT_META) as Rect2).has_point(Vector2(local.x, local.z)): found = true
+				if absf(local.y) < 0.03 and ContactShadows.holds(ground, Vector2(local.x, local.z)): found = true
 			if found: break
 		if not found: missing.append(str(island.id))
 	return missing

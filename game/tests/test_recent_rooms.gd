@@ -2,6 +2,7 @@ extends SceneTree
 const Session = preload("res://services/relay_online_session.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 const HOST := "HHHHHHHHHHHHHHHHHHHHHH"
 const GUEST := "GGGGGGGGGGGGGGGGGGGGGG"
 const ROOM := "RRRRRRRRRRRRRRRRRRRRRR"
@@ -77,6 +78,7 @@ func _room(id: String, hosted: bool = false) -> Dictionary:
 	return value
 func _run() -> void:
 	await _summary_resolution_boundaries()
+	await _room_before_update()
 	var api := Api.new()
 	root.add_child(api)
 	var identity := Identity.new()
@@ -140,6 +142,63 @@ func _run() -> void:
 	await process_frame
 	print("After You recent rooms: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
+## A room made before its level's definition changed (published High and Low @1
+## before every lever became solid; ChapterRegistry.retired), kept on this phone
+## as the last room mid-stage: it holds no other room, it is named but never
+## opens, its kept bytes stay, and a join to a friend's such room settles
+## instead of holding the lobby.
+const OLD := "OOOOOOOOOOOOOOOOOOOOOO"
+const OLD_HASH := "6aa907e802c92445745a6452c6ec0850dd8e98724e689b58a8ec82915fb08956"
+const CODE := "A1A1A1A1A1A1A1A1A1A1"
+static func _before_update(room: Dictionary) -> Dictionary:
+	var value := room.duplicate(true)
+	value.level_id = "high-and-low"
+	value.level_version = 1
+	value.definition_hash = OLD_HASH
+	return value
+func _room_before_update() -> void:
+	var api := Api.new()
+	root.add_child(api)
+	var identity := Identity.new()
+	var store := MemoryStore.new()
+	var scope := "relay-lobby-v2:" + GUEST
+	store.values[scope] = {"schema_version":1,"owner_player_id":GUEST,"room_ids":[OLD,ROOM],"last_room":OLD,"pending":{}}
+	var session := Session.new(api, identity.current, store)
+	api.listed = [_room(OLD), _room(ROOM)]
+	api.lookup = {OLD:_room(OLD), ROOM:_room(ROOM)}
+	_check(await session.load_lobby() and await session.prepare_archived_navigation() and await session.open_room(OLD), "The room opens and is kept here mid-stage")
+	var kept_scope := "relay-room-v2:" + GUEST + ":" + OLD
+	var kept: Dictionary = store.values[kept_scope].duplicate(true)
+	kept.snapshot = _before_update(kept.snapshot)
+	store.values[kept_scope] = kept.duplicate(true)
+	_check(Registry.retired(kept.snapshot) and not Registry.retired(_room(ROOM)) and Registry.resolve(kept.snapshot).is_empty(), "The kept room names a level this build plays under another definition")
+	# The update: a new session over the same saves, the server's room still on the old definition.
+	api.listed = [_before_update(_room(OLD)), _room(ROOM)]
+	api.lookup = {OLD:_before_update(_room(OLD)), ROOM:_room(ROOM)}
+	session = Session.new(api, identity.current, store)
+	_check(await session.load_lobby() and await session.prepare_archived_navigation() and session.last_room().is_empty(), "The list loads with the old room in it, and it is no longer the room to go back to")
+	var old_row: Array = session.room_summaries().filter(func(row: Dictionary) -> bool: return row.room_id == OLD)
+	_check(old_row.size() == 1 and old_row[0].title == str(Registry.descriptor("high-and-low@1").title) and old_row[0].get("before_update", false) and session.room_before_update(OLD) and not session.room_before_update(ROOM), "The old room keeps its level's name and says it is from before the update: " + str(old_row))
+	_check(not await session.open_room(OLD) and session.last_error == PlayerCopy.ROOM_BEFORE_UPDATE, "Opening it says to host a new room")
+	_check(await session.open_room(ROOM) and not session.coordinator.read_only, "Another room still opens behind it: " + session.last_error)
+	_check(Canonical.same(store.values[kept_scope], kept), "The old room's kept bytes are left as they were")
+	_check(session.can_leave(), "The friends screen can still be left: " + session.last_error)
+	# Kept as the last room on a phone that never proved it: the check lets it go.
+	store.values[scope] = {"schema_version":1,"owner_player_id":GUEST,"room_ids":[OLD,ROOM],"last_room":OLD,"pending":{}}
+	session = Session.new(api, identity.current, store)
+	_check(await session.load_lobby() and await session.prepare_archived_navigation() and session.last_room().is_empty() and session.last_error.is_empty(), "An unproven old last room is let go at its check: " + session.last_error)
+	_check(await session.open_room(ROOM) and Canonical.same(store.values[kept_scope], kept), "Another room opens and the old room's bytes stay")
+	# A friend's room from an older app: the join settles at once.
+	var joined_id := ("v2:" + CODE).sha256_text().substr(0, 22)
+	api.lookup["join"] = _before_update(_room(joined_id))
+	_check((await session.join_room("room-" + CODE)).is_empty() and session.last_error == PlayerCopy.JOIN_BEFORE_UPDATE, "Joining it says the friend needs to update: " + session.last_error)
+	_check(session._index.pending.is_empty() and store.values[scope].pending.is_empty(), "The join is not kept to hold the lobby")
+	api.lookup["join"] = _room(joined_id)
+	api.lookup[joined_id] = _room(joined_id)
+	_check(not (await session.join_room("room-" + CODE)).is_empty(), "A join of a current room goes on: " + session.last_error)
+	api.queue_free()
+	await process_frame
+
 func _open_into(session: RefCounted, result: Dictionary) -> void:
 	result.value = await session.open_room(ROOM)
 	result.done = true

@@ -13,21 +13,20 @@ extends RefCounted
 ## The numbers: 12 is the comfort rules (8, 9) with open controls, in either
 ## family; 13 the journey's tide rules (10) with open controls. 11 is the
 ## Lighthouse room's, which 0.8.1 already offers on join, so it is skipped.
-## 14 and 15 are 12 and 13 with open turns (core/physical/open_turns.gd): they
-## keep open controls, and 15 keeps the tide. 16 is 15 with the new pieces of
-## The Falls and Fog Marsh (core/physical/pieces_rules.gd): tide, open controls
-## and open turns all hold for it. 17 is 14 with one shared ball (runtime.gd
-## _shared_ball): the live pip and its memory both push it, and a ball home
-## stage ends with it in its cradle; OpenTurns.pin gives it to a level with a ball.
-## Carry-over turns (open_turns.gd, the shared timeline) take over 14 to 17
-## as 18 (comfort), 19 (tide), 20 (pieces) and 21 (shared ball) when the
-## engine lands; 14 to 17 and their code then go.
+## 18 and 19 are 12 and 13 with open turns on the shared timeline
+## (core/physical/open_turns.gd): they keep open controls, and 19 keeps the
+## tide. 20 is 19 with the new pieces of The Falls and Fog Marsh
+## (core/physical/pieces_rules.gd): tide, open controls and open turns all hold
+## for it. 21 is 18 with one shared ball (runtime.gd _shared_ball): both pips
+## push it, and a ball home stage ends with it in its cradle; OpenTurns.pin
+## gives it to a level with a ball. They took over 14 to 17, the open turns
+## whose later turns replayed over nested memories, which are gone.
 const OPEN_RULES_VERSION := 12
 const OPEN_TIDE_RULES_VERSION := 13
-const OPEN_TURNS_RULES_VERSION := 14
-const OPEN_TURNS_TIDE_RULES_VERSION := 15
-const PIECES_RULES_VERSION := 16
-const SHARED_BALL_RULES_VERSION := 17
+const OPEN_TURNS_RULES_VERSION := 18
+const OPEN_TURNS_TIDE_RULES_VERSION := 19
+const PIECES_RULES_VERSION := 20
+const SHARED_BALL_RULES_VERSION := 21
 const TIDE_RULES := [10, OPEN_TIDE_RULES_VERSION, OPEN_TURNS_TIDE_RULES_VERSION, PIECES_RULES_VERSION]
 const OPEN_RULES := [OPEN_RULES_VERSION, OPEN_TIDE_RULES_VERSION, OPEN_TURNS_RULES_VERSION, OPEN_TURNS_TIDE_RULES_VERSION, PIECES_RULES_VERSION, SHARED_BALL_RULES_VERSION]
 const OPEN_TURNS_RULES := [OPEN_TURNS_RULES_VERSION, OPEN_TURNS_TIDE_RULES_VERSION, PIECES_RULES_VERSION, SHARED_BALL_RULES_VERSION]

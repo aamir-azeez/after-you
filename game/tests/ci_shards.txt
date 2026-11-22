@@ -60,9 +60,10 @@ comfort_rules 3
 comfort_social_integration 1
 compressed_rooms_client 1
 connectivity 3
-conservatory_v2 1
+conservatory_v2 2
 conservatory_v2_world 1
 contact_shadows 2
+control_feels 1
 cooperative 1
 cooperative_admission 1
 cooperative_integration 2
@@ -113,6 +114,7 @@ fold_present 2
 fold_present_tide 1
 fold_untouched 2
 follow_camera 1
+footing 1
 frame_policy 1
 friend_nicknames 3
 friend_play_icon 3
@@ -139,6 +141,7 @@ goal_beacon 1
 gone_room_release 1
 graphics_policy 3
 graphics_settings 3
+hand_reach 3
 hard_mode 1
 hard_mode_room 2
 hard_mode_solo 2
@@ -193,6 +196,10 @@ level_checker 3
 level_tools 2
 level_unlocks 2
 level_view 2
+level_view_falls 2
+level_view_tide 1
+level_view_tide_3 3
+level_view_water 3
 license_catalog 2
 licenses 3
 lifecycle 2
@@ -235,7 +242,7 @@ objective_panel 2
 old_story_replays 2
 old_story_saves 2
 online_camera_photo 3
-online_history 2
+online_history 3
 online_history_more 1
 online_live 2
 online_random 3
@@ -252,6 +259,7 @@ open_controls 1
 open_hints 2
 open_turn_fingerprints 3
 open_turns 2
+open_turns_arrival 1
 open_turns_long 1
 open_turns_memories 3
 open_turns_room 2
@@ -421,12 +429,14 @@ stage_blocks 1
 staged_build 3
 staged_build_tide 3
 staged_build_water 3
+start_over 1
 static_batch 1
 step_seats 3
 store_loading_feedback 2
 string_line_breaks 1
 subclass_statics 2
 subscription_access 3
+swing_piece 2
 tap_reliability 1
 tester_access 2
 tester_access_integration 1
@@ -435,6 +445,7 @@ the_falls 2
 the_falls_world 2
 the_wishing_well_v2 3
 the_wishing_well_v2_world 3
+throw_look 2
 tide_world 3
 toast 1
 touch_scrolling 1

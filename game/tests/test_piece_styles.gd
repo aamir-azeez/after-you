@@ -17,7 +17,11 @@ const Goal = preload("res://presentation/kit/pieces/goal.gd")
 const Lift = preload("res://presentation/kit/pieces/lift.gd")
 const Pulley = preload("res://presentation/kit/pieces/pulley.gd")
 const BridgeKit = preload("res://presentation/kit/pieces/bridge.gd")
+const BridgeRoll = preload("res://presentation/kit/pieces/bridge_roll.gd")
 const Raft = preload("res://presentation/kit/pieces/raft.gd")
+const Swing = preload("res://presentation/kit/pieces/swing.gd")
+const CarriedItem = preload("res://presentation/kit/pieces/carried_item.gd")
+const Socket = preload("res://presentation/kit/pieces/socket.gd")
 const Motion = preload("res://presentation/kit/motion.gd")
 ## Frames (at 60 a second) that outlast any arrival's overshoot.
 const SETTLE_FRAMES := int(Motion.ARRIVAL_SECONDS * 60.0) + 2
@@ -46,7 +50,10 @@ func _run() -> void:
 	_check_valve(holder)
 	_check_selector_props(holder)
 	_check_goal_light(holder)
+	_check_goal_pads(holder)
 	_check_arrivals(holder)
+	_check_swings(holder)
+	_check_roll(holder)
 	holder.free()
 	print("PIECE STYLES: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -93,10 +100,13 @@ func _check_every_style(holder: Node3D) -> void:
 	for style: String in Styles.SLOTS.pad:
 		var piece: RefCounted = Pad.build(style, AT, 0.32, holder, {"owner": "p0", "id": "step"})
 		_check(piece.style == style and piece.rim is MeshInstance3D and piece.moving_parts().has(piece.rim), "Pad %s keeps the rim its world lights" % style)
-		_check((piece.spot != null) == (style == "stand_spot"), "Only a stand spot pad keeps a stand spot")
 		var ring := piece.rim.mesh as TorusMesh
-		_check(is_equal_approx(ring.outer_radius, 0.32) if style == "stand_spot" else is_equal_approx(ring.outer_radius, 0.32 + 0.025), "Pad %s's rim is drawn at its radius" % style)
-	_check(Pad.build("stand_spot", AT, 0.36, holder, {"heavy": true}).style == "plain", "A ball pad is always plain")
+		_check(is_equal_approx(ring.outer_radius, 0.32 + 0.025) and piece.at == AT and is_equal_approx(piece.radius, 0.32), "Pad %s's rim is drawn at its radius" % style)
+	_check(Styles.DEFAULT_PICKS.pad == Pad.DEFAULT_STYLE and Pad.DEFAULT_STYLE == "board", "Every pad is the board that presses down unless a block names a crank board or a pan")
+	_check(Pad.build("pan", AT, 0.36, holder, {"heavy": true}).style == "board", "A ball pad is always a board")
+	# The board's top never sinks to the floor, even at the bottom of a press's
+	# dip, so a pad never vanishes under a pip (owner, 2026-11-21).
+	_check(Pad.BOARD_TOP - Pad.BOARD_SINK - Pad.DIP * 1.05 > 0.0, "A pressed board's top stays above the floor")
 	for style: String in Styles.SLOTS.goal:
 		var piece: RefCounted = Goal.build(style, AT, 0.28, holder)
 		_check(piece.style == style and piece.bell is MeshInstance3D and piece.ring is MeshInstance3D and piece.light.get_parent() == holder and piece.root.is_ancestor_of(piece.bell), "Goal %s keeps its bell, ring and light" % style)
@@ -108,7 +118,7 @@ func _check_every_style(holder: Node3D) -> void:
 		piece.set_height(0.8)
 		_check(is_equal_approx(piece.root.position.y, 0.8), "Lift %s's deck stands at the shown height" % style)
 	_check(Lift.build("teapot", Rect2(0, 0, 1, 1), 0.0, 1.0, holder).style == "plain", "An unknown lift style builds plain")
-	_check(Lever.build("teapot", AT, holder).style == "plain" and Selector.build("teapot", AT, holder).style == "plain" and Pad.build("teapot", AT, 0.3, holder).style == "plain" and Goal.build("teapot", AT, 0.3, holder).style == "bell", "An unknown style builds the default")
+	_check(Lever.build("teapot", AT, holder).style == "plain" and Selector.build("teapot", AT, holder).style == "plain" and Pad.build("teapot", AT, 0.3, holder).style == "board" and Goal.build("teapot", AT, 0.3, holder).style == "bell", "An unknown style builds the default")
 	for style: String in Styles.SLOTS.pulley:
 		var post: RefCounted = Pulley.build(style, AT, holder)
 		_check(post.style == style and post.root.get_parent() == holder and post.root.position == AT and post.weight.get_parent() == post.root and is_equal_approx(post.weight.position.y, Pulley.REST_Y), "Pulley %s stands on its spot, its weight hung" % style)
@@ -308,14 +318,107 @@ func _check_arrivals(holder: Node3D) -> void:
 		still.set_held(true, true)
 		pad.set_held(true)
 		var dipped := 0.0
-		var rest: float = pad._dipping().position.y
+		var rest: float = pad._dish.position.y
 		while pad.moving():
 			pad.advance(1.0 / 60.0)
-			dipped = minf(dipped, pad._dipping().position.y - rest)
+			dipped = minf(dipped, pad._dish.position.y - rest)
 		_check(dipped < -0.5 * Pad.DIP and _pose(pad.root) == _pose(still.root), "A pressed %s pad dips (%.4f) and springs back to exactly its held place" % [style, dipped])
 		pad.set_held(false)
 		pad.set_held(true, true)
 		_check(not pad.moving(), "A %s pad held at once never dips" % style)
+
+## A held crossing's deck rolls (kit/pieces/bridge_roll.gd), either way along
+## either axis: shut, the deck is hidden and the roll lies at the near end,
+## its axle across the crossing and its loose end facing the far bank; opening,
+## the deck grows from the near end and the roll runs across over SECONDS; open,
+## the deck is whole and the roll gone; shutting winds it back; an immediate
+## call or reduce motion snaps.
+func _check_roll(holder: Node3D) -> void:
+	for across_x: bool in [true, false]:
+		for near_high: bool in [false, true]:
+			var deck := Node3D.new()
+			deck.position = Vector3(2.0, 0.0, -1.0)
+			holder.add_child(deck)
+			Parts.box(Vector3(2.0, 0.1, 1.0) if across_x else Vector3(1.0, 0.1, 2.0), Parts.TIMBER, Vector3.ZERO, deck)
+			var piece: RefCounted = BridgeRoll.build(deck, holder, deck.position, 0.9, across_x, -1.0, 1.0, near_high, {"slat": Parts.TIMBER, "slat_dark": Parts.TIMBER_DARK, "rope": Parts.CREAM, "log": Parts.TIMBER_DARK})
+			var run := Vector3.RIGHT if across_x else Vector3.BACK
+			var near := -1.0 if not near_high else 1.0
+			var where := "%s, rolled at its %s end" % ["along x" if across_x else "along z", "high" if near_high else "low"]
+			piece.set_open(false, true)
+			var roll: Node3D = piece.roll
+			var along := (roll.global_position - Vector3(2.0, 0.0, -1.0)).dot(run)
+			var axle := roll.global_basis.x.normalized()
+			var loose := roll.global_basis.z.normalized()
+			_check(not deck.visible and roll.visible and absf(axle.dot(run)) < 0.01 and loose.dot(run) * near < -0.99 and along * near > 0.6, "Shut %s: the deck is gone and the roll lies at the near end, across the crossing, its loose end facing the far bank" % where)
+			piece.set_open(true)
+			var frames := 0
+			var halfway := false
+			while piece.moving() and frames < 600:
+				piece.advance(1.0 / 60.0)
+				frames += 1
+				if frames == int(BridgeRoll.SECONDS * 30.0):
+					var laid: float = deck.scale.x if across_x else deck.scale.z
+					var near_edge := (deck.position - Vector3(2.0, 0.0, -1.0)).dot(run) + near * laid
+					halfway = deck.visible and roll.visible and laid > 0.2 and laid < 0.8 and absf(near_edge - near) < 0.001
+			_check(halfway and absf(frames - BridgeRoll.SECONDS * 60.0) <= 2.0, "Opening %s: the deck grows from the near end while the roll runs across, over %.1f s (%d frames)" % [where, BridgeRoll.SECONDS, frames])
+			_check(deck.visible and not roll.visible and deck.scale == Vector3.ONE and deck.position == Vector3(2.0, 0.0, -1.0), "Open %s: the deck is whole where it was built and the roll gone" % where)
+			piece.set_open(false)
+			piece.advance(BridgeRoll.SECONDS * 0.5)
+			_check(deck.visible and roll.visible and piece.moving(), "Shutting %s: the deck rolls back up" % where)
+			piece.reduced_motion = true
+			piece.set_open(true)
+			_check(not piece.moving() and deck.visible and not roll.visible, "With reduce motion %s, the deck is laid at once" % where)
+			piece.root.free()
+			deck.free()
+
+## Every goal stands two pads, one per pip in its colour, wholly inside the
+## goal. One pip at the goal presses only its own pad and nothing rings; with
+## both there both press, and the goal lights and its bell rings once, as
+## the stage is done.
+func _check_goal_pads(holder: Node3D) -> void:
+	for style: String in Styles.SLOTS.goal:
+		var goal: RefCounted = Goal.build(style, Vector3.ZERO, 0.48, holder)
+		_check(goal.pads.size() == 2 and goal.moving_parts().has(goal.pads.p0.rim), "Goal %s stands two pads and keeps them moving" % style)
+		for slot: String in Goal.PAD_SLOTS:
+			var pad: RefCounted = goal.pads[slot]
+			_check(Vector2(pad.at.x, pad.at.z).length() + pad.radius <= 0.48 and (pad.rim.material_override as StandardMaterial3D).albedo_color == Parts.owner_color(slot), "Goal %s's %s pad lies inside the goal in its pip's colour" % [style, slot])
+			_check(pad.at.y + Pad.BOARD_TOP - Pad.BOARD_SINK - Pad.DIP * 1.05 > float(Goal.DISC_TOPS[style]), "Goal %s's %s pad, pressed, stays above the goal's disc" % [style, slot])
+	var goal: RefCounted = Goal.build("bell", Vector3.ZERO, 0.48, holder)
+	var on_pad := func(slot: String) -> Dictionary:
+		var at: Vector3 = goal.pads[slot].at * 100.0
+		return {"x": at.x, "z": at.z, "height": 0}
+	var away := {"x": 400, "z": 0, "height": 0}
+	var rang := 0
+	var one := {"players": {"p0": on_pad.call("p0"), "p1": away}, "objective_done": false, "complete": false}
+	var both := {"players": {"p0": on_pad.call("p0"), "p1": on_pad.call("p1")}, "objective_done": true, "complete": true}
+	for index in range(5):
+		var state: Dictionary = one if index < 2 else both
+		var was: bool = goal.chime.swing.get_meta("rung", false)
+		goal.set_lit(Goal.lit(state))
+		goal.present_pips(state.players)
+		if goal.chime.swing.get_meta("rung", false) and not was: rang += 1
+		if index < 2: _check(goal.pads.p0.held() and not goal.pads.p1.held() and not goal.chime.swing.get_meta("rung", false) and is_zero_approx(goal.light.light_energy), "One pip at the goal presses its own pad and nothing rings")
+	_check(goal.pads.p0.held() and goal.pads.p1.held() and rang == 1, "Both pips at the goal press both pads and the bell rings once (%d)" % rang)
+	_check(not Goal.lit({"objective_done": true, "complete": false}), "Both there before the stage is done: the goal waits to light")
+	# What else the goal waits for: a token per need, dim until it is met.
+	var needy: RefCounted = Goal.build("bell", Vector3.ZERO, 0.48, holder)
+	needy.add_needs({"goal_policy": {"kind": "ring", "when": {"all": [{"item_id": "pipsport", "carried": true}, {"lever_id": "lamp"}]}}}, func(_id: String) -> String: return "pipsport")
+	_check(needy.needs.needs.size() == 2 and Goal.GoalNeeds.icon({"item_id": "x"}) == "item" and Goal.GoalNeeds.icon({"lever_id": "x"}) == "lamp" and Goal.GoalNeeds.icon({"teapot": 1}) == Goal.GoalNeeds.DEFAULT_ICON, "A goal stands a token per need, each kind with its icon and a new kind with the default")
+	var waiting := {"players": {}, "mechanisms": {"items": {"pipsport": {"holder": "", "spot": "post"}}, "levers": {"lamp": false}, "controls": {}}}
+	needy.needs.present(waiting)
+	var dim: bool = needy.needs.needs.all(func(need: Dictionary) -> bool: return not (need.disc.material_override as StandardMaterial3D).emission_enabled)
+	_check(dim and not needy.needs.all_met(), "An unmet need's token stands dim")
+	var met := {"players": {}, "mechanisms": {"items": {"pipsport": {"holder": "p1", "spot": ""}}, "levers": {"lamp": true}, "controls": {}}}
+	needy.needs.present(met)
+	var bright: bool = needy.needs.needs.all(func(need: Dictionary) -> bool: return (need.disc.material_override as StandardMaterial3D).emission_enabled)
+	_check(bright and needy.needs.all_met() and needy.moving_parts().has(needy.needs.needs[0].disc), "Meeting a need lights its token")
+	var finished := {"players": {"p0": on_pad.call("p0"), "p1": on_pad.call("p1")}, "objective_done": true, "complete": true}
+	needy.present_pips(finished.players)
+	needy.set_lit(Goal.lit(finished))
+	_check(needy.pads.p0.held() and needy.pads.p1.held() and needy.needs.all_met() and needy.light.light_energy > 0.0, "Both pads pressed and every need lit: the goal lights as the stage is done")
+	var on_other := {"players": {"p0": on_pad.call("p1"), "p1": away}}
+	goal.present_pips(on_other.players, true)
+	_check(not goal.pads.p0.held() and not goal.pads.p1.held(), "A pip on its friend's pad presses neither")
 
 func _pose(node: Node3D) -> Array:
 	var pose: Array = []
@@ -323,3 +426,36 @@ func _pose(node: Node3D) -> Array:
 		var t: Transform3D = (mesh as MeshInstance3D).global_transform
 		for v: Vector3 in [t.basis.x, t.basis.y, t.basis.z, t.origin]: pose.append(Vector3i((v * 10000.0).round()))
 	return pose
+
+## Every swing style stands on its pivot with its jib turned to the lane, hangs
+## back off the lane between beats (and while held), sweeps across and back
+## within its beat, follows the snapshot's phase without running ahead of it,
+## and snaps on an immediate call. The winch spot and the winch handle build.
+func _check_swings(holder: Node3D) -> void:
+	var swing := {"id": "crane", "pivot_cm": [200, 40], "lane": {"surface_id": "plank", "rect_cm": [150, 188, 250, 252]},
+		"period_ticks": 90, "sweep_ticks": 30, "warn_ticks": 30, "offset_ticks": 0, "outcome": "drowned"}
+	for style: String in Styles.SLOTS.swing:
+		var piece: RefCounted = Swing.build(style, swing, 0.0, 0.0, holder)
+		_check(piece.style == style and piece.root.get_parent() == holder and piece.root.position.is_equal_approx(Vector3(2.0, 0, 0.4)) and is_zero_approx(piece.root.rotation.y), "Swing %s stands on its pivot, its jib toward the lane" % style)
+		_check(piece.moving_parts().has(piece.hanger) and piece.moving_parts().has(piece.shadow) and _meshes(piece.root) > 0, "Swing %s keeps its bucket and shadow moving" % style)
+		var rest: Vector2 = piece.pose(0.0)
+		_check(rest.x < 0.0 and is_zero_approx(rest.y), "Swing %s hangs back, its shadow off the lane, between beats" % style)
+		_check(piece.pose(59.0).x < rest.x and piece.pose(59.0).y > 0.9, "Swing %s is drawn further back, its shadow grown, at the end of the warning" % style)
+		_check(piece.pose(75.0).x > 0.5 and is_equal_approx(piece.pose(89.999).x, rest.x), "Swing %s sweeps out across the lane and back to hang back" % style)
+		piece.set_beat({"phase": 10, "held": false}, true)
+		for frame in range(60): piece.advance(1.0 / 60.0)
+		_check(is_equal_approx(piece._shown, 10.0 + Swing.LEAD) and not piece.moving(), "Swing %s runs on at most LEAD ticks past the last snapshot" % style)
+		piece.set_beat({"phase": 12, "held": false})
+		_check(is_equal_approx(piece._shown, 11.5), "A nearby snapshot does not snap it")
+		piece.set_beat({"phase": 40, "held": true})
+		_check(is_equal_approx(piece._shown, 40.0), "A snapshot far off snaps it")
+		piece.set_beat({"phase": 5, "held": true}, true)
+		for frame in range(30): piece.advance(1.0 / 60.0)
+		_check(is_equal_approx(piece._shown, 5.0) and not piece.moving(), "Held, it stays parked")
+	_check(Swing.build("teapot", swing, 0.0, 0.0, holder).style == Swing.STYLES[0], "An unknown swing style builds the first")
+	var spot := Node3D.new()
+	holder.add_child(spot)
+	Socket.item_spot("winch", spot, {"radius_cm": 30})
+	_check(_meshes(spot) > 0 and is_equal_approx(Socket.rest_height("winch"), Socket.WINCH_AXLE), "The winch spot builds, its handle resting at the socket")
+	var handle: RefCounted = CarriedItem.build("winch_handle", AT, holder, {"id": "handle"})
+	_check(handle.style == "winch_handle" and _meshes(handle.root) > 0 and handle.radius > 0.1, "The winch handle builds")

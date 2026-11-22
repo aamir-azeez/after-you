@@ -1,17 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { canonicalJson, digest } from "../src/protocol";
-import { wishingWell, wishingWellV2 } from "../src/v2/protocol-cooperative";
+import { highAndLowV2, wishingWell } from "../src/v2/protocol-cooperative";
 import type { ChapterAdapter, ChapterCheckpoint, ChapterRecording } from "../src/v2/chapter-types";
-import wellAheadA from "../../game/tests/fixtures/cooperative/the-wishing-well-v2-go-on-ahead-a.json";
-import wellAheadB from "../../game/tests/fixtures/cooperative/the-wishing-well-v2-go-on-ahead-b.json";
-import wellAheadC from "../../game/tests/fixtures/cooperative/the-wishing-well-v2-go-on-ahead-c.json";
-import wellAheadD from "../../game/tests/fixtures/cooperative/the-wishing-well-v2-go-on-ahead-d.json";
-import wellAheadE from "../../game/tests/fixtures/cooperative/the-wishing-well-v2-go-on-ahead-e.json";
-import wellAheadEnd from "../../game/tests/fixtures/cooperative/the-wishing-well-v2-go-on-ahead-checkpoint.json";
-import wellBackA from "../../game/tests/fixtures/cooperative/the-wishing-well-v2-back-for-you-a.json";
-import wellBackB from "../../game/tests/fixtures/cooperative/the-wishing-well-v2-back-for-you-b.json";
-import wellBackC from "../../game/tests/fixtures/cooperative/the-wishing-well-v2-back-for-you-c.json";
-import wellBackEnd from "../../game/tests/fixtures/cooperative/the-wishing-well-v2-back-for-you-checkpoint.json";
+import upperA from "../../game/tests/fixtures/cooperative/high-and-low-v2-upper-path-a.json";
+import upperB from "../../game/tests/fixtures/cooperative/high-and-low-v2-upper-path-b.json";
+import upperC from "../../game/tests/fixtures/cooperative/high-and-low-v2-upper-path-c.json";
+import upperEnd from "../../game/tests/fixtures/cooperative/high-and-low-v2-upper-path-checkpoint.json";
+import aroundA from "../../game/tests/fixtures/cooperative/high-and-low-v2-down-and-around-a.json";
+import aroundB from "../../game/tests/fixtures/cooperative/high-and-low-v2-down-and-around-b.json";
+import aroundC from "../../game/tests/fixtures/cooperative/high-and-low-v2-down-and-around-c.json";
+import aroundEnd from "../../game/tests/fixtures/cooperative/high-and-low-v2-down-and-around-checkpoint.json";
 
 /**
  * Cooperative chapters on open turns (src/v2/protocol-cooperative.ts openCheckpoint), played through the phone's witness
@@ -43,14 +41,14 @@ async function playsThrough(adapter: ChapterAdapter, stages: Stage[]): Promise<v
   }
 }
 
-const WELL: Stage[] = [{ turns: [wellAheadA, wellAheadB, wellAheadC, wellAheadD, wellAheadE], end: wellAheadEnd }, { turns: [wellBackA, wellBackB, wellBackC], end: wellBackEnd }];
+const HIGH: Stage[] = [{ turns: [upperA, upperB, upperC], end: upperEnd }, { turns: [aroundA, aroundB, aroundC], end: aroundEnd }];
 
 describe("cooperative open turns", () => {
-  it("takes the Wishing Well@2 witness: every turn and each stage's closing checkpoint", async () => {
-    expect(wishingWellV2.simulation_version).toBe(14);
-    expect(wishingWellV2.open_turns?.caps).toEqual([10, 20]);
-    expect(wishingWellV2.max_branches).toBe(7);
-    await playsThrough(wishingWellV2, WELL);
+  it("takes the High and Low@2 witness: every turn and each stage's closing checkpoint", async () => {
+    expect(highAndLowV2.simulation_version).toBe(18);
+    expect(highAndLowV2.open_turns?.caps).toEqual([10, 10]);
+    expect(highAndLowV2.max_branches).toBe(7);
+    await playsThrough(highAndLowV2, HIGH);
   });
 
   it("keeps the published Wishing Well on two turns a stage", () => {
@@ -60,18 +58,18 @@ describe("cooperative open turns", () => {
   });
 
   it("refuses a JSON turn, and a closing checkpoint that does not end the stage", async () => {
-    const [stage] = WELL, start = wishingWellV2.initial();
+    const [stage] = HIGH, start = highAndLowV2.initial();
     const { packed: _packed, ...unpacked } = stage.turns[0]; void _packed;
-    await expect((async () => wishingWellV2.recording({ ...unpacked, actions: [], replay_checks: [] }))()).rejects.toMatchObject({ code: "packed_recording_required" });
+    await expect((async () => highAndLowV2.recording({ ...unpacked, actions: [], replay_checks: [] }))()).rejects.toMatchObject({ code: "packed_recording_required" });
     const check = async (change: (value: Json) => void) => {
       const value = flat(structuredClone(stage.end));
       change(value);
-      return close(wishingWellV2, await rehash(value), start, stage.turns);
+      return close(highAndLowV2, await rehash(value), start, stage.turns);
     };
     // One pip away from the bell.
-    await expect(check(value => { value.players.p0.x = 1000; })).rejects.toMatchObject({ code: "checkpoint_goal_mismatch" });
+    await expect(check(value => { value.players.p0.x = 0; })).rejects.toMatchObject({ code: "checkpoint_goal_mismatch" });
     // A turn left out, or the turns named out of order.
-    await expect(close(wishingWellV2, flat(stage.end), start, [stage.turns[0], stage.turns[1], stage.turns[4]])).rejects.toMatchObject({ code: "checkpoint_source_mismatch" });
+    await expect(close(highAndLowV2, flat(stage.end), start, [stage.turns[0], stage.turns[2]])).rejects.toMatchObject({ code: "checkpoint_source_mismatch" });
     await expect(check(value => { value.turn_hashes = [...value.turn_hashes].reverse(); })).rejects.toMatchObject({ code: "checkpoint_source_mismatch" });
   });
 });

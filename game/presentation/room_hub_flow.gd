@@ -625,6 +625,13 @@ func _host_room(chapter_key: String, visibility: String, source: Control = null)
 	var hard: bool = is_instance_valid(screen) and screen.hard_selected()
 	await _tap(source, PlayerCopy.HUB_OPENING_ROOM, host._room_session_idle, PlayerCopy.MAIN_8184DEB41266, _host_room_now.bind(chapter_key, hard))
 
+## Start over on a room this phone could not verify (main.gd): a new room of
+## its chapter, through the same checks and wait as Host. The old room stays
+## in the list, where Leave room still works.
+func host_again(chapter_key: String) -> void:
+	if not is_instance_valid(screen): return
+	await _host_room(chapter_key, host_visibility)
+
 func _host_room_now(chapter_key: String, hard: bool = false) -> void:
 	_leave()
 	await host.relay_lobby_flow.open_lobby(chapter_key)

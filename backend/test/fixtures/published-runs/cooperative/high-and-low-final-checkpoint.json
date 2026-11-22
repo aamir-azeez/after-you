@@ -1,0 +1,444 @@
+{
+	"a_recording_hash": "55effb0df95c38eb7b9dbb5a105d12d46e76806fdd4ad31bee35fc802ca401a7",
+	"b_recording_hash": "93a5c8bdbff40fea2ba272d3f538779d6500e4b945aab6531850357244d29ddb",
+	"checkpoint_hash": "fd6dbf4644fd7bac961fdb9cba13c662e8f0f3eb06a8d3350153f9e2faa4fab1",
+	"completed_stage_id": "down-and-around",
+	"definition_hash": "6aa907e802c92445745a6452c6ec0850dd8e98724e689b58a8ec82915fb08956",
+	"level_id": "high-and-low",
+	"level_version": 1,
+	"mechanisms": {
+		"latched_bridges": [
+			"blue-stair",
+			"lower-causeway",
+			"red-passage"
+		],
+		"levers": {
+			"loft-lever": true,
+			"shore-lever": true
+		},
+		"props": {}
+	},
+	"next_stage_id": "",
+	"players": {
+		"p0": {
+			"height": 0,
+			"surface_id": "garden",
+			"x": 912,
+			"z": 0
+		},
+		"p1": {
+			"height": 0,
+			"surface_id": "lower-ledge",
+			"x": 448,
+			"z": 48
+		}
+	},
+	"previous_checkpoint_hash": "d97c4bf6e6d03b92dac32e56a164ba19e18d12975ee11b101283834ec113a5e6",
+	"proof": {
+		"a": {
+			"actions": [
+				{
+					"action": false,
+					"ticks": 10,
+					"x": 100,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 1,
+					"x": 0,
+					"z": 0
+				},
+				{
+					"action": true,
+					"ticks": 1,
+					"x": 0,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 22,
+					"x": 0,
+					"z": 100
+				},
+				{
+					"action": false,
+					"ticks": 26,
+					"x": 100,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 15,
+					"x": 0,
+					"z": 0
+				}
+			],
+			"catch_assistance": true,
+			"checkpoint_hash": "d97c4bf6e6d03b92dac32e56a164ba19e18d12975ee11b101283834ec113a5e6",
+			"completed": false,
+			"definition_hash": "6aa907e802c92445745a6452c6ec0850dd8e98724e689b58a8ec82915fb08956",
+			"duration_ticks": 75,
+			"final_state_hash": "c36aeddd8a3d2459ceedadc56a84ef8ad7025baf86cba83df555b8e32c327cfd",
+			"level_id": "high-and-low",
+			"level_version": 1,
+			"outcome": {
+				"objective_complete": false,
+				"source_ready": true
+			},
+			"player_slot": "p1",
+			"recording_hash": "55effb0df95c38eb7b9dbb5a105d12d46e76806fdd4ad31bee35fc802ca401a7",
+			"replay_checks": [
+				{
+					"state_hash": "4e0c5e0c52a18d7bb649369bec2dff75b566039f8d6108627666dbe406aa31c7",
+					"tick": 30
+				},
+				{
+					"state_hash": "3807abdd4764a24d38801b3db0239ea235d874751c10a5d4f5d9db1f041e9ca3",
+					"tick": 60
+				},
+				{
+					"state_hash": "c36aeddd8a3d2459ceedadc56a84ef8ad7025baf86cba83df555b8e32c327cfd",
+					"tick": 75
+				}
+			],
+			"role": "a",
+			"schema_version": 6,
+			"simulation_version": 6,
+			"source_recording_hash": "",
+			"stage_id": "down-and-around",
+			"stage_version": 1,
+			"tick_rate": 30
+		},
+		"b": {
+			"actions": [
+				{
+					"action": false,
+					"ticks": 34,
+					"x": 0,
+					"z": 100
+				},
+				{
+					"action": false,
+					"ticks": 112,
+					"x": 100,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 18,
+					"x": 0,
+					"z": -100
+				},
+				{
+					"action": false,
+					"ticks": 58,
+					"x": 100,
+					"z": 0
+				},
+				{
+					"action": false,
+					"ticks": 1,
+					"x": 0,
+					"z": 0
+				},
+				{
+					"action": true,
+					"ticks": 1,
+					"x": 0,
+					"z": 0
+				}
+			],
+			"catch_assistance": true,
+			"checkpoint_hash": "d97c4bf6e6d03b92dac32e56a164ba19e18d12975ee11b101283834ec113a5e6",
+			"completed": true,
+			"definition_hash": "6aa907e802c92445745a6452c6ec0850dd8e98724e689b58a8ec82915fb08956",
+			"duration_ticks": 224,
+			"final_state_hash": "4bdefbf6cfc0d3cb98d72f17cfc00bf74fa9defe0f5446d55c58237fa9b73c8d",
+			"level_id": "high-and-low",
+			"level_version": 1,
+			"outcome": {
+				"objective_complete": true,
+				"source_ready": true
+			},
+			"player_slot": "p0",
+			"recording_hash": "93a5c8bdbff40fea2ba272d3f538779d6500e4b945aab6531850357244d29ddb",
+			"replay_checks": [
+				{
+					"state_hash": "d026102c82dbef68172fe9e4f1ef832caae57617e14c37927a70ab0ce81eebb5",
+					"tick": 30
+				},
+				{
+					"state_hash": "3fb8eb11052ae7a08584c677c1d13162b54fa82667fea7e0f100bf4436efa54e",
+					"tick": 60
+				},
+				{
+					"state_hash": "7518efcdd0372225a742d8524d545849172e7b6df7fe0f551beb4c6987ac844a",
+					"tick": 90
+				},
+				{
+					"state_hash": "309166572e861aebafeaa2e1ef0061763a852e2db4ba9ba553214928d070801f",
+					"tick": 120
+				},
+				{
+					"state_hash": "6c0adf52bb2f5a9f67b1cc0ae278991da9803ed0e42cf711da2c027c1cfe7d6e",
+					"tick": 150
+				},
+				{
+					"state_hash": "6868ef0d682b08d066cb9551cd772a5651fa1855b17726be19ab1316e6e3693e",
+					"tick": 180
+				},
+				{
+					"state_hash": "ec4cd18128c9c2f424d2eabd90fd5434e2d7005ebc390c573a92e7b84fdf3793",
+					"tick": 210
+				},
+				{
+					"state_hash": "4bdefbf6cfc0d3cb98d72f17cfc00bf74fa9defe0f5446d55c58237fa9b73c8d",
+					"tick": 224
+				}
+			],
+			"role": "b",
+			"schema_version": 6,
+			"simulation_version": 6,
+			"source_recording_hash": "55effb0df95c38eb7b9dbb5a105d12d46e76806fdd4ad31bee35fc802ca401a7",
+			"stage_id": "down-and-around",
+			"stage_version": 1,
+			"tick_rate": 30
+		},
+		"checkpoint": {
+			"a_recording_hash": "21436c8a008ced1cf950c55d08ebafb5908cfe1637b83b9f10b872f61bb833d6",
+			"b_recording_hash": "f65a4abc094cdc6256e58b5133e655314ba3eec3f7363348e5eb0426f61a86a0",
+			"checkpoint_hash": "d97c4bf6e6d03b92dac32e56a164ba19e18d12975ee11b101283834ec113a5e6",
+			"completed_stage_id": "upper-path",
+			"definition_hash": "6aa907e802c92445745a6452c6ec0850dd8e98724e689b58a8ec82915fb08956",
+			"level_id": "high-and-low",
+			"level_version": 1,
+			"mechanisms": {
+				"latched_bridges": [
+					"blue-stair"
+				],
+				"levers": {
+					"shore-lever": true
+				},
+				"props": {}
+			},
+			"next_stage_id": "down-and-around",
+			"players": {
+				"p0": {
+					"height": 0,
+					"surface_id": "shore",
+					"x": -448,
+					"z": -128
+				},
+				"p1": {
+					"height": 160,
+					"surface_id": "loft",
+					"x": 160,
+					"z": -128
+				}
+			},
+			"previous_checkpoint_hash": "b0315be3c521d13bf652a37825279987dce4382634a075aff5ab4baae7512dfc",
+			"proof": {
+				"a": {
+					"actions": [
+						{
+							"action": false,
+							"ticks": 2,
+							"x": -100,
+							"z": 0
+						},
+						{
+							"action": false,
+							"ticks": 30,
+							"x": 0,
+							"z": 100
+						},
+						{
+							"action": false,
+							"ticks": 1,
+							"x": 0,
+							"z": 0
+						},
+						{
+							"action": true,
+							"ticks": 1,
+							"x": 0,
+							"z": 0
+						},
+						{
+							"action": false,
+							"ticks": 12,
+							"x": 100,
+							"z": 0
+						},
+						{
+							"action": false,
+							"ticks": 30,
+							"x": 0,
+							"z": -100
+						},
+						{
+							"action": false,
+							"ticks": 15,
+							"x": 0,
+							"z": 0
+						}
+					],
+					"catch_assistance": true,
+					"checkpoint_hash": "b0315be3c521d13bf652a37825279987dce4382634a075aff5ab4baae7512dfc",
+					"completed": false,
+					"definition_hash": "6aa907e802c92445745a6452c6ec0850dd8e98724e689b58a8ec82915fb08956",
+					"duration_ticks": 91,
+					"final_state_hash": "101175117762b3ab951c89b92fd3c2e5256e90c378d449957aa4b773387ce670",
+					"level_id": "high-and-low",
+					"level_version": 1,
+					"outcome": {
+						"objective_complete": false,
+						"source_ready": true
+					},
+					"player_slot": "p0",
+					"recording_hash": "21436c8a008ced1cf950c55d08ebafb5908cfe1637b83b9f10b872f61bb833d6",
+					"replay_checks": [
+						{
+							"state_hash": "9811049c6c97b19596a8745b2abe2b08ac705401488eb43981f379642e881f7e",
+							"tick": 30
+						},
+						{
+							"state_hash": "877e36a62cd6849dd11c50d3e314e2a29a8b455b0dc21c9c50aad46733db2b97",
+							"tick": 60
+						},
+						{
+							"state_hash": "8ef929c3647f855b661fa19dfd54a34da2458f98062056577350d93ae3eec477",
+							"tick": 90
+						},
+						{
+							"state_hash": "101175117762b3ab951c89b92fd3c2e5256e90c378d449957aa4b773387ce670",
+							"tick": 91
+						}
+					],
+					"role": "a",
+					"schema_version": 6,
+					"simulation_version": 6,
+					"source_recording_hash": "",
+					"stage_id": "upper-path",
+					"stage_version": 1,
+					"tick_rate": 30
+				},
+				"b": {
+					"actions": [
+						{
+							"action": false,
+							"ticks": 122,
+							"x": 100,
+							"z": 0
+						},
+						{
+							"action": false,
+							"ticks": 1,
+							"x": 50,
+							"z": 0
+						},
+						{
+							"action": false,
+							"ticks": 16,
+							"x": 0,
+							"z": -100
+						},
+						{
+							"action": false,
+							"ticks": 1,
+							"x": 0,
+							"z": 0
+						},
+						{
+							"action": true,
+							"ticks": 1,
+							"x": 0,
+							"z": 0
+						}
+					],
+					"catch_assistance": true,
+					"checkpoint_hash": "b0315be3c521d13bf652a37825279987dce4382634a075aff5ab4baae7512dfc",
+					"completed": true,
+					"definition_hash": "6aa907e802c92445745a6452c6ec0850dd8e98724e689b58a8ec82915fb08956",
+					"duration_ticks": 141,
+					"final_state_hash": "5b2dd3ec05a906aee789e05694fd42c2e481b179030f8c6f77d031911d6ba71c",
+					"level_id": "high-and-low",
+					"level_version": 1,
+					"outcome": {
+						"objective_complete": true,
+						"source_ready": true
+					},
+					"player_slot": "p1",
+					"recording_hash": "f65a4abc094cdc6256e58b5133e655314ba3eec3f7363348e5eb0426f61a86a0",
+					"replay_checks": [
+						{
+							"state_hash": "20b992b0a1fdea2b69ddb5d5a6fd72c1612f366f0aa604eaa3acfdf8227cc634",
+							"tick": 30
+						},
+						{
+							"state_hash": "f16ddf78efc185c835e59f9cb4a21ed75279da30923552ac1d78818941d09af7",
+							"tick": 60
+						},
+						{
+							"state_hash": "813f1938d52ca65ab34d4d4143c3da372b8d1f5e4046d5ce5e5f6d9cd5c839ce",
+							"tick": 90
+						},
+						{
+							"state_hash": "518fa4d2964ca2fa4226e980943128a2f3f46eedafd730a2c6bcad95892f92aa",
+							"tick": 120
+						},
+						{
+							"state_hash": "5b2dd3ec05a906aee789e05694fd42c2e481b179030f8c6f77d031911d6ba71c",
+							"tick": 141
+						}
+					],
+					"role": "b",
+					"schema_version": 6,
+					"simulation_version": 6,
+					"source_recording_hash": "21436c8a008ced1cf950c55d08ebafb5908cfe1637b83b9f10b872f61bb833d6",
+					"stage_id": "upper-path",
+					"stage_version": 1,
+					"tick_rate": 30
+				},
+				"checkpoint": {
+					"a_recording_hash": "",
+					"b_recording_hash": "",
+					"checkpoint_hash": "b0315be3c521d13bf652a37825279987dce4382634a075aff5ab4baae7512dfc",
+					"completed_stage_id": "",
+					"definition_hash": "6aa907e802c92445745a6452c6ec0850dd8e98724e689b58a8ec82915fb08956",
+					"level_id": "high-and-low",
+					"level_version": 1,
+					"mechanisms": {
+						"latched_bridges": [],
+						"levers": {},
+						"props": {}
+					},
+					"next_stage_id": "upper-path",
+					"players": {
+						"p0": {
+							"height": 0,
+							"surface_id": "shore",
+							"x": -528,
+							"z": -128
+						},
+						"p1": {
+							"height": 0,
+							"surface_id": "shore",
+							"x": -288,
+							"z": 0
+						}
+					},
+					"previous_checkpoint_hash": "",
+					"proof": {},
+					"schema_version": 6,
+					"stage_index": 0
+				}
+			},
+			"schema_version": 6,
+			"stage_index": 1
+		}
+	},
+	"schema_version": 6,
+	"stage_index": 2
+}

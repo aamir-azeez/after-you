@@ -38,6 +38,8 @@ const Families = preload("res://services/chapter_families.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 ## A spot with no radius of its own is this wide (cm).
 const SPOT_RADIUS_CM := 30
+## The lists whose spots are pads a pip stands on to hold something.
+const PAD_KINDS := ["pressure_pads", "hold_pads", "plates", "plate"]
 
 ## The plan of `stage_id` of a registered chapter (its own definition unless
 ## `level` is given, as a tool does for an edited layout); {} if unknown.
@@ -92,6 +94,22 @@ static func spots(plan: Dictionary) -> Array:
 			var surface := str(start.get("surface_id", "")) if start is Dictionary else ""
 			found.append({"id": slot, "kind": "start", "position_cm": start.position_cm if start is Dictionary else start, "radius_cm": SPOT_RADIUS_CM, "surface_id": surface, "height_cm": int(heights.get(surface, 0)), "solid": false})
 	return found
+
+## The pad of `plan` a throw's `mark` ({position_cm, surface_id, radius_cm})
+## lies wholly inside on its floor, {} if none. A pip in that mark always
+## stands on the pad, so the pad is the throw spot: the world draws no ring
+## for the mark and the level checker counts the two as one piece. Where the
+## pip throws from and how is unchanged (core/physical/carried_items.gd).
+static func mark_pad(plan: Dictionary, mark: Dictionary) -> Dictionary:
+	var at := Vector2(float(mark.position_cm[0]), float(mark.position_cm[1]))
+	var reach := float(mark.get("radius_cm", SPOT_RADIUS_CM))
+	for kind: String in PAD_KINDS:
+		var pads: Variant = plan.get(kind, [])
+		for pad: Variant in (pads if pads is Array else [pads]):
+			if not pad is Dictionary or not pad.get("position_cm") is Array or str(pad.get("surface_id", "")) != str(mark.get("surface_id", "")): continue
+			var centre := Vector2(float(pad.position_cm[0]), float(pad.position_cm[1]))
+			if at.distance_to(centre) + reach <= float(pad.get("radius_cm", SPOT_RADIUS_CM)): return pad
+	return {}
 
 static func _collect(value: Variant, heights: Dictionary, found: Array, kind: String) -> void:
 	if value is Dictionary:

@@ -1,0 +1,512 @@
+{
+	"bridges": [
+		{
+			"from_surface": "garden",
+			"height_cm": 0,
+			"id": "garden-plank",
+			"rect_cm": [
+				150,
+				188,
+				250,
+				252
+			],
+			"to_surface": "garden-east"
+		},
+		{
+			"from_surface": "cliff",
+			"hands": true,
+			"height_cm": 160,
+			"id": "rope-walk-west",
+			"rect_cm": [
+				1232,
+				-176,
+				1376,
+				-112
+			],
+			"to_surface": "rope-rock"
+		},
+		{
+			"from_surface": "rope-rock",
+			"hands": true,
+			"height_cm": 160,
+			"id": "rope-walk-east",
+			"rect_cm": [
+				1424,
+				-176,
+				1568,
+				-112
+			],
+			"to_surface": "tower"
+		}
+	],
+	"closing_ticks": 30,
+	"drops": [
+		{
+			"destination_surface": "well-floor",
+			"height_cm": 0,
+			"id": "well-mouth",
+			"rect_cm": [
+				1132,
+				-36,
+				1188,
+				-28
+			],
+			"surface_id": "cliff"
+		}
+	],
+	"id": "the-wishing-well",
+	"islands": [
+		{
+			"height_cm": 0,
+			"id": "garden",
+			"rect_cm": [
+				-560,
+				144,
+				150,
+				288
+			]
+		},
+		{
+			"height_cm": 0,
+			"id": "garden-east",
+			"rect_cm": [
+				250,
+				144,
+				1040,
+				288
+			]
+		},
+		{
+			"height_cm": 160,
+			"id": "cliff",
+			"rect_cm": [
+				-560,
+				-208,
+				1232,
+				-16
+			]
+		},
+		{
+			"height_cm": 0,
+			"id": "well-floor",
+			"rect_cm": [
+				1120,
+				-48,
+				1200,
+				48
+			]
+		},
+		{
+			"height_cm": 160,
+			"id": "rope-rock",
+			"rect_cm": [
+				1376,
+				-192,
+				1424,
+				-96
+			]
+		},
+		{
+			"height_cm": 160,
+			"id": "tower",
+			"rect_cm": [
+				1568,
+				-208,
+				2240,
+				48
+			]
+		}
+	],
+	"item_spots": [
+		{
+			"height_cm": 0,
+			"id": "well-bottom",
+			"position_cm": [
+				1180,
+				28
+			],
+			"radius_cm": 24,
+			"surface_id": "well-floor"
+		},
+		{
+			"height_cm": 160,
+			"id": "winch-landing",
+			"position_cm": [
+				2060,
+				-40
+			],
+			"radius_cm": 66,
+			"surface_id": "tower"
+		},
+		{
+			"height_cm": 160,
+			"id": "winch",
+			"position_cm": [
+				2140,
+				-144
+			],
+			"radius_cm": 30,
+			"solid": {
+				"radius_cm": 22,
+				"reach_cm": 20
+			},
+			"surface_id": "tower"
+		}
+	],
+	"items": [
+		{
+			"at": "well-bottom",
+			"id": "handle"
+		}
+	],
+	"obstacles": [
+		{
+			"id": "standing-stone-4",
+			"rect_cm": [
+				704,
+				-208,
+				768,
+				-88
+			],
+			"surface_id": "cliff"
+		},
+		{
+			"id": "garden-bed-4",
+			"rect_cm": [
+				576,
+				208,
+				640,
+				288
+			],
+			"surface_id": "garden-east"
+		},
+		{
+			"id": "rope-drum-1",
+			"rect_cm": [
+				1920,
+				-208,
+				1984,
+				-64
+			],
+			"surface_id": "tower"
+		}
+	],
+	"premium": false,
+	"props": [],
+	"schema_version": 7,
+	"simulation_version": 20,
+	"stages": [
+		{
+			"ball_pads": [],
+			"controls": [],
+			"entry_latch_routes": [],
+			"first_player_slot": "p0",
+			"gates": [
+				{
+					"route_id": "cliff-steps",
+					"when": {
+						"pad_id": "gate-step"
+					}
+				},
+				{
+					"route_id": "long-stair",
+					"when": {
+						"pad_id": "bucket-rope"
+					}
+				},
+				{
+					"route_id": "well-ladder",
+					"when": {
+						"pad_id": "ladder-step"
+					}
+				},
+				{
+					"route_id": "rope-walk-west",
+					"when": {
+						"pad_id": "ladder-step"
+					}
+				},
+				{
+					"route_id": "rope-walk-east",
+					"when": {
+						"pad_id": "ladder-step"
+					}
+				},
+				{
+					"route_id": "garden-plank"
+				}
+			],
+			"goal": {
+				"height_cm": 160,
+				"id": "lookout-bell",
+				"owner_slot": "p1",
+				"position_cm": [
+					1160,
+					-96
+				],
+				"radius_cm": 28,
+				"surface_id": "cliff"
+			},
+			"goal_policy": {
+				"kind": "ring"
+			},
+			"id": "go-on-ahead",
+			"kind": "route_endpoint",
+			"levers": [],
+			"pressure_pads": [
+				{
+					"height_cm": 0,
+					"id": "gate-step",
+					"position_cm": [
+						-384,
+						192
+					],
+					"radius_cm": 32,
+					"surface_id": "garden"
+				},
+				{
+					"height_cm": 0,
+					"id": "bucket-rope",
+					"position_cm": [
+						1160,
+						0
+					],
+					"radius_cm": 48,
+					"surface_id": "well-floor"
+				},
+				{
+					"height_cm": 160,
+					"id": "ladder-step",
+					"position_cm": [
+						1060,
+						-96
+					],
+					"radius_cm": 32,
+					"surface_id": "cliff"
+				},
+				{
+					"height_cm": 160,
+					"id": "brake-board",
+					"position_cm": [
+						200,
+						-72
+					],
+					"radius_cm": 32,
+					"surface_id": "cliff"
+				}
+			],
+			"receiver_action_ticks": 2,
+			"receiver_route_cm": [
+				[
+					1160,
+					-96
+				]
+			],
+			"source_policy": {
+				"kind": "route_endpoint",
+				"when": {}
+			},
+			"swings": [
+				{
+					"brake": {
+						"pad_id": "brake-board"
+					},
+					"id": "well-crane",
+					"lane": {
+						"rect_cm": [
+							150,
+							188,
+							250,
+							252
+						],
+						"surface_id": "garden-plank"
+					},
+					"offset_ticks": 0,
+					"outcome": "drowned",
+					"period_ticks": 90,
+					"pivot_cm": [
+						200,
+						40
+					],
+					"sweep_ticks": 30,
+					"warn_ticks": 30
+				}
+			],
+			"turn_cap": 10,
+			"version": 1
+		},
+		{
+			"ball_pads": [],
+			"controls": [],
+			"entry_latch_routes": [],
+			"first_player_slot": "p1",
+			"gates": [
+				{
+					"route_id": "rope-walk-west",
+					"when": {
+						"any": [
+							{
+								"pad_id": "still-holding"
+							},
+							{
+								"item_id": "handle",
+								"spot_id": "winch"
+							}
+						]
+					}
+				},
+				{
+					"route_id": "rope-walk-east",
+					"when": {
+						"any": [
+							{
+								"pad_id": "still-holding"
+							},
+							{
+								"item_id": "handle",
+								"spot_id": "winch"
+							}
+						]
+					}
+				},
+				{
+					"route_id": "well-ladder",
+					"when": {
+						"item_id": "handle",
+						"spot_id": "winch"
+					}
+				}
+			],
+			"goal": {
+				"height_cm": 160,
+				"id": "reunion-bell",
+				"owner_slot": "p0",
+				"position_cm": [
+					1616,
+					16
+				],
+				"radius_cm": 28,
+				"surface_id": "tower"
+			},
+			"goal_policy": {
+				"kind": "ring"
+			},
+			"id": "back-for-you",
+			"item_starts": {
+				"handle": "well-bottom"
+			},
+			"kind": "route_endpoint",
+			"levers": [],
+			"pressure_pads": [
+				{
+					"height_cm": 0,
+					"id": "still-holding",
+					"position_cm": [
+						1160,
+						0
+					],
+					"radius_cm": 48,
+					"surface_id": "well-floor"
+				}
+			],
+			"receiver_action_ticks": 2,
+			"receiver_route_cm": [
+				[
+					1616,
+					16
+				]
+			],
+			"source_policy": {
+				"kind": "route_endpoint",
+				"when": {}
+			},
+			"throws": [
+				{
+					"catch_cm": 100,
+					"flight_ticks": 120,
+					"id": "handle-throw",
+					"mark": {
+						"height_cm": 0,
+						"position_cm": [
+							1148,
+							-12
+						],
+						"radius_cm": 30,
+						"surface_id": "well-floor"
+					},
+					"to": "winch-landing"
+				}
+			],
+			"turn_cap": 10,
+			"version": 1
+		}
+	],
+	"stairs": [
+		{
+			"axis": "z",
+			"from_height_cm": 160,
+			"from_surface": "cliff",
+			"id": "cliff-steps",
+			"rect_cm": [
+				-528,
+				-16,
+				-464,
+				144
+			],
+			"to_height_cm": 0,
+			"to_surface": "garden"
+		},
+		{
+			"axis": "z",
+			"from_height_cm": 160,
+			"from_surface": "cliff",
+			"id": "long-stair",
+			"rect_cm": [
+				944,
+				-16,
+				1008,
+				144
+			],
+			"to_height_cm": 0,
+			"to_surface": "garden-east"
+		},
+		{
+			"axis": "x",
+			"from_height_cm": 0,
+			"from_surface": "well-floor",
+			"hands": true,
+			"id": "well-ladder",
+			"rect_cm": [
+				1200,
+				-8,
+				1568,
+				40
+			],
+			"to_height_cm": 160,
+			"to_surface": "tower"
+		}
+	],
+	"starts": {
+		"p0": {
+			"height_cm": 0,
+			"position_cm": [
+				-496,
+				200
+			],
+			"surface_id": "garden"
+		},
+		"p1": {
+			"height_cm": 0,
+			"position_cm": [
+				-448,
+				232
+			],
+			"surface_id": "garden"
+		}
+	},
+	"turn_limits": {
+		"a_ticks": 1800,
+		"b_ticks": 1800
+	},
+	"version": 2
+}

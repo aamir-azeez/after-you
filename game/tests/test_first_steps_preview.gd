@@ -74,11 +74,11 @@ func _run() -> void:
 		if record.role == "b":
 			var completed_tick: int = app.sim.tick
 			var completed_review: Dictionary = app.review.duplicate(true)
-			_press(app,"Retry")
+			_press(app,"Try again")
 			_check(app.mode=="confirm_retry" and app.sim.tick==completed_tick,"Completed First Steps B Retry asks before dropping its rehearsal")
 			_press(app,"Cancel")
 			_check(app.mode=="review" and app.review==completed_review and Canonical.same(_save_bytes(path),before_preview),"First Steps Retry Cancel preserves the exact completed draft")
-			_press(app,"Retry")
+			_press(app,"Try again")
 			app._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
 			_check(app.mode=="review" and app.sim.tick==completed_tick,"First Steps native Back uses the guarded Cancel route")
 		app._preview_turn()

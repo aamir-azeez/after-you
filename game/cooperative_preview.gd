@@ -107,7 +107,7 @@ func _show_access() -> void:
 	var retry := _button("Check again", func(): admission.check_access(true))
 	retry.disabled = checking or backgrounded
 	card.add_child(retry)
-	card.add_child(_action_button("back", _leave))
+	_card_home()
 
 func _access_allowed() -> bool:
 	if not is_instance_valid(admission) or admission.is_granted(): return true

@@ -85,11 +85,11 @@ func _check_fill() -> void:
 	Defaults.fill(journey)
 	var copy: Dictionary = journey.stage_copy.get("the-yard", {})
 	_check(copy == {"title": "The Yard", "hint_a": Defaults.BLOCKS.hold_door.hint_a, "hint_b": Defaults.BLOCKS.ring_bell.hint_b}, "A journey stage gets its title and its first and last blocks' hints: %s" % copy)
-	_check(journey.piece_styles == {"step": "stand_spot", "sluice": "valve", "gate-chain": "winch", "bell": "crest"}, "Each piece's style comes from its block: %s" % journey.piece_styles)
+	_check(journey.piece_styles == {"step": "crank_board", "sluice": "valve", "gate-chain": "winch", "bell": "crest"}, "Each piece's style comes from its block: %s" % journey.piece_styles)
 	_check(journey.water_levels == {"sluice": ["low", "high"]}, "A water switch's values become its water levels")
 	var given := {"family": "journey", "definition": SAMPLE_DEFINITION, "block_source": SAMPLE, "stage_copy": {"the-yard": {"title": "Mine", "hint_a": "A.", "hint_b": "B."}}, "piece_styles": {"gate-chain": "bolt"}, "water_levels": {}}
 	Defaults.fill(given)
-	_check(given.stage_copy["the-yard"].title == "Mine" and given.piece_styles == {"step": "stand_spot", "sluice": "valve", "gate-chain": "bolt", "bell": "crest"}, "A descriptor's own fields win over the defaults")
+	_check(given.stage_copy["the-yard"].title == "Mine" and given.piece_styles == {"step": "crank_board", "sluice": "valve", "gate-chain": "bolt", "bell": "crest"}, "A descriptor's own fields win over the defaults")
 	var cooperative := {"family": "cooperative", "definition": SAMPLE_DEFINITION, "block_source": SAMPLE, "stage_copy": {}, "piece_styles": {}, "water_levels": {}}
 	Defaults.fill(cooperative)
 	_check(cooperative.stage_copy.is_empty(), "A cooperative chapter shows its hashed hints, so it gets no stage copy")

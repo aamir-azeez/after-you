@@ -142,11 +142,11 @@ func _solo_seams() -> void:
 	for input: Dictionary in inputs: app.advance_input(input)
 	app._finish()
 	_check(app.mode == "review", "The finished turn opens review")
-	_press(app, "Retry")
+	_press(app, "Try again")
 	await process_frame
 	_check(app.mode == "play" and app._live_tries == 2 and _pill(app).visible and _pill(app).label.text == PlayerCopy.TRY_PILL % 2, "Retry from review starts try 2 and the pill says so")
 	app._pause()
-	_press(app, "Retry")
+	_press(app, "Try again")
 	await process_frame
 	_check(app._live_tries == 3 and _pill(app).label.text == "Try 3", "Retry from pause starts try 3")
 	var pill_rect: Rect2 = _pill(app).get_global_rect()
@@ -164,7 +164,7 @@ func _solo_seams() -> void:
 	await process_frame
 	_check(app.mode == "play" and app._live_tries == 3 and _pill(app).label.text == "Try 3", "A draft resumed after the app closed keeps its count")
 	app._pause()
-	_press(app, "Retry")
+	_press(app, "Try again")
 	await process_frame
 	for input: Dictionary in inputs: app.advance_input(input)
 	app._finish()
@@ -182,12 +182,12 @@ func _solo_seams() -> void:
 	# Paused before its first tick (during the glance at the goal), the first
 	# start is not counted: a Retry from there is still try 1.
 	app._pause()
-	_press(app, "Retry")
+	_press(app, "Try again")
 	await process_frame
 	_check(app._live_tries == 1 and app.turn_tries.count(app._tries_slot()) == 0, "A first start stopped before its first tick is not a try")
 	app.advance_input(inputs[0])
 	app._pause()
-	_press(app, "Retry")
+	_press(app, "Try again")
 	await process_frame
 	_check(app._live_tries == 2, "The second turn counts its own retries")
 	app._pause()

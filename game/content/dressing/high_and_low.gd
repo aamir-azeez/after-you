@@ -55,7 +55,7 @@ const DATA := {
 	# Plain pieces (content/dressing/piece_styles.gd).
 	"lever": "plain",
 	"selector": "plain",
-	"pad": "plain",
+	"pad": "board",
 	"goal": "bell",
 	"lift": "plain",
 	"deck": "plank",
@@ -68,6 +68,7 @@ const DATA := {
 	"pulley": "lantern_hook",
 	"seabed": "sand",
 	"item_spot": "none",
+	"swing": "crane_bucket",
 	"bridges": "timber",
 	"props": {"*": SHORE_BACK + [SHORE_HEDGE] + REST},
 }

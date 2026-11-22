@@ -293,33 +293,70 @@ static func _area(item: Dictionary) -> float:
 	var area: Rect2 = item.rect
 	return area.get_area() * (PI / 4.0 if item.round else 1.0)
 
-## Controls drawn into each other (the level checker): every lever and
-## selector stands CONTROL_TOP tall over its spot (kit/pieces/lever.gd's knob
-## over its housing), every pad, plate, socket and goal lies flat, each as
-## wide as its reach (radius_cm). A world adds what it builds beside a control
-## (control_extras(spot) on its script: [{offset, radius, top}], metres, such as
-## Tide's lamp beside each lever). Two bodies on one floor draw into each other
-## when, each swept up its height along the camera's VIEW, they come nearer
-## than their radii: the front one's top then stands over the back one's base.
+## Controls and pieces drawn into each other (the level checker): every lever
+## and selector stands CONTROL_TOP tall over its spot (kit/pieces/lever.gd's
+## knob over its housing), every pad, plate, socket, goal, item spot, throw
+## mark and throw landing lies flat, each as wide as it is drawn on its floor
+## (a throw mark wholly inside a pad is the pad's, LevelLayout.mark_pad):
+## its reach (radius_cm), or wider where its look is (a board's corners, a
+## crank board's windlass, a bell's frame, a pedestal's cap, a landing's
+## ticks: the kits' drawn_radius). A world adds what it builds beside a control
+## (control_extras(spot) on its script: [{offset, radius, top}], metres, such
+## as Tide's lamp beside each lever). Two bodies on one floor draw into each
+## other when, each swept up its height along the camera's VIEW, they come
+## nearer than their radii: the front one's top then stands over the back
+## one's base.
 const CONTROL_TOP := 0.6
 const TALL_CONTROLS := ["levers", "controls"]
 const FLAT_CONTROLS := ["pressure_pads", "ball_pads", "hold_pads", "plates", "plate", "sockets", "goal", "goals"]
+const PAD_KINDS := LevelLayout.PAD_KINDS
+const PadKit = preload("res://presentation/kit/pieces/pad.gd")
+const GoalKit = preload("res://presentation/kit/pieces/goal.gd")
+const SocketKit = preload("res://presentation/kit/pieces/socket.gd")
 
-## The bodies of `view`'s controls: {id, at, radius, top, y}; `extras` is the
-## world script's control_extras (an invalid Callable adds none).
-static func control_bodies(view: Dictionary, extras: Callable = Callable()) -> Array:
+## The bodies of `view`'s controls and pieces: {id, at, radius, top, y};
+## `extras` is the world script's control_extras (an invalid Callable adds
+## none) and `styles` the chapter's piece style of a slot and piece id
+## (content/dressing/piece_styles.gd style(); invalid: every piece as wide
+## as its reach and no item spots, whose look it cannot tell).
+static func control_bodies(view: Dictionary, extras: Callable = Callable(), styles: Callable = Callable()) -> Array:
 	var found: Array = []
 	var along := sweep(view)
+	var landings: Dictionary = {}
+	for thrown: Dictionary in view.get("throws", []): landings[str(thrown.get("to", ""))] = true
 	for spot: Dictionary in LevelLayout.spots(view):
 		var kind := str(spot.kind)
-		if kind not in TALL_CONTROLS and kind not in FLAT_CONTROLS: continue
+		var radius := drawn_radius(view, spot, styles, landings)
+		if radius <= 0.0: continue
 		var at := Vector2(float(spot.position_cm[0]), float(spot.position_cm[1])) / 100.0
 		var y := float(spot.height_cm) / 100.0
-		found.append({"id": str(spot.id), "at": at, "radius": float(spot.radius_cm) / 100.0, "top": CONTROL_TOP if kind in TALL_CONTROLS else 0.0, "y": y, "sweep": along})
-		if not extras.is_valid(): continue
+		found.append({"id": str(spot.id), "at": at, "radius": radius, "top": CONTROL_TOP if kind in TALL_CONTROLS else 0.0, "y": y, "sweep": along})
+		if not extras.is_valid() or not (kind in TALL_CONTROLS or kind in FLAT_CONTROLS): continue
 		for extra: Dictionary in extras.call(spot):
 			found.append({"id": str(spot.id), "at": at + (extra.offset as Vector2), "radius": float(extra.radius), "top": float(extra.top), "y": y, "sweep": along})
 	return found
+
+## How far from its centre `spot` (LevelLayout.spots) is drawn on its floor
+## (metres; 0: not a piece, or not drawn). `landings` holds the item spots a
+## throw lands on, drawn as the landing's ring of ticks.
+static func drawn_radius(view: Dictionary, spot: Dictionary, styles: Callable, landings: Dictionary) -> float:
+	var kind := str(spot.kind)
+	var id := str(spot.id)
+	var radius := float(spot.radius_cm) / 100.0
+	if kind in TALL_CONTROLS: return radius
+	if kind == "mark": return 0.0 if not LevelLayout.mark_pad(view, spot).is_empty() else radius + SocketKit.RING_TUBE
+	if kind == "item_spots":
+		var drawn := SocketKit.landing_radius(radius) if landings.has(id) else 0.0
+		if not styles.is_valid(): return drawn
+		var raw: Dictionary = {}
+		for item: Dictionary in view.get("item_spots", []):
+			if str(item.get("id", "")) == id: raw = item
+		return maxf(drawn, SocketKit.drawn_radius(str(styles.call("item_spot", id)), raw))
+	if kind not in FLAT_CONTROLS: return 0.0
+	if not styles.is_valid(): return radius
+	if kind in PAD_KINDS: return PadKit.drawn_radius(str(styles.call("pad", id)), radius)
+	if kind in ["goal", "goals"]: return GoalKit.drawn_radius(str(styles.call("goal", id)), radius)
+	return radius
 
 ## Whether two control bodies (control_bodies) draw into each other.
 static func bodies_touch(one: Dictionary, two: Dictionary) -> bool:

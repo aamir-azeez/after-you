@@ -13,21 +13,18 @@ import wellDefinition from "./the-wishing-well.json";
 import wellInitial from "./the-wishing-well-initial.json";
 import highV2Definition from "./high-and-low-v2.json";
 import highV2Initial from "./high-and-low-v2-initial.json";
-import wellV2Definition from "./the-wishing-well-v2.json";
-import wellV2Initial from "./the-wishing-well-v2-initial.json";
 import rollingV2Definition from "./rolling-home-v2.json";
 import rollingV2Initial from "./rolling-home-v2-initial.json";
 import houseV2Definition from "./a-house-for-two-v2.json";
 import houseV2Initial from "./a-house-for-two-v2-initial.json";
 
-export const HIGH_AND_LOW_HASH = "6aa907e802c92445745a6452c6ec0850dd8e98724e689b58a8ec82915fb08956";
-export const ROLLING_HOME_HASH = "d6aaa6006597dd5e4ce4dbc641d94c81c2ab17c55bd80b50c6a240e0e91cff87";
-export const HOUSE_HASH = "b868745e7bc025bb8fe5a49b698b15dfb0d428ea9fe905ce46fa46dd27d79867";
-export const WISHING_WELL_HASH = "4418a6f1ad6bdc3f1adee6d07d48184d03867a56a1b2d1d42c189584cfec5a94";
-export const HIGH_AND_LOW_V2_HASH = "87bb4afc25b939b1754940f952e54fc4698786762b1b1e13022f7556ac0fdc5f";
-export const WISHING_WELL_V2_HASH = "bc277e6200e0e588b08b16b40b02ff7bc92d1c0f51822c56974190e7ab1bcfd9";
-export const ROLLING_HOME_V2_HASH = "f5852fc8095aded1df95e7aef067a2e095891f5ecd72a4d197a7e48ecd16abca";
-export const HOUSE_V2_HASH = "9018b7e3323cc1f66fc7d4f292b419e7834d31bb5811b20672ddbc79ac79df38";
+export const HIGH_AND_LOW_HASH = "3b6576badcdd214630373a0f51040706e014845d9b8bc17483bd887f04a9ff40";
+export const ROLLING_HOME_HASH = "3362e8afd9fb3504868ab4b8b436050f62fe601e5c7ff8fea995424064f2dbff";
+export const HOUSE_HASH = "f14fb0abf330fa46afdb61078a8e8e99cee4cc2ade845304508cc90b05d27995";
+export const WISHING_WELL_HASH = "14cfffbdd9b23cee06056548f29bbae7f1e95c348315ff3ff0098b7190ee5f3e";
+export const HIGH_AND_LOW_V2_HASH = "79593b0e7e0b2a8fb055643dafb74734e332d26c8814e33415e233d186e80a58";
+export const ROLLING_HOME_V2_HASH = "6d8c6e7f2cdf75cabc49b48d9e72451f7f7b12c1c3cb13f6d00e489ff34f51b8";
+export const HOUSE_V2_HASH = "f3df2ecdb01a9b02ce3a3dfd4f3ba649d061ff7cfbf1f184ee312d4ea4202270";
 
 type Surface = { id: string; rect_cm: number[]; height_cm?: number; owner_slot?: string; axis?: string; from_height_cm?: number; to_height_cm?: number };
 type Marker = { id: string; position_cm: number[]; surface_id: string; radius_cm: number; owner_slot?: string; prop_id?: string };
@@ -47,7 +44,7 @@ function inside(p: Record<string, unknown>, marker: Marker, radius = marker.radi
 
 /** One bounded structural adapter for the shared native physical simulation.
  * Proof bytes are retained for native deterministic replay; the server does not simulate physics. */
-function adapter(definition: Definition, initial: ChapterCheckpoint, definitionHash: string): ChapterAdapter {
+export function adapter(definition: Definition, initial: ChapterCheckpoint, definitionHash: string): ChapterAdapter {
   const key = Object.freeze({ level_id: definition.id, level_version: definition.version, definition_hash: definitionHash });
   function catalog(value: Record<string, unknown>): void { need(value.level_id === key.level_id && value.level_version === key.level_version && value.definition_hash === key.definition_hash, "unsupported_chapter"); }
   // A definition declaring rules 9+ plays only those rules; published chapters keep 6/8.
@@ -165,8 +162,6 @@ export const houseForTwo = adapter(houseDefinition, houseInitial, HOUSE_HASH);
 export const wishingWell = adapter(wellDefinition, wellInitial, WISHING_WELL_HASH);
 /** Open turns (14): High and Low@1 with a lever atop the stair and one in the garden, so both players end at each bell. Unreleased. */
 export const highAndLowV2 = adapter(highV2Definition, highV2Initial, HIGH_AND_LOW_V2_HASH);
-/** Open turns (14): the Wishing Well with both players at each bell, no owned crossing, and held steps at the garden gate and the rope ladder. Unreleased. */
-export const wishingWellV2 = adapter(wellV2Definition, wellV2Initial, WISHING_WELL_V2_HASH);
 /** Open turns with the shared ball (17): both players push the ball, a player holds each bridge for the other, and the last stage
  * ends with the ball in its cradle and both players home. Unreleased. */
 export const rollingHomeV2 = adapter(rollingV2Definition, rollingV2Initial, ROLLING_HOME_V2_HASH);

@@ -31,19 +31,22 @@ import relayIslesV3Definition from "./relay-isles-v3.json";
 import relayIslesV3Initial from "./relay-isles-v3-initial.json";
 import sleepingLighthouseV3Definition from "./sleeping-lighthouse-v3.json";
 import sleepingLighthouseV3Initial from "./sleeping-lighthouse-v3-initial.json";
+import wellV2Definition from "./the-wishing-well-v2.json";
+import wellV2Initial from "./the-wishing-well-v2-initial.json";
 
-export const CONSERVATORY_HASH = "fd9fce12c4facd5fd659eedd5a510ea6b0ad796925458ccb73b4b37a893530d5";
-export const LONG_WAY_HOME_HASH = "bce3ddd36386ebb32f011b8d6afe95316992809030ea828b473bbbc3e1c6bb7f";
-export const LONG_WAY_HOME_V2_HASH = "4541bd920062e244f202fbe6ee95363a1f53ae5afc490ad600112af9f01a8c77";
-export const TURN_OF_THE_TIDE_HASH = "3a6d111455aa69e60c440cc6f04a0656292ed9c40b31c66a7f999c85cd2a911a";
-export const TURN_OF_THE_TIDE_V2_HASH = "1f88aabb592fbf14640b50dd0644755d6afe522cae39d844524ac68b491f0a43";
-export const LONG_WAY_HOME_V3_HASH = "f840dd829fdb1285b2553cf3d0d5bf0d41a00387721c6678fcee9fc1e0348b81";
-export const TURN_OF_THE_TIDE_V3_HASH = "71a7eb45f220aeacefe3d982318f507698999196a11a23041430ac33726e29c1";
-export const CONSERVATORY_V2_HASH = "96499f4766718124c64380b6a9ab0452b5e7dde69f2f026b7d932b64cca2ca08";
-export const FIRST_STEPS_V2_HASH = "12cbcd0d89a440e6d81889441382d1a86136b58579ce872ff308bbf5f1621840";
-export const THE_FALLS_HASH = "31c50a815a1a8c70a62c67234854ed36cbeb4044c871da0ca5bac49058cf7f8b";
-export const RELAY_ISLES_V3_HASH = "30ff6b4e95e79dbadb6c4928c6bc80c1fb4a5b4f495e649f0087912c56a42bb9";
-export const FOG_MARSH_HASH = "0cdfc1875835b016d69e446e9818f89a2bc6ab18664ad1acf6d9546e8994a5cd";
+export const CONSERVATORY_HASH = "5e4741419609acd603db2066a0e799c8ab92182ca08f9df3aa54d410760551a3";
+export const LONG_WAY_HOME_HASH = "79ea6a353b52459acc508c2a74baea488a4afe0c62079a07f7fb479e57193932";
+export const LONG_WAY_HOME_V2_HASH = "9d91b9186b9307460763eba57b2cc2b25c9bfd2a245f20b7ff93eb75b16445eb";
+export const TURN_OF_THE_TIDE_HASH = "bddd92903e047286630ebe9f71a0e20946b929a9bb50952d34157fe45b16d5d0";
+export const TURN_OF_THE_TIDE_V2_HASH = "8e29d35f0f968b3a4f056802794437787c1077883fafc316d285b5edf40edb80";
+export const LONG_WAY_HOME_V3_HASH = "a6320deb49d769a2eda26d1ff53594977599b20c99c103f9915ba170d527ec8d";
+export const TURN_OF_THE_TIDE_V3_HASH = "5a120bfca492578d7fb90ce3791b302b700f434c3340262fe3f81b4c649dcc35";
+export const CONSERVATORY_V2_HASH = "f72e035f86687403b8c5057266db33b4fa1211d2100bb5b021cc3678db83845f";
+export const FIRST_STEPS_V2_HASH = "0199c2dd8cd1caf0a3ed2f321cb9ca60b5aa47bda064f7287ee6f0f8a35fecfe";
+export const THE_FALLS_HASH = "04bb186a63543d697f77aa42eb0d831e3e6e0d1a3754247531dad45769753ac4";
+export const RELAY_ISLES_V3_HASH = "3dada19b365b4035a50e19a55b1d5e01dc8a3d1391987efe83755ba5bce42fce";
+export const WISHING_WELL_V2_HASH = "f100cedde0f65539106040ebf52a2c498815c53a6828bb56a1ff57ace73063ac";
+export const FOG_MARSH_HASH = "e7ddc8b6d35402c9e788e5a77ac8c1c4206bebea36130573b5e9d1179b892220";
 export const SLEEPING_LIGHTHOUSE_V3_HASH = "60330e79eae89400b0b2dd96ee36775330c79a389e605ae05cc7c9afde7bc08e";
 type Surface = { id: string; rect_cm: number[]; height_cm?: number; owner_slot?: string; axis?: string; from_height_cm?: number; to_height_cm?: number };
 export type Marker = { id: string; position_cm: number[]; surface_id: string; height_cm: number; radius_cm: number; owner_slot?: string };
@@ -229,3 +232,7 @@ export const relayIslesV3 = journeyAdapter(relayIslesV3Definition as Definition,
 /** Open turns with the new pieces and light pieces (16): the six Lighthouse stages on the journey rules, its bridges held by
  * light (light-pieces.ts), its lens a carried item thrown to Rest Rock. Seven branches, as every open chapter. Unreleased. */
 export const sleepingLighthouseV3 = journeyAdapter(sleepingLighthouseV3Definition as unknown as Definition, sleepingLighthouseV3Initial, SLEEPING_LIGHTHOUSE_V3_HASH, 7);
+/** Open turns with the new pieces (20): the Wishing Well on the journey rules, shorter walks, the old crane's swinging bucket
+ * over the garden plank with its brake board, and the winch handle thrown up from the well. the-wishing-well@1 keeps its
+ * cooperative adapter. Unreleased. */
+export const wishingWellV2 = journeyAdapter(wellV2Definition as Definition, wellV2Initial, WISHING_WELL_V2_HASH);

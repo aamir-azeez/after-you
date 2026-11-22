@@ -214,7 +214,7 @@
 	"premium": true,
 	"props": [],
 	"schema_version": 7,
-	"simulation_version": 14,
+	"simulation_version": 18,
 	"stages": [
 		{
 			"ball_pads": [],
@@ -261,6 +261,10 @@
 						-352
 					],
 					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
 					"surface_id": "court",
 					"values": [
 						"slash",
@@ -277,6 +281,10 @@
 						-352
 					],
 					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
 					"surface_id": "gallery",
 					"values": [
 						"slash",
@@ -293,6 +301,10 @@
 						-192
 					],
 					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
 					"surface_id": "gallery",
 					"values": [
 						"slash",
@@ -357,6 +369,10 @@
 						-48
 					],
 					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
 					"surface_id": "court"
 				}
 			],
@@ -540,6 +556,10 @@
 						160
 					],
 					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
 					"surface_id": "garden",
 					"values": [
 						"slash",
@@ -556,6 +576,10 @@
 						-64
 					],
 					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
 					"surface_id": "garden",
 					"values": [
 						"slash",
@@ -572,6 +596,10 @@
 						0
 					],
 					"radius_cm": 28,
+					"solid": {
+						"radius_cm": 20,
+						"reach_cm": 20
+					},
 					"surface_id": "mirror-room",
 					"values": [
 						"slash",
@@ -858,8 +886,8 @@
 		}
 	},
 	"turn_limits": {
-		"a_ticks": 3600,
-		"b_ticks": 3600
+		"a_ticks": 1800,
+		"b_ticks": 1800
 	},
 	"version": 2
 }

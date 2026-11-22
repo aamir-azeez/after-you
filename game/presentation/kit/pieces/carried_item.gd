@@ -8,6 +8,10 @@ extends "res://presentation/kit/pieces/piece.gd"
 ##   "raft": a few lashed planks, for a float nobody carries.
 ##   "seed": the seed every world draws (presentation/seed_visual.gd), First
 ##       Steps' golden one.
+##   "winch_handle": an iron crank with a wooden grip
+##       (tools/blender/models/winch_handle.py). It lies on its side on the
+##       ground and in a pip's hands; fitted (resting at a solid spot: a winch,
+##       socket.gd winch()) it stands with its stub in the socket (fit()).
 ##   "lens": the Lighthouse's portable lens: a sea-glass disc in a brass ring
 ##       with three notches (lighthouse_world.gd's lens), standing on its edge.
 ##
@@ -19,14 +23,20 @@ extends "res://presentation/kit/pieces/piece.gd"
 ## item follows its carrier, a float bobs unless motion is reduced, and a
 ## pick-up or a set-down eases between the ground and the head for HANDOFF
 ## seconds (an immediate call or Reduce motion snaps; a catch snaps, as the
-## seed's does). A float sits by the float rule (kit/floats.gd, its style's
-## kind, else a raft's): its keel under the water's surface by its draft, its
-## deck clear of it all through its bob. The root is the only part that
-## changes, so it is the one moving part.
+## seed's does). Thrown, it flies with the world's throw look (throw_look,
+## kit/throw_look.gd): off the head, along its arc, tumbling and blurred, as
+## First Steps' seed always has. A float sits by the float rule (kit/floats.gd,
+## its style's kind, else a raft's): its keel under the water's surface by its
+## draft, its deck clear of it all through its bob. The root is the only part
+## that changes, so it is the one moving part.
 const Floats = preload("res://presentation/kit/floats.gd")
 const Models = preload("res://presentation/kit/models.gd")
 const SpiritVisual = preload("res://presentation/spirit_visual.gd")
-const STYLES := ["parcel", "pipsport", "raft", "seed", "lens"]
+const STYLES := ["parcel", "pipsport", "raft", "seed", "winch_handle", "lens"]
+const HANDLE := "res://assets/models/winch_handle.glb"
+## The handle lying on its side: turned onto its grip's flat, its 5 cm iron
+## half over the floor, the middle of its length over its spot.
+const HANDLE_LIE := Transform3D(Basis(Vector3.BACK, PI / 2.0), Vector3(0.12, 0.026, 0))
 ## The lens: its glass and ring radii (m) and colours, lighthouse_world.gd's.
 const LENS_RADIUS := 0.18
 const LENS_GLASS := Color("99dfd9")
@@ -56,6 +66,11 @@ var _from := Vector3.ZERO
 var _handoff_age := HANDOFF
 ## Whether it has been drawn yet: the first showing never eases from the build spot.
 var _shown := false
+## A handle's pose (fit()): lying, or standing in its socket. Null for other styles.
+var _pose: Node3D = null
+## Its flight's look (kit/throw_look.gd), given by the world on a stage with
+## throws (island_world.gd throw_look); null where nothing is thrown.
+var throw_look: RefCounted = null
 
 ## An item in `item_style` under `parent`, at `at` until the first present.
 static func build(item_style: String, at: Vector3, parent: Node3D, options: Dictionary = {}) -> RefCounted:
@@ -79,6 +94,12 @@ func _make(item_style: String, at: Vector3, parent: Node3D, options: Dictionary)
 		"seed":
 			# The seed's builder asks the world for its meshes: the terrain's parent.
 			SeedVisual.create(options.get("world", parent.get_parent()), SEED_RADIUS, SEED_GOLD, Vector3(0, SEED_RADIUS, 0), root)
+		"winch_handle":
+			_pose = Node3D.new()
+			_pose.name = "HandlePose"
+			_pose.transform = HANDLE_LIE
+			root.add_child(_pose)
+			Models.moving(HANDLE, "winch_handle", {"metal": Parts.IRON, "grip": Color("b08a62")}, _pose)
 		"lens":
 			# On its edge, its lowest point on the ground, facing the camera.
 			var lens := Node3D.new()
@@ -116,11 +137,19 @@ func _measure() -> void:
 	middle = box.get_center()
 	radius = box.size[box.get_longest_axis_index()] / 2.0
 
+## How wide its throw blurs: its body's size, a seed's halo being light, not body.
+func throw_radius() -> float:
+	return SEED_RADIUS if style == "seed" else radius
+
 ## Over `actor`'s head (a spirit), from now on until it rests: it follows the
 ## spirit's carry point each advance(). Picked up from where it rested, it
 ## rises there over HANDOFF unless `immediate`.
 func carry(actor: SpiritVisual, immediate: bool = true) -> void:
 	if actor != holder: _hand_off(immediate or _flying)
+	# Caught: its flight, tumble and blur stop at once.
+	if throw_look != null and throw_look.flying:
+		throw_look.present(false, _place, true, Parts.CREAM, immediate)
+		throw_look.turn(Quaternion.IDENTITY)
 	holder = actor
 	_floating = false
 	_flying = false
@@ -150,18 +179,31 @@ func _draw() -> void:
 	root.position = _place if _handoff_age >= HANDOFF else _from.lerp(_place, smoothstep(0.0, 1.0, _handoff_age / HANDOFF))
 
 ## Resting at `at` under `parent` (the terrain), or, when `floating`, on the
-## water whose surface `at` is, bobbing; `flying` while a throw's arc has it.
-## Set down from a head, it eases there over HANDOFF unless `immediate`.
+## water whose surface `at` is, bobbing; `flying` while a throw's arc has it,
+## drawn by its throw look, which eases it off the head itself. Set down from
+## a head, it eases there over HANDOFF unless `immediate`.
 func rest(at: Vector3, parent: Node3D, floating: bool, flying: bool = false, immediate: bool = true) -> void:
-	if holder != null: _hand_off(immediate)
+	var thrown: bool = throw_look != null and (flying or throw_look.flying)
+	var thrown_from: Variant = null
+	if holder != null:
+		# Where its middle was drawn on the head, in `parent`'s space.
+		if thrown and flying: thrown_from = parent.to_local(root.global_transform * middle) if root.is_inside_tree() and parent.is_inside_tree() else root.transform * middle
+		_hand_off(immediate or thrown_from is Vector3)
 	holder = null
 	if root.get_parent() != parent: root.reparent(parent, false)
 	_rest_at = at
 	_floating = floating
 	_flying = flying
+	# Landed, it stands upright again.
+	if thrown and not flying: throw_look.turn(Quaternion.IDENTITY)
 	root.rotation = Vector3.ZERO
 	root.scale = Vector3.ONE
-	place(Vector3(at.x, Floats.keel(style, at.y), at.z) if floating else at)
+	var posed := false
+	if thrown:
+		throw_look.present(flying, at + middle, root.visible, Parts.CREAM, immediate, thrown_from)
+		posed = throw_look.pose(reduced_motion)
+	if posed: _shown = true
+	else: place(Vector3(at.x, Floats.keel(style, at.y), at.z) if floating else at)
 	# Set down it has its shadow again, where it now rests; afloat, the water's
 	# rings show it.
 	ContactShadows.set_off(root, floating)
@@ -186,4 +228,10 @@ func advance(delta: float) -> void:
 	_draw()
 
 func moving_parts() -> Array[Node3D]:
+	# A handle's pose turns under its root, which the fold already keeps whole.
 	return [root]
+
+## Whether the item rests fitted in a socket (a solid spot): a handle then
+## stands with its stub in it, else lies on its side. Other styles keep one pose.
+func fit(fitted: bool) -> void:
+	if _pose != null: _pose.transform = Transform3D.IDENTITY if fitted else HANDLE_LIE

@@ -48,6 +48,7 @@ const BLOCKS := {
 	"rope_ladder": {"cues": []},
 	"wheel_ride": {"cues": ["bridge_opened"]},
 	"falls_path": {"cues": ["lever_pulled", "bridge_opened"]},
+	"swinging_bucket": {"cues": []},
 	# Light pieces: a mirror or selector turned, a lit crossing opening or going dark.
 	"light": {"cues": ["switch_set", "bridge_opened", "bridge_closed"]},
 }
@@ -64,6 +65,7 @@ const BLOCK_STYLES := {
 	"rope_raft": {"selector": "rope_wheel"},
 	"wheel_ride": {"stairs": "wheel"},
 	"falls_path": {"routes": "falls_path"},
+	"swinging_bucket": {"brake": "board"},
 }
 ## Fields a block may give a piece, read here only: never part of the
 ## expanded definition, so a style never changes a hash.
@@ -125,6 +127,8 @@ static func styles(source: Dictionary) -> Dictionary:
 			var looks: Dictionary = BLOCK_STYLES.get(str(block.get("block", "")), {})
 			for field: String in looks:
 				var given: Variant = block.get(field)
+				# A swing's brake may be any when: only a pad (by id, or inline) takes a look.
+				if field == "brake" and given is Dictionary and not given.has("at"): continue
 				# A block's routes map each crossing to its value: the crossings are the keys.
 				if given is Dictionary and not given.has("id"): given = given.keys()
 				for piece: Variant in (given if given is Array else [given]):
