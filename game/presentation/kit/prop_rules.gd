@@ -10,6 +10,7 @@ extends RefCounted
 ## footing (footing()) is its kit extent (kit/props.gd) raised onto its surface.
 const Props = preload("res://presentation/kit/props.gd")
 const Look = preload("res://presentation/spirit_look.gd")
+const Solid = preload("res://core/solid_footprint.gd")
 ## Each family's floors, crossings and spots (services/level_layout.gd).
 const LevelLayout = preload("res://services/level_layout.gd")
 
@@ -68,8 +69,22 @@ static func heights(view: Dictionary) -> Dictionary:
 static func walkable(view: Dictionary) -> Array:
 	var names := {"island": "island", "bridge": "route", "stair": "stair"}
 	var along := sweep(view)
+	var solids: Array = view.get("item_spots", []).filter(func(spot: Dictionary) -> bool: return not Solid.of(spot).is_empty())
 	return LevelLayout.walking_areas(view).map(func(area: Dictionary) -> Dictionary:
-		return {"rect": rect(area.rect_cm), "y": float(area.height_cm) / 100.0, "rise": float(area.rise_cm) / 100.0, "name": "%s %s" % [names[area.kind], area.id], "id": str(area.id), "sweep": along})
+		# A solid item spot's kept-out circle (core/solid_footprint.gd): no pip walks there.
+		var kept: Array = []
+		for spot: Dictionary in solids:
+			if area.kind == "island" and str(spot.get("surface_id", "")) == str(area.id): kept.append({"at": Vector2(float(spot.position_cm[0]), float(spot.position_cm[1])) / 100.0, "radius": float(int(Solid.of(spot).radius_cm) + Solid.BODY_CM) / 100.0})
+		return {"rect": rect(area.rect_cm), "y": float(area.height_cm) / 100.0, "rise": float(area.rise_cm) / 100.0, "name": "%s %s" % [names[area.kind], area.id], "id": str(area.id), "sweep": along, "kept": kept})
+
+## Whether `footprint` lies wholly inside a circle of `space`'s "kept" (walkable()):
+## a desk on a solid item spot stands where no pip can walk, so it shares no
+## walking space and hides none.
+static func in_kept(footprint: Rect2, space: Dictionary) -> bool:
+	for circle: Dictionary in space.get("kept", []):
+		var corners := [footprint.position, footprint.position + Vector2(footprint.size.x, 0), footprint.position + Vector2(0, footprint.size.y), footprint.end]
+		if corners.all(func(corner: Vector2) -> bool: return corner.distance_to(circle.at) <= float(circle.radius)): return true
+	return false
 
 ## Interactive places (LevelLayout.spots: pads, levers, switches, goals,
 ## optics, starts) and drops, each as {rect, y, name}.
@@ -80,7 +95,12 @@ static func places(view: Dictionary, floor_heights: Dictionary) -> Array:
 	for spot: Dictionary in LevelLayout.spots(view):
 		var radius := float(spot.radius_cm) / 100.0
 		var at := Vector2(float(spot.position_cm[0]), float(spot.position_cm[1])) / 100.0
-		(starts if spot.kind == "start" else found).append({"rect": Rect2(at - Vector2.ONE * radius, Vector2.ONE * radius * 2.0), "y": float(spot.height_cm) / 100.0, "name": "%s %s" % [spot.kind, spot.id], "sweep": along})
+		var place := {"rect": Rect2(at - Vector2.ONE * radius, Vector2.ONE * radius * 2.0), "y": float(spot.height_cm) / 100.0, "name": "%s %s" % [spot.kind, spot.id], "sweep": along}
+		# A solid item spot's own kept-out circle is where its desk stands.
+		if spot.kind == "item_spots":
+			for item: Dictionary in view.get("item_spots", []):
+				if str(item.get("id", "")) == str(spot.id) and not Solid.of(item).is_empty(): place["kept"] = [{"at": at, "radius": float(int(Solid.of(item).radius_cm) + Solid.BODY_CM) / 100.0}]
+		(starts if spot.kind == "start" else found).append(place)
 	for drop: Dictionary in view.get("drops", []):
 		found.append({"rect": rect(drop.rect_cm), "y": float(floor_heights.get(str(drop.get("surface_id", "")), 0.0)), "name": "drop " + str(drop.get("id", "")), "sweep": along})
 	return found + starts
@@ -104,11 +124,13 @@ static func footing(spec: Dictionary, floor_heights: Dictionary) -> Dictionary:
 static func on_walkable(foot: Dictionary, space: Dictionary) -> bool:
 	if bool(foot.flat): return false
 	if bool(foot.wall) and on_back_wall(foot.rect, float(foot.base), space): return false
+	if in_kept(foot.rect, space): return false
 	var shares := float(foot.top) > float(space.y) + 0.02 and float(foot.base) < float(space.y) + float(space.rise) + SPIRIT
 	return shares and (foot.inner as Rect2).intersects(space.rect)
 
 ## The prop stands over a control, start or drop.
 static func covers(foot: Dictionary, place: Dictionary) -> bool:
+	if in_kept(foot.rect, place): return false
 	return float(foot.top) > float(place.y) and float(foot.base) < float(place.y) + SPIRIT and (foot.inner as Rect2).intersects((place.rect as Rect2).grow(CLEAR))
 
 ## Low enough (or flat) never to hide anything from the camera.
@@ -119,6 +141,7 @@ static func low(foot: Dictionary) -> bool:
 static func hides_target(foot: Dictionary, target: Dictionary) -> bool:
 	# A wall-hung prop sits above head height against its own room's back wall.
 	if bool(foot.wall) and on_back_wall(foot.rect, float(foot.base), target): return false
+	if in_kept(foot.rect, target): return false
 	return hides(foot.rect, float(foot.base), float(foot.top), target)
 
 static func on_back_wall(footprint: Rect2, base: float, target: Dictionary) -> bool:

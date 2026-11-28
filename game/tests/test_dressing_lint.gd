@@ -518,9 +518,12 @@ static func dressing_faults(world: Node3D, view: Dictionary) -> Array[String]:
 		for whole: Dictionary in shapes:
 			var shape := whole.merged({"outline": whole.round}, true)
 			for space: Dictionary in spaces:
+				# A desk wholly inside a solid item spot's kept-out circle stands where no pip walks.
+				if PropRules.in_kept(_bounds(shape.outline), space): continue
 				var room := {"outline": _corners((space.rect as Rect2).grow(-PropRules.EDGE_GRACE)), "low": float(space.y) - SLAB, "high": float(space.y) + float(space.rise) + PropRules.SPIRIT}
 				if _cuts(shape, room): cuts["walking space " + str(space.name)] = true
 			for place: Dictionary in places:
+				if PropRules.in_kept(_bounds(shape.outline), place): continue
 				var room := {"outline": _corners(place.rect), "low": float(place.y), "high": float(place.y) + PropRules.SPIRIT}
 				if _cuts(shape, room): cuts[str(place.name)] = true
 			for wall: Dictionary in walls:

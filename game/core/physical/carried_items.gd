@@ -274,21 +274,34 @@ static func can_hand(level: Dictionary, hands: Dictionary, giver: Dictionary, ta
 		if (_by(giver, ends[0], HAND_REACH_CM) and _by(taker, ends[1], HAND_REACH_CM)) or (_by(giver, ends[1], HAND_REACH_CM) and _by(taker, ends[0], HAND_REACH_CM)): return true
 	return false
 
-## Where an item put down by `player` rests: snapped to an item spot on its
-## floor it stands in, else at its feet; at its feet on a platform's stop in
-## `stops` (the stage's stops the platforms stand at now, by id), where it
-## rides as a pip does; {} on any other crossing.
+## Where an item put down by `player` rests: exactly in the item spot on its
+## floor whose counted ring it stands in (the nearest when rings overlap), else
+## at its feet; at its feet on a platform's stop in `stops` (the stage's stops
+## the platforms stand at now, by id), where it rides as a pip does; {} on any
+## other crossing.
 static func lay(level: Dictionary, player: Dictionary, stops: Dictionary = {}) -> Dictionary:
 	var surface := str(player.surface_id)
 	if stops.has(surface): return {"holder": "", "spot": "", "x": int(player.x), "z": int(player.z), "height": int(player.height), "surface_id": surface}
 	if not level.get("islands", []).any(func(island: Dictionary) -> bool: return str(island.id) == surface): return {}
+	var best: Dictionary = {}
+	var best_away := 0
 	for found: Dictionary in level.get("item_spots", []):
 		if str(found.get("surface_id", "")) != surface: continue
 		var place := {"x": found.position_cm[0], "z": found.position_cm[1], "height": found.get("height_cm", 0)}
 		# A solid spot (a pedestal) takes the item from beside it, on any side.
 		var near := Solid.within_reach(found, Vector2i(int(player.x), int(player.z)), BODY_CM) if not Solid.of(found).is_empty() else _by(player, place, int(found.get("radius_cm", SPOT_RADIUS_CM)))
-		if near and _level(player, place): return at_spot(found)
+		if not near or not _level(player, place): continue
+		var away := Vector2i(int(player.x), int(player.z)).distance_squared_to(Vector2i(int(place.x), int(place.z)))
+		if best.is_empty() or away < best_away:
+			best = found
+			best_away = away
+	if not best.is_empty(): return at_spot(best)
 	return {"holder": "", "spot": "", "x": int(player.x), "z": int(player.z), "height": int(player.height), "surface_id": surface}
+
+## Whether a put down by `player` rests in an item spot (it then wins over a
+## hand over to a partner standing near, so a goal's pedestal is never missed).
+static func lays_at_spot(level: Dictionary, player: Dictionary, stops: Dictionary = {}) -> bool:
+	return not str(lay(level, player, stops).get("spot", "")).is_empty()
 
 ## The throw of `stage` whose mark `player` stands in, or {}.
 static func throw_at(stage: Dictionary, player: Dictionary) -> Dictionary:

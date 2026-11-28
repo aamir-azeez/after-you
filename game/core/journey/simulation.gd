@@ -698,6 +698,8 @@ func _item_action(slot: String) -> Dictionary:
 	var mine := CarriedItems.held_by(items, slot)
 	if not mine.is_empty():
 		if not _throws.is_empty() and not CarriedItems.throw_at(stage, player).is_empty(): return _action("throw", CarriedItems.LABELS.throw, true, mine)
+		# Standing in an item spot's ring the item goes to the spot, even with the partner near.
+		if CarriedItems.lays_at_spot(level, player, _standing_stops()): return _action("put", CarriedItems.LABELS.put, true, mine)
 		if CarriedItems.held_by(items, other).is_empty() and CarriedItems.can_hand(level, _hands, player, _players[other], _routes): return _action("give", CarriedItems.LABELS.give, true, mine)
 		if not CarriedItems.lay(level, player, _standing_stops()).is_empty(): return _action("put", CarriedItems.LABELS.put, true, mine)
 		return _action("", "", false, "")

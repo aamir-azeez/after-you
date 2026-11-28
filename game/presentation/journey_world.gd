@@ -270,6 +270,10 @@ func _idle_card_frame() -> void:
 ## After the spirits have moved: a carried item follows its carrier's head, a
 ## float bobs (not with Reduce motion), a pick-up or set-down eases on.
 func _advance_items(delta: float) -> void:
+	# The dotted outlines of the items the stage still wants pulse gently.
+	for spot_id: String in _spot_outlines:
+		var outline: Node3D = _spot_outlines[spot_id]
+		if outline.visible: SocketKit.pulse(outline, time, reduced_motion)
 	# A hoist's bucket runs on first, and an item in it rides along.
 	if _current_piece != null and _current_piece.moving():
 		_current_piece.advance(delta)

@@ -535,3 +535,4 @@ world_kit 3
 world_looks 2
 world_prewarm 3
 world_slot_looks 1
+item_spot_polish 2

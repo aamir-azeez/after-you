@@ -41,7 +41,7 @@ extends RefCounted
 ##       item down. An item rests on the desk's top, DESK_TOP up.
 ##   outline(): the dotted shape of the item a spot wants, lying where it goes
 ##       (an item_spot's last step, for any style); the world hides it while
-##       the item rests there.
+##       the item rests there and pulses it while the item is missing (pulse()).
 ## drawn_radius() and landing_radius() are how far from its centre each look
 ## reaches on the floor, so the level checker keeps the pieces on one floor
 ## apart as drawn (kit/prop_rules.gd control_bodies).
@@ -108,10 +108,23 @@ const REST := {"pedestal": PEDESTAL_TOP, "planter": PLANTER + 0.02, "nest": NEST
 ## stands on (m).
 const DESK_TOP := 0.69
 ## The dotted outline: dash length, gap, thickness and height over its floor (m).
-const DASH := Vector3(0.04, 0.006, 0.018)
-const DASH_GAP := 0.03
+const DASH := Vector3(0.05, 0.012, 0.032)
+const DASH_GAP := 0.034
 const OUTLINE_GROW := 0.03
-const OUTLINE_COLOR := Color("f4ecd8")
+## Its colours: deep ink on the light tops (a pedestal's cream cap, a desk's
+## boards), cream on the dark ones (a planter's soil, a cradle's slate).
+const OUTLINE_INK := Color("1f2a47")
+const OUTLINE_CREAM := Color("f4ecd8")
+const OUTLINE_LIGHT_STYLES := ["planter", "cradle"]
+## It draws after the other see-through things (render priority) with the
+## depth test on and no depth write: a pip or a prop in front hides it, nothing
+## behind it ever does.
+const OUTLINE_PRIORITY := 10
+## While the item is missing the dashes pulse gently between these opacities,
+## this many radians a second (steady under Reduce motion).
+const OUTLINE_PULSE := Vector2(0.62, 1.0)
+const OUTLINE_PULSE_RATE := 3.2
+const OUTLINE_MATERIAL_META := "outline_material"
 const CarriedItemKit = preload("res://presentation/kit/pieces/carried_item.gd")
 
 ## A stand under `root` (the spot's node, on its floor): a base `radius`
@@ -191,7 +204,7 @@ static func item_spot(style: String, root: Node3D, spot: Dictionary, item_style:
 		"winch": winch(root)
 		"cradle": cradle(root, float(spot.get("radius_cm", 30)) / 100.0, Parts.CREAM)
 		"desk": desk(root, spot)
-	return outline(root, item_style, rest_height(style)) if CarriedItemKit.FOOTPRINTS.has(item_style) and style != "none" else null
+	return outline(root, item_style, rest_height(style), style) if CarriedItemKit.FOOTPRINTS.has(item_style) and style != "none" else null
 
 ## The reach of a solid spot (m): its circle, a pip's body and its reach.
 static func reach(spot: Dictionary) -> float:
@@ -206,15 +219,21 @@ static func desk(root: Node3D, spot: Dictionary) -> void:
 	var inner := float(int(solid.radius_cm) + Solid.BODY_CM) / 100.0 if not solid.is_empty() else 0.0
 	Parts.ring((inner + reach(spot)) * 0.5, Parts.CREAM, Vector3(0, 0.012, 0), root)
 
-## The dotted outline of `item_style` lying `lift` metres up under `root`.
-## Returns its node, which the world hides while the item rests there.
-static func outline(root: Node3D, item_style: String, lift: float) -> Node3D:
+## The dotted outline of `item_style` lying `lift` metres up under `root`, in
+## the colour its spot's `style` shows best on. Returns its node, which the
+## world hides while the item rests there and pulses (pulse()) while it is missing.
+static func outline(root: Node3D, item_style: String, lift: float, style: String = "") -> Node3D:
 	var node := Node3D.new()
 	node.name = "Outline"
 	node.position = Vector3(0, lift + 0.008, 0)
 	root.add_child(node)
 	var size: Vector2 = CarriedItemKit.FOOTPRINTS[item_style] + Vector2.ONE * OUTLINE_GROW
-	var material := Primitives.shared_material(OUTLINE_COLOR)
+	var material := Primitives.fresh_material(OUTLINE_CREAM if style in OUTLINE_LIGHT_STYLES else OUTLINE_INK, 1.0)
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
+	material.render_priority = OUTLINE_PRIORITY
+	node.set_meta(OUTLINE_MATERIAL_META, material)
 	var corners := [Vector2(-size.x, -size.y), Vector2(size.x, -size.y), Vector2(size.x, size.y), Vector2(-size.x, size.y)]
 	for side in range(4):
 		var from: Vector2 = corners[side] * 0.5
@@ -227,6 +246,13 @@ static func outline(root: Node3D, item_style: String, lift: float) -> Node3D:
 			var dash := Primitives.mesh_node(Primitives.cached_box(Vector3(minf(DASH.x, step - DASH_GAP * 0.5), DASH.y, DASH.z)), material, Vector3(middle.x, 0, middle.y), node)
 			if absf(to.y - from.y) > absf(to.x - from.x): dash.rotation.y = PI / 2.0
 	return node
+
+## Pulses `outline` (outline()'s node) at `time` seconds: steady when `reduced`.
+static func pulse(outline_node: Node3D, time: float, reduced: bool) -> void:
+	var material: Variant = outline_node.get_meta(OUTLINE_MATERIAL_META, null)
+	if not material is StandardMaterial3D: return
+	var wave := 1.0 if reduced else 0.5 + 0.5 * sin(time * OUTLINE_PULSE_RATE)
+	(material as StandardMaterial3D).albedo_color.a = lerpf(OUTLINE_PULSE.x, OUTLINE_PULSE.y, wave)
 
 ## A winch under `root`, its socket facing the camera over the spot.
 static func winch(root: Node3D) -> void:
