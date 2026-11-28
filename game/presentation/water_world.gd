@@ -390,7 +390,7 @@ func _present_drowned(_state: Dictionary) -> void:
 ## doors and wall fade round where the spirits stand.
 func _present_water(state: Dictionary, immediate: bool) -> void:
 	waters.present_controls(state.get("controls", {}), immediate)
-	waters.show_floods(_decks)
+	waters.show_floods(_crossing_shown)
 	_occupy_water(state, immediate)
 
 ## Where the spirits stand, from the snapshot's positions, so live play, the

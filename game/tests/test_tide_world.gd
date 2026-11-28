@@ -160,16 +160,14 @@ func _first_stage(level: Dictionary) -> void:
 	var kept: Array = world.waters.kept_walled.duplicate()
 	kept.sort()
 	_check(kept == ["sand-1", "slipway"], "Stage one walls exactly the crossings it can keep under water: %s" % [kept])
-	# Shut crossings under the water stay in view as outlines; open ones show their deck.
+	# Shut crossings stay in view, hanging slack (kit/pieces/taut_bridge.gd) and sinking into the water, and pull taut as they open; the stones stay as they are.
 	sim._mechanisms.controls.tide = "half"
 	sim._refresh_routes()
 	world.present(sim.snapshot(), true)
-	_check(world._ghosts.has("sand-1") and world._ghosts["sand-1"].visible and not world._decks["sand-1"].visible, "At half water the shut sand bar shows as an outline")
-	_check(world._ghosts.has("stones-1") and not world._ghosts["stones-1"].visible and world._decks["stones-1"].visible, "At half water the open stones show their deck, not the outline")
-	_check(world._ghosts.has("jetty-1") and not world._ghosts["jetty-1"].visible and not world._decks["jetty-1"].visible, "At half water the shut jetty over the water shows no outline in the air, only its piles")
-	var faint := (world._ghosts["sand-1"].find_children("*", "MeshInstance3D", true, false)[0] as MeshInstance3D).material_override as BaseMaterial3D
-	var sheet := world.waters.look.bodies.harbour.materials[0] as Material
-	_check(faint.depth_draw_mode == BaseMaterial3D.DEPTH_DRAW_ALWAYS and faint.render_priority < sheet.render_priority, "An outline draws before the water and writes depth, so the water covers only what of it sits under the surface")
+	_check(world.crossing_pieces.has("sand-1") and world.crossing_pieces["sand-1"].style == "taut" and not world.crossing_pieces["sand-1"].is_open() and world._decks["sand-1"].visible and not world._crossing_shown("sand-1"), "At half water the shut sand bar hangs slack in view")
+	_check(not world.crossing_pieces.has("stones-1") and world._decks["stones-1"].visible, "At half water the open stones show their deck")
+	_check(world.crossing_pieces.has("jetty-1") and not world.crossing_pieces["jetty-1"].is_open() and world._decks["jetty-1"].visible, "At half water the shut jetty hangs slack, never missing")
+	_check(world.crossing_pieces.keys().all(func(id: String) -> bool: return world._decks[id].visible), "No crossing ever pops out of view: " + str(world.crossing_pieces.keys()))
 	_check(world._decks["stones-1"].find_children("SteppingStone*", "", true, false).size() >= 3 and world._decks["sand-1"].find_children("*", "MeshInstance3D", true, false).size() > 4, "Stones are built as stepping stones and the sand bar as a rippled hump")
 	var bubble: LabelBubble = world._journey_switches["tide"].bubble
 	var chips: Array = bubble.labels
@@ -330,7 +328,7 @@ func _second_stage(level: Dictionary) -> void:
 		if route.id not in checkpoint.mechanisms.latched_bridges: continue
 		_check(absf(markers[index].position.y - float(route.height_cm) / 100.0 - 0.02) < 0.01, "A kept marker sits on its crossing: " + str(route.id))
 		index += 2
-	_check(world._decks["wheel-step"].visible and world._memory_markers["wheel-step"].visible and world._memory_markers["wheel-step"].find_child("KeptPennant", true, false) != null, "The kept waiting step shows its pennant")
+	_check(world._crossing_shown("wheel-step") and world._memory_markers["wheel-step"].visible and world._memory_markers["wheel-step"].find_child("KeptPennant", true, false) != null, "The kept waiting step shows its pennant")
 	var kept_post: MeshInstance3D = world._memory_markers["wheel-step"].find_child("KeptPost", true, false)
 	_check(kept_post != null and (kept_post.mesh as BoxMesh).size.y >= 0.5 and world._memory_markers["wheel-step"].find_children("KeptEdge*", "", true, false).size() == 2, "A kept crossing shows a tall mooring post and gold edges")
 	_check(kept_post != null and kept_post.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "A kept crossing's post casts no shadow over its pennant")
@@ -383,7 +381,7 @@ func _second_stage(level: Dictionary) -> void:
 	world.present(_players(state, "p1", -268, -40, 48), true)
 	_check(world.waters.fade.faded_spots() == 0 and _faded_walls(world).is_empty() and world.waters.fade.meshes().all(func(mesh: MeshInstance3D) -> bool: return mesh.material_override.albedo_color.a == 1.0), "They come back once it steps off")
 	world.present(state, true)
-	_check(not world._decks["punt-ferry"].visible and not world._ghosts["punt-ferry"].visible, "The shut punt over its dry pit shows no outline")
+	_check(world._decks["punt-ferry"].visible and not world._crossing_shown("punt-ferry"), "The shut punt over its dry pit hangs slack, never missing")
 	_check(world.terrain.find_child("KeySign_sea-gate-out", true, false) != null, "The sea gate out shows a large key sign")
 	# Spirits by the wheels: every bubble rises clear of them, of the gauges and
 	# of each other, as in every chapter.
@@ -432,11 +430,11 @@ func _second_stage(level: Dictionary) -> void:
 	sim._refresh_routes()
 	var moved: Dictionary = sim.snapshot()
 	world.present(moved)
-	_check(not bool(moved.bridges["gate-catwalk"]) and world._decks["gate-catwalk"].visible and world._decks["gate-catwalk"].get_meta("dry"), "A catwalk stays dry at slack after the first spirit turns the tide")
+	_check(not bool(moved.bridges["gate-catwalk"]) and world._crossing_shown("gate-catwalk"), "A catwalk stays dry at slack after the first spirit turns the tide")
 	sim._mechanisms.controls.basin = "half"
 	sim._refresh_routes()
 	world.present(sim.snapshot())
-	_check(not world._decks["gate-catwalk"].visible, "A catwalk is wet once the sea leaves the remembered tide")
+	_check(not world._crossing_shown("gate-catwalk") and world._decks["gate-catwalk"].visible and world.crossing_pieces["gate-catwalk"].sag() >= world.crossing_pieces["gate-catwalk"].slack() * 0.6, "A catwalk is wet once the sea leaves the remembered tide")
 	# The chamber matches the harbour.
 	sim._mechanisms.controls.chamber = "half"
 	sim._refresh_routes()

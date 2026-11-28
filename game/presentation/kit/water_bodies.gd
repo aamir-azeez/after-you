@@ -28,7 +28,7 @@ extends RefCounted
 ##                              a basin's walls are the world's to build, before the locks
 ##   await build_locks(path)    last: the doors, spillways and walls at openings
 ##   present_controls(...)      each snapshot: where each body is going
-##   show_floods(decks)         each snapshot, once the decks show or hide
+##   show_floods(open)          each snapshot, once the crossings open or shut
 ##   occupy(spirits, routes)    each snapshot: walls fade, doors dip
 ##   advance(delta)             each frame: water, then doors, then fading walls
 ## A staged build gives the frame back through the world's _build_step.
@@ -1122,10 +1122,11 @@ func _build_flood(id: String, route: Dictionary, center: Vector3, width: float, 
 	floods[id] = {"node": flood, "body": body, "water": body_id, "key": "crossing:" + id}
 	_fill(floods[id], float(body.get_meta("shown")))
 
-## A walled stub's flood shows while its deck is hidden (its gate shut).
-func show_floods(decks: Dictionary) -> void:
+## A walled stub's flood shows while its crossing is shut: `open` says, by
+## crossing id, whether it stands open.
+func show_floods(open: Callable) -> void:
 	for id: String in floods:
-		floods[id].node.visible = not (decks.has(id) and decks[id].visible)
+		floods[id].node.visible = not bool(open.call(id))
 
 # --- Locks ---
 

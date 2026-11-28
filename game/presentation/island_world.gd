@@ -1757,11 +1757,14 @@ func _build_crossings(bridges: Array) -> void:
 ## rise or sink is a "crossing" big change (kit/big_change.gd), off unless a
 ## chapter turns it on.
 func _present_crossings(bridges: Dictionary, immediate: bool) -> void:
-	for id: String in crossing_pieces:
-		var open := bool(bridges.get(id, false))
-		if not immediate and open != crossing_pieces[id].is_open(): note_big_change("crossing", BigChange.SECONDS)
-		crossing_pieces[id].reduced_motion = reduced_motion
-		crossing_pieces[id].set_open(open, immediate)
+	for id: String in crossing_pieces: _open_crossing(id, bool(bridges.get(id, false)), immediate)
+
+## Opens or shuts crossing `id`'s piece (_present_crossings, and a world that
+## reads its own cause for some crossings).
+func _open_crossing(id: String, open: bool, immediate: bool) -> void:
+	if not immediate and open != crossing_pieces[id].is_open(): note_big_change("crossing", BigChange.SECONDS)
+	crossing_pieces[id].reduced_motion = reduced_motion
+	crossing_pieces[id].set_open(open, immediate)
 
 ## The seed an island family throws (seed_visual.gd, glowing warm; its flight
 ## is _present_seed's) and the ring where it lands (SocketKit.landing), named

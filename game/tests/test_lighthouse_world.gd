@@ -51,7 +51,7 @@ func _run() -> void:
 		if landmark.get_meta("mirror_id", "") == "south-mirror": overlapping_old_mirror = true
 	_check(not overlapping_old_mirror, "An old mirror replaced at the same authored position is not drawn over its selector")
 	_check(screen.world._receiver_cables["first-path"].is_empty() and screen.world._receiver_cables["second-path"].is_empty(), "Distant control signals do not draw fake surface cables across the void")
-	_check(not screen.world._decks["court-rest"].visible and not screen.world._decks["rest-tower"].visible, "Earlier checkpoints never pre-open either timed path")
+	_check(not screen.world._crossing_shown("court-rest") and not screen.world._crossing_shown("rest-tower"), "Earlier checkpoints never pre-open either timed path")
 	await _frame("00-first-bell-ready")
 	var card_bounds: Rect2 = screen.controls.modal_scroll.get_parent().get_parent().get_global_rect()
 	_check(root.get_visible_rect().encloses(card_bounds), "The complete story card stays inside the display")
@@ -84,7 +84,7 @@ func _run() -> void:
 	_check(screen.sim.snapshot().route_progress.step == 2 and screen.controls.progress_label.text == PlayerCopy.LIGHTHOUSE_PREVIEW_C2AC8F270DB6, "The safe intermediate island shows that the next route is not yet lit")
 	await _frame("03-first-bell-rest-rock")
 	while screen.sim.snapshot().sequence.phase != "second" and not screen.sim.finished: screen.advance_input({})
-	_check(screen.world._memory_markers["court-rest"].visible and screen.world._decks["court-rest"].visible, "An occupied route remains visibly remembered after its light changes")
+	_check(screen.world._memory_markers["court-rest"].visible and screen.world._crossing_shown("court-rest"), "An occupied route remains visibly remembered after its light changes")
 	_check(not screen.world._memory_markers["rest-tower"].visible, "A newly powered but unvisited route has no invented footsteps")
 	_check(screen.controls.progress_label.text == PlayerCopy.LIGHTHOUSE_PREVIEW_D7AE1ED2893C, "Crossing guidance changes only when the second window is active")
 	var receiver_snapshot: Dictionary = screen.sim.snapshot()

@@ -761,6 +761,9 @@ func _pulls(world: Node3D, where: String, _view: Dictionary, base: Dictionary) -
 	for id: String in world.crossing_pieces:
 		var piece: RefCounted = world.crossing_pieces[id]
 		if piece.style != "taut": continue
+		# A catwalk reads the remembered tide, not the snapshot's bridges: tests/test_tide_world.gd.
+		var catwalks: Variant = world.get("_catwalks")
+		if catwalks != null and id in catwalks: continue
 		_pulls_seen += 1
 		var open := base.duplicate(true)
 		open.bridges[id] = true

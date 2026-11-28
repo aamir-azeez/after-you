@@ -85,8 +85,6 @@ var _chamber_lamps: Array[MeshInstance3D] = []
 var _spout: Node3D
 var _spout_streaks: Array[MeshInstance3D] = []
 var _history_tide := ""
-## Shut crossings stay in view as faint outlines: id -> ghost node.
-var _ghosts: Dictionary = {}
 ## Ramps built for the shown stage: crossing id -> its hinge (Node3D, meta
 ## "target"), and what lowers each: crossing id -> [selector id, value,
 ## the water selector its gate names].
@@ -142,7 +140,6 @@ func _forget_stage() -> void:
 	_spout = null
 	_spout_streaks.clear()
 	_history_tide = ""
-	_ghosts.clear()
 	_ramps.clear()
 	_ramp_on.clear()
 	_owners = _mechanism_owners()
@@ -218,10 +215,11 @@ func _route(id: String) -> Dictionary:
 
 # --- Crossings: decks at their own height ---
 
-## The tide's decks show the water: dry and laid, or flooded with their ghost
-## (_present_water). None hangs slack.
-func _pulls_deck(_definition: Dictionary) -> bool:
-	return false
+## Every crossing hangs slack, sinking into its water, while the tide or a gate
+## shuts it and is pulled taut as it opens (kit/pieces/taut_bridge.gd, the
+## shared rule: cooperative_world _pulls_deck). The stepping stones sink and
+## rise on their own (_present_stones). A catwalk opens by the remembered tide
+## (_present_water), the rest by the snapshot (_present_crossings).
 
 func _build_bridge(definition: Dictionary) -> void:
 	# The water world lifts the deck to its height.
@@ -230,7 +228,6 @@ func _build_bridge(definition: Dictionary) -> void:
 	_kept_pennant(definition)
 	if id.begins_with("jetty") or id == "boom-jetty": _piles(definition)
 	if _is_stub(definition): _stub_frame(definition)
-	else: _ghost(definition)
 
 ## A stub shows its owner on its own pads and levers; a route this stage never
 ## gates needs no ownership mark at all.
@@ -327,48 +324,6 @@ func _lay_deck(route: Dictionary, deck: Node3D, full_width: float, full_depth: f
 		_glow(trim, GOLD if tide else LIGHT_COLOR, 0.9 if tide else 0.65)
 	var shift := Vector3((low + high) * 0.5, 0, 0) if across_x else Vector3(0, 0, (low + high) * 0.5)
 	for index in range(before, deck.get_child_count()): (deck.get_child(index) as Node3D).position += shift
-
-## A shut crossing the tide covers stays in view as a faint outline under the
-## water, so the other ways can be read. One standing over the water shows
-## nothing in its gap (_under_water): an outline in the air reads as a glass
-## bridge to walk on; a jetty's piles still show where it goes.
-func _ghost(route: Dictionary) -> void:
-	var id := str(route.id)
-	var deck: Node3D = _decks.get(id)
-	if deck == null: return
-	# The outline leaves out the remembered-footsteps marker (footprints and
-	# pennant): it is set aside while the deck is copied, not copied and freed.
-	var memories := deck.find_child("RememberedFootsteps", false, false)
-	var memories_at := memories.get_index() if memories != null else -1
-	if memories != null: deck.remove_child(memories)
-	var ghost := deck.duplicate() as Node3D
-	if memories != null:
-		deck.add_child(memories)
-		deck.move_child(memories, memories_at)
-	ghost.name = "ShutCrossing_" + id
-	var faint := Primitives.fresh_material(Color(CREAM, 0.30))
-	faint.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	# Drawn before the water and writing depth: the water then covers only
-	# what of the outline sits under it, and what stands above it (stepping
-	# stones over half tide) stays in view.
-	faint.render_priority = -3
-	faint.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_ALWAYS
-	for node: Node in ghost.find_children("*", "MeshInstance3D", true, false):
-		(node as MeshInstance3D).material_override = faint
-		(node as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	terrain.add_child(ghost)
-	ghost.visible = not deck.visible
-	_ghosts[id] = ghost
-
-## Whether crossing `id`'s outline lies under its water at the level
-## `controls` set (its body's rest level while no control moves it).
-func _under_water(id: String, controls: Dictionary) -> bool:
-	var body := waters.body_of(_route_rect(id))
-	if body.is_empty(): return false
-	var data: Dictionary = waters.body_data(body)
-	var levels: Dictionary = data.get("levels", {})
-	var level := float(levels.get(str(controls.get(str(data.get("selector", "")), data.get("rest", ""))), waters.rest_level(body)))
-	return float((_ghosts[id] as Node3D).position.y) < level
 
 ## A mooring post with a pennant, and a gold edge along both sides of the deck,
 ## show a crossing kept for good. They belong to the deck's remembered-footsteps
@@ -953,6 +908,14 @@ func present_history(checkpoint: Dictionary) -> void:
 	super.present_history(checkpoint)
 	_history_tide = str(checkpoint.get("mechanisms", {}).get("controls", {}).get("tide", ""))
 
+## A catwalk opens by the remembered tide, not the snapshot's bridges
+## (_present_water): left as it stands here.
+func _present_crossings(bridges: Dictionary, immediate: bool) -> void:
+	var held := bridges.duplicate()
+	for id: String in _catwalks:
+		if crossing_pieces.has(id): held[id] = crossing_pieces[id].is_open()
+	super._present_crossings(held, immediate)
+
 func _present_water(state: Dictionary, immediate: bool) -> void:
 	var controls: Dictionary = state.get("controls", {})
 	var levers: Dictionary = state.get("levers", {})
@@ -997,9 +960,8 @@ func _present_water(state: Dictionary, immediate: bool) -> void:
 	var kept_now: Array = state.get("route_progress", {}).get("entered_routes", [])
 	for id: String in _catwalks:
 		if not _decks.has(id): continue
-		_decks[id].visible = dry or id in _latched_bridge_ids
-		_memory_markers[id].visible = _decks[id].visible and (id in _latched_bridge_ids or id in kept_now)
-		_decks[id].set_meta("dry", dry)
+		if crossing_pieces.has(id): _open_crossing(id, dry or id in _latched_bridge_ids, immediate)
+		_memory_markers[id].visible = _crossing_shown(id) and (id in _latched_bridge_ids or id in kept_now)
 	for mark: MeshInstance3D in _slack_marks: _glow(mark, TEAL, 0.9 if dry else 0.0)
 	var routes: Dictionary = state.get("bridges", {})
 	for id: String in _dry_marks:
@@ -1010,9 +972,7 @@ func _present_water(state: Dictionary, immediate: bool) -> void:
 	for id: String in _post_marks:
 		var at_value: bool = basin == _post_marks[id].value
 		for band: MeshInstance3D in _post_marks[id].bands: _glow(band, TEAL, 0.9 if at_value else 0.0)
-	for id: String in _ghosts:
-		if is_instance_valid(_ghosts[id]) and _decks.has(id): _ghosts[id].visible = not _decks[id].visible and _under_water(id, controls)
-	waters.show_floods(_decks)
+	waters.show_floods(_crossing_shown)
 	# Water rising past a closing crossing's deck reaches it as the crossing
 	# shuts, then goes on at its usual rate (it blinks: kit/closing_warning.gd).
 	waters.pace_closing(state.get("route_progress", {}).get("closing", {}))
@@ -1040,8 +1000,7 @@ func _lift_bubbles() -> void:
 var _bubbles_placed := false
 
 ## Everything that moves, shows, hides or glows with the tide stays whole
-## (_static_keep): crossing decks (rebuilt and copied for their ghosts at
-## build), water, walled stubs' floods, ghosts, kept marks and masts, sea gates, the
+## (_static_keep): crossing decks, water, walled stubs' floods, kept marks and masts, sea gates, the
 ## spout, wheels, gauges, levers and lamps, and the remembered routes (found by
 ## index). The island floors fold like every world's (cooperative_world).
 func _folds_static_scenery() -> bool:
@@ -1049,7 +1008,7 @@ func _folds_static_scenery() -> bool:
 
 func _static_keep() -> Array:
 	var keep := super._static_keep()
-	for group: Dictionary in [_decks, _memory_markers, _ghosts]: keep.append_array(group.values())
+	for group: Dictionary in [_decks, _memory_markers]: keep.append_array(group.values())
 	for wheel: Dictionary in _wheels.values(): keep.append(wheel.wheel)
 	for gauge: Dictionary in _gauges.values(): keep.append_array([gauge.post, gauge.icon] + gauge.bands)
 	for lamp: Dictionary in _lever_lamps.values(): keep.append(lamp.lamp)

@@ -381,10 +381,17 @@ func _build_bridge(definition: Dictionary) -> void:
 		crossing_pieces[str(definition.id)] = TautBridge.build(_deck, across_x, low, high)
 
 ## Whether crossing `definition`'s deck hangs slack while shut and is pulled
-## taut as it opens (kit/pieces/taut_bridge.gd). The Lighthouse's beam-lit
-## decks do not; the cooperative worlds' held and toggled crossings do.
+## taut as it opens (kit/pieces/taut_bridge.gd): every one here, so a beam-lit
+## deck never just shows up. The cooperative worlds narrow it (stones, a
+## platform's stops and the like show their own cause).
 func _pulls_deck(_definition: Dictionary) -> bool:
-	return false
+	return true
+
+## Whether crossing `id` stands open as presented: a pulled deck by its piece,
+## any other by whether its deck shows.
+func _crossing_shown(id: String) -> bool:
+	if crossing_pieces.has(id): return crossing_pieces[id].is_open()
+	return _decks.has(id) and _decks[id].visible
 
 ## Whether a floor of the shown plan is drawn within `margin` cm of `at` (cm).
 func _over_floor(at: Vector2, margin: float) -> bool:
